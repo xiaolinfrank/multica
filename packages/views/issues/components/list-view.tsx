@@ -1,5 +1,7 @@
 "use client";
 
+import type { UpdateIssueRequest } from "@multica/core/types";
+
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 
@@ -82,11 +84,15 @@ function ListViewImpl({
   statusPagination,
   projectId,
   onMoveIssue,
+  canMoveIssue,
+  onMoveBlocked,
   onCreateIssue,
 }: {
   issues: Issue[];
   visibleStatuses: IssueStatus[];
   hiddenStatuses?: IssueStatus[];
+  canMoveIssue?: (id: string, updates: Partial<UpdateIssueRequest>) => boolean;
+  onMoveBlocked?: (id: string, updates: Partial<UpdateIssueRequest>) => void;
   childProgressMap?: Map<string, ChildProgress>;
   projectMap?: Map<string, Project>;
   statusPagination: IssueStatusPagination;
@@ -207,6 +213,8 @@ function ListViewImpl({
         const activeCol = findColumn(prev, activeId, groupIds);
         const overCol = findColumn(prev, overId, groupIds);
         if (!activeCol || !overCol || activeCol === overCol) return prev;
+        const target = groups.find((group) => group.id === overCol), current = issueMapRef.current.get(activeId);
+        if (target && current && canMoveIssue && !canMoveIssue(activeId, getMoveUpdates(target, current.position, current))) return prev;
         const targetStatus = groups.find((group) => group.id === overCol)?.status;
         if (targetStatus && catalog.entryOf(targetStatus)?.archived_at) return prev;
 
@@ -221,7 +229,7 @@ function ListViewImpl({
         return { ...prev, [activeCol]: oldIds, [overCol]: newIds };
       });
     },
-    [groupIds, groups, catalog, sortBy, recentlyMovedRef, setColumns],
+    [groupIds, groups, catalog, sortBy, recentlyMovedRef, setColumns, canMoveIssue],
   );
 
   const handleDragEnd = useCallback(
@@ -242,6 +250,12 @@ function ListViewImpl({
       const overId = over.id as string;
 
       const cols = columnsRef.current;
+      const observedIssue = issueMapRef.current.get(activeId);
+      const observedTarget = groupMap.get(findColumn(cols, overId, groupIds) ?? "");
+      if (observedIssue && observedTarget && canMoveIssue) {
+        const candidate = getMoveUpdates(observedTarget, observedIssue.position, observedIssue);
+        if (!canMoveIssue(activeId, candidate)) { resetColumns(); onMoveBlocked?.(activeId, candidate); return; }
+      }
       const activeCol = findColumn(cols, activeId, groupIds);
       const overCol = findColumn(cols, overId, groupIds);
       if (!activeCol || !overCol) {
@@ -342,7 +356,7 @@ function ListViewImpl({
         beginSettle(),
       );
     },
-    [issues, groups, onMoveIssue, groupIds, groupMap, sortBy, beginSettle, setColumns, columnsRef, isDraggingRef, catalog, t],
+    [issues, groups, onMoveIssue, groupIds, groupMap, sortBy, beginSettle, setColumns, columnsRef, isDraggingRef, catalog, t, canMoveIssue, onMoveBlocked],
   );
 
   // dnd-kit fires onDragCancel — never onDragEnd — when an active drag is

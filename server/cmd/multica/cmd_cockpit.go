@@ -16,9 +16,9 @@ import (
 
 // `multica cockpit` — the agent-facing surface of the project cockpit.
 //
-// Everything the board's UI can do, an agent can do here: read the whole board,
-// edit any node field, link issues, manage instalments, milestones and
-// meetings, and replace the board wholesale from a document.
+// The CLI exposes the board and its focused workspaces: nodes, issue links,
+// instalments, milestones, meetings and reviewed actions. The server preserves
+// human-only approval and ownership commands regardless of the CLI caller.
 //
 // Nodes are addressed by their human code ("L1-02", "L3-01-08") as well as by
 // UUID, because that is how a plan names its own work — an agent told to "push
@@ -222,16 +222,18 @@ var cockpitVersionDeleteCmd = &cobra.Command{
 func init() {
 	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd,
 		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd,
-		cockpitVersionCmd)
+		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"), newCockpitChangeCommand(), newCockpitArtifactCommand(), newCockpitAcceptanceCommand(), newCockpitInputCommand())
 	cockpitVersionCmd.AddCommand(cockpitVersionListCmd, cockpitVersionSaveCmd,
-		cockpitVersionRestoreCmd, cockpitVersionDeleteCmd)
+		cockpitVersionRestoreCmd, cockpitVersionDeleteCmd, newCockpitVersionCompareCommand())
 	cockpitNodeCmd.AddCommand(cockpitNodeListCmd, cockpitNodeGetCmd, cockpitNodeCreateCmd,
-		cockpitNodeUpdateCmd, cockpitNodeDeleteCmd, cockpitNodeLinkCmd, cockpitNodeUnlinkCmd)
+		cockpitNodeUpdateCmd, cockpitNodeDeleteCmd, cockpitNodeLinkCmd, cockpitNodeUnlinkCmd,
+		newCockpitNodeTasksCommand(), newCockpitNodeCreateTaskCommand(), newCockpitNextNodeCodeCommand())
 	cockpitPaymentCmd.AddCommand(cockpitPaymentAddCmd, cockpitPaymentUpdateCmd, cockpitPaymentRemoveCmd)
 	cockpitMilestoneCmd.AddCommand(cockpitMilestoneListCmd, cockpitMilestoneAddCmd,
 		cockpitMilestoneUpdateCmd, cockpitMilestoneRemoveCmd)
 	cockpitMeetingCmd.AddCommand(cockpitMeetingListCmd, cockpitMeetingAddCmd,
-		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd)
+		cockpitMeetingUpdateCmd, cockpitMeetingRemoveCmd, newCockpitMeetingWorkflowCommand(), newCockpitMeetingActionCommand(), newCockpitMeetingPageCommand(), newCockpitMeetingShowCommand(), newCockpitMeetingLifecycleCommand())
+	cockpitMeetingCmd.AddCommand(newCockpitMeetingPreparationCommand(), newCockpitMeetingDirectoryCommand(), newCockpitMeetingRelationCommand("issue"), newCockpitMeetingRelationCommand("node"))
 
 	cockpitShowCmd.Flags().String("output", "table", "Output format: table or json")
 
@@ -256,6 +258,8 @@ func init() {
 	for _, c := range []*cobra.Command{cockpitNodeCreateCmd, cockpitNodeUpdateCmd} {
 		c.Flags().String("code", "", "Node code, e.g. L3-01-08")
 		c.Flags().String("parent", "", "Parent node code or UUID (empty string detaches)")
+		c.Flags().String("project-id", "", "Explicit project binding UUID (empty clears; clear module-id too to unbind)")
+		c.Flags().String("module-id", "", "Explicit module binding UUID (resolves its project; empty clears)")
 		c.Flags().String("name", "", "Node name")
 		c.Flags().String("owner", "", "Owner")
 		c.Flags().String("collaborators", "", "Collaborators")
@@ -272,7 +276,7 @@ func init() {
 		c.Flags().String("budget-category", "", "Budget category")
 		c.Flags().Float64("budget", 0, "Annual budget in the board's unit")
 		c.Flags().Bool("clear-budget", false, "Clear the budget instead of setting it")
-		c.Flags().String("exec-status", "", "Budget execution status")
+		c.Flags().String("exec-status", "", "Payment status")
 		c.Flags().String("contract", "", "Contract reference")
 		c.Flags().String("source", "", "Provenance of the row")
 		c.Flags().Float64("position", 0, "Sort position among siblings")
@@ -367,6 +371,8 @@ func cockpitNodeBody(cmd *cobra.Command) map[string]any {
 	body := map[string]any{}
 	cockpitStringFlag(cmd, body, "code", "code")
 	cockpitStringFlag(cmd, body, "parent", "parent_id")
+	cockpitStringFlag(cmd, body, "project-id", "project_id")
+	cockpitStringFlag(cmd, body, "module-id", "module_id")
 	cockpitStringFlag(cmd, body, "name", "name")
 	cockpitStringFlag(cmd, body, "owner", "owner")
 	cockpitStringFlag(cmd, body, "collaborators", "collaborators")

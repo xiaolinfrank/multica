@@ -49,6 +49,14 @@ The `/auth/openclaw` web entry is for the configured human owner only, not a
 machine-credential exchange. It uses OpenClaw's native owner device pairing;
 Multica PATs cannot be used as Gateway tokens.
 
+In explicit `MULTICA_SINGLE_OWNER=true` deployments, the private launcher may
+set `singleOwner: true` before an owner exists. After local account setup, the
+existing native human session can open `/api/local-dashboard` immediately;
+CLI consent and a CLI PAT are not prerequisites. Every launch resolves the
+current `single_owner_account` owner and still enforces local origin, human
+identity, session revocation and the one-time native Gateway bootstrap.
+Ordinary multi-user and Star OIDC launchers still require their configured owner.
+
 ```bash
 multica runtime list --output json
 multica runtime usage <runtime-id> --output json
@@ -181,6 +189,8 @@ Check in this order:
 7. If repo checkout failed, classify it after checking whether repo context was
    present in the task/project context.
 
+Claude 托管任务默认直接提供工具定义（任务级 `ENABLE_TOOL_SEARCH=false`），避免兼容端点的延迟发现问题；不修改宿主全局配置或工具权限。若 agent 声称没有执行工具，请由宿主操作员核对 daemon 的 `claude initialized` 日志：`bash_tool=available` 仅代表 CLI 已注册 Bash，`missing` 表示已报告清单中缺少 Bash，`unknown` 表示未获得有效清单。再核对实际 `Bash` 调用及工具结果，不能仅凭 agent 的文字判断或自动放宽权限。
+
 ## Repos
 
 The runtime brief lists repos available to this task. Treat that list as the
@@ -199,3 +209,12 @@ Workspace repos and project resources are not the same thing:
 Do not add a project resource just because `repo checkout` failed. First
 determine whether the user asked for durable project context or just a task
 checkout.
+# Built-in skill delivery
+
+Platform and cockpit contracts are delivered to ordinary workers and Mika.
+The onboarding procedure is delivered only to Mika, identified by the product
+system key; its activation still requires the actual product onboarding kickoff.
+An external personal assistant may receive the platform and cockpit contracts
+through its own host adapter. Its personal memory and owner-only methods do not
+become worker instructions. Product releases retain content hashes and role
+scopes for each built-in skill; workspace-authored notes remain separate.

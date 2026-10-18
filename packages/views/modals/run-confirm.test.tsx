@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { buildIssueStatusCatalog } from "@multica/core/issue-statuses";
 import {
   configureShortcutPlatform,
@@ -7,8 +7,44 @@ import {
   useShortcutStore,
 } from "@multica/core/shortcuts";
 import { RunConfirmModal } from "./run-confirm";
+import { ApiError } from "@multica/core/api";
+import type { IssueBatchReceipt, IssueOperationBasis } from "@multica/core/types";
+import { issueOperationFixture } from "../issues/operation-basis-test-fixture";
 
-vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-test" }));
+const policyState = vi.hoisted(() => ({
+  wsId: "ws-test", overrides: new Map<string, Partial<IssueOperationBasis>>(),
+  pending: new Set<string>(), errors: new Set<string>(), read: vi.fn(), refetch: vi.fn(), summary: vi.fn(),
+}));
+vi.mock("@multica/core/issues", async (original) => ({
+  ...await original<typeof import("@multica/core/issues")>(),
+  useIssueOperationBasis: (wsId: string, ids: string[]) => {
+    policyState.read(wsId, ids);
+    return {
+      byIssue: new Map(ids.filter((id) => !policyState.pending.has(id) && !policyState.errors.has(id)).map((id) => [id, issueOperationFixture(id, policyState.overrides.get(id))])),
+      pendingIds: policyState.pending, errorIds: policyState.errors,
+      isPending: policyState.pending.size > 0, isError: policyState.errors.size > 0, refetch: policyState.refetch,
+    };
+  },
+}));
+vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/${policyState.wsId}/issues/${id}` }) }));
+vi.mock("../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
+vi.mock("../issues/components/issue-operation-restriction", () => ({
+  IssueOperationRestriction: ({ operation, observation }: { operation: string; observation: { basis?: IssueOperationBasis; pending: boolean; error: boolean } }) =>
+    <p role="note" aria-label={`${operation} restriction`}>{observation.basis?.issue_id ?? (observation.pending ? "Checking" : "Unavailable")}</p>,
+}));
+vi.mock("../issues/components/issue-batch-outcome-summary", () => ({
+  IssueBatchOutcomeSummary: (props: { wsId: string; submittedIds: string[]; receipt: IssueBatchReceipt | null; operation: string }) => {
+    policyState.summary(props);
+    return <section aria-label="Batch result">{props.receipt?.transaction_outcome ?? "unknown"}</section>;
+  },
+}));
+
+function receipt(ids: string[], overrides: Partial<IssueBatchReceipt> = {}): IssueBatchReceipt {
+  return { workspace_id: policyState.wsId, requested_ids: ids, transaction_mode: "per_item", transaction_outcome: "committed",
+    results: ids.map((id) => ({ issue_id: id, outcome: "applied", revision: (policyState.overrides.get(id)?.issue_revision ?? 1) + 1, changed: true })), unconfirmed_ids: [], updated: ids.length, ...overrides };
+}
+
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => policyState.wsId }));
 vi.mock("@multica/core/issue-statuses/hooks", () => ({
   useIssueStatuses: () =>
     buildIssueStatusCatalog([
@@ -30,8 +66,9 @@ vi.mock("@multica/core/issue-statuses/hooks", () => ({
 }));
 
 const mockUpdate = vi.fn().mockResolvedValue({ id: "issue-1" });
-const mockBatch = vi.fn().mockResolvedValue({ updated: 2 });
-vi.mock("@multica/core/issues/mutations", () => ({
+const mockBatch = vi.fn();
+vi.mock("@multica/core/issues/mutations", async (original) => ({
+  ...await original<typeof import("@multica/core/issues/mutations")>(),
   useUpdateIssue: () => ({ mutateAsync: mockUpdate }),
   useBatchUpdateIssues: () => ({ mutateAsync: mockBatch }),
 }));
@@ -64,6 +101,8 @@ vi.mock("../i18n", () => ({
         // useStatusLabel resolves BUILT-IN keys through i18n and custom ones
         // through the catalog, so the promote headline needs both sources.
         status: { todo: "Todo" },
+        revision: { conflict: "Revision changed" },
+        operation_basis: { dismiss: "Close", batch_counts: "{{allowed}} allowed, {{blocked}} blocked of {{total}}", open_record: "Open issue", new_tab: "(new tab)" },
       };
       return sel(labels).replace(/\{\{(\w+)\}\}/g, (_m, k) => String(vars?.[k] ?? ""));
     },
@@ -97,7 +136,9 @@ vi.mock("sonner", () => ({ toast: mockToast }));
 
 beforeEach(() => {
   mockUpdate.mockClear().mockResolvedValue({ id: "issue-1" });
-  mockBatch.mockClear().mockResolvedValue({ updated: 2 });
+  mockBatch.mockReset().mockImplementation(async ({ ids }: { ids: string[] }) => receipt(ids));
+  policyState.wsId = "ws-test"; policyState.overrides.clear(); policyState.pending.clear(); policyState.errors.clear();
+  policyState.read.mockClear(); policyState.refetch.mockReset().mockResolvedValue([]); policyState.summary.mockClear();
   mockToast.error.mockClear();
   mockToast.success.mockClear();
   // The real shortcut store drives both the submit chord and the keycap hint,
@@ -134,8 +175,8 @@ const promote = {
 };
 
 describe("RunConfirmModal", () => {
-  it("is fully operable on the first frame — no preview request, no spinner", () => {
-    // The MUL-5010 core: opening the dialog fires nothing and blocks nothing.
+  it("shows confirmed allowed operation facts on the first frame without a run preview or spinner", () => {
+    // An already confirmed basis does not require a separate run prediction.
     const { container } = render(<RunConfirmModal onClose={vi.fn()} data={single} />);
     expect(screen.queryByTestId("spinner")).not.toBeInTheDocument();
     expect(confirmButton()).not.toBeDisabled();
@@ -149,6 +190,7 @@ describe("RunConfirmModal", () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate).toHaveBeenCalledWith({
       id: "issue-1",
+      expected_revision: 1,
       assignee_type: "agent",
       assignee_id: "agent-1",
     });
@@ -172,6 +214,7 @@ describe("RunConfirmModal", () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate).toHaveBeenCalledWith({
       id: "issue-1",
+      expected_revision: 1,
       assignee_type: "agent",
       assignee_id: "agent-1",
       suppress_run: true,
@@ -187,6 +230,7 @@ describe("RunConfirmModal", () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate).toHaveBeenCalledWith({
       id: "issue-1",
+      expected_revision: 1,
       status: "rework",
     });
   });
@@ -199,6 +243,7 @@ describe("RunConfirmModal", () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate).toHaveBeenCalledWith({
       id: "issue-1",
+      expected_revision: 1,
       status: "rework",
       suppress_run: true,
     });
@@ -224,6 +269,7 @@ describe("RunConfirmModal", () => {
     await waitFor(() => expect(mockBatch).toHaveBeenCalledTimes(1));
     expect(mockBatch).toHaveBeenCalledWith({
       ids: ["i1", "i2"],
+      expected_revisions: { i1: 1, i2: 1 },
       updates: { assignee_type: "agent", assignee_id: "agent-1" },
     });
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -241,6 +287,7 @@ describe("RunConfirmModal", () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate).toHaveBeenCalledWith({
       id: "issue-1",
+      expected_revision: 1,
       assignee_type: "agent",
       assignee_id: "agent-1",
     });
@@ -303,5 +350,113 @@ describe("RunConfirmModal", () => {
     await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith("boom"));
     expect(onClose).not.toHaveBeenCalled();
     expect(mockToast.success).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("RunConfirmModal operation basis and receipts", () => {
+  it("waits for every selected issue and exposes a blocked assignment without writing a subset", () => {
+    const data = { ...single, issueIds: ["i1", "i2"] };
+    policyState.pending.add("i2");
+    const view = render(<RunConfirmModal onClose={vi.fn()} data={data} />);
+    expect(policyState.read).toHaveBeenCalledWith("ws-test", ["i1", "i2"]);
+    expect(confirmButton()).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Don't start yet" })).toBeDisabled();
+    expect(screen.getByRole("note", { name: "assignee restriction" })).toHaveTextContent("Checking");
+    policyState.pending.clear();
+    policyState.overrides.set("i2", { assignee: { state: "blocked", reason_codes: ["formal_review_required"] } });
+    view.rerender(<RunConfirmModal onClose={vi.fn()} data={data} />);
+    expect(screen.getByRole("note", { name: "assignee restriction" })).toHaveTextContent("i2");
+    fireEvent.click(confirmButton()); fireEvent.keyDown(dialog(), { key: "Enter", metaKey: true });
+    expect(mockUpdate).not.toHaveBeenCalled(); expect(mockBatch).not.toHaveBeenCalled();
+  });
+
+  it("permits assignment with Suppress when execution is blocked, without bypassing field policy", async () => {
+    policyState.overrides.set("issue-1", { execution: { state: "blocked", reason_codes: ["meeting_not_released"] } });
+    render(<RunConfirmModal onClose={vi.fn()} data={single} />);
+    expect(confirmButton()).toBeDisabled();
+    expect(screen.getByRole("note", { name: "execution restriction" })).toHaveTextContent("issue-1");
+    fireEvent.keyDown(dialog(), { key: "Enter", metaKey: true }); expect(mockUpdate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Don't start yet" }));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith({ id: "issue-1", expected_revision: 1, assignee_type: "agent", assignee_id: "agent-1", suppress_run: true }));
+  });
+
+  it("keeps a captured single revision instead of silently adopting a changed issue", () => {
+    policyState.overrides.set("issue-1", { issue_revision: 8 });
+    render(<RunConfirmModal onClose={vi.fn()} data={{ ...single, issueRevision: 7 }} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Revision changed");
+    expect(screen.getByRole("link", { name: "Open issue (new tab)" })).toHaveAttribute("href", "/ws-test/issues/issue-1");
+    expect(confirmButton()).toBeDisabled(); expect(screen.getByRole("button", { name: "Don't start yet" })).toBeDisabled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("passes captured batch revisions and the exact confirmed receipt to the selection owner", async () => {
+    policyState.overrides.set("i1", { issue_revision: 11 }); policyState.overrides.set("i2", { issue_revision: 13 });
+    const onClose = vi.fn(), onBatchResult = vi.fn(), confirmed = receipt(["i1", "i2"]);
+    mockBatch.mockResolvedValue(confirmed);
+    render(<RunConfirmModal onClose={onClose} data={{ ...single, issueIds: ["i1", "i2"], expectedRevisions: { i1: 11, i2: 13 }, onBatchResult }} />);
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(mockBatch).toHaveBeenCalledWith({ ids: ["i1", "i2"], updates: { assignee_type: "agent", assignee_id: "agent-1" }, expected_revisions: { i1: 11, i2: 13 } });
+    expect(onBatchResult).toHaveBeenCalledExactlyOnceWith(confirmed, ["i1", "i2"]);
+  });
+
+  it("keeps a partial receipt visible and never replays the remaining selection in the same dialog", async () => {
+    const onClose = vi.fn(), onBatchResult = vi.fn();
+    const partial = receipt(["i1", "i2"], { transaction_outcome: "partial", updated: 1, results: [{ issue_id: "i1", outcome: "applied", revision: 2, changed: true }, { issue_id: "i2", outcome: "rejected", code: "formal_review_required" }] });
+    mockBatch.mockRejectedValue(new ApiError("Review required", 409, "Conflict", partial));
+    render(<RunConfirmModal onClose={onClose} data={{ ...single, issueIds: ["i1", "i2"], onBatchResult }} />);
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(screen.getByRole("region", { name: "Batch result" })).toHaveTextContent("partial"));
+    expect(policyState.summary).toHaveBeenLastCalledWith(expect.objectContaining({ wsId: "ws-test", submittedIds: ["i1", "i2"], receipt: partial, operation: "assignee" }));
+    expect(onBatchResult).toHaveBeenCalledExactlyOnceWith(partial, ["i1", "i2"]);
+    expect(onClose).not.toHaveBeenCalled(); expect(confirmButton()).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Don't start yet" })).toBeDisabled();
+    fireEvent.keyDown(dialog(), { key: "Enter", metaKey: true }); expect(mockBatch).toHaveBeenCalledTimes(1);
+    expect(policyState.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves an unknown result for inspection without clearing selection or replaying", async () => {
+    const onClose = vi.fn(), onBatchResult = vi.fn(); mockBatch.mockRejectedValue(new Error("Connection lost after send"));
+    render(<RunConfirmModal onClose={onClose} data={{ ...single, issueIds: ["i1", "i2"], onBatchResult }} />);
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(screen.getByRole("region", { name: "Batch result" })).toHaveTextContent("unknown"));
+    expect(onBatchResult).toHaveBeenCalledExactlyOnceWith(null, ["i1", "i2"]);
+    expect(onClose).not.toHaveBeenCalled(); expect(confirmButton()).toBeDisabled();
+    fireEvent.keyDown(dialog(), { key: "Enter", metaKey: true }); expect(mockBatch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
+  });
+
+  it.each(["intent", "workspace", "instance"] as const)("ignores a late batch result after the %s changes", async (transition) => {
+    let finish!: (value: IssueBatchReceipt) => void;
+    const confirmed = receipt(["i1", "i2"]), oldClose = vi.fn(), newClose = vi.fn(), oldResult = vi.fn(), newResult = vi.fn();
+    mockBatch.mockReturnValueOnce(new Promise<IssueBatchReceipt>((resolve) => { finish = resolve; }));
+    const data = { ...single, issueIds: ["i1", "i2"], onBatchResult: oldResult };
+    const view = render(<RunConfirmModal onClose={oldClose} data={data} />);
+    fireEvent.click(confirmButton()); await waitFor(() => expect(mockBatch).toHaveBeenCalledTimes(1));
+    const next = { ...data, onBatchResult: newResult, ...(transition === "intent" ? { assigneeId: "agent-2" } : {}) };
+    if (transition === "workspace") policyState.wsId = "ws-next";
+    if (transition === "instance") { view.unmount(); render(<RunConfirmModal onClose={newClose} data={next} />); }
+    else view.rerender(<RunConfirmModal onClose={newClose} data={next} />);
+    await act(async () => { finish(confirmed); });
+    expect(oldClose).not.toHaveBeenCalled(); expect(newClose).not.toHaveBeenCalled();
+    expect(oldResult).not.toHaveBeenCalled(); expect(newResult).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "Batch result" })).not.toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
+  });
+
+  it("does not revive an old completion after leaving and returning to the same intent", async () => {
+    let finish!: (value: IssueBatchReceipt) => void;
+    const confirmed = receipt(["i1", "i2"]), oldClose = vi.fn(), newClose = vi.fn(), oldResult = vi.fn(), newResult = vi.fn();
+    mockBatch.mockReturnValueOnce(new Promise<IssueBatchReceipt>((resolve) => { finish = resolve; }));
+    const data = { ...single, issueIds: ["i1", "i2"], onBatchResult: oldResult };
+    const view = render(<RunConfirmModal onClose={oldClose} data={data} />);
+    fireEvent.click(confirmButton());
+    view.rerender(<RunConfirmModal onClose={newClose} data={{ ...data, assigneeId: "agent-2", onBatchResult: newResult }} />);
+    view.rerender(<RunConfirmModal onClose={newClose} data={{ ...data, onBatchResult: newResult }} />);
+    await act(async () => { finish(confirmed); });
+    expect(oldClose).not.toHaveBeenCalled(); expect(newClose).not.toHaveBeenCalled();
+    expect(oldResult).not.toHaveBeenCalled(); expect(newResult).not.toHaveBeenCalled();
+    expect(screen.queryByRole("region", { name: "Batch result" })).not.toBeInTheDocument();
   });
 });

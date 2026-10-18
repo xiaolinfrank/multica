@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS cockpit_artifact_capture_attempt_key_idx;

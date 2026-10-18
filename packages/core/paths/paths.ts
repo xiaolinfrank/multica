@@ -1,3 +1,5 @@
+import { workspaceStartPath, type WorkspaceStartPage } from "./workspace-start";
+
 /**
  * Centralized URL path builder. All navigation in shared packages (packages/views)
  * MUST go through this module — no hardcoded string paths.
@@ -22,10 +24,10 @@ const encode = (id: string) => encodeURIComponent(id);
  */
 export const AGENT_FOCUS_CONVERSATION_STARTERS = "conversation_starters";
 
-function workspaceScoped(slug: string) {
+function workspaceScoped(slug: string, startPage: WorkspaceStartPage = "cockpit") {
   const ws = `/${encode(slug)}`;
   return {
-    root: () => `${ws}/issues`,
+    root: () => workspaceStartPath(slug, startPage),
     usage: () => `${ws}/usage`,
     fleet: () => `${ws}/fleet`,
     issues: () => `${ws}/issues`,

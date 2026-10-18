@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/analytics"
+	"github.com/multica-ai/multica/server/internal/artifactcapture"
+	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/entitlement"
 	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/issueguard"
@@ -20,6 +22,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/issueproperty"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
+	"github.com/multica-ai/multica/server/internal/storage"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
@@ -46,15 +49,38 @@ type IssueService struct {
 	// Entitlements supplies Cloud's effective issue-count instruction. Nil is
 	// the self-hosted unlimited path.
 	Entitlements entitlement.Provider
+	// CockpitNASExporter resolves deployment-approved destinations without I/O.
+	// The export worker uses the same adapter for external filesystem effects.
+	CockpitNASExporter cockpitnas.Exporter
+	// Enabled only after the full artifact runtime is wired; client declaration
+	// controls entry visibility, never business authorization.
+	CockpitInputBackendReady              bool
+	CockpitRunInputManifestBackendReady   bool
+	CockpitInputCapturer                  *artifactcapture.Capturer
+	CockpitInputStorage                   storage.Storage
+	CockpitInputNAS                       *cockpitnas.Files
+	CockpitInputConfigurationError        string
+	inputIOBudget                         *cockpitInputIOBudget
+	CockpitArtifactBackendReady           bool
+	CockpitMeetingLifecycleBackendReady   bool
+	CockpitMeetingDispositionBackendReady bool
+	CockpitMeetingDirectoryBackendReady   bool
+	CockpitDirectoryPreparer              cockpitnas.Preparation
+	CockpitDirectoryConfigurationError    string
+	CockpitArtifactCapturer               *artifactcapture.Capturer
+	CockpitArtifactStorage                storage.Storage
+	// Tests can shorten the total probe budget without changing production limits.
+	artifactProbeTimeout time.Duration
 }
 
 func NewIssueService(q *db.Queries, tx TxStarter, bus *events.Bus, ac analytics.Client, ts *TaskService) *IssueService {
 	return &IssueService{
-		Queries:     q,
-		TxStarter:   tx,
-		Bus:         bus,
-		Analytics:   ac,
-		TaskService: ts,
+		Queries:                             q,
+		TxStarter:                           tx,
+		Bus:                                 bus,
+		Analytics:                           ac,
+		TaskService:                         ts,
+		CockpitMeetingLifecycleBackendReady: q != nil && tx != nil,
 	}
 }
 
@@ -79,12 +105,20 @@ type IssueCreateParams struct {
 	// ErrModuleNotInProject. Sub-issues inherit the parent's project AND its
 	// module; a module that disagrees with the parent's fails with
 	// ErrChildModuleMismatch.
-	ModuleID   pgtype.UUID
-	StartDate  pgtype.Date
-	DueDate       pgtype.Date
-	OriginType    pgtype.Text
-	OriginID      pgtype.UUID
-	AttachmentIDs []pgtype.UUID
+	ModuleID pgtype.UUID
+	// MeetingTask identifies an atomic cockpit provisioning request. Its
+	// meeting is locked before duplicate detection and linked before commit.
+	MeetingTask     *CockpitMeetingTask
+	CockpitWorkflow *CockpitWorkflowIssue
+	// Internal typed hook: action resolution / L3 create and primary ownership
+	// share the canonical Issue transaction, quota and post-commit effects.
+	CockpitPlanning    *cockpitPlanningIssue
+	CockpitArtifact    *cockpitArtifactIssue
+	StartDate          pgtype.Date
+	DueDate            pgtype.Date
+	OriginType         pgtype.Text
+	OriginID           pgtype.UUID
+	AttachmentIDs      []pgtype.UUID
 	// LabelIDs are the issue-scoped labels to attach to the new issue. They
 	// are validated and written inside the create transaction (see Create),
 	// so the issue is never committed with a partial or wrong label set. An
@@ -265,6 +299,53 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	}
 	defer tx.Rollback(ctx)
 	qtx := s.Queries.WithTx(tx)
+	if err := LockIssueHierarchyMutation(ctx, qtx, p.WorkspaceID); err != nil {
+		return IssueCreateResult{}, err
+	}
+	// A caller-supplied custom status is fenced before source/domain row locks.
+	// Typed hooks create builtin human/planning tasks and retain the check below.
+	if p.Status != "" && !issuestatus.IsBuiltIn(p.Status) {
+		if err := qtx.LockIssueStatusCatalogShared(ctx, p.WorkspaceID); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
+
+	if p.CockpitArtifact != nil {
+		existing, err := prepareCockpitArtifactIssue(ctx, qtx, &p)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
+	if p.CockpitPlanning != nil {
+		existing, err := prepareCockpitPlanningIssue(ctx, qtx, &p)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
+	if p.CockpitWorkflow != nil {
+		existing, err := prepareCockpitWorkflowIssue(ctx, qtx, &p)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
+	if p.MeetingTask != nil {
+		existing, err := beginCockpitMeetingTask(ctx, qtx, p.WorkspaceID, *p.MeetingTask)
+		if err != nil {
+			return IssueCreateResult{}, err
+		}
+		if existing != nil {
+			return IssueCreateResult{Issue: *existing}, nil
+		}
+	}
 
 	properties, err := validateIssueCreateProperties(ctx, tx, qtx, p.WorkspaceID, p.Properties)
 	if err != nil {
@@ -328,6 +409,9 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	parentModuleID := pgtype.UUID{}
 	hasParent := false
 	if p.ParentIssueID.Valid {
+		if err := ValidateIssueParentChain(ctx, qtx, p.WorkspaceID, pgtype.UUID{}, p.ParentIssueID); err != nil {
+			return IssueCreateResult{}, err
+		}
 		parent, err := qtx.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{
 			ID:          p.ParentIssueID,
 			WorkspaceID: p.WorkspaceID,
@@ -565,6 +649,26 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		}
 	}
 
+	if p.CockpitWorkflow != nil {
+		if err := linkCockpitWorkflowCreatedIssue(ctx, qtx, p, issue); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
+	if p.CockpitArtifact != nil {
+		if err := linkCockpitArtifactIssue(ctx, qtx, p, issue); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
+	if p.CockpitPlanning != nil {
+		if err := linkCockpitPlanningIssue(ctx, qtx, p, issue); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
+	if p.MeetingTask != nil {
+		if err := linkCockpitMeetingTask(ctx, qtx, issue, *p.MeetingTask); err != nil {
+			return IssueCreateResult{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return IssueCreateResult{}, fmt.Errorf("commit: %w", err)
 	}
@@ -606,6 +710,9 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		assignedTaskID = s.maybeEnqueueOnAssign(ctx, issue, p.CreatorType, actorID, opts.AssignedAgentRunFireAt)
 	}
 
+	if p.CockpitWorkflow != nil && p.CockpitWorkflow.Handoff != nil {
+		s.finalizeCockpitReviewerHandoff(ctx, p.CockpitWorkflow)
+	}
 	return IssueCreateResult{Issue: issue, Attachments: attachments, Labels: labels, AssignedTaskID: assignedTaskID}, nil
 }
 

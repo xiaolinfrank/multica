@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS cockpit_artifact_handoff_retired_issue_idx;

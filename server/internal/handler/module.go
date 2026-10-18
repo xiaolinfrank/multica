@@ -3,6 +3,8 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"github.com/multica-ai/multica/server/internal/localpaths"
+	"github.com/multica-ai/multica/server/internal/service"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,28 +25,30 @@ import (
 // the module back to the project root.
 
 type ModuleResponse struct {
-	ID          string  `json:"id"`
-	WorkspaceID string  `json:"workspace_id"`
-	ProjectID   string  `json:"project_id"`
-	Title       string  `json:"title"`
-	Description *string `json:"description"`
-	Position    float64 `json:"position"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	IssueCount  int64   `json:"issue_count"`
-	DoneCount   int64   `json:"done_count"`
+	ID            string  `json:"id"`
+	WorkspaceID   string  `json:"workspace_id"`
+	ProjectID     string  `json:"project_id"`
+	Title         string  `json:"title"`
+	DirectoryName *string `json:"directory_name,omitempty"`
+	Description   *string `json:"description"`
+	Position      float64 `json:"position"`
+	CreatedAt     string  `json:"created_at"`
+	UpdatedAt     string  `json:"updated_at"`
+	IssueCount    int64   `json:"issue_count"`
+	DoneCount     int64   `json:"done_count"`
 }
 
 func moduleToResponse(m db.Module) ModuleResponse {
 	return ModuleResponse{
-		ID:          uuidToString(m.ID),
-		WorkspaceID: uuidToString(m.WorkspaceID),
-		ProjectID:   uuidToString(m.ProjectID),
-		Title:       m.Title,
-		Description: textToPtr(m.Description),
-		Position:    m.Position,
-		CreatedAt:   timestampToString(m.CreatedAt),
-		UpdatedAt:   timestampToString(m.UpdatedAt),
+		ID:            uuidToString(m.ID),
+		WorkspaceID:   uuidToString(m.WorkspaceID),
+		ProjectID:     uuidToString(m.ProjectID),
+		Title:         m.Title,
+		DirectoryName: textToPtr(m.DirectoryName),
+		Description:   textToPtr(m.Description),
+		Position:      m.Position,
+		CreatedAt:     timestampToString(m.CreatedAt),
+		UpdatedAt:     timestampToString(m.UpdatedAt),
 	}
 }
 
@@ -107,9 +111,10 @@ type CreateModuleRequest struct {
 }
 
 type UpdateModuleRequest struct {
-	Title       *string  `json:"title"`
-	Description *string  `json:"description"`
-	Position    *float64 `json:"position"`
+	DirectoryName *string  `json:"directory_name"`
+	Title         *string  `json:"title"`
+	Description   *string  `json:"description"`
+	Position      *float64 `json:"position"`
 }
 
 func (h *Handler) ListModules(w http.ResponseWriter, r *http.Request) {
@@ -201,10 +206,11 @@ func (h *Handler) CreateModule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	module, err := h.Queries.CreateModule(r.Context(), db.CreateModuleParams{
-		WorkspaceID: wsUUID,
-		ProjectID:   projectUUID,
-		Title:       title,
-		Description: ptrToText(req.Description),
+		WorkspaceID:   wsUUID,
+		ProjectID:     projectUUID,
+		Title:         title,
+		DirectoryName: ptrToText(func() *string { s := localpaths.Folder(title, localSecret()[:8]); return &s }()),
+		Description:   ptrToText(req.Description),
 	})
 	if err != nil {
 		slog.Error("create module failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -255,6 +261,13 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 		ID:          module.ID,
 		WorkspaceID: module.WorkspaceID,
 		Description: module.Description,
+	}
+	if req.DirectoryName != nil {
+		if !localpaths.ValidFolder(*req.DirectoryName) {
+			writeError(w, 400, "directory_name must be one safe relative folder")
+			return
+		}
+		params.DirectoryName = ptrToText(req.DirectoryName)
 	}
 	if req.Title != nil {
 		title, ok := validateModuleTitle(w, *req.Title)
@@ -466,6 +479,33 @@ func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	qtx := h.Queries.WithTx(tx)
+	if err := service.LockIssueHierarchyMutation(r.Context(), qtx, module.WorkspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock issue hierarchy")
+		return
+	}
+
+	if err := lockCockpitBindings(r.Context(), qtx, module.WorkspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
+		return
+	}
+	if retained, err := qtx.HasCockpitArtifactScope(r.Context(), db.HasCockpitArtifactScopeParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check fixed artifact scope")
+		return
+	} else if retained {
+		writeError(w, http.StatusConflict, "This module is retained by artifact or acceptance facts; preserve its plan structure and use the formal workflow")
+		return
+	}
+	if owned, err := qtx.HasCockpitPrimaryForModule(r.Context(), db.HasCockpitPrimaryForModuleParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check L3 ownership")
+		return
+	} else if owned {
+		writeError(w, http.StatusConflict, "clear L3 primary ownership before deleting this module")
+		return
+	}
+	if err := qtx.ClearCockpitNodeModuleBinding(r.Context(), db.ClearCockpitNodeModuleBindingParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
+		return
+	}
 
 	// The issues survive: they fall back to sitting directly under the
 	// project. Detach first, in the same transaction as the delete, so no

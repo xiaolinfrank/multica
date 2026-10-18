@@ -116,7 +116,7 @@
   "cli_install": {
     "copy_aria": "复制",
     "intro": "这台电脑上需要装一个 agent 运行时（Claude Code、Codex、Cursor 等）才能运行你的智能体。也支持服务器和远程开发机。",
-    "step1_label": "安装 BayClaw CLI",
+    "step1_label": "安装 multica CLI",
     "platform_group": "选择你的系统",
     "platform_macos_linux": "macOS / Linux",
     "platform_windows": "Windows",
@@ -253,13 +253,13 @@
     "stage_stalled_prefix": "还没有任何信号传来。如果你不太习惯终端，",
     "stage_stalled_term": "桌面端",
     "stage_stalled_suffix": " 更顺手 —— 一键搞定，这台电脑就连接好了。关闭这个对话框选择桌面端，或点跳过继续。",
-    "cloud_ready_eyebrow": "云端算力",
-    "cloud_ready_headline": "云端算力已就绪。",
-    "cloud_ready_lede": "BayClaw 的智能体运行在平台的共享服务器上,无需安装任何软件。选择一个运行时即可继续。",
-    "cloud_waiting_headline": "正在为你准备云端算力…",
-    "cloud_waiting_lede": "平台团队会为每个工作区配置共享的服务器运行时,你的运行时尚未上线。",
-    "cloud_waiting_hint": "正在等待共享运行时上线——本页会自动刷新。",
-    "cloud_waiting_footer": "也可以先跳过,稍后在设置中绑定运行时。"
+    "cloud_ready_eyebrow": "执行运行时",
+    "cloud_ready_headline": "已有可选的运行时。",
+    "cloud_ready_lede": "选择本工作区的运行时。它可以位于本机或获准的远程设备；继续前请检查其状态。",
+    "cloud_waiting_headline": "暂未发现可选运行时。",
+    "cloud_waiting_lede": "单人 Mac 完整发行包请先检查自带 worker；其他部署可在设置中连接获准的运行时。",
+    "cloud_waiting_hint": "正在等待工作区运行时，本页会自动刷新。",
+    "cloud_waiting_footer": "也可以先跳过，稍后在设置中连接运行时。"
   },
   "errors": {
     "skip_failed": "完成上手引导失败",

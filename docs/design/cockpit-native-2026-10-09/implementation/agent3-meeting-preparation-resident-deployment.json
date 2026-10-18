@@ -1,0 +1,325 @@
+{
+  "host": "fosun_agent_3 (10.35.182.2)",
+  "status": "DEPLOYED_AND_VERIFIED",
+  "environment": "resident test environment only; no production",
+  "updated_at": "2026-10-11T06:25:01.907199+00:00",
+  "source": {
+    "archive_commit": "bab527b428b88394856eaf7280bfbfa174dce086",
+    "archive_sha256": "3cabb8cf559cf6a9e1e6653c722c03aae801e204909f97799c955e0bce165db6",
+    "product_commit": "55b27f9b8573efb20558b5d9f3cd0824bb35b7b3",
+    "api_commit": "99f2e658325d87ef9ca22d9ecb996b2b3e302871",
+    "api_sha256": "2b046128d4ae66c6ac28db0de84ff16f8bbee636fb4a4bfea4612ed2a919c4f2",
+    "migrator_sha256": "eaf6bf06ba087a2ca86b3765caed55acced03cb7622561e3f19c821ed3c64c72",
+    "cli_sha256": "a25e835f52fc239492bc93a9aec0590f4e5e1307f7651124f915881f7b21e217",
+    "source_from_immutable_archive_only": true,
+    "future_N1_included": false,
+    "build_input_provenance": "/tmp/multica-meeting-preparation-release-provenance.json"
+  },
+  "backup": {
+    "completed_at": "2026-10-11T06:19:44.557370+00:00",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-preparation-99f2-20261011T061934Z",
+    "dump_bytes": 67215634,
+    "dump_sha256": "1ce6a2710af77140ac6079e277738da704a65e577d070a68ad06d4125823bc3e",
+    "dump_entries": 1102,
+    "counts": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "old_api_pid": 78774,
+    "old_web_pid": 78775,
+    "env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "file_entries": 807
+  },
+  "migration": {
+    "old_ledger": 764,
+    "new_ledger": 780,
+    "old_ledger_rows_exact": true,
+    "old_business_counts_ids_exact": true,
+    "old_meeting_fields_exact": true,
+    "work_packages_exact": true,
+    "capture_attempts_exact": true,
+    "new_indices": [
+      {
+        "name": "cockpit_preparation_effect_command_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_preparation_effect_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_preparation_effect_issue_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_preparation_effect_position_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_preparation_effect_slot_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_preparation_operation_command_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_preparation_operation_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_preparation_operation_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_preparation_operation_template_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_template_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_template_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_template_version_command_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_template_version_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_template_version_number_idx",
+        "valid": true,
+        "ready": true
+      }
+    ],
+    "schema_before": 9075,
+    "schema_after": 9091,
+    "new_migrations": 16,
+    "range": "9076–9091",
+    "retained_historical_stems": [
+      "128_self_host_source_channel",
+      "129_self_host_source_other",
+      "130_self_host_source_domain"
+    ],
+    "old_applied_sql_files_exact": 761,
+    "down_or_restore_executed": false
+  },
+  "running": {
+    "started_at": "2026-10-11T06:20:02.919421+00:00",
+    "api_pid": 21607,
+    "web_pid": 21608,
+    "api_health": {
+      "status": "ok",
+      "pid": 21607,
+      "commit": "99f2e658325d87ef9ca22d9ecb996b2b3e302871",
+      "started_at": "2026-10-11T06:20:02Z"
+    },
+    "web_login_status": "200",
+    "resident_build_id": "EpCE6h3_HsDsXDkVqqB7K",
+    "source_commit": "bab527b42",
+    "copied_source_files": 7994,
+    "retained_old_static_files": 398,
+    "original_data_files_exact": true,
+    "configuration_exact": true
+  },
+  "preservation": {
+    "checked_at": "2026-10-11T06:24:00.026154+00:00",
+    "counts": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "ids": {
+      "workspace": "73a604c0f542b6ccc18bbf1cf808ac85",
+      "project": "b85fada910b31906893d92e3cbd51606",
+      "module": "7298aed7cdfd5efc99efed9b380ddf27",
+      "issue": "e149464282ed930f2581e67927401835",
+      "cockpit_node": "31a9651d69612431b8f979a15dc51dd3",
+      "cockpit_meeting": "09fa1595052d977c16070603949e9206",
+      "attachment": "e8fe2c0f1fb2a032d4f0f841209ff5f8"
+    },
+    "all_original_business_ids_preserved": true,
+    "all_original_meeting_fields_preserved": true,
+    "data_file_entries_unchanged": 807,
+    "configuration_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "dev_run_sha256": "f9e525d4a8600c55d4a1d6bde226d7a7dcc9df53cfc08a6f85cb1114dbd8af13",
+    "new_domain_rows_after_owned_probe": {
+      "cockpit_meeting_template": 0,
+      "cockpit_meeting_template_version": 0,
+      "cockpit_meeting_preparation_operation": 0,
+      "cockpit_meeting_preparation_effect": 0
+    },
+    "original_meeting_readonly": {
+      "id": "13ee0d80-d32a-405e-a815-1d8d2e6e0f3a",
+      "workspace_id": "fc41c0f8-c42b-4cdc-8381-d7275e410b1b",
+      "slug": "fosun-bio",
+      "title": "20260921-01 复星医药×华大基因 会议管理功能验收",
+      "ended_at": null,
+      "actual_started_at": null,
+      "actual_ended_at": null,
+      "ended_by": null,
+      "cancelled_at": null,
+      "archived_at": null
+    },
+    "legacy_end_fact_unchanged": [
+      {
+        "id": "a380b14d-a605-47a3-82c6-c032c0d605d1",
+        "ended_at": "2026-10-10T11:57:01.268308+08:00",
+        "ended_by": null,
+        "actual_started_at": null,
+        "actual_ended_at": null
+      }
+    ],
+    "qa": {
+      "api_stopped": true,
+      "web_stopped": true,
+      "restored_proxy_port": 18880,
+      "restored_build_id": "sFWEfsflzzbySK6O7z3rc",
+      "cleanup_counts": {
+        "workspace": 0,
+        "issue": 0,
+        "cockpit_meeting": 0,
+        "agent_task_queue": 0,
+        "cockpit_meeting_template": 0,
+        "cockpit_meeting_template_version": 0,
+        "cockpit_meeting_preparation_operation": 0,
+        "cockpit_meeting_preparation_effect": 0
+      },
+      "ledger": 777,
+      "retained_capture_tombstones": 7,
+      "tombstone_hash": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+      "runtime_env_sha256": "729fd58ef500aba111638976d630cc7d58ffec9cd5bda7337d23da154ba8ecb0"
+    },
+    "resident_health": {
+      "status": "ok",
+      "pid": 21607,
+      "commit": "99f2e658325d87ef9ca22d9ecb996b2b3e302871",
+      "started_at": "2026-10-11T06:20:02Z"
+    }
+  },
+  "nas": {
+    "configuration_preserved": [
+      {
+        "workspace_id": "9a9967e8-cf59-4904-bc11-1f43228d06eb",
+        "root_id": "66859815-dfa3-469a-b774-67be5737a57b",
+        "path": "/Volumes/人机协作空间/复星PMO演示",
+        "allow_local": false,
+        "write_mode": "create_only"
+      }
+    ],
+    "configuration_changed": false,
+    "real_nas_operations": 0,
+    "new_exports": 0,
+    "physical_nas_validation_this_batch": false
+  },
+  "probe": {
+    "status": "PASS",
+    "duration_seconds": 3.2,
+    "fixture": {
+      "workspace_id": "91eff8b5-f1cb-4ccf-bee7-9f8babdf25fe",
+      "meeting_id": "836349af-f6e2-4fa3-af9f-fe4a4a3ffb95",
+      "operation_id": "01a129a0-10bb-79d7-9ce3-56f3e70c4b7c",
+      "api_origin": "http://127.0.0.1:13000",
+      "capabilities": {
+        "meeting_lifecycle": true,
+        "meeting_templates": true,
+        "meeting_disposition": true,
+        "artifacts": true,
+        "acceptance": true
+      },
+      "effects": 1,
+      "state": "completed",
+      "agent_runs": 0
+    },
+    "owned_workspace_deleted": true,
+    "new_domain_rows_after_cleanup": {
+      "cockpit_meeting_template": 0,
+      "cockpit_meeting_template_version": 0,
+      "cockpit_meeting_preparation_operation": 0,
+      "cockpit_meeting_preparation_effect": 0
+    },
+    "ordinary_test_login_accounts_retained": true,
+    "first_attempt": {
+      "status": "FAIL",
+      "classification": "test instrumentation: incorrect Chinese region label after real effect completed",
+      "label_before": "准备进度",
+      "label_after": "准备处理进度",
+      "report": "/tmp/multica-l-preparation-evidence/deployment/preparation-resident-probe-first.json"
+    },
+    "final_report": "/tmp/multica-l-preparation-evidence/deployment/preparation-resident-probe.json",
+    "no_agent_execution": true,
+    "no_real_user_meeting_write": true
+  },
+  "browser_builds": {
+    "final_isolated_verified": "OuhoQpAaH0TUo2o3uS7Yy",
+    "resident_rebuilt_for_18080": "EpCE6h3_HsDsXDkVqqB7K",
+    "same_product_source": true,
+    "isolated_restored_18880": "sFWEfsflzzbySK6O7z3rc",
+    "note": "Resident build differs because the API rewrite target changes. The isolated profile was rebuilt after staging, not falsely described as restoring the physical Ouho output."
+  },
+  "screenshots": [
+    {
+      "file": "meeting-preparation-preview-390-zh-dark.png",
+      "sha256": "7625efb7e4802495b15f5445df3281611529d71147987fcbe8541188d2570828",
+      "origin": "final isolated browser round 6"
+    },
+    {
+      "file": "meeting-preparation-preview-page-two-390-zh-dark.png",
+      "sha256": "298724500edd0d28cbb419716dcb25dd007598bfe53a5e694046791192071de5",
+      "origin": "final isolated browser round 6"
+    },
+    {
+      "file": "meeting-preparation-progress-390-zh-dark.png",
+      "sha256": "a4a67bb0386c5bb86ed5dc062ef2afcf3e0963768fb58c6e61be2e8c2388c8f8",
+      "origin": "final isolated browser round 6"
+    },
+    {
+      "file": "meeting-preparation-results-390-zh-dark.png",
+      "sha256": "d4895a4819e1b439e5927dbec0d71129e23fef435dba91bfa42766c0dce0c3f9",
+      "origin": "final isolated browser round 6"
+    },
+    {
+      "file": "resident-preparation-dark-zh.png",
+      "sha256": "5f4879b63be9dcf44fd625c8a5e0d7c1aaaf6f0253be2aca2b3d77883a430de5",
+      "origin": "resident probe"
+    },
+    {
+      "file": "resident-preparation-light-zh.png",
+      "sha256": "a3c3ed9b5d9638975727d69f7309e87f97518e97b8660aaacb2cf4d070a6fda8",
+      "origin": "resident probe"
+    }
+  ],
+  "review_url": "http://localhost:23000/fosun-bio/cockpit?meeting=13ee0d80-d32a-405e-a815-1d8d2e6e0f3a&meeting_view=agenda",
+  "rollback_boundary": "No bare old API with new private artifact uploads. Preserve protected storage and data guards. Do not run down across retained lifecycle/preparation facts or restore over new writes; prefer forward repair or compatible Web rollback."
+}

@@ -1,0 +1,218 @@
+{
+  "host": "fosun_agent_3 / fosun-agent-3deMac-mini.local",
+  "updated_at": "2026-10-10T13:53:14.963493+00:00",
+  "resident": {
+    "api_pid": 62181,
+    "api_commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+    "web_pid": 71322,
+    "unchanged": true
+  },
+  "isolation": {
+    "database": "multica_test",
+    "schema": 994,
+    "redis_port": 16379,
+    "api_port": 18880,
+    "web_port": 13800,
+    "services": "stopped",
+    "business_fixtures_after_cleanup": 0,
+    "real_nas_used_in_browser_phase": false,
+    "real_agents_executed": false,
+    "cleanup": {
+      "host": "fosun_agent_3",
+      "checked_at": "2026-10-10T13:52:17.771985+00:00",
+      "stopped": {
+        "web": 20908,
+        "api": 20476
+      },
+      "owned_nas_root_removed": "/Users/fosun_agent_3/var/multica-dev-test/nas-api/surface-create-only-2ca8d0b0-e080-42e4-aa81-6faa8132a5ef",
+      "profiles": {
+        "redis.env": {
+          "mode": "0o600",
+          "sha256": "d6fff8c0fbdf280485c2fb2e0c43b20893a20440075dd1b5203baea3aa936ad7"
+        },
+        "nas-api/runtime.env": {
+          "mode": "0o600",
+          "sha256": "729fd58ef500aba111638976d630cc7d58ffec9cd5bda7337d23da154ba8ecb0"
+        }
+      },
+      "test_listeners": {
+        "13800": "",
+        "18880": ""
+      },
+      "resident_health": {
+        "status": "ok",
+        "pid": 62181,
+        "commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+        "started_at": "2026-10-10T03:32:23Z"
+      },
+      "resident_web": "200",
+      "temporary_proxy_used": false
+    },
+    "final_counts": {
+      "database": "multica_test",
+      "workspace": 0,
+      "nodes": 0,
+      "meetings": 0,
+      "issues": 0,
+      "primary": 0,
+      "exports": 0,
+      "export_attempts": 0,
+      "creation_intents": 0,
+      "active_other_connections": 0
+    }
+  },
+  "base_browser": {
+    "build_id": "6ega91tUp2YXFgTkXK2D8",
+    "frontend_manifest": "b3f63c65b4a7557f7d9cc32d9913bedbff0c6245675552067db41307cd90e058",
+    "api_sha256": "a4c58cf765bfadf8d51074e51e478c6cf40259adbc0cae71b5f544438304aee7",
+    "passed": [
+      "scope and bounded meetings",
+      "bounded workspace contacts and explicit position clear",
+      "governance stale review 409 and explicit re-review",
+      "lost creation response same-key retry",
+      "late creation ACK no navigation",
+      "create-only worker and verified path/receipt/attempt browser"
+    ],
+    "failed_initial_test_assumptions": [
+      "New meeting toolbar and empty-state duplicate selector",
+      "networkidle is unsuitable with long-lived requests",
+      "attendee entry lives in Details"
+    ],
+    "old_overview": "Passed on final incremental bundle after adapting test to independent scoped view state"
+  },
+  "go": {
+    "service": {
+      "unique_parents_passed": 554,
+      "failures": 0,
+      "skips": 0,
+      "race": true
+    },
+    "handler": {
+      "unique_parents_passed": 2615,
+      "initial_passed": 2606,
+      "initial_failed": 9,
+      "targeted_fixed_passed": 9,
+      "skips": [
+        "TestFetchFromSkillsSh_AnthropicPptxIntegration requires explicit live-GitHub flag"
+      ],
+      "notes": [
+        "Four migration tests required package cwd",
+        "Four example-plugin tests required source mapping and example bundle",
+        "One NAS fixture changed to existing root with conflicting files and explicit missing-root subtest"
+      ],
+      "race": true
+    },
+    "bounded_cli": {
+      "parents_passed": 9
+    }
+  },
+  "incremental_frontend": {
+    "core_passed": 27,
+    "views_passed": 228,
+    "views_initial_failed": 4,
+    "views_fixed_retest_passed": 4,
+    "cause": "Report exact-text fixture omitted the visible execution code; no product change",
+    "dedup_note": "224 initial plus4 corrected; includes203 locale checks; earlier narrow suites overlap and are not summed"
+  },
+  "next_go_manifest": "4fbd4bb008936c106a7943bfe76b1132a9545e243fb760370ff10964b82aa6a4",
+  "next_api_sha256": "5b94e213f597563a8d71d8e90690ea46b75e172bc702a21c1cda1d42095b24ac",
+  "future_limits": [
+    "Artifacts and Acceptance real backend missing; capability gates do not count as completed implementation",
+    "No resident or production release performed in this stage"
+  ],
+  "incremental_browser": {
+    "build_id": "0YrgrziEYj3A71ywx5O-A",
+    "frontend_sha256": "bdeb8f323dc91a7125714fce2efb137c42dc14fd9bbfb58acf499ae7fe75a92a",
+    "api_sha256": "5b94e213f597563a8d71d8e90690ea46b75e172bc702a21c1cda1d42095b24ac",
+    "four_passed_seconds": 19.4,
+    "passed": [
+      "saved scope/reload/team/full/filter and report explicit refresh/return",
+      "scope/module/outside-object and unavailable feature gate without API requests",
+      "bounded contacts and explicit position clear",
+      "120-queue historical sources/business overview/dark/320px"
+    ],
+    "pending": [],
+    "snapshot_final": {
+      "build_id": "rI4Op3UkkI07UFfPipaUA",
+      "frontend_sha256": "b8815095f6e5e7583b9e4d2f0b5a7cbcfa3fbe6f2c1d6a461d668bc3c65bcdc8",
+      "source_file_count": 2609,
+      "note": "Next-generated next-env.d.ts excluded: build rewrites dev-type references to production types; all product inputs matched.",
+      "passed_seconds": 5.1,
+      "coverage": "33 UUID-based changes, 25+8 metadata pages, renamed code remains one modified identity, actual concurrent write produces409, explicit refresh gets a new token, no restore or browser cockpit writes",
+      "actual_fix": "Explicit refresh invalidates the exact first-page query before returning; Infinity staleTime no longer revives the previous comparison token.",
+      "target_component_tests_passed": 2,
+      "static": "Latest views typecheck and3 targeted ESLint files passed locally; static only."
+    },
+    "nas_final_retest": {
+      "build_id": "0YrgrziEYj3A71ywx5O-A",
+      "passed_seconds": 7.3,
+      "same_unique_case_as_base": true
+    }
+  },
+  "status": "passed_available_surfaces_not_a_complete_platform_release",
+  "unique_browser_cases_passed": 9,
+  "dedup_note": "Six base cases + old overview + saved/report + snapshot =9 unique. Scope/directory and NAS repeat under later bundles; they are not additional cases. The last bundle changes only the snapshot comparison component and its regression.",
+  "latest_builtin": {
+    "parents_passed": 3,
+    "already_counted_in_service_total": true,
+    "covers_latest_bounded_CLI_docs": true
+  },
+  "evidence_remote_root": "~/var/multica-dev-test/logs",
+  "source_provenance": {
+    "final_go_manifest": "4fbd4bb008936c106a7943bfe76b1132a9545e243fb760370ff10964b82aa6a4",
+    "go_files": 3692,
+    "final_api_sha256": "5b94e213f597563a8d71d8e90690ea46b75e172bc702a21c1cda1d42095b24ac",
+    "base_api_source_manifest": "Not captured before compilation; exact binary SHA/time retained. Later builds have before/after file manifests."
+  },
+  "release_preparation": {
+    "status": "prepared_only_not_deployed",
+    "resident_known_api_commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+    "resident_known_web_commit": "0010a68cf12f1775d24b1398bf3de6692592eb29",
+    "expected_migration_start": 988,
+    "target_schema": 994,
+    "migration_up_sha256": {
+      "989_cockpit_minutes_create_only.up.sql": "4bcb4f887c173ab86f531734479d33816656f2b2eeb73d1ad00b1af39d88980e",
+      "990_cockpit_minutes_export_attempt_id_index.up.sql": "4bd63b8f65987f26666c6f1b09f3d58c20cf3324e946ed63e393a40f507fe373",
+      "991_cockpit_minutes_export_attempt_scope_index.up.sql": "9caded7e80cd567e773160781f9fa84c90d9aa0c997702a67c99178d8960e67c",
+      "992_cockpit_creation_intent.up.sql": "d4b815ec60ad4eb8234b8732b69e587c65d31310ef11ad670e0f7d297c9dd5d9",
+      "993_cockpit_creation_intent_key_index.up.sql": "4d5504484c1522fc892d7a718391b611568db04c630134a1585771950ed41d5b",
+      "994_cockpit_creation_intent_resource_index.up.sql": "9200df5c07aedbd52b8744b2bbb6f51c0d4329fc811a1d36cfd1621c3d9f35c8"
+    },
+    "required_before_switch": [
+      "Reinspect resident config and ledger/read-only counts",
+      "Back up complete multica_dev database after exact old API stop",
+      "Use one matched migrator with preserved old stems; never global down",
+      "Build same-origin web against18080 using public configuration only",
+      "Preserve original .env, uploads/data cwd resolution, old .next/static and executable",
+      "Switch exact owned resident API/Web PIDs only after frozen committed source approval"
+    ],
+    "rollback_boundary": [
+      "Prefer forward repair with preserved schema",
+      "UI rollback can retain new backend",
+      "Old backend rollback is unsafe after creation-intent or new create-only ledger facts; no automatic database restore over new writes"
+    ],
+    "remaining_product_limit": "Artifacts and formal Acceptance remain unavailable by explicit capability flags; they are not complete.",
+    "operations_performed": []
+  },
+  "screenshots": {
+    "same_product_before_final_snapshot_fix": [
+      "surface-plan-table.png",
+      "surface-meetings-page-two.png",
+      "surface-outside-scope.png",
+      "surface-create-only-receipt.png",
+      "surface-saved-view.png",
+      "surface-project-report.png",
+      "surface-work-overview.png",
+      "surface-work-overview-dark.png",
+      "surface-work-overview-320.png"
+    ],
+    "final_snapshot_bundle": [
+      "surface-snapshot-comparison-second-page.png",
+      "surface-snapshot-comparison-stale-cursor.png",
+      "surface-snapshot-comparison-refreshed.png"
+    ],
+    "earlier_base_before_unavailable_feature_gate": [
+      "surface-governance-review-base.png"
+    ]
+  }
+}

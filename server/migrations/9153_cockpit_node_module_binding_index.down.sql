@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS cockpit_node_module_binding_unique;

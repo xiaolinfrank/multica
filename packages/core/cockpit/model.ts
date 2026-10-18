@@ -811,10 +811,10 @@ export interface CockpitFinanceSummary {
  * anything until its execution status says so. Instalments answer *when* the
  * money moves, which is what the month strip and the timeline markers read.
  */
-export function computeCockpitFinance(board: CockpitBoard): CockpitFinanceSummary {
+export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payments">, contextNodeIds?: ReadonlySet<string>): CockpitFinanceSummary {
   const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
   const tree = buildCockpitTree(board.nodes);
-  const rows = computeCockpitFinanceRows(tree, board.payments);
+  const rows = computeCockpitFinanceRows(tree, board.payments, contextNodeIds);
   const rootByCode = new Map(tree.map((root) => [root.node.code, root]));
 
   let budget = 0;
@@ -850,6 +850,7 @@ export function computeCockpitFinance(board: CockpitBoard): CockpitFinanceSummar
 
   let contracted = 0;
   for (const payment of board.payments) {
+    if (contextNodeIds?.has(payment.node_id)) continue;
     const node = nodeById.get(payment.node_id);
     if (!node) continue;
     const status = node.exec_status.trim();
@@ -866,7 +867,7 @@ export function computeCockpitFinance(board: CockpitBoard): CockpitFinanceSummar
     lineCount: rows.length,
     paidLineCount,
     contracted,
-    paymentCount: board.payments.length,
+    paymentCount: board.payments.filter((payment) => !contextNodeIds?.has(payment.node_id)).length,
     byModule: [...byModule.values()].sort((a, b) => a.code.localeCompare(b.code)),
   };
 }
@@ -915,7 +916,7 @@ export interface CockpitMonthCell {
  * the span the board actually covers. Months with neither are still emitted so
  * the strip reads as a continuous timeline rather than a gapped one.
  */
-export function computeCockpitMonths(board: CockpitBoard): CockpitMonthCell[] {
+export function computeCockpitMonths(board: Pick<CockpitBoard, "nodes" | "payments" | "milestones">, contextNodeIds?: ReadonlySet<string>): CockpitMonthCell[] {
   const cells = new Map<string, CockpitMonthCell>();
   const touch = (month: string): CockpitMonthCell => {
     let cell = cells.get(month);
@@ -956,7 +957,7 @@ export function computeCockpitMonths(board: CockpitBoard): CockpitMonthCell[] {
   const tree = buildCockpitTree(board.nodes);
   tree.forEach(walk);
 
-  for (const row of computeCockpitFinanceRows(tree, board.payments)) {
+  for (const row of computeCockpitFinanceRows(tree, board.payments, contextNodeIds)) {
     const plannedMonth = row.plannedDate?.slice(0, 7);
     const actualMonth = row.actualDate?.slice(0, 7);
     if (row.actualAmount != null && row.actualAmount > 0 && actualMonth) {
@@ -970,6 +971,7 @@ export function computeCockpitMonths(board: CockpitBoard): CockpitMonthCell[] {
   }
 
   for (const payment of board.payments) {
+    if (contextNodeIds?.has(payment.node_id)) continue;
     const date = parseDay(payment.pay_date);
     if (!date) continue;
     const cell = touch(monthKey(date));
@@ -988,6 +990,7 @@ export function computeCockpitMonths(board: CockpitBoard): CockpitMonthCell[] {
   // or parked task is not something the month is expected to land. Neither is
   // an unscheduled row — it has not joined the plan yet.
   for (const leaf of leaves) {
+    if (contextNodeIds?.has(leaf.id)) continue;
     if (isCockpitNodeCancelled(leaf) || isCockpitNodeWaiting(leaf)) continue;
     if (isCockpitNodeUnscheduled(leaf)) continue;
     const date = parseDay(leaf.end_date);
@@ -1292,7 +1295,7 @@ const DIGEST_LIMIT = 5;
  * the answer, and it stays right on its own as the tasks move.
  */
 export function computeCockpitDigest(
-  board: CockpitBoard,
+  board: Pick<CockpitBoard, "nodes" | "payments" | "milestones">,
   today: string,
   options?: { trailingDays?: number; leadingDays?: number; limit?: number },
 ): CockpitDigest {
@@ -2231,6 +2234,7 @@ export interface CockpitFinanceRow {
 export function computeCockpitFinanceRows(
   tree: CockpitTreeNode[],
   payments: CockpitPayment[],
+  contextNodeIds?: ReadonlySet<string>,
 ): CockpitFinanceRow[] {
   const paymentsByNode = groupPaymentsByNode(payments);
   const rows: CockpitFinanceRow[] = [];
@@ -2238,7 +2242,7 @@ export function computeCockpitFinanceRows(
   const walk = (entry: CockpitTreeNode, rootCode: string, rootColor: string) => {
     const own = paymentsByNode.get(entry.node.id) ?? [];
     const budget = entry.node.budget_amount ?? 0;
-    if (budget > 0 || own.length > 0) {
+    if (!contextNodeIds?.has(entry.node.id) && (budget > 0 || own.length > 0)) {
       const status = entry.node.exec_status.trim();
       const paid = PAID_STATUSES.has(status) || PAID_STATUSES.has(status.toLowerCase());
       const firstDate = own.find((p) => p.pay_date)?.pay_date ?? null;
@@ -2286,7 +2290,7 @@ export function cockpitMeetingMinutes(value: string | null | undefined): number 
  * the free text the log recorded before they existed — a formatter, not a
  * second source of truth: nothing writes both.
  */
-export function cockpitMeetingSpan(meeting: CockpitMeeting): string {
+export function cockpitMeetingSpan(meeting: Pick<CockpitMeeting, "start_time" | "end_time" | "time_range">): string {
   const start = meeting.start_time?.trim();
   const end = meeting.end_time?.trim();
   if (start && end) return `${start}–${end}`;
@@ -2296,7 +2300,7 @@ export function cockpitMeetingSpan(meeting: CockpitMeeting): string {
 
 /** Sort key: the day, then the hour, then the name, so a day's meetings read
  *  in the order they happen and an untimed one leads the day. */
-function meetingOrderKey(meeting: CockpitMeeting): string {
+function meetingOrderKey(meeting: Pick<CockpitMeeting, "meet_date" | "start_time" | "title">): string {
   const day = meeting.meet_date ?? "9999-99-99";
   const minutes = cockpitMeetingMinutes(meeting.start_time);
   const slot = minutes === null ? "----" : String(minutes).padStart(4, "0");
@@ -2305,7 +2309,7 @@ function meetingOrderKey(meeting: CockpitMeeting): string {
 
 /** Oldest first. The register reads newest-first, the calendar reads
  *  oldest-first; both start here and one of them reverses. */
-export function sortCockpitMeetings(meetings: CockpitMeeting[]): CockpitMeeting[] {
+export function sortCockpitMeetings<T extends Pick<CockpitMeeting, "meet_date" | "start_time" | "title">>(meetings: T[]): T[] {
   return [...meetings].sort((a, b) => meetingOrderKey(a).localeCompare(meetingOrderKey(b)));
 }
 
@@ -2600,7 +2604,7 @@ export function cockpitMeetingTrackColor(track: string): string {
  * then any the programme invented, then "" for the meetings nobody has filed
  * under a line yet. Empty only when nothing dated exists at all.
  */
-export function cockpitMeetingTracksInUse(meetings: CockpitMeeting[]): string[] {
+export function cockpitMeetingTracksInUse(meetings: Pick<CockpitMeeting, "meet_date" | "track">[]): string[] {
   const used = new Set<string>();
   for (const meeting of meetings) {
     if (meeting.meet_date) used.add(meeting.track.trim());
@@ -2687,7 +2691,9 @@ export function groupMeetingsByNode(
  * should be able to reuse the words its first one chose instead of inventing
  * them again.
  */
-export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
+export type CockpitMeetingVocabularySource = Pick<CockpitMeeting, "kind" | "status" | "track" | "parties" | "organizer" | "attendees" | "location">;
+
+export function cockpitMeetingVocabulary(meetings: CockpitMeetingVocabularySource[]): {
   kinds: string[];
   statuses: string[];
   tracks: string[];
@@ -2696,7 +2702,7 @@ export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
   attendees: string[];
   locations: string[];
 } {
-  const collect = (pick: (m: CockpitMeeting) => string) => {
+  const collect = (pick: (m: CockpitMeetingVocabularySource) => string) => {
     const seen = new Set<string>();
     for (const meeting of meetings) {
       const value = pick(meeting).trim();
@@ -2704,7 +2710,7 @@ export function cockpitMeetingVocabulary(meetings: CockpitMeeting[]): {
     }
     return [...seen].sort((a, b) => a.localeCompare(b));
   };
-  const spread = (pick: (m: CockpitMeeting) => string[]) => {
+  const spread = (pick: (m: CockpitMeetingVocabularySource) => string[]) => {
     const seen = new Set<string>();
     for (const meeting of meetings) {
       for (const value of pick(meeting)) seen.add(value);

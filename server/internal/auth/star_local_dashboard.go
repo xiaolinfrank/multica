@@ -24,6 +24,7 @@ import (
 type StarLocalDashboardConfig struct {
 	OwnerSubject string   `json:"ownerSubject"`
 	OwnerUserID  string   `json:"ownerUserId,omitempty"`
+	SingleOwner  bool     `json:"singleOwner,omitempty"`
 	Command      []string `json:"command"`
 	StateDir     string   `json:"stateDir"`
 	Origin       string   `json:"origin"`
@@ -42,6 +43,10 @@ func isStarLoopbackHost(host string) bool {
 }
 
 func newStarLocalDashboard(cfg *StarLocalDashboardConfig, callback string, users map[string]string) (*StarLocalDashboard, error) {
+	return newStarLocalDashboardWithMode(cfg, callback, users, false)
+}
+
+func newStarLocalDashboardWithMode(cfg *StarLocalDashboardConfig, callback string, users map[string]string, singleOwner bool) (*StarLocalDashboard, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -50,9 +55,12 @@ func newStarLocalDashboard(cfg *StarLocalDashboardConfig, callback string, users
 		return nil, errStarDashboard
 	}
 	cb, err := starURL(callback, true)
-	ownerValid := users != nil && cfg.OwnerUserID == "" && users[cfg.OwnerSubject] != ""
+	ownerValid := !cfg.SingleOwner && users != nil && cfg.OwnerUserID == "" && users[cfg.OwnerSubject] != ""
 	if users == nil {
-		ownerValid = cfg.OwnerSubject == "" && uuid.Validate(cfg.OwnerUserID) == nil
+		ownerValid = !cfg.SingleOwner && cfg.OwnerSubject == "" && uuid.Validate(cfg.OwnerUserID) == nil
+		if singleOwner && cfg.OwnerSubject == "" {
+			ownerValid = uuid.Validate(cfg.OwnerUserID) == nil || (cfg.SingleOwner && cfg.OwnerUserID == "")
+		}
 	}
 	if err != nil || !isStarLoopbackHost(cb.Hostname()) || !ownerValid || !filepath.IsAbs(cfg.StateDir) || len(cfg.Command) < 1 || len(cfg.Command) > 2 {
 		return nil, errStarDashboard
@@ -73,6 +81,20 @@ func newStarLocalDashboard(cfg *StarLocalDashboardConfig, callback string, users
 // LoadStarLocalDashboard binds the native Multica user to the local owner
 // launcher. It uses no external identity provider or second account database.
 func LoadStarLocalDashboard(path, appURL string) (*StarLocalDashboard, error) {
+	return loadStarLocalDashboard(path, appURL, false)
+}
+
+// LoadSingleOwnerLocalDashboard permits an explicitly unbound launcher before
+// local account initialization. The request must still resolve the native
+// singleton owner; this configuration never grants an identity by itself.
+func LoadSingleOwnerLocalDashboard(path, appURL string) (*StarLocalDashboard, error) {
+	if os.Getenv("MULTICA_SINGLE_OWNER") != "true" {
+		return nil, errStarDashboard
+	}
+	return loadStarLocalDashboard(path, appURL, true)
+}
+
+func loadStarLocalDashboard(path, appURL string, singleOwner bool) (*StarLocalDashboard, error) {
 	info, err := os.Lstat(path)
 	if !filepath.IsAbs(path) || err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 65536 {
 		return nil, errStarDashboard
@@ -85,13 +107,29 @@ func LoadStarLocalDashboard(path, appURL string) (*StarLocalDashboard, error) {
 	if json.Unmarshal(raw, &cfg) != nil {
 		return nil, errStarDashboard
 	}
-	return newStarLocalDashboard(&cfg, appURL, nil)
+	return newStarLocalDashboardWithMode(&cfg, appURL, nil, singleOwner)
 }
 
 func (d *StarLocalDashboard) OpenForUser(ctx context.Context, userID string) (string, error) {
-	if d.config.OwnerUserID == "" || userID != d.config.OwnerUserID {
+	if d.config.SingleOwner || d.config.OwnerUserID == "" || userID != d.config.OwnerUserID {
 		return "", ErrStarDashboardOwner
 	}
+	return d.open(ctx)
+}
+
+// OpenForSingleOwner requires the current database singleton, resolved anew by
+// the handler, as well as an authenticated human session for that same user.
+func (d *StarLocalDashboard) OpenForSingleOwner(ctx context.Context, userID, ownerID string) (string, error) {
+	if os.Getenv("MULTICA_SINGLE_OWNER") != "true" || uuid.Validate(ownerID) != nil || userID != ownerID || d.config.OwnerSubject != "" {
+		return "", ErrStarDashboardOwner
+	}
+	if d.config.OwnerUserID != ownerID && !(d.config.SingleOwner && d.config.OwnerUserID == "") {
+		return "", ErrStarDashboardOwner
+	}
+	return d.open(ctx)
+}
+
+func (d *StarLocalDashboard) open(ctx context.Context) (string, error) {
 	raw, err := d.run(ctx)
 	if err != nil {
 		return "", errStarDashboard
@@ -102,6 +140,10 @@ func (d *StarLocalDashboard) OpenForUser(ctx context.Context, userID string) (st
 // IsStarLocalRequest never uses a forwarded header to grant local access.
 // A nonlocal peer or any explicitly forwarded nonlocal client is refused.
 func IsStarLocalRequest(r *http.Request) bool {
+	requestURL, err := url.Parse("http://" + r.Host)
+	if err != nil || requestURL.User != nil || requestURL.Path != "" || requestURL.RawQuery != "" || requestURL.Fragment != "" || !isStarLoopbackHost(requestURL.Hostname()) {
+		return false
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil || !net.ParseIP(host).IsLoopback() || r.Header.Get("Forwarded") != "" {
 		return false

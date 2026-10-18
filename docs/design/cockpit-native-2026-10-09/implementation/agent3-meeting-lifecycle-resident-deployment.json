@@ -1,0 +1,241 @@
+{
+  "host": "fosun_agent_3",
+  "environment": "resident test environment; not production",
+  "status": "deployed and verified",
+  "release": {
+    "archive_sha256": "321d5e7868977cb497faf22709956851d6d61887d545f75a15b279ac47ceff3d",
+    "archive_commit": "6a5622cef",
+    "frontend_commit": "cdc9a2130",
+    "api_source_commit": "882aee4953af108e2dfbaab42ab32d0c68821c55",
+    "api_sha256": "8046799677a3e658de7a3000eb7d2e46741cf1467d26c05bed770a305c709a0e",
+    "migrator_sha256": "3f61394a7f1da80a6f3abea9eefba6de6492298118d444afc21cee6800a17e97",
+    "qa_build_id": "sgQdBp7NUDFXHZua1K70w",
+    "env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "resident_build_id": "rsFBqY8qC4JLtgOxpLQwR"
+  },
+  "installation": {
+    "frontend_commit": "cdc9a2130",
+    "server_source_commit": "882aee4953af108e2dfbaab42ab32d0c68821c55",
+    "api_sha256": "8046799677a3e658de7a3000eb7d2e46741cf1467d26c05bed770a305c709a0e",
+    "build_id": "rsFBqY8qC4JLtgOxpLQwR",
+    "api_pid": 78774,
+    "web_pid": 78775,
+    "health": {
+      "status": "ok",
+      "pid": 78774,
+      "commit": "882aee495",
+      "started_at": "2026-10-10T23:24:37Z"
+    },
+    "web_login": 200,
+    "schema": 9075,
+    "env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "dev_run_sha256": "f9e525d4a8600c55d4a1d6bde226d7a7dcc9df53cfc08a6f85cb1114dbd8af13",
+    "nas_configuration_preserved": true,
+    "local_upload_cwd": "/Users/fosun_agent_3/var/multica-dev",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-lifecycle-882aee495-20261010T232347Z"
+  },
+  "backup": {
+    "completed_at": "2026-10-10T23:23:55.581960+00:00",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-lifecycle-882aee495-20261010T232347Z",
+    "dump_bytes": 67068817,
+    "dump_sha256": "b39d5e19084d9325df7d9cb1eff5efb2ff4e8aecae44158e2cfda62391e6a784",
+    "dump_entries": 1084,
+    "counts": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "old_api_pid": 66262,
+    "old_web_pid": 66263,
+    "env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b"
+  },
+  "migration": {
+    "schema": 9075,
+    "ledger_before": 754,
+    "ledger_after": 764,
+    "pending_applied": [
+      "9066_cockpit_meeting_lifecycle",
+      "9067_cockpit_meeting_agenda_id_idx",
+      "9068_cockpit_meeting_agenda_page_idx",
+      "9069_cockpit_agenda_reference_id_idx",
+      "9070_cockpit_agenda_reference_active_idx",
+      "9071_cockpit_agenda_reference_page_idx",
+      "9072_cockpit_agenda_reference_target_idx",
+      "9073_cockpit_lifecycle_command_key_idx",
+      "9074_cockpit_lifecycle_command_page_idx",
+      "9075_cockpit_meeting_end_authority"
+    ],
+    "old_stems_and_timestamps_preserved": true,
+    "indexes": [
+      {
+        "name": "cockpit_meeting_agenda_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_meeting_agenda_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_agenda_reference_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_agenda_reference_id_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_agenda_reference_active_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_agenda_reference_target_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_lifecycle_command_page_idx",
+        "valid": true,
+        "ready": true
+      },
+      {
+        "name": "cockpit_lifecycle_command_key_idx",
+        "valid": true,
+        "ready": true
+      }
+    ],
+    "business_counts_unchanged": true,
+    "existing_entity_id_hashes_unchanged": true,
+    "existing_meeting_fields_unchanged": true,
+    "existing_work_package_fields_unchanged": true,
+    "legacy_end_confirmations_preserved": 1,
+    "legacy_end_times_exact": true,
+    "legacy_end_actor_unknown": true,
+    "actual_times_null_not_inferred": true,
+    "capture_ledger_unchanged": true
+  },
+  "post_deployment": {
+    "checked_at": "2026-10-10T23:26:34.418333+00:00",
+    "counts_before": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "counts_after": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "counts_unchanged": true,
+    "existing_entity_id_hashes_unchanged": true,
+    "probe_workspaces_remaining": 0,
+    "lifecycle_table_counts_after_probe_cleanup": {
+      "cockpit_meeting_agenda": 0,
+      "cockpit_meeting_agenda_reference": 0,
+      "cockpit_meeting_lifecycle_command": 0
+    },
+    "legacy_end_confirmations_preserved": 1,
+    "legacy_end_time_exact": true,
+    "legacy_end_actor_unknown": true,
+    "actual_times_null_not_inferred": true,
+    "old_capture_ledger_unchanged": true,
+    "health": {
+      "status": "ok",
+      "pid": 78774,
+      "commit": "882aee495",
+      "started_at": "2026-10-10T23:24:37Z"
+    },
+    "resident_web_pid": 78775,
+    "resident_build_id": "rsFBqY8qC4JLtgOxpLQwR",
+    "configuration_unchanged": true,
+    "nas_configuration_preserved": true,
+    "qa_build_restored": "sgQdBp7NUDFXHZua1K70w",
+    "qa_ports_closed": true,
+    "ambient_meeting_read_only": {
+      "id": "13ee0d80-d32a-405e-a815-1d8d2e6e0f3a",
+      "workspace_id": "fc41c0f8-c42b-4cdc-8381-d7275e410b1b",
+      "workspace_slug": "fosun-bio",
+      "occurrence_state": "unconfirmed"
+    },
+    "review_url": "http://localhost:23000/fosun-bio/cockpit?meeting=13ee0d80-d32a-405e-a815-1d8d2e6e0f3a&meeting_view=agenda",
+    "real_agent_runs": 0,
+    "nas_file_operations": 0,
+    "production_operations": 0
+  },
+  "web_output": {
+    "resident_build_id": "rsFBqY8qC4JLtgOxpLQwR",
+    "qa_restored": "sgQdBp7NUDFXHZua1K70w",
+    "qa_proxy": "18880",
+    "resident_proxy": "18080",
+    "old_static_files_added": 321,
+    "inputs_unchanged": true
+  },
+  "owned_probe": {
+    "test": "verifies the deployed lifecycle with one owned meeting",
+    "passed": true,
+    "duration_seconds": 2.6,
+    "scope": "One new synthetic workspace, one meeting and one agenda; UI saved notes and confirmed meeting end without a work package",
+    "same_origin_response_port": 13000,
+    "real_agent_runs": 0,
+    "nas_file_operations": 0,
+    "cleanup_workspace_remaining": 0,
+    "original_meeting_writes": 0,
+    "synthetic_login_account": "May remain without workspace membership, as in standard TestApiClient cleanup; not a persistent review account",
+    "source_sha256": "4c0e156348f09b9335d00902cbd02e04ba088dcd15f99c9ca048b74cefce7610"
+  },
+  "preserved": {
+    "env_sha256_before_after": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "dev_run_sha256_before_after": "f9e525d4a8600c55d4a1d6bde226d7a7dcc9df53cfc08a6f85cb1114dbd8af13",
+    "apps_web_env_local": "absent before and after",
+    "nas_root_configuration": "unchanged, no mode switch or new root/marker",
+    "data_and_uploads": "retained in original app cwd and backed up; no rsync --delete",
+    "old_hashed_static_files_added": 321,
+    "extra_ledger_stems": [
+      "128_self_host_source_channel",
+      "129_self_host_source_other",
+      "130_self_host_source_domain"
+    ],
+    "legacy_end_authority": "One exact legacy confirmation transferred to meeting; actual start/end and confirming actor remain null, custom status not inferred"
+  },
+  "rollback_boundary": {
+    "preferred": "Keep the compatible K API and roll back Web, or forward-fix",
+    "old_J_API": "Cannot run unchanged after work-package ended_at was removed by9075",
+    "migration_down": "Refuses rollback once new lifecycle facts, agendas or commands exist; do not bypass guards",
+    "private_artifacts": "Preserve anonymous namespace protection and9064/9065 retention guards; never expose fixed files through an old API",
+    "backup_restore": "Only a deliberate coordinated recovery; never restore over subsequent user writes"
+  },
+  "runtime_cleanup": {
+    "qa_api_web_stopped": true,
+    "qa_ports": [
+      18880,
+      13800
+    ],
+    "qa_frontend_build_restored": "sgQdBp7NUDFXHZua1K70w",
+    "qa_proxy_target": 18880,
+    "temporary_font_proxy_or_reverse_tunnel_used": false,
+    "resident_api_web_kept_running": true
+  },
+  "review_url": "http://localhost:23000/fosun-bio/cockpit?meeting=13ee0d80-d32a-405e-a815-1d8d2e6e0f3a&meeting_view=agenda"
+}

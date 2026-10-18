@@ -478,3 +478,21 @@ without a person in between, and with `rate` when it has already started 12 runs
 in the past hour. A paused rule stays off until someone turns it back on. Still
 avoid mutually triggering continuous comment subscriptions; when waiting for a
 person's reply, filter that member explicitly.
+
+## Operation basis and batch receipts
+
+Before a protected edit, read `POST /api/issues/operation-basis` with 1–100 unique
+`issue_ids` in the current workspace. It explains field restrictions and provides
+at most three real destinations. `unavailable`/`unknown` never means unrestricted;
+normal primary ownership differs from permanently retained production history.
+
+Batch update remains per-item; batch delete remains one atomic transaction for
+its loaded targets. Both retain their old HTTP status and `updated`/`deleted`
+count, and add `requested_ids`, `results`, `unconfirmed_ids`, `transaction_mode`
+and `transaction_outcome`, including in error bodies. `applied` confirms commit;
+`rejected` did not commit; `not_attempted` was not tried; `not_applied` with
+`batch_rolled_back` was tried but rolled back. Unknown commit IDs have no invented
+result. Optional `expected_revisions` maps requested UUIDs to positive revisions
+checked in the transaction. This is not durable command idempotency: never
+blindly replay a partial or unknown batch, and never equate Issue done with a
+formal artifact or acceptance decision.

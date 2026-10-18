@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -39,12 +38,9 @@ import (
 
 func exampleRepoDir(t *testing.T) string {
 	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot locate this test file")
-	}
-	// server/internal/handler -> repo root
-	dir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "examples", "plugins", "deploy-sentinel")
+	// Go runs package tests from server/internal/handler. Resolve the fixture
+	// there so a compiled test binary can run in another checkout.
+	dir := filepath.Join("..", "..", "..", "examples", "plugins", "deploy-sentinel")
 	if _, err := os.Stat(filepath.Join(dir, plugincontract.ManifestFilename)); err != nil {
 		t.Fatalf("the example plugin is missing: %v", err)
 	}

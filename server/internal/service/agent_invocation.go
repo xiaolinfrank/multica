@@ -60,17 +60,25 @@ func memberMayInvokeAgent(ctx context.Context, queries *db.Queries, agent db.Age
 	default:
 		return false, fmt.Errorf("load workspace member: %w", err)
 	}
+	workspaceTarget, memberTarget := false, false
 	for _, t := range targets {
 		switch t.TargetType {
 		case "workspace":
-			if isWorkspaceMember {
-				return true, nil
-			}
+			workspaceTarget = true
 		case "member":
 			if util.UUIDToString(t.TargetID) == userID {
-				return true, nil
+				memberTarget = true
 			}
 		}
 	}
-	return false, nil
+	return memberInvocationFactsAllowed(agent.OwnerID, memberUserID, agent.PermissionMode, isWorkspaceMember, workspaceTarget, memberTarget), nil
+}
+
+// The same verdict is used by bounded permission projections. Callers retain
+// their existing membership and availability gates separately.
+func memberInvocationFactsAllowed(owner, user pgtype.UUID, mode string, member, workspaceTarget, memberTarget bool) bool {
+	if !user.Valid {
+		return false
+	}
+	return owner == user || (mode == "public_to" && (memberTarget || (member && workspaceTarget)))
 }

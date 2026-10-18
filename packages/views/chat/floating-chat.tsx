@@ -20,12 +20,12 @@ import { isFloatingChatRouteSuppressed } from "./floating-chat-visibility";
  */
 export function FloatingChat() {
   const enabled = useChatStore((s) => s.floatingChatEnabled);
-  const { pathname } = useNavigation();
+  const { pathname, searchParams } = useNavigation();
   const wsPaths = useWorkspacePaths();
 
   if (!enabled) return null;
   // Suppress on the Chat tab — it renders the same conversation full-page.
-  if (isFloatingChatRouteSuppressed(pathname, wsPaths.chat())) return null;
+  if (isFloatingChatRouteSuppressed(pathname, wsPaths.chat(), { pathname: wsPaths.cockpit(), search: searchParams })) return null;
 
   return (
     <>

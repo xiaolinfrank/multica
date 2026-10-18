@@ -1,0 +1,168 @@
+{
+  "host": "fosun-agent-3deMac-mini.local (trusted SSH identity 10.35.182.2)",
+  "date": "2026-10-10",
+  "database": "multica_test",
+  "schema": 991,
+  "fixture": {
+    "issues": 100000,
+    "l3": 3000,
+    "meetings": 20000,
+    "modules": 300,
+    "projects": 30
+  },
+  "statistics": "Fixture tables are explicitly ANALYZEd after bulk insertion, before primary integrity checks and before measurements. No JIT/work_mem/plan-cache configuration changes.",
+  "cache": "First read is the first call in this test, not an OS/PostgreSQL cache flush. Latency covers service reads and JSON encoding; excludes HTTP, browser and transport.",
+  "runs": {
+    "v5": {
+      "binary_sha256": "f993950ad95a20b9a3f8a8a9f938377134ca18da321af51e1d75bda4de857ff1",
+      "scope": "10 read scenarios with 21 samples each; continuation and after-timing diagnostics",
+      "functional_result": "passed",
+      "marker_performance_result": "failed: warm p95 8342.092ms",
+      "report": "agent3-read-scale-v5.json"
+    },
+    "v6": {
+      "binary_sha256": "6e170d929284c85c0055b6fe6077c768ab29e8979cc5627ae6e3f97b9e1ba8c0",
+      "scope": "marker only: same full fixture, 21 samples, all 700 groups, after-timing diagnostics",
+      "functional_result": "passed",
+      "marker_performance_result": "passed; warm p95 99.037ms",
+      "report": "agent3-read-scale-v6.json"
+    }
+  },
+  "final_measurements": [
+    {
+      "name": "context_workspace",
+      "run": "v5",
+      "first_ms": 4.06,
+      "warm_p95_ms": 1.276,
+      "max_payload_bytes": 772
+    },
+    {
+      "name": "plan_workspace",
+      "run": "v5",
+      "first_ms": 414.233,
+      "warm_p95_ms": 534.747,
+      "max_payload_bytes": 3193192
+    },
+    {
+      "name": "plan_project",
+      "run": "v5",
+      "first_ms": 91.55,
+      "warm_p95_ms": 72.921,
+      "max_payload_bytes": 531650
+    },
+    {
+      "name": "plan_module",
+      "run": "v5",
+      "first_ms": 56.768,
+      "warm_p95_ms": 59.929,
+      "max_payload_bytes": 449744
+    },
+    {
+      "name": "register_workspace",
+      "run": "v5",
+      "first_ms": 34.252,
+      "warm_p95_ms": 17.209,
+      "max_payload_bytes": 17531
+    },
+    {
+      "name": "register_project",
+      "run": "v5",
+      "first_ms": 14,
+      "warm_p95_ms": 14.346,
+      "max_payload_bytes": 17579
+    },
+    {
+      "name": "register_search",
+      "run": "v5",
+      "first_ms": 161.705,
+      "warm_p95_ms": 163.585,
+      "max_payload_bytes": 17531
+    },
+    {
+      "name": "overview_workspace",
+      "run": "v5",
+      "first_ms": 457.148,
+      "warm_p95_ms": 459.662,
+      "max_payload_bytes": 13908
+    },
+    {
+      "name": "overview_project",
+      "run": "v5",
+      "first_ms": 36.798,
+      "warm_p95_ms": 42.884,
+      "max_payload_bytes": 14087
+    },
+    {
+      "name": "markers_visible100",
+      "run": "v6",
+      "first_ms": 80.3,
+      "warm_p95_ms": 99.037,
+      "max_payload_bytes": 116025
+    }
+  ],
+  "marker_plan_comparison": {
+    "before-custom": {
+      "execution_ms": 37.233,
+      "sha256": "ab1ef1de2252e96675ca6a33cba52c0d754f6586fd2ae91992844676946728a8",
+      "window_aggregate_max_loops": 1,
+      "page_scan_max_loops": 1,
+      "materialized_preview_aggregate_loops": null
+    },
+    "before-generic": {
+      "execution_ms": 12714.472,
+      "sha256": "07d5f7bff6a5a6d9d56a4434af5025fd7b9d621a905a0909ea163e08e16d5705",
+      "window_aggregate_max_loops": 501,
+      "page_scan_max_loops": 483321,
+      "materialized_preview_aggregate_loops": null
+    },
+    "after-custom": {
+      "execution_ms": 42.732,
+      "sha256": "063ff761ffa04e8721c08f9dc5a698795bdbe57c11becddab71e97a2d78bc27a",
+      "window_aggregate_max_loops": 1,
+      "page_scan_max_loops": 1,
+      "materialized_preview_aggregate_loops": 1
+    },
+    "after-generic": {
+      "execution_ms": 84.042,
+      "sha256": "9848eb137147bc96b54621fb385d625486647372eb925a6b13ea895ba90d8d57",
+      "window_aggregate_max_loops": 1,
+      "page_scan_max_loops": 1393,
+      "materialized_preview_aggregate_loops": 1
+    }
+  },
+  "plan_conclusion": "The generic plan repeatedly recomputed the preview window/aggregate 501 times. Materializing previews computes that aggregate once; the diagnostic generic execution decreased from 12714.472ms to 84.042ms on the same fixture. Preview CTE scans still occur; this does not claim every CTE has one loop.",
+  "query_snapshots": {
+    "before_sha256": "89a7bffa67e391aba7916325662575590a3260ff20c082c27e5539fefaa1af56",
+    "after_sha256": "c88de0833cd7def4cdf255593b9b1b1bea3cc88098587e4c16ef781793a1f82a"
+  },
+  "cleanup": {
+    "workspace": 0,
+    "issue": 0,
+    "cockpit_node": 0,
+    "cockpit_meeting": 0,
+    "cockpit_issue_primary": 0,
+    "cockpit_meeting_node": 0,
+    "other_database_connections": 0,
+    "prior_fixture_residue": "Readback found four orphan nodes from two earlier OverviewModule fixtures, not the scale fixture. Their exact identities and missing workspace/board were checked, then four rows were removed by exact UUID in multica_test. Root fixed that fixture cleanup order; its targeted parent passed and the follow-up table counts were all zero.",
+    "log": "~/var/multica-dev-test/logs/prior-module-fixture-node-cleanup.log",
+    "regression_log": "~/var/multica-dev-test/logs/module-fixture-cleanup-regression.log"
+  },
+  "isolation": {
+    "resident_api_pid": 62181,
+    "resident_web_pid": 71322,
+    "resident_modified": false,
+    "temporary_api_web": "stopped",
+    "real_agent_runs": false,
+    "real_nas_operations": false,
+    "deployed": false
+  },
+  "unverified": [
+    "200000 artifact versions: artifact tables not yet implemented",
+    "concurrent users",
+    "large populations of enabled meeting work packages",
+    "HTTP/browser rendering and concurrent transport"
+  ],
+  "raw_evidence_directory": "~/var/multica-dev-test/logs/marker-v6-plans",
+  "limits": "Composite results come from v5 and the targeted v6 rerun, not a single all-scenario v6 run. Older v1/v3 reports had no explicit ANALYZE and must not be used to claim controlled percentage gains.",
+  "race_enabled": true
+}

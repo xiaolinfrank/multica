@@ -1,0 +1,43 @@
+
+Running 2 tests using 1 worker
+
+[1/2] [chromium] › e2e/cockpit-minutes-export.spec.ts:13:1 › retains publication while a NAS copy fails, retries safely, and preserves a conflicting file
+  1) [chromium] › e2e/cockpit-minutes-export.spec.ts:13:1 › retains publication while a NAS copy fails, retries safely, and preserves a conflicting file › retry the same copy after restoring the fixture directory
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "succeeded"
+    Received: "needs_attention"
+
+    Call Log:
+    - Timeout 30000ms exceeded while waiting on the predicate
+
+      69 |       await rename(offlineDir, meetingDir);
+      70 |       await page.getByRole("button", { name: "Retry NAS export", exact: true }).click();
+    > 71 |       await expect.poll(async () => (await api.getMeetingWorkflow(meeting.id)).nas_exports[0]?.status, { timeout: 30_000 }).toBe("succeeded");
+         |       ^
+      72 |       await page.getByRole("button", { name: "Refresh NAS status", exact: true }).click();
+      73 |       await expect(page.getByRole("status").filter({ hasText: "Exported to NAS" })).toBeVisible();
+      74 |       const copied = await api.getMeetingWorkflow(meeting.id);
+        at /Users/fosun_agent_3/var/multica-dev-test/frontend/e2e/cockpit-minutes-export.spec.ts:71:7
+        at /Users/fosun_agent_3/var/multica-dev-test/frontend/e2e/cockpit-minutes-export.spec.ts:67:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results-real-nas/cockpit-minutes-export-ret-856ff-reserves-a-conflicting-file-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results-real-nas/cockpit-minutes-export-ret-856ff-reserves-a-conflicting-file-chromium/error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results-real-nas/cockpit-minutes-export-ret-856ff-reserves-a-conflicting-file-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results-real-nas/cockpit-minutes-export-ret-856ff-reserves-a-conflicting-file-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[2/2] [chromium] › e2e/cockpit-minutes-export.spec.ts:124:1 › preserves publication and files when real SMB cannot commit without replacement
+  1 failed
+    [chromium] › e2e/cockpit-minutes-export.spec.ts:13:1 › retains publication while a NAS copy fails, retries safely, and preserves a conflicting file
+  1 passed (51.6s)

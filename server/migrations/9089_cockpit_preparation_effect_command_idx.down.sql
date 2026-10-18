@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS cockpit_preparation_effect_command_idx;

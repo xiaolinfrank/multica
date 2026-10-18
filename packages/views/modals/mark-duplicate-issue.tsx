@@ -12,6 +12,8 @@ import {
   issueKeys,
 } from "@multica/core/issues/queries";
 import { useUpdateIssue } from "@multica/core/issues/mutations";
+import { issueStatusOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
+import { IssueOperationRestriction } from "../issues/components/issue-operation-restriction";
 import {
   selectRecentIssues,
   useRecentIssuesStore,
@@ -43,9 +45,13 @@ export function MarkDuplicateIssueModal({
   data: Record<string, unknown> | null;
 }) {
   const { t } = useT("modals");
+  const { t: issueT } = useT("issues");
   const issueId = (data?.issueId as string) || "";
   const wsId = useWorkspaceId();
   const updateIssue = useUpdateIssue();
+  const policy = useIssueOperationBasis(wsId, issueId ? [issueId] : []);
+  const observation = { basis: policy.byIssue.get(issueId), pending: policy.isPending, error: policy.isError, retry: () => { void policy.refetch(); } };
+  const allowed = issueStatusOperationAllowed(observation.basis, "closed");
 
   // An issue's own duplicates can never be its original.
   const { data: relations } = useQuery({
@@ -102,42 +108,20 @@ export function MarkDuplicateIssueModal({
       excludeIds={excludeIds}
       suggestions={suggestions}
       isSelectable={notDuplicate}
-      onSelect={(selected) => {
-        updateIssue.mutate(
-          {
-            id: issueId,
-            status: "cancelled",
-            duplicate_of_issue_id: selected.id,
-          },
-          {
-            onSuccess: () =>
-              toast.success(
-                t(($) => $.mark_duplicate.toast_success, {
-                  identifier: selected.identifier,
-                }),
-              ),
-            onError: (err) => {
-              switch (errorCode(err)) {
-                case "duplicate_target_is_duplicate":
-                  toast.error(
-                    t(($) => $.mark_duplicate.error_target_is_duplicate, {
-                      identifier: selected.identifier,
-                    }),
-                  );
-                  return;
-                case "issue_has_duplicates":
-                  toast.error(t(($) => $.mark_duplicate.error_has_duplicates));
-                  return;
-                default:
-                  toast.error(
-                    err instanceof Error && err.message
-                      ? err.message
-                      : t(($) => $.mark_duplicate.toast_failed),
-                  );
-              }
-            },
-          },
-        );
+      contextKey={`${wsId}:${issueId}`}
+      disabled={!allowed}
+      notice={<IssueOperationRestriction observation={observation} operation="status" />}
+      onSelect={async (selected, signal) => {
+        if (!allowed) throw new Error(issueT(($) => $.operation_basis.blocked));
+        try {
+          await updateIssue.mutateAsync({ id: issueId, status: "cancelled", duplicate_of_issue_id: selected.id });
+          if (signal.aborted) return;
+          toast.success(t(($) => $.mark_duplicate.toast_success, { identifier: selected.identifier }));
+        } catch (cause) {
+          if (errorCode(cause) === "duplicate_target_is_duplicate") throw new Error(t(($) => $.mark_duplicate.error_target_is_duplicate, { identifier: selected.identifier }));
+          if (errorCode(cause) === "issue_has_duplicates") throw new Error(t(($) => $.mark_duplicate.error_has_duplicates));
+          throw cause;
+        }
       }}
     />
   );

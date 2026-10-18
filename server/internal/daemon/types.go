@@ -68,6 +68,13 @@ type IssueStatusData struct {
 // Task represents a claimed task from the server.
 // Agent data (name, skills) is populated by the claim endpoint.
 type Task struct {
+	InputManifestVersionID     string `json:"input_manifest_version_id"`
+	InputPreparationState      string `json:"input_preparation_state"`
+	InputManifestHash          string `json:"input_manifest_hash"`
+	InputManifestItemTotal     int64  `json:"input_manifest_item_total"`
+	InputManifestRequiredTotal int64  `json:"input_manifest_required_total"`
+	preparedInputs             *preparedFixedInputs
+
 	// StartClaimSupported gates retries when talking to older servers.
 	StartClaimSupported  bool                   `json:"start_claim_supported,omitempty"`
 	DispatchedAt         string                 `json:"dispatched_at,omitempty"`
@@ -102,11 +109,12 @@ type Task struct {
 	Agent                         *AgentData             `json:"agent,omitempty"`
 	ConnectedApps                 []ConnectedAppData     `json:"connected_apps,omitempty"` // per-run app capabilities mounted through runtime MCP overlays
 	Repos                         []RepoData             `json:"repos,omitempty"`
-	ProjectID                     string                 `json:"project_id,omitempty"`                       // active project for this task, when present
-	ProjectTitle                  string                 `json:"project_title,omitempty"`                    // human-readable project title for context injection
-	ProjectDescription            string                 `json:"project_description,omitempty"`              // durable project-level context injected into the brief
-	ProjectCollabPath             string                 `json:"project_collab_path,omitempty"`              // shared-storage directory for this project's deliverables
-	ModuleID                      string                 `json:"module_id,omitempty"`                        // issue's module, when present
+	ProjectID                     string                 `json:"project_id,omitempty"`          // active project for this task, when present
+	ProjectTitle                  string                 `json:"project_title,omitempty"`       // human-readable project title for context injection
+	ProjectDescription            string                 `json:"project_description,omitempty"` // durable project-level context injected into the brief
+	ProjectCollabPath             string                 `json:"project_collab_path,omitempty"` // shared-storage directory for this project's deliverables
+	ModuleID                      string                 `json:"module_id,omitempty"`           // issue's module, when present
+	ModuleDirectory               *string                `json:"module_directory,omitempty"`
 	ModuleTitle                   string                 `json:"module_title,omitempty"`                     // for surfacing in agent context
 	ModuleDescription             string                 `json:"module_description,omitempty"`               // durable module-level context injected into the brief
 	ProjectResources              []ProjectResourceData  `json:"project_resources,omitempty"`                // project-scoped resources to expose to the agent

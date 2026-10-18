@@ -9,10 +9,13 @@
 // confirms) and then awaits the server — the list and the board underneath
 // refresh only when the replacement actually landed.
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CockpitSnapshot } from "@multica/core/types";
-import { cockpitSnapshotsOptions } from "@multica/core/cockpit/queries";
+import { useWorkspacePaths } from "@multica/core/paths";
+import { cockpitObjectPath, cockpitSnapshotPageOptions } from "@multica/core/cockpit";
+import { Input } from "@multica/ui/components/ui/input";
+import { CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 import {
   useCreateCockpitSnapshot,
   useDeleteCockpitSnapshot,
@@ -25,8 +28,10 @@ import { ChevronDown, History, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@multica/ui/lib/utils";
 import { groupVersionHistory } from "../group-snapshots";
+import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { useTimeAgo } from "../../i18n/use-time-ago";
+import { CockpitSnapshotDiffDialog } from "./cockpit-snapshot-diff";
 
 function triggerLabel(
   t: ReturnType<typeof useT<"cockpit">>["t"],
@@ -51,14 +56,20 @@ function SnapshotRow({
   wsId,
   snapshot,
   canRestore,
+  restoreBlocked,
+  restoreBlockedReasonId,
   onRestored,
   onError,
+  onCompare,
 }: {
   wsId: string;
   snapshot: CockpitSnapshot;
   canRestore: boolean;
+  restoreBlocked: boolean;
+  restoreBlockedReasonId: string;
   onRestored: () => void;
   onError: (error: unknown) => void;
+  onCompare: (snapshot: CockpitSnapshot) => void;
 }) {
   const { t } = useT("cockpit");
   const timeAgo = useTimeAgo();
@@ -86,6 +97,7 @@ function SnapshotRow({
             by: snapshot.created_by_label || t(($) => $.versions.by_unknown),
           })}
         </span>
+        <Button type="button" variant="ghost" size="sm" className="ml-auto h-6 px-2 text-micro" onClick={() => onCompare(snapshot)}>{t(($) => $.snapshot_diff.compare)}</Button>
         {canRestore && (
           <span className="ml-auto flex shrink-0 items-center gap-1">
             {confirming ? (
@@ -94,7 +106,8 @@ function SnapshotRow({
                   variant="destructive"
                   size="sm"
                   className="h-6 px-2 text-micro"
-                  disabled={restore.isPending}
+                  disabled={restore.isPending || restoreBlocked}
+                  aria-describedby={restoreBlocked ? restoreBlockedReasonId : undefined}
                   onClick={() =>
                     restore.mutate(snapshot.id, {
                       onSuccess: (result) => {
@@ -135,6 +148,8 @@ function SnapshotRow({
                 variant="ghost"
                 size="sm"
                 className="h-6 gap-1 px-2 text-micro"
+                disabled={restoreBlocked}
+                aria-describedby={restoreBlocked ? restoreBlockedReasonId : undefined}
                 onClick={() => setConfirming(true)}
               >
                 <RotateCcw className="size-3" />
@@ -169,14 +184,20 @@ function SnapshotRunRow({
   wsId,
   snapshots,
   canRestore,
+  restoreBlocked,
+  restoreBlockedReasonId,
   onRestored,
   onError,
+  onCompare,
 }: {
   wsId: string;
   snapshots: CockpitSnapshot[];
   canRestore: boolean;
+  restoreBlocked: boolean;
+  restoreBlockedReasonId: string;
   onRestored: () => void;
   onError: (error: unknown) => void;
+  onCompare: (snapshot: CockpitSnapshot) => void;
 }) {
   const { t } = useT("cockpit");
   const timeAgo = useTimeAgo();
@@ -211,8 +232,11 @@ function SnapshotRunRow({
               wsId={wsId}
               snapshot={snapshot}
               canRestore={canRestore}
+              restoreBlocked={restoreBlocked}
+              restoreBlockedReasonId={restoreBlockedReasonId}
               onRestored={onRestored}
               onError={onError}
+              onCompare={onCompare}
             />
           ))}
         </ul>
@@ -224,22 +248,45 @@ function SnapshotRunRow({
 /**
  * The toolbar entry for version history. `canRestore` is the caller's word for
  * whether this member may replace the board (owner/admin); the server
- * re-checks regardless.
+ * re-checks regardless. Stable bindings separately protect board identity,
+ * without removing the member's snapshot viewing, saving or deletion access.
  */
-export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore: boolean }) {
-  const { t } = useT("cockpit");
-  const { data: snapshots, isLoading } = useQuery(cockpitSnapshotsOptions(wsId));
-  const create = useCreateCockpitSnapshot(wsId);
+export function CockpitVersions({ wsId, canRestore, hasStableBindings = false, hasMeetingWorkflows = false, hasMeetingLifecycle = false, hasMeetingPreparation = false, hasDirectoryHistory = false, hasInputReferences = false, inputReferenceMeetings = [], inputReferenceMeetingsTotal = 0, onRefreshInputReferences, meetingsHref }: {
+  wsId: string;
+  canRestore: boolean;
+  hasStableBindings?: boolean;
+  hasMeetingWorkflows?: boolean;
+  hasMeetingLifecycle?: boolean;
+  hasMeetingPreparation?: boolean;
+  hasDirectoryHistory?: boolean;
+  hasInputReferences?: boolean;
+  inputReferenceMeetings?: Array<{ meeting_id: string; title: string }>;
+  inputReferenceMeetingsTotal?: number;
+  onRefreshInputReferences?: () => void;
+  meetingsHref: string;
+}) {
+  const { t } = useT("cockpit"); const paths = useWorkspacePaths();
   const [open, setOpen] = useState(false);
+  const [text, setText] = useState(""); const [cursors, setCursors] = useState<string[]>([""]);
+  const [comparison, setComparison] = useState<{ wsId: string; snapshot: CockpitSnapshot } | null>(null);
+  const compare = (snapshot: CockpitSnapshot) => { setOpen(false); setComparison({ wsId, snapshot }); };
+  const q = useCockpitSearch(text), changing = q !== text.trim();
+  const query = useQuery({ ...cockpitSnapshotPageOptions(wsId, { q, cursor: cursors.at(-1) || undefined, page_size: 25 }), enabled: open && !changing });
+  const { data: page, isLoading } = query;
+  const create = useCreateCockpitSnapshot(wsId);
+  const restoreBlockedReasonId = useId();
+  const retainedHistory = hasStableBindings || hasMeetingWorkflows || hasMeetingLifecycle || hasMeetingPreparation || hasDirectoryHistory;
+  const hasActiveInputReferences = hasInputReferences || inputReferenceMeetingsTotal > 0 || inputReferenceMeetings.length > 0;
+  const restoreBlocked = retainedHistory || hasActiveInputReferences;
 
   const fail = (error: unknown) => {
     toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
   };
 
-  const rows = snapshots ?? [];
+  const rows = page?.items ?? [];
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <><Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <Button variant="ghost" size="sm" className="h-7 gap-1 px-2">
@@ -248,7 +295,7 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-96 p-0">
+      <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] p-0">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <p className="text-caption font-medium">{t(($) => $.versions.title)}</p>
           <Button
@@ -267,12 +314,35 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
             {t(($) => $.versions.save_current)}
           </Button>
         </div>
+        <div className="space-y-3 border-b p-3"><p className="text-caption text-muted-foreground">{t(($) => $.governance.workspace_history)}</p>
+          <Input value={text} name="cockpit-snapshot-search" autoComplete="off" spellCheck={false} aria-label={t(($) => $.governance.search_snapshots)} placeholder={t(($) => $.governance.search_snapshots)} onChange={(event) => { setText(event.target.value); setCursors([""]); }} />
+          {page ? <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching || changing}
+            onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
+            : cursors.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => setCursors(cursors.slice(0, -1))}>{t(($) => $.task_flow.previous)}</Button>}
+        </div>
+        {restoreBlocked && (
+          <div id={restoreBlockedReasonId} className="space-y-2 border-b px-3 py-2 text-caption text-muted-foreground">
+            {retainedHistory && <p>{hasDirectoryHistory ? t(($) => $.meeting_directory.restore_protected) : hasMeetingPreparation ? t(($) => $.meeting_preparation.restore_protected) : hasMeetingLifecycle ? t(($) => $.meeting_lifecycle.restore_protected) : hasMeetingWorkflows ? t(($) => $.versions.restore_workflow_protected) : t(($) => $.versions.restore_protected)}</p>}
+            {hasActiveInputReferences && <div className="space-y-2"><p>{t(($) => $.input_materials.restore_reference_protected)}</p>{inputReferenceMeetingsTotal > 0 && <p>{t(($) => $.input_materials.restore_reference_targets, { shown: inputReferenceMeetings.length, total: inputReferenceMeetingsTotal })}</p>}
+              <ul className="space-y-1">{inputReferenceMeetings.map((meeting) => <li key={meeting.meeting_id}><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: meeting.meeting_id, view: "resources" })} onClick={() => setOpen(false)} className="break-words text-primary underline">{meeting.title || t(($) => $.input_materials.restore_open_materials)}</AppLink></li>)}</ul>
+              {onRefreshInputReferences && <Button type="button" variant="outline" size="sm" onClick={onRefreshInputReferences}>{t(($) => $.input_materials.restore_recheck_references)}</Button>}
+            </div>}
+            {(hasMeetingLifecycle || hasMeetingPreparation || hasDirectoryHistory || hasActiveInputReferences) && <AppLink href={meetingsHref} className="text-primary underline" onClick={() => setOpen(false)}>{t(($) => $.work_overview.open_meetings)}</AppLink>}
+          </div>
+        )}
+        {!canRestore && (
+          <p className="border-b px-3 py-2 text-caption text-muted-foreground">
+            {t(($) => $.versions.restore_permission)}
+          </p>
+        )}
         <div className="max-h-80 overflow-y-auto p-1">
-          {isLoading ? (
+          {isLoading || changing ? (
             <div className="flex items-center justify-center py-6">
               <Spinner className="size-4" />
             </div>
-          ) : rows.length === 0 ? (
+          ) : query.isError ? (
+            <div role="alert" className="space-y-2 p-3 text-caption text-destructive"><p>{t(($) => $.errors.load_failed)}</p><Button type="button" variant="outline" size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>{t(($) => $.binding.retry)}</Button></div>
+          ) : page && rows.length === 0 ? (
             <p className="px-2 py-6 text-center text-caption text-muted-foreground">
               {t(($) => $.versions.empty)}
             </p>
@@ -285,8 +355,11 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
                     wsId={wsId}
                     snapshot={entry.snapshot}
                     canRestore={canRestore}
+                    restoreBlocked={restoreBlocked}
+                    restoreBlockedReasonId={restoreBlockedReasonId}
                     onRestored={() => setOpen(false)}
                     onError={fail}
+                    onCompare={compare}
                   />
                 ) : (
                   <SnapshotRunRow
@@ -294,8 +367,11 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
                     wsId={wsId}
                     snapshots={entry.run.snapshots}
                     canRestore={canRestore}
+                    restoreBlocked={restoreBlocked}
+                    restoreBlockedReasonId={restoreBlockedReasonId}
                     onRestored={() => setOpen(false)}
                     onError={fail}
+                    onCompare={compare}
                   />
                 ),
               )}
@@ -306,6 +382,6 @@ export function CockpitVersions({ wsId, canRestore }: { wsId: string; canRestore
           {t(($) => $.versions.hint)}
         </p>
       </PopoverContent>
-    </Popover>
+    </Popover>{comparison?.wsId === wsId && <CockpitSnapshotDiffDialog key={`${wsId}:${comparison.snapshot.id}`} wsId={wsId} snapshot={comparison.snapshot} onClose={() => setComparison(null)} />}</>
   );
 }

@@ -1,6 +1,14 @@
+import { invalidateCockpitDirectoryProjections, invalidateCockpitMeetingDirectoryFacts } from "./meeting-directory-queries";
+import { invalidateCockpitInputs, invalidateCockpitInputReferenceContext } from "./input-queries";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ZodType } from "zod";
 import { graphKeys } from "../graph/queries";
+import { issueKeys } from "../issues/queries";
+import { cockpitReadKeys } from "./read-queries";
+import { invalidateCockpitArtifactEvent, invalidateCockpitArtifactLabels } from "./artifact-queries";
+import { invalidateCockpitMeetingLifecycle } from "./meeting-lifecycle-queries";
+import { invalidateCockpitMeetingPreparationFacts, invalidateCockpitPreparationProjections, cockpitPreparationKeys } from "./meeting-preparation-queries";
+import { CockpitNodeIssueLinkReceiptSchema, CockpitMeetingIssueLinkReceiptSchema, CockpitMeetingNodeLinkReceiptSchema } from "../api/cockpit-reference-schemas";
 import type {
   CockpitBoard,
   CockpitChangedPayload,
@@ -24,6 +32,7 @@ import {
 } from "../api/schemas";
 import {
   cockpitKeys,
+  invalidateCockpitTaskFlow,
   patchCockpitBoard,
   removeCockpitMeeting,
   removeCockpitMeetingIssue,
@@ -106,6 +115,80 @@ export function onCockpitChanged(
   payload: CockpitChangedPayload,
 ): void {
   const { scope, action, entity } = payload;
+  if (scope === "inputs" || scope === "input_manifests") {
+    void invalidateCockpitInputs(qc, wsId);
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    if (typeof meetingId === "string") void invalidateCockpitInputReferenceContext(qc, wsId, meetingId);
+    return;
+  }
+  if (scope === "meeting_directory") {
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    void invalidateCockpitMeetingDirectoryFacts(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+    return;
+  }
+  if (scope === "meeting_preparation") {
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    void invalidateCockpitMeetingPreparationFacts(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+    return;
+  }
+  void qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+  void qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+  if (scope === "node" || scope === "meeting") invalidateCockpitArtifactLabels(qc, wsId);
+  if (scope === "meeting_lifecycle" || scope === "meeting" || scope === "meeting_workflow") {
+    const meetingId = asRecord(entity)?.["meeting_id"] ?? (scope === "meeting" ? asRecord(entity)?.["id"] : undefined);
+    invalidateCockpitMeetingLifecycle(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+    void invalidateCockpitPreparationProjections(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+    void invalidateCockpitDirectoryProjections(qc, wsId, typeof meetingId === "string" ? meetingId : undefined);
+  }
+  if (scope === "node" || scope === "primary_node" || scope === "artifacts" || scope === "acceptance" || scope === "meeting_actions") {
+    void qc.invalidateQueries({ queryKey: cockpitPreparationKeys.all(wsId), predicate: (query) => query.queryKey[3] === "meeting" });
+  }
+  if (scope === "node" || scope === "primary_node") invalidateCockpitMeetingLifecycle(qc, wsId);
+  if (scope === "meeting_lifecycle") {
+    invalidateCockpitTaskFlow(qc, wsId);
+    void qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
+    return;
+  }
+
+  if (scope === "artifacts" || scope === "acceptance") {
+    invalidateCockpitMeetingLifecycle(qc, wsId);
+    // Fixed-version receipts are not current headers. Refetch affected facts
+    // instead of letting a late event replace a newer responsibility or pin.
+    invalidateCockpitArtifactEvent(qc, wsId, scope, entity);
+    void qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+    invalidateCockpitTaskFlow(qc, wsId);
+    return;
+  }
+
+  if (scope === "meeting_actions") {
+    void qc.invalidateQueries({ queryKey: cockpitKeys.issueActions(wsId) });
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    void qc.invalidateQueries({ queryKey: typeof meetingId === "string" ? cockpitKeys.meetingActions(wsId, meetingId) : cockpitKeys.actions(wsId) });
+    void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+    void qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    return;
+  }
+  if (scope === "primary_node") {
+    invalidateCockpitTaskFlow(qc, wsId);
+    void qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    void qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+    return;
+  }
+
+  if (scope === "meeting_workflow") {
+    void qc.invalidateQueries({ queryKey: cockpitKeys.actions(wsId) });
+    const meetingId = asRecord(entity)?.["meeting_id"];
+    if (typeof meetingId === "string" && meetingId) {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, meetingId) });
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflowHistory(wsId, meetingId) });
+    } else {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflows(wsId) });
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflowHistories(wsId) });
+    }
+    void qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    void qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+    return;
+  }
 
   // The graph reads meetings and their issue links straight off the board's
   // tables: any meeting-scope movement (row, issue links) re-reads it. Node
@@ -114,9 +197,41 @@ export function onCockpitChanged(
     qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
   }
 
+  if (scope === "board" && action === "reference_changed") {
+    const frame = asRecord(entity);
+    const kind = frame?.["relation_kind"];
+    const reference = frame?.["reference"];
+    if (kind === "issue_links") {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+      const parsed = CockpitNodeIssueLinkReceiptSchema.safeParse(reference);
+      if (parsed.success && parsed.data.workspace_id === wsId && parsed.data.node_id === parsed.data.link.node_id) {
+        const link = parsed.data.link;
+        patchCockpitBoard(qc, wsId, (board) => ({ ...board, issue_links: [...board.issue_links.filter((item) => item.node_id !== link.node_id || item.issue_id !== link.issue_id), link] }));
+        return;
+      }
+    } else if (kind === "meeting_issues") {
+      void qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
+      const parsed = CockpitMeetingIssueLinkReceiptSchema.safeParse(reference);
+      if (parsed.success && parsed.data.workspace_id === wsId && parsed.data.meeting_id === parsed.data.link.meeting_id) {
+        const link = parsed.data.link;
+        patchCockpitBoard(qc, wsId, (board) => ({ ...board, meeting_issues: [...board.meeting_issues.filter((item) => item.meeting_id !== link.meeting_id || item.issue_id !== link.issue_id), link] }));
+        return;
+      }
+    } else if (kind === "meeting_nodes") {
+      const parsed = CockpitMeetingNodeLinkReceiptSchema.safeParse(reference);
+      if (parsed.success && parsed.data.workspace_id === wsId && parsed.data.meeting_id === parsed.data.link.meeting_id) {
+        const link = parsed.data.link;
+        patchCockpitBoard(qc, wsId, (board) => ({ ...board, meeting_nodes: [...board.meeting_nodes.filter((item) => item.meeting_id !== link.meeting_id || item.node_id !== link.node_id), link] }));
+        return;
+      }
+    }
+    // An unfamiliar receipt uses the same board refresh as an older client.
+  }
+
   // An import or restore rewrote the board; nothing here can reconstruct it
   // from a count. Both freeze a version on the way in, so history moves too.
   if (scope === "board") {
+    void qc.invalidateQueries({ queryKey: cockpitKeys.workflowHistories(wsId) });
     qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
     qc.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
     qc.invalidateQueries({ queryKey: graphKeys.all(wsId) });
@@ -190,6 +305,7 @@ export function onCockpitChanged(
       return;
     }
     case "node": {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
       const row = entityWithId(entity);
       if (!row) return;
       if (isDeletion(action)) {
@@ -237,6 +353,7 @@ export function onCockpitChanged(
     case "meeting": {
       const row = entityWithId(entity);
       if (!row) return;
+      void qc.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, row.id), exact: true });
       if (isDeletion(action)) {
         apply((board) => removeCockpitMeeting(board, row.id));
         return;
@@ -253,6 +370,7 @@ export function onCockpitChanged(
       const record = asRecord(entity);
       const meetingId = record?.["meeting_id"];
       if (typeof meetingId !== "string" || meetingId === "") return;
+      if (record?.["meeting"]) void qc.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, meetingId), exact: true });
       if (isDeletion(action)) {
         const issueId = record?.["issue_id"];
         if (typeof issueId !== "string") return;
@@ -301,6 +419,7 @@ export function onCockpitChanged(
       return;
     }
     case "issue_links": {
+      void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
       const record = asRecord(entity);
       const nodeId = record?.["node_id"];
       if (typeof nodeId !== "string" || nodeId === "") return;

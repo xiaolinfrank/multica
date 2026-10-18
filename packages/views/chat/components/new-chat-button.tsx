@@ -13,13 +13,13 @@ import {
 } from "../../issues/components/pickers/property-picker";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
 import type { Agent } from "@multica/core/types";
-import { isAgentRuntimeBound, pinAgentByName } from "@multica/core/agents";
+import { groupChatAgentsBySeat, isAgentRuntimeBound, pinAgentByName } from "@multica/core/agents";
 import { useConfigStore } from "@multica/core/config";
 import { toast } from "sonner";
 import { useT } from "../../i18n";
 
 /**
- * Agent picker: a searchable, grouped (My agents / Others) list of agents in a
+ * Agent picker: chat seats first, then searchable ownership groups in a
  * PropertyPicker. The caller supplies the trigger. `currentAgentId` marks one
  * agent with a check — omit it (as "new chat" does) when there is no current
  * selection to highlight.
@@ -47,24 +47,17 @@ export function AgentPicker({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
-  const { mine, others } = useMemo(() => {
-    const mine: Agent[] = [];
-    const others: Agent[] = [];
-    for (const a of agents) {
-      if (a.owner_id === userId) mine.push(a);
-      else others.push(a);
-    }
-    return { mine, others };
-  }, [agents, userId]);
+  const { preferred, mine, others } = useMemo(
+    () => groupChatAgentsBySeat(pinAgentByName(agents, pinnedAgentName), userId),
+    [agents, pinnedAgentName, userId],
+  );
 
   const query = filter.trim().toLowerCase();
   const matches = (name: string) =>
     !query || name.toLowerCase().includes(query) || matchesPinyin(name, query);
+  const filteredPreferred = preferred.filter((agent) => matches(agent.name));
   const filteredMine = mine.filter((agent) => matches(agent.name));
-  const filteredOthers = pinAgentByName(
-    others.filter((agent) => matches(agent.name)),
-    pinnedAgentName,
-  );
+  const filteredOthers = others.filter((agent) => matches(agent.name));
 
   const handlePick = (agent: Agent) => {
     onSelect(agent);
@@ -84,10 +77,18 @@ export function AgentPicker({
       triggerRender={triggerRender}
       trigger={trigger}
     >
-      {filteredMine.length === 0 && filteredOthers.length === 0 ? (
+      {filteredPreferred.length === 0 && filteredMine.length === 0 && filteredOthers.length === 0 ? (
         <PickerEmpty />
       ) : (
         <>
+          {filteredPreferred.map((agent) => (
+            <AgentPickerItem
+              key={agent.id}
+              agent={agent}
+              isCurrent={agent.id === currentAgentId}
+              onSelect={handlePick}
+            />
+          ))}
           {filteredMine.length > 0 && (
             <PickerSection label={t(($) => $.window.my_agents)}>
               {filteredMine.map((agent) => (

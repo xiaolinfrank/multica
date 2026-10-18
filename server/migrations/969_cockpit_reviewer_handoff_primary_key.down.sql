@@ -1,0 +1,1 @@
+ALTER TABLE cockpit_reviewer_handoff DROP CONSTRAINT IF EXISTS cockpit_reviewer_handoff_pkey_idx;

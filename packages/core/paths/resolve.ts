@@ -1,11 +1,12 @@
 import type { Workspace } from "../types";
 import { useAuthStore } from "../auth";
 import { paths } from "./paths";
+import { useWorkspaceStartStore } from "./workspace-start-store";
 
 /**
  * Priority (onboarded-first):
  *   !hasOnboarded               → /onboarding
- *   hasOnboarded + workspace[0] → /<first.slug>/issues
+ *   hasOnboarded + workspace[0] → /<first.slug>/<preferred page>
  *   hasOnboarded + no workspace → /workspaces/new
  *
  * V3 invariant: `onboarded_at != null` is the single source of truth for
@@ -36,7 +37,7 @@ export function resolvePostAuthDestination(
   }
   const first = workspaces[0];
   if (first) {
-    return paths.workspace(first.slug).issues();
+    return preferredWorkspacePath(first.slug);
   }
   return paths.newWorkspace();
 }
@@ -47,4 +48,9 @@ export function resolvePostAuthDestination(
  */
 export function useHasOnboarded(): boolean {
   return useAuthStore((s) => s.user?.onboarded_at != null);
+}
+
+/** Fresh entry only; explicit object links keep their own destination. */
+export function preferredWorkspacePath(slug: string): string {
+  return paths.workspace(slug, useWorkspaceStartStore.getState().page).root();
 }

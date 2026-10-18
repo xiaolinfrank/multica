@@ -3,9 +3,70 @@ import { describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import type { CockpitBoard } from "../types";
 import { cockpitKeys } from "./queries";
+import { cockpitReadKeys } from "./read-queries";
+import { cockpitArtifactKeys } from "./artifact-queries";
+import { cockpitPreparationKeys } from "./meeting-preparation-queries";
+import { cockpitLifecycleKeys } from "./meeting-lifecycle-queries";
 import { onCockpitChanged } from "./ws-updaters";
 
 const WS = "ws-1";
+
+it("refreshes artifact responsibility and acceptance facts without applying a late receipt as the current version", () => {
+  const qc = new QueryClient();
+  const headerKey = cockpitArtifactKeys.artifact(WS, "artifact-1");
+  const acceptanceKey = cockpitArtifactKeys.acceptance(WS, "node-1");
+  const issueKey = [...cockpitArtifactKeys.issueContexts(WS), "issue-1"];
+  const otherKey = cockpitArtifactKeys.artifact("other", "artifact-1");
+  const header = { revision: 9, current_version: { id: "version-3", revision: 2 } };
+  for (const key of [headerKey, acceptanceKey, issueKey, otherKey]) qc.setQueryData(key, header);
+  onCockpitChanged(qc, WS, { scope: "artifacts", action: "reviewed", entity: { artifact_id: "artifact-1", version_id: "version-1", revision: 1 } });
+  for (const key of [headerKey, acceptanceKey, issueKey]) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+  expect(qc.getQueryState(otherKey)?.isInvalidated).toBe(false);
+  expect(qc.getQueryData(headerKey)).toEqual(header);
+  qc.clear();
+});
+
+it.each(["meeting_preparation"] as const)("reconciles %s facts without replacing current state with the event or invalidating immutable receipts", async (scope) => {
+  const qc = new QueryClient();
+  const meeting = "meeting-1", otherMeeting = "meeting-2";
+  const selected = [cockpitPreparationKeys.operation(WS, meeting, "operation"), cockpitPreparationKeys.effects(WS, meeting, "operation"),
+    cockpitPreparationKeys.authorization(WS, meeting, "operation", "effect"), cockpitPreparationKeys.basis(WS, meeting), cockpitLifecycleKeys.header(WS, meeting)];
+  const otherMutable = [cockpitPreparationKeys.operations(WS, meeting), cockpitPreparationKeys.meeting(WS, meeting)];
+  const otherMeetingKeys = [cockpitPreparationKeys.operation(WS, otherMeeting, "operation")];
+  const immutable = [cockpitLifecycleKeys.command(WS, meeting, "original-key"),
+    cockpitPreparationKeys.operation("other-workspace", meeting, "operation"), cockpitLifecycleKeys.header("other-workspace", meeting)];
+  for (const key of [...selected, ...otherMutable, ...otherMeetingKeys, ...immutable]) qc.setQueryData(key, { revision: 9, state: "active" });
+  onCockpitChanged(qc, WS, { scope, action: "confirmed", entity: { ...(scope === "meeting_preparation" ? { meeting_id: meeting } : {}), revision: 1, state: "completed" } });
+  await vi.waitFor(() => { for (const key of selected) expect(qc.getQueryState(key)?.isInvalidated).toBe(true); });
+  for (const key of otherMutable) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+  for (const key of [...otherMeetingKeys, ...immutable]) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+  for (const key of [...selected, ...otherMutable, ...otherMeetingKeys, ...immutable]) expect(qc.getQueryData(key)).toEqual({ revision: 9, state: "active" });
+  qc.clear();
+});
+
+describe("meeting destination refresh", () => {
+  it("merges a single-reference event without replacing unmentioned relationships", () => {
+    const { qc, board } = seedBoard();
+    const link = { meeting_id: "meeting-append", issue_id: "issue-append", issue_number: 900, issue_identifier: "BIO-900", issue_title: "Appended", issue_status: "backlog", role: "", roles: ["preparation"], required_roles: [], position: 44,
+      has_agenda_reference: false, agenda_id: null, agenda_total: 0 };
+    const original = [...board.meeting_issues];
+    onCockpitChanged(qc, WS, { scope: "board", action: "reference_changed", entity: { relation_kind: "meeting_issues", reference: { workspace_id: WS, meeting_id: link.meeting_id, link } } });
+    onCockpitChanged(qc, WS, { scope: "board", action: "reference_changed", entity: { relation_kind: "meeting_issues", reference: { workspace_id: WS, meeting_id: link.meeting_id, link } } });
+    expect(qc.getQueryData<CockpitBoard>(cockpitKeys.board(WS))?.meeting_issues).toEqual([...original, link]);
+    onCockpitChanged(qc, WS, { scope: "board", action: "reference_changed", entity: { relation_kind: "meeting_issues", reference: { workspace_id: "other", meeting_id: link.meeting_id, link: { ...link, roles: [] } } } });
+    expect(qc.getQueryData<CockpitBoard>(cockpitKeys.board(WS))?.meeting_issues).toEqual([...original, link]);
+  });
+  it("invalidates only the changed meeting's workflow for remote folder edits and provisioning", () => {
+    const qc = new QueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    onCockpitChanged(qc, WS, { scope: "meeting", action: "updated", entity: { id: "m1", nas_dir: "/Volumes/team/New" } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m1"), exact: true });
+    invalidate.mockClear();
+    onCockpitChanged(qc, WS, { scope: "meeting_issues", action: "provisioned", entity: { meeting_id: "m2", meeting: { id: "m2" }, links: [] } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m2"), exact: true });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m1"), exact: true });
+  });
+});
 
 function seedBoard(over?: Partial<CockpitBoard>): { qc: QueryClient; board: CockpitBoard } {
   const board: CockpitBoard = {
@@ -87,10 +148,37 @@ function read(qc: QueryClient): CockpitBoard {
   return qc.getQueryData<CockpitBoard>(cockpitKeys.board(WS))!;
 }
 
-describe("onCockpitChanged", () => {
-  it("patches a changed node in place instead of refetching the board", () => {
+describe("meeting workflow realtime updates", () => {
+  it("invalidates only the affected workflow plus board and issue projections", () => {
     const { qc } = seedBoard();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
+    onCockpitChanged(qc, WS, { scope: "meeting_workflow", action: "reviewed", entity: { meeting_id: "m1" } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m1") });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.workflowHistory(WS, "m1") });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.board(WS) });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.workflow(WS, "m2") });
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.workflowHistory(WS, "m2") });
+  });
+});
+
+describe("onCockpitChanged", () => {
+  it("patches a changed node in place instead of refetching the board", async () => {
+    const { qc } = seedBoard();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const metadata = [
+      cockpitArtifactKeys.artifact(WS, "artifact-1"),
+      cockpitArtifactKeys.references(WS, "artifact-1", "node"),
+      [...cockpitArtifactKeys.issueContexts(WS), "issue-1"],
+      cockpitLifecycleKeys.header(WS, "meeting-1"),
+    ];
+    const stableContent = [
+      cockpitArtifactKeys.version(WS, "artifact-1", "version-1"),
+      cockpitArtifactKeys.request(WS, "n1", "request-1"),
+      cockpitArtifactKeys.artifact("other", "artifact-1"),
+      cockpitLifecycleKeys.command(WS, "meeting-1", "command-1"),
+      cockpitLifecycleKeys.header("other", "meeting-1"),
+    ];
+    for (const key of [...metadata, ...stableContent]) qc.setQueryData(key, { id: "cached" });
 
     onCockpitChanged(qc, WS, {
       scope: "node",
@@ -100,7 +188,24 @@ describe("onCockpitChanged", () => {
 
     expect(read(qc).nodes[0]!.name).toBe("Renamed");
     expect(read(qc).nodes[0]!.progress).toBe(60);
-    expect(invalidate).not.toHaveBeenCalled();
+    for (const key of [cockpitReadKeys.all(WS), cockpitKeys.dashboard(WS), cockpitArtifactKeys.issueContexts(WS), cockpitKeys.tasks(WS)]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: key });
+    }
+    await vi.waitFor(() => { for (const key of metadata) expect(qc.getQueryState(key)?.isInvalidated).toBe(true); });
+    for (const key of stableContent) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(cockpitKeys.board(WS))?.isInvalidated).toBe(false);
+    qc.clear();
+  });
+
+  it("invalidates paged directories from a backward-readable directory event without replacing the book", () => {
+    const { qc } = seedBoard();
+    qc.setQueryData(cockpitKeys.directory(WS), { entries: [{ party: "Existing", name: "Preserved" }] });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    onCockpitChanged(qc, WS, { scope: "directory", action: "changed", entity: { entries: [{ party: "New", name: "One saved row" }] } });
+    expect(qc.getQueryData(cockpitKeys.directory(WS))).toEqual({ entries: [{ party: "Existing", name: "Preserved" }] });
+    expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all(WS) }], [{ queryKey: cockpitKeys.dashboard(WS) }], [{ queryKey: cockpitKeys.directory(WS) }],
+    ]);
   });
 
   it("appends a node created by someone else", () => {
@@ -180,24 +285,30 @@ describe("onCockpitChanged", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.snapshots(WS) });
   });
 
-  it("refreshes only the version list when a snapshot was saved or deleted", () => {
+  it("refreshes the version list and overview when a snapshot was saved or deleted", () => {
     const { qc } = seedBoard();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
 
     onCockpitChanged(qc, WS, { scope: "snapshots", action: "created", entity: null });
 
-    expect(invalidate).toHaveBeenCalledTimes(1);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.snapshots(WS) });
+    expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all(WS) }],
+      [{ queryKey: cockpitKeys.dashboard(WS) }],
+      [{ queryKey: cockpitKeys.snapshots(WS) }],
+    ]);
   });
 
-  it("refreshes only the review queue when a change is filed or decided", () => {
+  it("refreshes the review queue and overview when a change is filed or decided", () => {
     const { qc } = seedBoard();
     const invalidate = vi.spyOn(qc, "invalidateQueries");
 
     onCockpitChanged(qc, WS, { scope: "changes", action: "queued", entity: null });
 
-    expect(invalidate).toHaveBeenCalledTimes(1);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: cockpitKeys.changes(WS) });
+    expect(invalidate.mock.calls).toEqual([
+      [{ queryKey: cockpitReadKeys.all(WS) }],
+      [{ queryKey: cockpitKeys.dashboard(WS) }],
+      [{ queryKey: cockpitKeys.changes(WS) }],
+    ]);
   });
 
   it("re-reads on a scope this build does not know rather than guessing", () => {
@@ -338,7 +449,7 @@ describe("onCockpitChanged", () => {
         },
         links: [
           {
-            meeting_id: "m1", issue_id: "i9", role: "task", issue_number: 9,
+            meeting_id: "m1", issue_id: "i9", role: "task", roles: [], issue_number: 9,
             issue_identifier: "BIO-9", issue_title: "Weekly", issue_status: "todo", position: -1,
           },
         ],
@@ -354,9 +465,9 @@ describe("onCockpitChanged", () => {
   it("removes one meeting link without touching the others", () => {
     const { qc } = seedBoard({
       meeting_issues: [
-        { meeting_id: "m1", issue_id: "i1", role: "", issue_number: 1, issue_identifier: "BIO-1",
+        { meeting_id: "m1", issue_id: "i1", role: "", roles: [], issue_number: 1, issue_identifier: "BIO-1",
           issue_title: "One", issue_status: "todo", position: 0 },
-        { meeting_id: "m2", issue_id: "i1", role: "", issue_number: 1, issue_identifier: "BIO-1",
+        { meeting_id: "m2", issue_id: "i1", role: "", roles: [], issue_number: 1, issue_identifier: "BIO-1",
           issue_title: "One", issue_status: "todo", position: 0 },
       ],
       meeting_nodes: [{ meeting_id: "m1", node_id: "n1", position: 0 }],
@@ -388,7 +499,7 @@ describe("onCockpitChanged", () => {
         },
       ],
       meeting_issues: [
-        { meeting_id: "m1", issue_id: "i1", role: "task", issue_number: 1, issue_identifier: "BIO-1",
+        { meeting_id: "m1", issue_id: "i1", role: "task", roles: [], issue_number: 1, issue_identifier: "BIO-1",
           issue_title: "One", issue_status: "todo", position: 0 },
       ],
       meeting_nodes: [{ meeting_id: "m1", node_id: "n1", position: 0 }],

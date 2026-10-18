@@ -1,4 +1,8 @@
 import { z } from "zod";
+export {
+  CockpitOverviewScopeSchema, CockpitOverviewIssueCountsSchema, CockpitAttentionItemSchema, CockpitAttentionPageSchema,
+  CockpitExecutionOverviewItemSchema, CockpitExecutionOverviewPageSchema, CockpitRecentMeetingSchema, CockpitRecentMeetingPageSchema, CockpitOverviewDataSchema,
+} from "./cockpit-overview-schemas";
 import { normalizeIssueStatusCategory } from "../issues/config/status";
 import type {
   AgentWorkspacesResponse,
@@ -771,6 +775,7 @@ export interface AppConfigResponse {
   google_client_id?: string;
   star_login_enabled?: boolean;
   local_dashboard_enabled?: boolean;
+  single_owner?: boolean;
   posthog_key?: string;
   posthog_host?: string;
   analytics_environment?: string;
@@ -1071,6 +1076,7 @@ export const AppConfigSchema = z.object({
   google_client_id: OptionalStringSchema,
   star_login_enabled: BooleanWithDefaultSchema(false),
   local_dashboard_enabled: BooleanWithDefaultSchema(false),
+  single_owner: BooleanWithDefaultSchema(false),
   posthog_key: OptionalStringSchema,
   posthog_host: OptionalStringSchema,
   analytics_environment: OptionalStringSchema,
@@ -1096,6 +1102,7 @@ export const EMPTY_APP_CONFIG: AppConfigResponse = {
   google_client_id: "",
   star_login_enabled: false,
   local_dashboard_enabled: false,
+  single_owner: false,
   daemon_server_url: "",
   daemon_app_url: "",
   workspace_creation_disabled: false,
@@ -1524,6 +1531,7 @@ export const ModuleSchema = z.object({
   workspace_id: z.string(),
   project_id: z.string(),
   title: z.string(),
+  directory_name: z.string().nullable().optional(),
   description: z.string().nullable(),
   position: z.number(),
   created_at: z.string(),
@@ -1860,6 +1868,8 @@ export const CockpitNodeSchema = z.object({
   id: z.string(),
   cockpit_id: z.string().default(""),
   parent_id: z.string().nullable().default(null),
+  project_id: z.string().nullable().catch(null).default(null),
+  module_id: z.string().nullable().catch(null).default(null),
   code: z.string().default(""),
   name: z.string().default(""),
   position: z.number().default(0),
@@ -1886,6 +1896,18 @@ export const CockpitNodeSchema = z.object({
   updated_at: z.string().default(""),
 }).loose();
 
+// Writes must acknowledge the new fields; read defaults must not simulate success.
+export const CockpitNodeBindingResponseSchema = CockpitNodeSchema.extend({
+  project_id: z.string().nullable(),
+  module_id: z.string().nullable(),
+});
+
+export const CockpitNodeCreateResponseSchema = CockpitNodeBindingResponseSchema.extend({
+  workspace_id: z.string().min(1).optional(), creation_key: z.string().uuid().optional(), replayed: z.boolean().optional(),
+  id: z.string().min(1), cockpit_id: z.string().min(1),
+  parent_id: z.string().nullable(), code: z.string().min(1), name: z.string(), position: z.number().finite(),
+});
+
 export const CockpitPaymentSchema = z.object({
   id: z.string(),
   node_id: z.string().default(""),
@@ -1894,6 +1916,60 @@ export const CockpitPaymentSchema = z.object({
   amount: z.number().default(0),
   position: z.number().default(0),
 }).loose();
+
+export const CockpitTaskSchema = z.object({
+  id: z.string().min(1), identifier: z.string().default(""), title: z.string().default(""),
+  status: z.string().default(""), status_category: z.string().default("unknown"), priority: z.string().default("none"),
+  assignee_type: z.string().nullable().default(null), assignee_id: z.string().nullable().default(null), assignee_name: z.string().default(""),
+  due_date: z.string().nullable().default(null), project_id: z.string().nullable().default(null), module_id: z.string().nullable().default(null),
+  primary_node_id: z.string().nullable().default(null), primary_node_code: z.string().default(""), primary_node_name: z.string().default(""),
+  primary_revision: z.number().int().nonnegative().default(0), creation_key: z.string().nullable().default(null),
+}).loose();
+
+export const CockpitPrimaryNodeSchema = z.object({
+  issue_id: z.string().min(1), node_id: z.string().nullable(), revision: z.number().int().nonnegative(),
+  project_id: z.string().nullable().default(null), module_id: z.string().nullable().default(null),
+  node_code: z.string().default(""), node_name: z.string().default(""),
+}).loose();
+
+export const CockpitTaskPageSchema = z.object({
+  node_id: z.string().min(1), items: z.array(CockpitTaskSchema), total: z.number().int().nonnegative(), filtered_total: z.number().int().nonnegative(),
+  next_cursor: z.string().nullable(),
+  summary: z.object({ total: z.number().int().nonnegative(),
+    by_status: z.array(z.object({ status: z.string(), category: z.string(), count: z.number().int().nonnegative() })),
+    by_category: z.record(z.string(), z.number().int().nonnegative()), done: z.number().int().nonnegative(),
+    closed: z.number().int().nonnegative(), unknown: z.number().int().nonnegative(),
+  }),
+  eligibility: z.object({ eligible: z.boolean(), reason: z.string().default(""), project_id: z.string().nullable(), module_id: z.string().nullable() }),
+}).loose();
+
+export const CockpitMeetingActionSchema = z.object({
+  id: z.string().min(1), meeting_id: z.string().min(1), version_id: z.string().min(1), version_number: z.number().int().positive(),
+  source_content_hash: z.string().min(1), source_quote: z.string().default(""), title: z.string().default(""), description: z.string().default(""),
+  status: z.string(), resolution: z.string().nullable().default(null), revision: z.number().int().positive(), proposal_key: z.string(),
+  decision_key: z.string().nullable().default(null), node_id: z.string().nullable().default(null), node_code: z.string().default(""), node_name: z.string().default(""),
+  issue: CockpitTaskSchema.nullable().default(null), reason: z.string().default(""), created_by: z.string().default(""), created_at: z.string().default(""),
+  updated_at: z.string().default(""), resolved_by: z.string().nullable().default(null), resolved_at: z.string().nullable().default(null),
+  can_edit: z.boolean().default(false), can_resolve: z.boolean().default(false), source_superseded: z.boolean().default(false),
+}).loose();
+
+export const CockpitActionPageSchema = z.object({
+  meeting_id: z.string().min(1), items: z.array(CockpitMeetingActionSchema), total: z.number().int().nonnegative(),
+  filtered_total: z.number().int().nonnegative(), next_cursor: z.string().nullable(), can_add: z.boolean().default(false),
+}).loose();
+
+export const CockpitIssueActionSourcesPageSchema = z.object({
+  issue_id: z.string().min(1), items: z.array(z.object({ id: z.string().min(1), meeting_id: z.string().min(1),
+    meeting_code: z.string().default(""), meeting_title: z.string().default(""), version_id: z.string().min(1), version_number: z.number().int().positive(), title: z.string().default("") })),
+  total: z.number().int().nonnegative(), next_cursor: z.string().nullable(),
+}).loose();
+
+export const CockpitMeetingActionWriteSchema = CockpitMeetingActionSchema.extend({
+  title: z.string().min(1), description: z.string(), source_quote: z.string(), proposal_key: z.string().uuid(),
+  resolution: z.string().nullable(), decision_key: z.string().uuid().nullable(), node_id: z.string().nullable(), issue: CockpitTaskSchema.nullable(),
+  reason: z.string(), created_by: z.string().min(1), created_at: z.string().min(1), updated_at: z.string().min(1),
+  resolved_by: z.string().nullable(), resolved_at: z.string().nullable(), can_edit: z.boolean(), can_resolve: z.boolean(), source_superseded: z.boolean(),
+});
 
 export const CockpitIssueLinkSchema = z.object({
   id: z.string(),
@@ -1928,6 +2004,14 @@ export const CockpitMeetingSchema = z.object({
   code: z.string().default(""),
   kind: z.string().default(""),
   status: z.string().default(""),
+  occurrence_state: z.string().min(1).optional(),
+  ended_at: z.string().datetime({ offset: true }).nullable().optional(),
+  actual_started_at: z.string().datetime({ offset: true }).nullable().optional(),
+  actual_ended_at: z.string().datetime({ offset: true }).nullable().optional(),
+  cancelled_at: z.string().datetime({ offset: true }).nullable().optional(),
+  cancelled_by: z.string().nullable().optional(), cancelled_reason: z.string().optional(),
+  archived_at: z.string().datetime({ offset: true }).nullable().optional(),
+  archived_by: z.string().nullable().optional(), archived_reason: z.string().optional(),
   track: z.string().default(""),
   parties: z.string().default(""),
   organizer: z.string().default(""),
@@ -1949,6 +2033,10 @@ export const CockpitMeetingIssueLinkSchema = z.object({
   meeting_id: z.string(),
   issue_id: z.string(),
   role: z.string().default(""),
+  roles: z.array(z.string()).catch([]).default([]),
+  required_roles: z.array(z.string()).catch([]).default([]),
+  has_direct_reference: z.boolean().optional(),
+  has_agenda_reference: z.boolean().default(false),
   issue_number: z.number().default(0),
   issue_identifier: z.string().default(""),
   issue_title: z.string().default(""),
@@ -1962,10 +2050,22 @@ export const CockpitMeetingNodeLinkSchema = z.object({
   position: z.number().default(0),
 }).loose();
 
+export const CockpitMeetingCreateResponseSchema = CockpitMeetingSchema.extend({
+  workspace_id: z.string().min(1).optional(), creation_key: z.string().uuid().optional(), replayed: z.boolean().optional(),
+  id: z.string().min(1), title: z.string(), code: z.string(), meet_date: z.string().nullable(),
+  node_link: CockpitMeetingNodeLinkSchema.extend({
+    meeting_id: z.string().min(1), node_id: z.string().min(1), position: z.number().finite(),
+  }).optional(),
+});
+
 export const CockpitMeetingIssuesResponseSchema = z.object({
   meeting_id: z.string().default(""),
   links: z.array(CockpitMeetingIssueLinkSchema).default([]),
 }).loose();
+
+export const CockpitMeetingIssueRolesResponseSchema = CockpitMeetingIssuesResponseSchema.extend({
+  links: z.array(CockpitMeetingIssueLinkSchema.extend({ roles: z.array(z.string()) })),
+});
 
 export const CockpitMeetingNodesResponseSchema = z.object({
   meeting_id: z.string().default(""),
@@ -1986,6 +2086,9 @@ export const CockpitDirectorySchema = z.object({
 }).loose();
 
 export const CockpitMeetingProvisionResultSchema = z.object({
+  directory_operation_id: z.union([z.string().uuid(), z.literal("")]).default(""),
+  directory_state: z.string().default(""),
+  dir_error_code: z.string().default(""),
   meeting: CockpitMeetingSchema,
   issues: z.array(CockpitMeetingIssueLinkSchema).default([]),
   task: CockpitMeetingIssueLinkSchema.nullable().default(null),
@@ -1994,6 +2097,210 @@ export const CockpitMeetingProvisionResultSchema = z.object({
   dir_created: z.boolean().default(false),
   dir_error: z.string().default(""),
 }).loose();
+
+export const CockpitMeetingProvisionWriteSchema = CockpitMeetingProvisionResultSchema.extend({
+  meeting: CockpitMeetingSchema.extend({ id: z.string().min(1), nas_dir: z.string() }),
+  issues: z.array(CockpitMeetingIssueLinkSchema),
+  task: CockpitMeetingIssueLinkSchema.extend({ meeting_id: z.string().min(1), issue_id: z.string().min(1) }).nullable(),
+  task_error: z.string(), dir: z.string(), dir_created: z.boolean(), dir_error: z.string(),
+});
+
+export const CockpitWorkflowIssueSchema = z.object({
+  id: z.string(),
+  identifier: z.string().default(""),
+  title: z.string().default(""),
+  status: z.string().default(""),
+  assignee_type: z.string().default(""),
+  assignee_id: z.string().nullable().default(null),
+}).loose();
+
+export const CockpitMinutesVersionSchema = z.object({
+  id: z.string(),
+  version_number: z.number().int().default(0),
+  submission_key: z.string().default(""),
+  content: z.string().default(""),
+  content_hash: z.string().default(""),
+  source_issue_id: z.string().default(""),
+  review_issue: CockpitWorkflowIssueSchema,
+  reviewer_id: z.string().default(""),
+  decision: z.string().default(""),
+  feedback: z.string().default(""),
+  submitted_by_type: z.string().default(""),
+  submitted_by_id: z.string().default(""),
+  created_at: z.string().default(""),
+  reviewed_by: z.string().nullable().default(null),
+  reviewed_at: z.string().nullable().default(null),
+  published_by: z.string().nullable().default(null),
+  published_at: z.string().nullable().default(null),
+}).loose();
+
+export const CockpitReviewerHandoffSchema = z.object({
+  id: z.string().min(1),
+  handoff_key: z.string().uuid(),
+  from_reviewer_id: z.string().min(1),
+  to_reviewer_id: z.string().min(1),
+  from_reviewer_name: z.string().catch("").default(""),
+  to_reviewer_name: z.string().catch("").default(""),
+  created_by_name: z.string().catch("").default(""),
+  version_id: z.string().nullable(),
+  from_review_issue: CockpitWorkflowIssueSchema.nullable(),
+  to_review_issue: CockpitWorkflowIssueSchema.nullable(),
+  reason: z.string().min(1),
+  created_by: z.string().min(1),
+  created_at: z.string().min(1),
+  revision: z.number().int().positive(),
+}).loose();
+
+export const CockpitNasDestinationSchema = z.object({
+  root_id: z.string().min(1),
+  directory: z.string().min(1),
+  write_mode: z.string().catch("").default("atomic"),
+}).loose();
+
+export const CockpitNasExportSchema = z.object({
+  id: z.string(),
+  version_id: z.string().default(""),
+  version_number: z.number().int().nonnegative().default(0),
+  source_issue_id: z.string().default(""),
+  content_hash: z.string().default(""),
+  root_id: z.string().default(""),
+  directory: z.string().default(""),
+  target_path: z.string().default(""),
+  write_mode: z.string().catch("").default("atomic"),
+  verified_path: z.string().nullable().default(null),
+  receipt_path: z.string().nullable().default(null),
+  verified_attempt_id: z.string().nullable().default(null),
+  receipt_hash: z.string().nullable().default(null),
+  size_bytes: z.number().int().nonnegative().nullable().default(null),
+  status: z.string().default(""),
+  attempts: z.number().int().nonnegative().default(0),
+  revision: z.number().int().nonnegative().default(0),
+  next_retry_at: z.string().nullable().default(null),
+  created_at: z.string().default(""),
+  updated_at: z.string().default(""),
+  completed_at: z.string().nullable().default(null),
+  last_error_code: z.string().default(""),
+  last_error: z.string().default(""),
+  can_retry: z.boolean().catch(false).default(false),
+}).loose();
+
+export const CockpitMeetingWorkflowSchema = z.object({
+  enabled: z.boolean().default(false),
+  meeting_id: z.string(),
+  revision: z.number().int().nonnegative().default(0),
+  ended_at: z.string().nullable().default(null),
+  materials_ready: z.boolean().default(false),
+  released_at: z.string().nullable().default(null),
+  release_task_id: z.string().nullable().default(null),
+  reviewer_id: z.string().nullable().default(null),
+  minutes_issue: CockpitWorkflowIssueSchema.nullable().default(null),
+  minutes_issues: z.array(z.object({
+    issue: CockpitWorkflowIssueSchema.nullable().default(null),
+    is_focus: z.boolean().default(false),
+    roles: z.array(z.string()).default([]),
+  }).loose()).default([]),
+  current_version_id: z.string().nullable().default(null),
+  published_version_id: z.string().nullable().default(null),
+  versions: z.array(CockpitMinutesVersionSchema).default([]),
+  can_manage: z.boolean().default(false),
+  can_submit: z.boolean().default(false),
+  can_review: z.boolean().default(false),
+  can_publish: z.boolean().default(false),
+  can_reassign_reviewer: z.boolean().catch(false).default(false),
+  reviewer_handoffs: z.array(CockpitReviewerHandoffSchema).default([]),
+  nas_destination: CockpitNasDestinationSchema.nullable().catch(null).default(null),
+  nas_unavailable_reason: z.string().catch("").default(""),
+  can_export_nas: z.boolean().catch(false).default(false),
+  nas_exports: z.array(CockpitNasExportSchema).default([]),
+}).loose();
+
+const WorkflowIssueAcknowledgmentSchema = CockpitWorkflowIssueSchema.extend({
+  id: z.string().min(1), identifier: z.string().min(1), title: z.string(),
+  status: z.string().min(1), assignee_type: z.string(), assignee_id: z.string().nullable(),
+});
+const MinutesVersionAcknowledgmentSchema = CockpitMinutesVersionSchema.extend({
+  id: z.string().min(1), version_number: z.number().int().positive(), submission_key: z.string().uuid(),
+  content: z.string().min(1), content_hash: z.string().min(1), source_issue_id: z.string().min(1),
+  review_issue: WorkflowIssueAcknowledgmentSchema, reviewer_id: z.string().min(1), decision: z.string().min(1),
+  feedback: z.string(), submitted_by_type: z.string().min(1), submitted_by_id: z.string().min(1),
+  created_at: z.string().min(1), reviewed_by: z.string().nullable(), reviewed_at: z.string().nullable(),
+  published_by: z.string().nullable(), published_at: z.string().nullable(),
+});
+
+/** No read defaults may acknowledge an enabled workflow write. */
+export const CockpitMeetingWorkflowWriteSchema = CockpitMeetingWorkflowSchema.extend({
+  enabled: z.literal(true), meeting_id: z.string().min(1), revision: z.number().int().positive(),
+  ended_at: z.string().nullable(), materials_ready: z.boolean(), released_at: z.string().nullable(),
+  release_task_id: z.string().nullable(), reviewer_id: z.string().min(1),
+  minutes_issue: WorkflowIssueAcknowledgmentSchema, current_version_id: z.string().nullable(),
+  published_version_id: z.string().nullable(), versions: z.array(MinutesVersionAcknowledgmentSchema),
+  can_manage: z.boolean(), can_submit: z.boolean(), can_review: z.boolean(), can_publish: z.boolean(),
+});
+
+/** Export acknowledgments must contain real operation records, never read-time defaults. */
+export const CockpitMeetingNasWriteSchema = CockpitMeetingWorkflowWriteSchema.extend({
+  nas_exports: z.array(CockpitNasExportSchema.extend({
+    id: z.string().min(1), version_id: z.string().min(1), version_number: z.number().int().positive(),
+    source_issue_id: z.string().min(1), content_hash: z.string().min(1), root_id: z.string().min(1),
+    directory: z.string().min(1), target_path: z.string().min(1), size_bytes: z.number().int().nonnegative().nullable(),
+    status: z.string().min(1), attempts: z.number().int().nonnegative(), revision: z.number().int().positive(),
+    next_retry_at: z.string().nullable(), created_at: z.string().min(1), updated_at: z.string().min(1),
+    completed_at: z.string().nullable(), last_error_code: z.string(), last_error: z.string(), can_retry: z.boolean(),
+  })),
+});
+
+export const EMPTY_COCKPIT_MEETING_WORKFLOW = CockpitMeetingWorkflowSchema.parse({ meeting_id: "" });
+
+export const CockpitMinutesVersionMetadataSchema = MinutesVersionAcknowledgmentSchema.omit({ content: true, feedback: true }).extend({
+  has_feedback: z.boolean(),
+}).strip();
+
+export const CockpitWorkflowReviewerHandoffSchema = CockpitReviewerHandoffSchema.extend({
+  version_number: z.number().int().positive().nullable(),
+});
+
+export const CockpitWorkflowNasExportSchema = CockpitMeetingNasWriteSchema.shape.nas_exports.element.extend({
+  source_version: CockpitMinutesVersionMetadataSchema,
+});
+
+/** Bounded working state: document bodies and historical collections live in separate queries. */
+export const CockpitMeetingWorkflowSummarySchema = CockpitMeetingWorkflowSchema.omit({
+  versions: true, reviewer_handoffs: true, nas_exports: true,
+}).extend({
+  representation: z.literal("summary"), workspace_id: z.string().min(1), meeting_id: z.string().min(1),
+  enabled: z.boolean(), revision: z.number().int().nonnegative(),
+  current_version_id: z.string().nullable(), published_version_id: z.string().nullable(),
+  current_version: CockpitMinutesVersionMetadataSchema.nullable(),
+  published_version: CockpitMinutesVersionMetadataSchema.nullable(),
+  published_nas_export: CockpitWorkflowNasExportSchema.nullable(),
+  history_counts: z.object({ versions: z.number().int().nonnegative(), reviewer_handoffs: z.number().int().nonnegative(),
+    nas_exports: z.number().int().nonnegative(), nas_active: z.number().int().nonnegative() }),
+}).strip();
+
+function cockpitWorkflowHistoryPageSchema<T extends z.ZodType>(item: T) {
+  return z.object({ workspace_id: z.string().min(1), meeting_id: z.string().min(1), workflow_revision: z.number().int().nonnegative(),
+    items: z.array(item), total: z.number().int().nonnegative(), next_cursor: z.string().nullable(),
+  }).refine((page) => page.total >= page.items.length, "Page count is smaller than its contents");
+}
+
+export const CockpitMinutesVersionPageSchema = cockpitWorkflowHistoryPageSchema(CockpitMinutesVersionMetadataSchema);
+export const CockpitReviewerHandoffPageSchema = cockpitWorkflowHistoryPageSchema(CockpitWorkflowReviewerHandoffSchema);
+export const CockpitNasExportPageSchema = cockpitWorkflowHistoryPageSchema(CockpitWorkflowNasExportSchema).safeExtend({
+  version_id: z.string().nullable(), status: z.string(),
+});
+
+export const CockpitMinutesVersionDetailSchema = z.object({
+  workspace_id: z.string().min(1), meeting_id: z.string().min(1), workflow_revision: z.number().int().nonnegative(),
+  version: MinutesVersionAcknowledgmentSchema,
+  can_review: z.boolean().catch(false).default(false), can_publish: z.boolean().catch(false).default(false), can_export_nas: z.boolean().catch(false).default(false),
+});
+
+export const CockpitWorkflowCommandResponseSchema = z.object({
+  representation: z.literal("compact"), workspace_id: z.string().min(1), meeting_id: z.string().min(1),
+  workflow: CockpitMeetingWorkflowSummarySchema,
+  receipt: z.object({ action: z.string().min(1), version: MinutesVersionAcknowledgmentSchema.nullable(),
+    handoff: CockpitWorkflowReviewerHandoffSchema.nullable(), nas_export: CockpitWorkflowNasExportSchema.nullable() }),
+});
 
 export const CockpitMeetingDestinationSchema = z.object({
   project_id: z.string().default(""),
@@ -2010,6 +2317,10 @@ export const CockpitMeetingDestinationSchema = z.object({
   creatable: z.boolean().default(false),
   error: z.string().default(""),
 }).loose();
+
+export const CockpitMeetingDestinationReadSchema = CockpitMeetingDestinationSchema.extend({
+  project_id: z.string(), base_dir: z.string(),
+});
 
 // What the archive folder holds that the register does not. Every guessed
 // field defaults to empty rather than to something plausible: an empty field
@@ -2035,7 +2346,20 @@ export const CockpitMeetingScanSchema = z.object({
   error: z.string().default(""),
 }).loose();
 
+export const CockpitMeetingScanReadSchema = CockpitMeetingScanSchema.extend({
+  base_dir: z.string(), base_dir_exists: z.boolean(), entries: z.array(CockpitMeetingScanEntrySchema),
+  matched: z.number().int().nonnegative(), truncated: z.boolean(), error: z.string(),
+});
+
+export const CockpitMeetingImportDirectoryResultSchema = z.object({
+  name: z.string().min(1), meeting_id: z.string().min(1),
+  directory_operation_id: z.union([z.string().uuid(), z.literal("")]), directory_state: z.string(),
+  dir_created: z.boolean(), dir_error: z.string(), dir_error_code: z.string().default(""),
+}).refine((value) => value.directory_operation_id ? Boolean(value.directory_state) && (value.directory_state === "completed" || Boolean(value.dir_error)) : Boolean(value.dir_error),
+  "Directory preparation must identify its retained operation or explain why no plan was authorized");
 export const CockpitMeetingImportResultSchema = z.object({
+  directory_results: z.array(CockpitMeetingImportDirectoryResultSchema).max(500).nullable().default(null),
+  task_errors: z.array(z.object({ name: z.string().min(1), meeting_id: z.string().min(1), error: z.string().min(1) })).max(500).default([]),
   meetings: z.array(CockpitMeetingSchema).default([]),
   issues: z.array(CockpitMeetingIssueLinkSchema).default([]),
   skipped: z
@@ -2043,7 +2367,16 @@ export const CockpitMeetingImportResultSchema = z.object({
     .default([]),
 }).loose();
 
+export const CockpitMeetingImportWriteSchema = CockpitMeetingImportResultSchema.extend({
+  meetings: z.array(CockpitMeetingSchema.extend({ id: z.string().min(1), nas_dir: z.string().min(1) })),
+  issues: z.array(CockpitMeetingIssueLinkSchema),
+  skipped: z.array(z.object({ name: z.string(), reason: z.string().min(1) }).loose()),
+});
+
 export const CockpitBoardSchema = z.object({
+  has_meeting_workflows: z.boolean().default(false),
+  has_meeting_lifecycle: z.boolean().optional(),
+  has_meeting_preparation: z.boolean().optional(),
   cockpit: CockpitSchema,
   nodes: z.array(CockpitNodeSchema).default([]),
   payments: z.array(CockpitPaymentSchema).default([]),
@@ -2073,6 +2406,21 @@ export const CockpitPendingChangeSchema = z.object({
   decided_at: z.string().nullable().default(null),
   created_at: z.string().default(""),
   updated_at: z.string().default(""),
+  source_task_id: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? "")
+    .default(""),
+  source_issue: z
+    .object({
+      id: z.string().default(""),
+      ref: z.string().default(""),
+      title: z.string().default(""),
+    })
+    .loose()
+    .nullable()
+    .default(null),
+  decision_note: z.string().default(""),
 }).loose();
 
 export const CockpitPendingChangeListSchema = z.array(CockpitPendingChangeSchema).default([]);
@@ -2147,6 +2495,9 @@ export const EMPTY_COCKPIT_PENDING_CHANGE: CockpitPendingChange = {
   decided_at: null,
   created_at: "",
   updated_at: "",
+  source_task_id: "",
+  source_issue: null,
+  decision_note: "",
 };
 
 export const EMPTY_COCKPIT_INGEST: CockpitIngestOutcome = {
@@ -2489,6 +2840,12 @@ const TaskUsageSchema = z.object({
 }).loose();
 
 export const AgentTaskSchema = z.object({
+  input_manifest_version_id: z.string().uuid().nullable().default(null),
+  input_preparation_state: z.string().default("not_recorded"),
+  input_preparation_hash: z.string().regex(/^[a-f0-9]{64}$/).nullable().default(null),
+  input_prepared_at: z.string().datetime({ offset: true }).nullable().default(null),
+  input_prepared_dispatched_at: z.string().datetime({ offset: true }).nullable().default(null),
+  input_preparation_error_code: z.string().default(""),
   wakeup_id: z.string().optional().catch(undefined),
   cancelled_by_comment_change: z.boolean().optional().catch(undefined),
   cancelled_by: TaskCancellationActorSchema.optional().catch(undefined),
@@ -2563,6 +2920,12 @@ export const AgentActivityBucketListSchema = z.array(z.object({
 }).loose());
 
 export const AgentTaskListSchema = z.array(AgentTaskSchema);
+// Exact task reads require their identity and current status rather than the
+// tolerant defaults used by older list responses.
+export const AgentTaskDetailSchema = AgentTaskSchema.extend({
+  id: z.string().min(1), workspace_id: z.string().min(1),
+  agent_id: z.string().min(1), status: z.string().min(1),
+});
 
 // Row-resilient list form for the workspace snapshot and agent run history.
 // parseWithFallback returns the WHOLE fallback on any failure (see
@@ -4564,3 +4927,6 @@ export const RuntimeProfileSchema = z
     runtime_type: profile.runtime_type || profile.protocol_family,
   }));
 export const RuntimeProfileListSchema = z.array(RuntimeProfileSchema);
+
+export const LocalAccountStatusSchema = z.object({ single_owner: z.literal(true), initialized: z.boolean(), adopting: BooleanWithDefaultSchema(false), display_name: z.string().optional() });
+export const LocalAccountSessionSchema = z.object({ token: z.string().min(1), user: UserSchema, recovery_code: z.string().length(64).optional() });

@@ -1,0 +1,178 @@
+{
+  "host": "fosun-agent-3deMac-mini.local",
+  "date": "2026-10-10",
+  "source_head_before_commit": "77877cd42617ee11a36c0841bb28aef9e7de2315",
+  "final_build_input_sha256": "900b55caa582e2678dc997a23b8f3f592871db04aed6bd22917126c15dfef562",
+  "isolated_build_id": "jSn0jeWS1_lbA-n3VE-ZW",
+  "backend_commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+  "unit_component": {
+    "host": "agent3",
+    "unique_files": 21,
+    "core": 32,
+    "views": 392,
+    "passed": 424,
+    "initial_fixture_failures_resolved": true,
+    "reruns_not_added_to_total": true
+  },
+  "browser": {
+    "l3_recovery": {
+      "result": "passed",
+      "build_id": "cDWX8jw8W8NEr7zQqYY1c"
+    },
+    "meeting_materials_full_workflow": {
+      "result": "passed",
+      "seconds": 5.9,
+      "build_id": "cDWX8jw8W8NEr7zQqYY1c"
+    },
+    "action_url_draft_and_confirmation": {
+      "result": "passed",
+      "seconds": 9.1,
+      "build_id": "jSn0jeWS1_lbA-n3VE-ZW"
+    },
+    "final_materials_visual_probe": {
+      "result": "passed",
+      "build_id": "jSn0jeWS1_lbA-n3VE-ZW",
+      "viewports": [
+        "1600x1050",
+        "1100x900"
+      ],
+      "verified": [
+        "visible outlined controls",
+        "explicit folder-path entry",
+        "notes save acknowledgement",
+        "no implicit readiness or dispatch"
+      ]
+    },
+    "incremental_scope": "Final action and materials presentation changes were verified on the final bundle; unchanged L3/materials business flows retained their prior successful results."
+  },
+  "iteration_findings": [
+    "Late optimistic acknowledgement and whole-board rollback risks fixed with non-optimistic material save, strict receipt and scoped read-back.",
+    "Stale action deep-link after choosing or closing another action found in browser and fixed.",
+    "Fixture selectors adapted for grouped legacy references, pending spinners, canonical Issue content and distinct review/Issue links."
+  ],
+  "isolated_cleanup": {
+    "workspaces": 0,
+    "issues": 0,
+    "meetings": 0,
+    "queued_tasks": 0,
+    "nas_exports": 0,
+    "api_stopped": 69414,
+    "web_stopped": 70480,
+    "tested_build_backup": "~/var/multica-dev-test/build-backups/interaction-reviewed-18880",
+    "restored": {
+      "isolated_build_id": "jSn0jeWS1_lbA-n3VE-ZW",
+      "proxies": [
+        {
+          "source": "/api/:path*",
+          "destination": "http://127.0.0.1:18880/api/:path*",
+          "regex": "^/api(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?(?:/)?$"
+        },
+        {
+          "source": "/ws",
+          "destination": "http://127.0.0.1:18880/ws",
+          "regex": "^/ws(?:/)?$"
+        }
+      ],
+      "isolated_services_stopped": true,
+      "reverse_tunnel_stopped": true,
+      "runtime_profile_mode": "0o600"
+    }
+  },
+  "real_nas_used": false,
+  "real_agents_used": false,
+  "go_tests": "Not rerun: backend/API/schema unchanged; accepted backend reused.",
+  "deployment": {
+    "status": "deployed and verified on resident agent3; no production deployment",
+    "web_pid": 71322,
+    "build_id": "Mk9vXStKm8jGaV-pTTHw5",
+    "web_http_status": 200,
+    "backend": {
+      "status": "ok",
+      "pid": 62181,
+      "commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+      "started_at": "2026-10-10T03:32:23Z"
+    },
+    "backend_restarted": false,
+    "database_migrations": false,
+    "retained_old_static_assets": 117,
+    "resident_ui_probe": {
+      "passed": true,
+      "seconds": 2.5,
+      "viewport_checks": [
+        "1600x1050",
+        "1100x900"
+      ],
+      "synthetic_workspace_removed": "b7c86242-0981-42da-bde0-4993bab5791f",
+      "remaining_probe_memberships_and_issues": 0,
+      "account_note": "Synthetic login identity remains with no workspace membership."
+    },
+    "before_counts": {
+      "workspaces": 55,
+      "issues": 556,
+      "nodes": 252,
+      "meetings": 28,
+      "attachments": 1462,
+      "fosun_projects": 17,
+      "fosun_modules": 4,
+      "fosun_issues": 327,
+      "fosun_nodes": 218,
+      "fosun_meetings": 14,
+      "fosun_node_links": 200,
+      "fosun_meeting_links": 5,
+      "fosun_meeting_node_links": 1,
+      "schema_ledger": 682
+    },
+    "after_counts": {
+      "workspaces": 55,
+      "issues": 556,
+      "nodes": 252,
+      "meetings": 28,
+      "attachments": 1462,
+      "fosun_projects": 17,
+      "fosun_modules": 4,
+      "fosun_issues": 327,
+      "fosun_nodes": 218,
+      "fosun_meetings": 14,
+      "fosun_node_links": 200,
+      "fosun_meeting_links": 5,
+      "fosun_meeting_node_links": 1,
+      "schema_ledger": 682
+    },
+    "tracked_business_counts_unchanged": true,
+    "env_sha256_unchanged": "885941e58b41e703e63660b80f1f52a75014c2cdd9f53aa347950b5c65ba0f22",
+    "dev_run_sha256_unchanged": "f9e525d4a8600c55d4a1d6bde226d7a7dcc9df53cfc08a6f85cb1114dbd8af13",
+    "apps_web_env_local": "absent before and after",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-web-interaction-0010a68cf-20261010T050500Z",
+    "rollback": "Restore the backed-up frontend with a precise Web process switch; keep API 62181 and the database running. Rollback was not executed."
+  },
+  "temporary_build_network": {
+    "connect_allowlist": [
+      "fonts.googleapis.com:443",
+      "fonts.gstatic.com:443"
+    ],
+    "tls": "end-to-end verification retained",
+    "dns": "temporary proxy-process DoH fallback only; no system DNS changes",
+    "cleanup": {
+      "complete": true,
+      "stopped_owned_pids": [
+        90935,
+        91238
+      ],
+      "local_proxy_listener": false,
+      "remote_reverse_listener": false
+    }
+  },
+  "screenshots": [
+    "interaction-readiness.png",
+    "interaction-materials.png",
+    "interaction-materials-narrow.png",
+    "interaction-l3-recovery.png",
+    "interaction-l3-complete.png",
+    "interaction-action-restored.png",
+    "interaction-resident-readiness.png",
+    "interaction-resident-materials.png"
+  ],
+  "frontend_commit": "0010a68cf12f1775d24b1398bf3de6692592eb29",
+  "frontend_archive_sha256": "a04e873d56dfb5621415243059e4f85a9f46fc499f8d946d8627bf83553b866e",
+  "artifact_directory": "~/var/multica-dev-releases/interaction-0010a68cf-20261010T050500Z"
+}

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY cockpit_work_package_issue_idx ON cockpit_meeting_work_package (minutes_issue_id);

@@ -32,6 +32,7 @@ import {
 } from "@multica/core/i18n";
 import { useLocaleAdapter } from "@multica/core/i18n/react";
 import { useAuthStore } from "@multica/core/auth";
+import { useWorkspaceStartStore, WORKSPACE_START_PAGES } from "@multica/core/paths";
 import { useChatStore } from "@multica/core/chat";
 import {
   useCommentComposerStore,
@@ -88,6 +89,7 @@ export function PreferencesTab() {
       >
         <SettingsCard>
           <ThemeRow />
+          <WorkspaceStartRow />
         </SettingsCard>
       </SettingsSection>
 
@@ -123,6 +125,21 @@ export function PreferencesTab() {
       </SettingsSection>
     </SettingsTab>
   );
+}
+
+function WorkspaceStartRow() {
+  const { t } = useT("settings");
+  const value = useWorkspaceStartStore((state) => state.page);
+  const setPage = useWorkspaceStartStore((state) => state.setPage);
+  const labels = { cockpit: t(($) => $.preferences.workspace_start.cockpit), issues: t(($) => $.preferences.workspace_start.issues),
+    "my-issues": t(($) => $.preferences.workspace_start.my_issues), inbox: t(($) => $.preferences.workspace_start.inbox) };
+  const options = WORKSPACE_START_PAGES.map((page) => ({ value: page, label: labels[page] }));
+  return <SettingsRow anchor="workspace-start" label={t(($) => $.preferences.workspace_start.title)} description={t(($) => $.preferences.workspace_start.hint)} size="select">
+    <Select value={value} items={options} onValueChange={(next) => { const option = options.find((item) => item.value === next); if (option) setPage(option.value); }}>
+      <SelectTrigger size="sm" className="w-full" aria-label={t(($) => $.preferences.workspace_start.title)}><SelectValue>{labels[value]}</SelectValue></SelectTrigger>
+      <SelectContent align="end">{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+    </Select>
+  </SettingsRow>;
 }
 
 function ThemeRow() {

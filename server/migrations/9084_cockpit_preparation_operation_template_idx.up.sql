@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY cockpit_preparation_operation_template_idx ON cockpit_meeting_preparation_operation (workspace_id,meeting_id,template_version_id) WHERE kind='apply_template';

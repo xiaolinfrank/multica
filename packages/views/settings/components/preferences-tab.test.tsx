@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useWorkspaceStartStore } from "@multica/core/paths";
 import {
   describe,
   it,
@@ -67,7 +68,8 @@ vi.mock("@multica/core/chat", () => ({
   ),
 }));
 
-vi.mock("@multica/core/paths", () => ({
+vi.mock("@multica/core/paths", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@multica/core/paths")>(),
   useCurrentWorkspace: () => ({ id: "ws-1", name: "Acme" }),
 }));
 
@@ -447,5 +449,21 @@ describe("PreferencesTab — Scope", () => {
     await user.click(preview);
     expect(useIssueOpeningStore.getState().openMode).toBe("peek");
     expect(preview).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("PreferencesTab — Workspace start page", () => {
+  it("shows cockpit by default and saves the chosen entry without navigating away", async () => {
+    useWorkspaceStartStore.setState({ page: "cockpit" });
+    navigationState.replace.mockClear();
+    const user = userEvent.setup();
+    render(<PreferencesTab />, { wrapper: I18nWrapper });
+    const picker = screen.getByRole("combobox", { name: "Workspace start page" });
+    expect(picker).toHaveTextContent("Cockpit");
+    await user.click(picker);
+    await user.click(await screen.findByRole("option", { name: "My Issues" }));
+    expect(useWorkspaceStartStore.getState().page).toBe("my-issues");
+    expect(navigationState.replace).not.toHaveBeenCalled();
+    useWorkspaceStartStore.setState({ page: "cockpit" });
   });
 });

@@ -719,3 +719,9 @@ deleted_share_links AS (
 )
 DELETE FROM workspace_invitation
 WHERE workspace_invitation.workspace_id = $1;
+
+-- name: DeleteCockpitMeetingActionsByWorkspace :exec
+DELETE FROM cockpit_meeting_action WHERE workspace_id=$1;
+
+-- name: DeleteCockpitIssuePrimaryByWorkspace :exec
+DELETE FROM cockpit_issue_primary WHERE workspace_id=$1;

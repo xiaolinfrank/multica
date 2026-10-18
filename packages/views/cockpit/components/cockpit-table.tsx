@@ -9,21 +9,26 @@
 // chart and drifted from it. Here they are the same rows, one source, edited
 // where they are read.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Table2, Wallet } from "lucide-react";
+import { CockpitViewHeading } from "./cockpit-view-heading";
+import { useReducedMotion } from "motion/react";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { useNavigation } from "../../navigation";
+import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   CockpitBoard,
-  CockpitIssueLink,
+  CockpitPlanTaskCount,
   CockpitNode,
   CockpitNodePatch,
 } from "@multica/core/types";
 import {
+  cockpitScope, cockpitScopeViewKey,
   buildCockpitTree,
-  buildCockpitSummaryTree,
-  buildCockpitDisplayCodes,
   cockpitMissingFields,
   computeCockpitFinanceRows,
   flattenCockpitTree,
-  groupIssueLinksByNode,
   groupPaymentsByNode,
   splitCockpitVendors,
   type CockpitCheckField,
@@ -33,12 +38,16 @@ import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
 import { EditableDate, EditableNumber, EditableSuggest, EditableText, EditableTokens } from "./cockpit-fields";
 import { ExecStatusChip, StatusChip } from "./cockpit-status";
+import { cockpitTableLayout } from "./cockpit-layout";
 
 /** Which grid is showing. Both read the same rows; they differ in the columns. */
 export type CockpitTableMode = "tasks" | "finance";
 
 export interface CockpitTableProps {
-  board: CockpitBoard;
+  board: Pick<CockpitBoard, "nodes" | "payments">;
+  displayCodes: ReadonlyMap<string, string>;
+  contextNodeIds: ReadonlySet<string>;
+  taskCounts: ReadonlyMap<string, CockpitPlanTaskCount>;
   mode: CockpitTableMode;
   query: string;
   /** Restrict to these root branches; empty shows the whole board. */
@@ -54,26 +63,27 @@ export interface CockpitTableProps {
   readOnly?: boolean;
 }
 
-function matches(node: CockpitNode, query: string, displayCode: string, links: CockpitIssueLink[]): boolean {
+function matches(node: CockpitNode, query: string, displayCode: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   return [displayCode, node.code, node.name, node.owner, node.collaborators,
     node.vendor, node.deliverable, node.dependencies, node.note, node.current_progress,
     node.start_date, node.end_date, node.status, node.progress, node.budget_amount,
-    node.budget_category, node.exec_status, node.contract, node.source, ...links.flatMap((link) => [link.issue_identifier, link.issue_title])]
+    node.budget_category, node.exec_status, node.contract, node.source]
     .some((value) => value != null && String(value).toLowerCase().includes(needle));
 }
 
-function formatAmount(value: number): string {
+export function formatAmount(value: number): string {
   // 万元 with up to 分 (6 decimals); trailing zeros would fake a precision
   // the number does not have.
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
 }
 
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
+function Th({ children, className, style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
     <th
       scope="col"
+      style={style}
       className={cn(
         "sticky top-0 z-10 border-b border-border bg-background px-2 py-1.5 text-left text-caption font-medium whitespace-nowrap text-muted-foreground",
         className,
@@ -84,8 +94,8 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
   );
 }
 
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("border-b border-border/50 px-2 py-1 align-top", className)}>{children}</td>;
+function Td({ children, className, style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
+  return <td style={style} className={cn("border-b border-border/50 px-2 py-1 align-top", className)}>{children}</td>;
 }
 
 /** Read-only cell for a value the board derives rather than stores. */
@@ -101,7 +111,7 @@ function Derived({ value }: { value: string }) {
  * The prototype's field-integrity verdict: green "OK" when every core field
  * carries a value, amber "remind N" naming what is missing on hover.
  */
-function CheckBadge({ missing, node, onSelect, linkCount }: { missing: CockpitCheckField[]; node: CockpitNode; onSelect: () => void; linkCount: number }) {
+function CheckBadge({ missing, node, onSelect, linkCount }: { missing: CockpitCheckField[]; node: CockpitNode; onSelect: () => void; linkCount: number | undefined }) {
   const { t } = useT("cockpit");
   const suggested = (["collaborators", "vendor", "budget_category", "exec_status", "dependencies", "deliverable", "note", "current_progress"] as const)
     .filter((field) => !node[field].trim());
@@ -133,25 +143,19 @@ function CheckBadge({ missing, node, onSelect, linkCount }: { missing: CockpitCh
   );
 }
 
-function IssueCell({ links }: { links: CockpitIssueLink[] }) {
-  if (links.length === 0) return <span className="text-caption text-faint-foreground">—</span>;
-  return (
-    <span className="flex flex-wrap gap-1">
-      {links.map((link) => (
-        <span
-          key={link.id}
-          title={link.issue_title}
-          className="rounded-sm border border-border bg-muted px-1 font-mono text-micro text-muted-foreground"
-        >
-          {link.issue_identifier}
-        </span>
-      ))}
-    </span>
-  );
+function IssueCell({ count, onOpen }: { count: CockpitPlanTaskCount | undefined; onOpen: () => void }) {
+  const { t } = useT("cockpit");
+  if (!count) return <span className="text-caption text-faint-foreground">—</span>;
+  return <button type="button" onClick={onOpen} className="rounded text-caption text-primary hover:underline">
+    {t(($) => $.plan_views.task_counts, { primary: count.primary_total, reference: count.reference_total })}
+  </button>;
 }
 
 export function CockpitTable({
   board,
+  displayCodes,
+  contextNodeIds,
+  taskCounts,
   mode,
   query,
   rootIds,
@@ -167,16 +171,24 @@ export function CockpitTable({
 }: CockpitTableProps) {
   const { t } = useT("cockpit");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const reduceMotion = useReducedMotion() === true;
+  const { codeWidth, nameWidth, pinName } = cockpitTableLayout(viewportWidth);
+  const hasNodes = board.nodes.length > 0;
 
   const tableRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const read = () => setViewportWidth(element.clientWidth);
+    const observer = new ResizeObserver(read);
+    observer.observe(element); read();
+    return () => observer.disconnect();
+  }, [hasNodes, mode]);
+  const wsId = useWorkspaceId(); const navigation = useNavigation();
+  useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, cockpitScope(navigation.searchParams)), mode]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  // Codes come from the summary shape — the same addresses the gantt prints —
-  // so a code quoted in a review names the same row in both places. A member
-  // direction the summary folded away keeps its stored code.
-  const displayCodes = useMemo(
-    () => buildCockpitDisplayCodes(buildCockpitSummaryTree(tree)),
-    [tree],
-  );
   const ancestors = useMemo(() => {
     const result = new Map<string, { root: CockpitTreeNode; parent: CockpitTreeNode | null }>();
     const walk = (entry: CockpitTreeNode, root: CockpitTreeNode, parent: CockpitTreeNode | null) => {
@@ -191,20 +203,27 @@ export function CockpitTable({
     return tree.filter((entry) => rootIds.has(entry.node.id));
   }, [tree, rootIds]);
 
-  const linksByNode = useMemo(() => groupIssueLinksByNode(board.issue_links), [board.issue_links]);
   const paymentsByNode = useMemo(() => groupPaymentsByNode(board.payments), [board.payments]);
 
   const taskRows = useMemo(
-    () => flattenCockpitTree(scopedTree).filter((e) => e.children.length === 0 && matches(e.node, query, displayCodes.get(e.node.id) ?? e.node.code, linksByNode.get(e.node.id) ?? [])),
-    [scopedTree, query, displayCodes, linksByNode],
+    () => flattenCockpitTree(scopedTree).filter((e) => e.children.length === 0 && matches(e.node, query, displayCodes.get(e.node.id) ?? e.node.code)),
+    [scopedTree, query, displayCodes],
   );
   const financeRows = useMemo(
     () =>
-      computeCockpitFinanceRows(scopedTree, board.payments).filter((row) =>
-        matches(row.node, query, displayCodes.get(row.node.id) ?? row.node.code, linksByNode.get(row.node.id) ?? []),
+      computeCockpitFinanceRows(scopedTree, board.payments, contextNodeIds).filter((row) =>
+        matches(row.node, query, displayCodes.get(row.node.id) ?? row.node.code),
       ),
-    [scopedTree, board.payments, query, displayCodes, linksByNode],
+    [scopedTree, board.payments, query, displayCodes, contextNodeIds],
   );
+
+  const visibleCount = mode === "finance" ? financeRows.length : taskRows.length;
+  const rowVirtualizer = useVirtualizer({ count: visibleCount, getScrollElement: () => scrollRef.current,
+    estimateSize: () => 56, overscan: 6, scrollMargin: 36, initialRect: { width: 1200, height: 700 },
+    getItemKey: (index) => mode === "finance" ? financeRows[index]!.node.id : taskRows[index]!.node.id });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const topSpace = Math.max(0, (virtualRows[0]?.start ?? 36) - 36);
+  const bottomSpace = Math.max(0, rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 36) + 36);
 
   const searchLabel = t(($) => $.toolbar.search);
   useEffect(() => {
@@ -215,12 +234,12 @@ export function CockpitTable({
       const first = tableRef.current?.querySelector<HTMLTableRowElement>("tbody tr[data-node-id]");
       if (!first) return;
       event.preventDefault();
-      first.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      first.scrollIntoView?.({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
       onSelect(first.dataset.nodeId!);
     };
     document.addEventListener("keydown", locate);
     return () => document.removeEventListener("keydown", locate);
-  }, [query, searchLabel, onSelect, mode]);
+  }, [query, searchLabel, onSelect, mode, reduceMotion]);
 
   const emptyLabel = t(($) => $.common.unset);
 
@@ -243,17 +262,16 @@ export function CockpitTable({
     const totalBudget = financeRows.reduce((sum, row) => sum + row.budget, 0);
     const totalActual = financeRows.reduce((sum, row) => sum + (row.actualAmount ?? 0), 0);
     return (
-      <div ref={tableRef} className="flex min-h-0 flex-1 flex-col">
-        <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-micro text-muted-foreground">
-          {t(($) => $.table.finance_hint, {
-            rows: financeRows.length,
-            budget: formatAmount(totalBudget),
-            actual: formatAmount(totalActual),
-          })}
-          {query.trim() && <> · {t(($) => $.table.search_matches, { count: financeRows.length })}</>}
-        </p>
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-max min-w-full border-collapse">
+      <div ref={tableRef} className="cockpit-ledger flex min-h-0 min-w-0 flex-1 flex-col">
+        <CockpitViewHeading title={t(($) => $.plan_views.finance)} icon={Wallet} description={t(($) => $.finance.actual_basis)}>
+          <span className="text-caption text-muted-foreground" role="status">{query.trim() ? t(($) => $.table.search_matches, { count: financeRows.length }) : t(($) => $.finance.line_count, { n: financeRows.length })}</span>
+        </CockpitViewHeading>
+        <dl className="cockpit-ledger-totals">
+          <div><dt>{t(($) => $.finance.budget)}</dt><dd><span tabIndex={0} className="cockpit-finance-value">{formatAmount(totalBudget)}</span><span className="cockpit-currency-unit">{t(($) => $.finance.amount_unit)}</span></dd></div>
+          <div><dt>{t(($) => $.finance.actual)}</dt><dd><span tabIndex={0} className="cockpit-finance-value">{formatAmount(totalActual)}</span><span className="cockpit-currency-unit">{t(($) => $.finance.amount_unit)}</span></dd></div>
+        </dl>
+        <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
+          <table aria-rowcount={visibleCount + 1} className="w-max min-w-full border-collapse">
             <thead>
               <tr>
                 <Th>{t(($) => $.table.module)}</Th>
@@ -272,11 +290,16 @@ export function CockpitTable({
               </tr>
             </thead>
             <tbody>
-              {financeRows.map((row) => {
+              {topSpace > 0 && <tr aria-hidden><td colSpan={13} style={{ height: topSpace, padding: 0 }} /></tr>}
+              {virtualRows.map((virtual) => {
+                const row = financeRows[virtual.index]!;
                 const node = row.node;
                 return (
                   <tr
                     key={node.id}
+                    ref={rowVirtualizer.measureElement}
+                    data-index={virtual.index}
+                    aria-rowindex={virtual.index + 2}
                     data-node-id={node.id}
                     onMouseEnter={() => setHoveredId(node.id)}
                     onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
@@ -303,7 +326,7 @@ export function CockpitTable({
                       </button>
                     </Td>
                     <Td>
-                      <IssueCell links={linksByNode.get(node.id) ?? []} />
+                      <IssueCell count={taskCounts.get(node.id)} onOpen={() => onSelect(node.id)} />
                     </Td>
                     <Td className="max-w-72">
                       <EditableText
@@ -311,8 +334,8 @@ export function CockpitTable({
                         onCommit={(name) => onPatchNode(node.id, { name })}
                         label={t(($) => $.node.name)}
                         placeholder={t(($) => $.node.name_placeholder)}
-                        disabled={readOnly}
-                        displayClassName="text-caption"
+                        disabled={readOnly || contextNodeIds.has(node.id)}
+                        displayClassName="line-clamp-2 text-caption"
                       />
                     </Td>
                     <Td className="max-w-64">
@@ -321,8 +344,8 @@ export function CockpitTable({
                         onCommit={(contract) => onPatchNode(node.id, { contract })}
                         label={t(($) => $.node.contract)}
                         placeholder={emptyLabel}
-                        disabled={readOnly}
-                        displayClassName="text-caption"
+                        disabled={readOnly || contextNodeIds.has(node.id)}
+                        displayClassName="line-clamp-2 text-caption"
                       />
                     </Td>
                     {/* Both dates come from the instalment plan, so they are
@@ -339,7 +362,7 @@ export function CockpitTable({
                         onCommit={(budget_amount) => onPatchNode(node.id, { budget_amount })}
                         label={t(($) => $.node.budget)}
                         placeholder={emptyLabel}
-                        disabled={readOnly}
+                        disabled={readOnly || contextNodeIds.has(node.id)}
                         className="text-right"
                       />
                     </Td>
@@ -356,7 +379,7 @@ export function CockpitTable({
                         suggestions={vendorSuggestions}
                         label={t(($) => $.node.vendor)}
                         placeholder={emptyLabel}
-                        disabled={readOnly}
+                        disabled={readOnly || contextNodeIds.has(node.id)}
                       />
                     </Td>
                     <Td>
@@ -366,7 +389,7 @@ export function CockpitTable({
                         suggestions={budgetCategorySuggestions}
                         label={t(($) => $.node.budget_category)}
                         placeholder={emptyLabel}
-                        disabled={readOnly}
+                        disabled={readOnly || contextNodeIds.has(node.id)}
                       />
                     </Td>
                     <Td>
@@ -376,7 +399,7 @@ export function CockpitTable({
                         suggestions={execStatusSuggestions}
                         label={t(($) => $.node.exec_status)}
                         placeholder={emptyLabel}
-                        disabled={readOnly}
+                        disabled={readOnly || contextNodeIds.has(node.id)}
                         renderDisplay={(value) =>
                           value ? (
                             <ExecStatusChip status={value} />
@@ -400,6 +423,7 @@ export function CockpitTable({
                   </tr>
                 );
               })}
+              {bottomSpace > 0 && <tr aria-hidden><td colSpan={13} style={{ height: bottomSpace, padding: 0 }} /></tr>}
             </tbody>
           </table>
         </div>
@@ -408,16 +432,14 @@ export function CockpitTable({
   }
 
   return (
-    <div ref={tableRef} className="flex min-h-0 flex-1 flex-col">
-      <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-micro text-muted-foreground">
-        {query.trim() ? t(($) => $.table.search_matches, { count: taskRows.length }) : t(($) => $.table.tasks_hint, { rows: taskRows.length })}
-      </p>
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-max min-w-full border-collapse">
+    <div ref={tableRef} className="cockpit-plan-table flex min-h-0 min-w-0 flex-1 flex-col">
+      <CockpitViewHeading title={t(($) => $.plan_views.table)} icon={Table2} description={<p role="status">{query.trim() ? t(($) => $.table.search_matches, { count: taskRows.length }) : t(($) => $.table.tasks_hint, { rows: taskRows.length })}</p>} />
+      <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <table aria-rowcount={visibleCount + 1} className="w-max min-w-full border-collapse">
           <thead>
             <tr>
-              <Th className="left-0 z-30 w-[100px] min-w-[100px]">{t(($) => $.node.code)}</Th>
-              <Th className="left-[100px] z-30 min-w-[260px]">{t(($) => $.node.name)}</Th>
+              <Th className="left-0 z-30" style={{ width: codeWidth, minWidth: codeWidth }}>{t(($) => $.node.code)}</Th>
+              <Th className={cn(pinName && "z-30")} style={{ left: pinName ? codeWidth : undefined, minWidth: nameWidth }}>{t(($) => $.node.name)}</Th>
               <Th>{"L1"}</Th>
               <Th>{"L2"}</Th>
               <Th>{t(($) => $.node.owner)}</Th>
@@ -440,19 +462,24 @@ export function CockpitTable({
             </tr>
           </thead>
           <tbody>
-            {taskRows.map((entry: CockpitTreeNode) => {
+            {topSpace > 0 && <tr aria-hidden><td colSpan={21} style={{ height: topSpace, padding: 0 }} /></tr>}
+            {virtualRows.map((virtual) => {
+              const entry = taskRows[virtual.index]!;
               const node = entry.node;
               const isBranch = entry.children.length > 0;
               const payments = paymentsByNode.get(node.id) ?? [];
               return (
                 <tr
                   key={node.id}
+                    ref={rowVirtualizer.measureElement}
+                    data-index={virtual.index}
+                    aria-rowindex={virtual.index + 2}
                     data-node-id={node.id}
                   onMouseEnter={() => setHoveredId(node.id)}
                   onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                   className={rowClass(node.id)}
                 >
-                  <Td className={cn("sticky left-0 z-10 w-[100px] min-w-[100px] max-w-[100px]", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
+                  <Td style={{ width: codeWidth, minWidth: codeWidth, maxWidth: codeWidth }} className={cn("sticky left-0 z-10", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
                     <span
                       className="flex items-center gap-1 whitespace-nowrap"
                       title={node.code}
@@ -471,13 +498,13 @@ export function CockpitTable({
                       </button>
                     </span>
                   </Td>
-                  <Td className={cn("sticky left-[100px] z-10 w-[260px] min-w-[260px] max-w-[260px]", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
+                  <Td style={{ left: pinName ? codeWidth : undefined, width: nameWidth, minWidth: nameWidth, maxWidth: nameWidth }} className={cn(pinName && "sticky z-10", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
                     <EditableText
                       value={node.name}
                       onCommit={(name) => onPatchNode(node.id, { name })}
                       label={t(($) => $.node.name)}
                       placeholder={t(($) => $.node.name_placeholder)}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                       displayClassName={cn("text-caption", isBranch && "font-medium")}
                     />
                   </Td>
@@ -490,7 +517,7 @@ export function CockpitTable({
                       suggestions={ownerSuggestions}
                       label={t(($) => $.node.owner)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                     />
                   </Td>
                   <Td>
@@ -499,7 +526,7 @@ export function CockpitTable({
                       onCommit={(start_date) => onPatchNode(node.id, { start_date })}
                       label={t(($) => $.node.start_date)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                     />
                   </Td>
                   <Td>
@@ -508,7 +535,7 @@ export function CockpitTable({
                       onCommit={(end_date) => onPatchNode(node.id, { end_date })}
                       label={t(($) => $.node.end_date)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                     />
                   </Td>
                   <Td>
@@ -519,7 +546,7 @@ export function CockpitTable({
                       clearLabel={t(($) => $.node.status_unscheduled)}
                       label={t(($) => $.node.status)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                       renderDisplay={(value) => <StatusChip status={value} />}
                     />
                   </Td>
@@ -539,15 +566,15 @@ export function CockpitTable({
                       className="text-right"
                     />
                   </Td>
-                  <Td><CheckBadge missing={cockpitMissingFields(node)} node={node} onSelect={() => onSelect(node.id)} linkCount={linksByNode.get(node.id)?.length ?? 0} /></Td>
+                  <Td><CheckBadge missing={cockpitMissingFields(node)} node={node} onSelect={() => onSelect(node.id)} linkCount={taskCounts.get(node.id) ? taskCounts.get(node.id)!.primary_total + taskCounts.get(node.id)!.reference_total : undefined} /></Td>
                   <Td className="max-w-64">
                     <EditableText
                       value={node.collaborators}
                       onCommit={(collaborators) => onPatchNode(node.id, { collaborators })}
                       label={t(($) => $.node.collaborators)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
-                      displayClassName="text-caption"
+                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
                   <Td className="max-w-96">
@@ -556,8 +583,8 @@ export function CockpitTable({
                       onCommit={(deliverable) => onPatchNode(node.id, { deliverable })}
                       label={t(($) => $.node.deliverable)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
-                      displayClassName="text-caption"
+                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
                   <Td className="max-w-80">
@@ -566,8 +593,8 @@ export function CockpitTable({
                       onCommit={(current_progress) => onPatchNode(node.id, { current_progress })}
                       label={t(($) => $.node.current_progress)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
-                      displayClassName="text-caption"
+                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
                   <Td className="max-w-64">
@@ -576,12 +603,12 @@ export function CockpitTable({
                       onCommit={(dependencies) => onPatchNode(node.id, { dependencies })}
                       label={t(($) => $.node.dependencies)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
-                      displayClassName="text-caption"
+                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
                   <Td>
-                    <IssueCell links={linksByNode.get(node.id) ?? []} />
+                    <IssueCell count={taskCounts.get(node.id)} onOpen={() => onSelect(node.id)} />
                   </Td>
                   <Td>
                     <EditableTokens
@@ -591,7 +618,7 @@ export function CockpitTable({
                       suggestions={vendorSuggestions}
                       label={t(($) => $.node.vendor)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                     />
                   </Td>
                   <Td className="text-right">
@@ -600,7 +627,7 @@ export function CockpitTable({
                       onCommit={(budget_amount) => onPatchNode(node.id, { budget_amount })}
                       label={t(($) => $.node.budget)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                       className="text-right"
                     />
                   </Td>
@@ -611,7 +638,7 @@ export function CockpitTable({
                       suggestions={budgetCategorySuggestions}
                       label={t(($) => $.node.budget_category)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                     />
                   </Td>
                   <Td>
@@ -621,7 +648,7 @@ export function CockpitTable({
                       suggestions={execStatusSuggestions}
                       label={t(($) => $.node.exec_status)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                       renderDisplay={(value) =>
                         value ? (
                           <ExecStatusChip status={value} />
@@ -651,13 +678,14 @@ export function CockpitTable({
                       onCommit={(note) => onPatchNode(node.id, { note })}
                       label={t(($) => $.node.note)}
                       placeholder={emptyLabel}
-                      disabled={readOnly}
-                      displayClassName="text-caption"
+                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
                 </tr>
               );
             })}
+            {bottomSpace > 0 && <tr aria-hidden><td colSpan={21} style={{ height: bottomSpace, padding: 0 }} /></tr>}
           </tbody>
         </table>
       </div>

@@ -10,10 +10,14 @@ import { defaultStorage } from "../platform/storage";
 import { issueKeys } from "../issues/queries";
 import { chatKeys } from "../chat/queries";
 import { runtimeKeys } from "../runtimes/queries";
-import { workspaceWorkingAgentsKeys } from "../agents/queries";
+import { workspaceWorkingAgentsKeys, agentTasksKeys } from "../agents/queries";
 import { workspaceKeys } from "../workspace/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
+import { cockpitInputKeys } from "../cockpit/input-queries";
 import { cockpitKeys } from "../cockpit/queries";
+import { cockpitArtifactKeys } from "../cockpit/artifact-queries";
+import { cockpitScopeSelectorKeys } from "../cockpit/scope-selector-queries";
+import { cockpitActorLabelKeys } from "../cockpit/actor-queries";
 import type { CockpitBoard } from "../types";
 import {
   markWorkspaceDeletePending,
@@ -82,6 +86,97 @@ describe("useRealtimeSync — ws instance change", () => {
     invalidateSpy = vi.spyOn(qc, "invalidateQueries");
   });
 
+  it("invalidates current-workspace cockpit bindings when a remote project or module is deleted", () => {
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+    const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+    onAny({ type: "project:deleted", payload: { project_id: "p1" } } as never);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: cockpitKeys.board("ws-1") });
+    invalidateSpy.mockClear();
+    const onModuleDeleted = vi.mocked(ws.on).mock.calls.find(([type]) => type === "module:deleted")?.[1];
+    expect(onModuleDeleted).toBeDefined();
+    (onModuleDeleted as (payload: unknown) => void)({ module_id: "m1" });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: cockpitKeys.board("ws-1") });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: cockpitKeys.dashboard("ws-1") });
+  });
+
+  it("refreshes bounded assignee capabilities after agent, squad and runtime changes", () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createMockWs();
+      renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+      const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+      for (const type of ["agent:updated", "agent:archived", "squad:updated", "squad:deleted", "daemon:deleted"]) {
+        invalidateSpy.mockClear(); onAny({ type, payload: {} } as never); vi.advanceTimersByTime(150);
+        expect(invalidateSpy, type).toHaveBeenCalledWith({ queryKey: cockpitScopeSelectorKeys.all("ws-1") });
+        expect(invalidateSpy, type).toHaveBeenCalledWith({ queryKey: cockpitActorLabelKeys.all("ws-1") });
+        expect(invalidateSpy, type).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.surfaces("ws-1") });
+        expect(invalidateSpy, type).not.toHaveBeenCalledWith({ queryKey: cockpitScopeSelectorKeys.all("ws-2") });
+      }
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("refreshes overview responsibility, scope and category facts without invalidating another workspace", () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createMockWs();
+      renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+      const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+      for (const type of ["member:removed", "member:updated", "project:updated", "module:updated", "issue_status:updated", "agent:updated", "squad:deleted"]) {
+        invalidateSpy.mockClear();
+        onAny({ type, payload: {} } as never);
+        vi.advanceTimersByTime(150);
+        expect(invalidateSpy, type).toHaveBeenCalledWith({ queryKey: type.startsWith("member:") ? cockpitKeys.all("ws-1") : cockpitKeys.dashboard("ws-1") });
+        expect(invalidateSpy, type).not.toHaveBeenCalledWith({ queryKey: cockpitKeys.dashboard("ws-2") });
+      }
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
+  it("refreshes selected people and node choices after membership or scope changes", () => {
+    vi.useFakeTimers();
+    try {
+      const ws = createMockWs();
+      renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+      const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+      const local = [...cockpitKeys.surfaces("ws-1"), "scope-selectors", "members", "selected", "departed-user"];
+      const other = [...cockpitKeys.surfaces("ws-2"), "scope-selectors", "members", "selected", "departed-user"];
+      for (const type of ["member:removed", "member:updated", "project:updated", "project:deleted", "module:updated"]) {
+        qc.setQueryData(local, { items: [] });
+        qc.setQueryData(other, { items: [] });
+        onAny({ type, payload: {} } as never);
+        vi.advanceTimersByTime(150);
+        expect(qc.getQueryState(local)?.isInvalidated, type).toBe(true);
+        expect(qc.getQueryState(other)?.isInvalidated, type).toBe(false);
+      }
+      qc.setQueryData(local, { items: [] });
+      const onModuleDeleted = vi.mocked(ws.on).mock.calls.find(([type]) => type === "module:deleted")?.[1];
+      (onModuleDeleted as (payload: unknown) => void)({ module_id: "removed-module" });
+      expect(qc.getQueryState(local)?.isInvalidated).toBe(true);
+      expect(qc.getQueryState(other)?.isInvalidated).toBe(false);
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
+  it("refreshes a reclaimed Run preparation without replacing its fixed manifest or another Run", async () => {
+    const ws = createMockWs();
+    const run = cockpitInputKeys.run("ws-1", "run-1");
+    const otherRun = cockpitInputKeys.run("ws-1", "run-2");
+    const otherWorkspace = cockpitInputKeys.run("ws-2", "run-1");
+    const manifest = [...cockpitInputKeys.issue("ws-1", "issue-1"), "manifest-version", "fixed"];
+    for (const key of [run, otherRun, otherWorkspace, manifest]) qc.setQueryData(key, { manifestVersionId: "fixed", preparationState: "required_ready" });
+    renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+    const onAny = vi.mocked(ws.onAny).mock.calls[0]![0];
+    onAny({ type: "task:dispatch", payload: { task_id: "run-1" } } as never);
+    await waitFor(() => expect(qc.getQueryState(run)?.isInvalidated).toBe(true));
+    for (const key of [otherRun, otherWorkspace, manifest]) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+    expect(qc.getQueryData(run)).toEqual({ manifestVersionId: "fixed", preparationState: "required_ready" });
+  });
+
   it("skips invalidation on first non-null ws instance", () => {
     const ws = createMockWs();
     renderHook(() => useRealtimeSync(ws, stores), {
@@ -131,12 +226,18 @@ describe("useRealtimeSync — ws instance change", () => {
     // (17 workspace-scoped [incl. property definitions and modules] + 6
     // per-issue prefixes + the workspace working-agents projection + 5
     // per-chat prefixes + 1 workspaceKeys.list() + 1 cross-workspace inbox
-    // unread summary = 32 calls).
+    // unread summary + 1 agent task history/detail prefix + 1 input prefix = 34 calls).
     //
     // Awaited rather than counted synchronously: the inbox unread summary
     // refresh cancels any in-flight request before invalidating (see
-    // onInboxSummaryInvalidate), so that one lands after the synchronous ones.
-    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledTimes(32));
+    // onInboxSummaryInvalidate); input recovery also cancels its old reads first.
+    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledTimes(34));
+    expect(invalidateSpy.mock.calls.filter(([filters]: [InvalidateQueryFilters | undefined]) =>
+      JSON.stringify(filters?.queryKey) === JSON.stringify(agentTasksKeys.all("ws-1")),
+    )).toHaveLength(1);
+    expect(invalidateSpy.mock.calls.filter(([filters]: [InvalidateQueryFilters | undefined]) =>
+      JSON.stringify(filters?.queryKey) === JSON.stringify(cockpitInputKeys.all("ws-1")),
+    )).toHaveLength(1);
   });
 
   it("does not re-invalidate when rerendered with the same ws instance", () => {
@@ -264,7 +365,27 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(calls).toContainEqual(chatKeys.pendingTaskAll());
   });
 
+  it("recovers missed input progress on reconnect while preserving selected NAS observations", async () => {
+    const run = cockpitInputKeys.run("ws-1", "run-1");
+    const input = cockpitInputKeys.input("ws-1", "input-1");
+    const other = cockpitInputKeys.input("ws-2", "input-1");
+    const browse = [...cockpitInputKeys.browse("ws-1"), "entries", "selected-root"];
+    for (const key of [run, input, other, browse]) qc.setQueryData(key, { original: true });
+    const ws = createMockWs();
+    renderHook(() => useRealtimeSync(ws, stores), { wrapper: createWrapper(qc) });
+    vi.mocked(ws.onReconnect).mock.calls[0]![0]();
+    await waitFor(() => expect(qc.getQueryState(run)?.isInvalidated).toBe(true));
+    expect(qc.getQueryState(input)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(other)?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(browse)?.isInvalidated).toBe(false);
+    expect(qc.getQueryData(browse)).toEqual({ original: true });
+  });
+
   it("invalidates one issue attachment cache after detached channel media binds", () => {
+    const choices = cockpitArtifactKeys.sourceAttachments("ws-1", "artifact-1");
+    const fixed = cockpitArtifactKeys.version("ws-1", "artifact-1", "version-1");
+    qc.setQueryData(choices, { items: [] });
+    qc.setQueryData(fixed, { content: "Fixed evidence" });
     const ws = createMockWs();
     renderHook(() => useRealtimeSync(ws, stores), {
       wrapper: createWrapper(qc),
@@ -279,6 +400,8 @@ describe("useRealtimeSync — ws instance change", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: issueKeys.attachments("issue-1"),
     });
+    expect(qc.getQueryState(choices)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(fixed)?.isInvalidated).toBe(false);
   });
   // The cockpit board is edited by several people at once, and by agents
   // through the CLI. A frame carries the row that moved, so this must patch the

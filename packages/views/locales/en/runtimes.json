@@ -201,7 +201,7 @@
   "connect": {
     "title": "Add a computer",
     "description": "Run these two commands on the computer you want to add. We'll detect it the moment the daemon comes online.",
-    "step1_label": "Install the BayClaw CLI",
+    "step1_label": "Install the multica CLI",
     "platform_group": "Choose your platform",
     "platform_macos_linux": "macOS / Linux",
     "platform_windows": "Windows",
@@ -269,7 +269,7 @@
     "read_only": "Read-only",
     "read_only_title": "Only runtime owners and workspace admins can update the CLI.",
     "local_build": "Local build",
-    "local_build_title": "This runtime reports a non-release version, so Multica cannot tell whether an upgrade is available. Update it from the machine itself.",
+    "local_build_title": "This runtime reports a non-release version, so BayClaw cannot tell whether an upgrade is available. Update it from the machine itself.",
     "latest": "Latest",
     "available": "available",
     "action": "Update",

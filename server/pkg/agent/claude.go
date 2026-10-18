@@ -272,6 +272,30 @@ func (b *claudeBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 					sawAsyncLaunch = true
 				}
 			case "system":
+				if msg.Subtype == "init" && msg.ParentToolUseID == "" {
+					var tools []string
+					if err := json.Unmarshal(msg.Tools, &tools); err != nil {
+						tools = nil
+					}
+					for _, tool := range tools {
+						if tool == "" {
+							tools = nil
+							break
+						}
+					}
+					bashTool := "unknown"
+					if tools != nil {
+						bashTool = "missing"
+						for _, tool := range tools {
+							if tool == "Bash" {
+								bashTool = "available"
+								break
+							}
+						}
+					}
+					b.cfg.Logger.Info("claude initialized", "session_id", msg.SessionID,
+						"model", msg.Model, "tools", tools, "bash_tool", bashTool)
+				}
 				if msg.SessionID != "" {
 					sessionID = msg.SessionID
 				}
@@ -649,6 +673,7 @@ type claudeSDKMessage struct {
 	Subtype         string          `json:"subtype,omitempty"`
 	SessionID       string          `json:"session_id,omitempty"`
 	Model           string          `json:"model,omitempty"`
+	Tools           json.RawMessage `json:"tools,omitempty"`
 	ParentToolUseID string          `json:"parent_tool_use_id,omitempty"`
 
 	// result fields
@@ -1089,6 +1114,10 @@ func buildClaudeArgs(opts ExecOptions, logger *slog.Logger) []string {
 		// never sees the question (see GitHub #2588). User-facing
 		// clarification belongs in an issue comment instead.
 		"--disallowedTools", "AskUserQuestion",
+	}
+	if opts.ClaudeSettingsPath == "" {
+		// 兼容端点可能在延迟发现模式下漏掉执行工具；托管任务默认直接下发工具定义。
+		args = append(args, "--settings", `{"env":{"ENABLE_TOOL_SEARCH":"false"}}`)
 	}
 	if hasManagedMcpConfig(opts.McpConfig) {
 		// A saved agent-level config is authoritative, including an explicitly

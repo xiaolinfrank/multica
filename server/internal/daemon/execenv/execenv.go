@@ -168,6 +168,7 @@ type TaskContextForEnv struct {
 	// path would be a value that can drift from the folder it names.
 	ProjectCollabPath string
 	ModuleID          string // issue's module, when present; issue claims only
+	ModuleDirectory   *string
 	ModuleTitle       string
 	ModuleDescription string
 	ProjectResources  []ProjectResourceForEnv // resources attached to the project

@@ -1,0 +1,54 @@
+{
+  "status": "isolated_verified_not_resident_deployed",
+  "host": "fosun_agent_3",
+  "verified_at": "2026-10-10T17:16:43.395899+00:00",
+  "base_commit": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+  "overlay_files": {
+    "packages/views/cockpit/components/cockpit-minutes-nas.tsx": "465a15837258d20de9367f854d808f91ddeac321811e3187303f3696f7637451",
+    "packages/views/cockpit/components/cockpit-minutes-nas.test.tsx": "d819b67763366eff4a17aacc1f8d3143b2491a1398a7f106903f83942edd2f2b",
+    "e2e/cockpit-minutes-export.spec.ts": "6006a578ec1beef629c7d59d22e8ed24263ee6798b435bcdd33386ea61c16d95",
+    "packages/views/locales/en/cockpit.json": "88f10ec02c2dcd93bbcda77605023a685fcdff2b40f5dde5d15ca533564b06d7",
+    "packages/views/locales/zh-Hans/cockpit.json": "54fcbf344599eb93254e6ff59169ca987401d40b41d2e02051f0c57e6d116d6e",
+    "packages/views/locales/ja/cockpit.json": "fe6269bcb1a7ca0f4687a5d562544ef7f4b020846ab04c2ce00cce799bf21afb",
+    "packages/views/locales/ko/cockpit.json": "b105f5520bb4e26e06e6bf3c693bf3da321f06075d7a57cad26ccb7a4c49b8de"
+  },
+  "overlay_scope": "NAS success-card details only; locale patches restricted to nas namespace",
+  "build_id": "6xAS3GHtGynXxBWBns-Ei",
+  "ports": {
+    "api": 18880,
+    "web": 13800
+  },
+  "database": "multica_test schema994",
+  "checks": {
+    "core_typecheck": "passed on agent3",
+    "views_typecheck": "passed on agent3",
+    "nas_component_tests": 18,
+    "locale_parity_tests": 203,
+    "browser_cases": 1,
+    "browser_seconds": 6.1,
+    "new_assertions": [
+      "Verified copy and copy path remain immediately available",
+      "Export attempts absent before opening details",
+      "Opening details does not fetch attempts",
+      "Explicit Export attempts loads one bounded metadata page",
+      "Actual verified bytes/hash/receipt and idempotency unchanged"
+    ]
+  },
+  "cleanup": {
+    "isolated_api_web_stopped": true,
+    "workspace_export_attempt_counts": 0,
+    "owned_local_fixture_removed": true,
+    "real_nas_used": false,
+    "resident_changed": false,
+    "resident_commit": "7b670e5b75cf43caa3278a54e6971350704a26ef"
+  },
+  "screenshots": [
+    "nas-success-summary-collapsed.png",
+    "nas-success-details-expanded.png"
+  ],
+  "notes": [
+    "Runtime used only the frozen7b archive plus7 NAS files; incomplete9000+ core was not imported.",
+    "Locale overlay replaced nas namespace only.",
+    "Earlier221 targeted passes are a repeat of these same cases, not additional coverage."
+  ]
+}

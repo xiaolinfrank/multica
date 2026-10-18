@@ -96,6 +96,9 @@ func allowAllAgents(db.Agent) bool { return true }
 //     same unique index, so the assignee still ends up with one pending run.
 func (s *IssueService) WillEnqueueRun(ctx context.Context, in IssueTriggerInput, probe IssueTriggerProbe) (IssueRunTrigger, bool) {
 	issue := in.Issue
+	if err := GuardCockpitIssueExecution(ctx, s.Queries, issue.ID); err != nil {
+		return IssueRunTrigger{}, false
+	}
 	if !issue.AssigneeType.Valid || !issue.AssigneeID.Valid {
 		return IssueRunTrigger{}, false
 	}

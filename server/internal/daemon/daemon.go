@@ -7812,6 +7812,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		ProjectCollabPath:                task.ProjectCollabPath,
 		ModuleID:                         task.ModuleID,
 		ModuleTitle:                      task.ModuleTitle,
+		ModuleDirectory:                  task.ModuleDirectory,
 		ModuleDescription:                task.ModuleDescription,
 		ProjectResources:                 convertProjectResourcesForEnv(task.ProjectResources),
 		ChatSessionID:                    task.ChatSessionID,
@@ -8419,7 +8420,17 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// other errors use its existing FailTask + taskfailure.Classify path with the same
 	// "start task failed: <…>" string and the same failure_reason
 	// taxonomy as before — see MUL-2946 for the classifier contract.
+	task.preparedInputs, err = d.client.prepareFixedInputs(prepareCtx, task, taskTempDir, func(done, total int) {
+		_ = d.client.ReportProgress(prepareCtx, task.ID, fmt.Sprintf("Preparing fixed inputs: %d of %d checked", done, total), done, total)
+	})
+	if err != nil {
+		stopPrepareLease()
+		return TaskResult{}, fmt.Errorf("prepare fixed task inputs: %w", err)
+	}
 	var taskCapabilities []string
+	if task.preparedInputs != nil {
+		taskCapabilities = append(taskCapabilities, protocol.DaemonCapabilityFixedInputManifestV1)
+	}
 	if agent.SupportsTaskSupplement(provider, resolvedVersion) && task.IssueID != "" {
 		taskCapabilities = append(taskCapabilities, protocol.DaemonCapabilityTaskSupplementV1)
 	}

@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteCockpitIssuePrimaryByWorkspace = `-- name: DeleteCockpitIssuePrimaryByWorkspace :exec
+DELETE FROM cockpit_issue_primary WHERE workspace_id=$1
+`
+
+func (q *Queries) DeleteCockpitIssuePrimaryByWorkspace(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCockpitIssuePrimaryByWorkspace, workspaceID)
+	return err
+}
+
+const deleteCockpitMeetingActionsByWorkspace = `-- name: DeleteCockpitMeetingActionsByWorkspace :exec
+DELETE FROM cockpit_meeting_action WHERE workspace_id=$1
+`
+
+func (q *Queries) DeleteCockpitMeetingActionsByWorkspace(ctx context.Context, workspaceID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMeetingActionsByWorkspace, workspaceID)
+	return err
+}
+
 const deleteTaskBatch = `-- name: DeleteTaskBatch :exec
 WITH
 batch AS MATERIALIZED (

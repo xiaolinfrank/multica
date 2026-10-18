@@ -1,0 +1,149 @@
+{
+  "status": "Deployed to agent3 resident test environment; not production",
+  "host": "fosun_agent_3",
+  "actual_url": "http://localhost:23000/fosun-bio/cockpit",
+  "release": {
+    "frontend_commit": "48b5f3460",
+    "server_source_commit": "b2f191fc0453bde424f70e1fb549310c3b352f7c",
+    "api_sha256": "05a8c6ae05380854ac2c67aa2c52e5c0f069b9fb4dbbb80182ea0a18b7b6ef60",
+    "build_id": "On_k3y5Gqb8ky3ZIlS8J2",
+    "api_pid": 66262,
+    "web_pid": 66263,
+    "health": {
+      "status": "ok",
+      "pid": 66262,
+      "commit": "b2f191fc0",
+      "started_at": "2026-10-10T21:36:57Z"
+    },
+    "web_login": 200,
+    "schema": 9065,
+    "env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b",
+    "dev_run_sha256": "f9e525d4a8600c55d4a1d6bde226d7a7dcc9df53cfc08a6f85cb1114dbd8af13",
+    "nas_configuration_preserved": true,
+    "local_upload_cwd": "/Users/fosun_agent_3/var/multica-dev",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-operation-48b5f3460-20261010T213434Z"
+  },
+  "archive_sha256": "93d606c2900a5b84c5dfd9e6516adef49134e9b08e1030c1fe898cf6e32b5f48",
+  "migrator_sha256": "e1ef45e8efab5c47ee84cd345adb4638848438ff3b710d18df413239be406fb3",
+  "migration": {
+    "schema": 9065,
+    "ledger_before": 688,
+    "ledger_after": 754,
+    "applied_count": 66,
+    "range": "9000–9065",
+    "old_stems_and_timestamps_preserved": true,
+    "preserved_extra_stems": [
+      "128_self_host_source_channel",
+      "129_self_host_source_other",
+      "130_self_host_source_domain"
+    ],
+    "new_tables": 14,
+    "valid_ready_indexes": 50,
+    "prior_applied_source_hashes_matched": 685
+  },
+  "backup": {
+    "completed_at": "2026-10-10T21:34:41.791540+00:00",
+    "backup": "/Users/fosun_agent_3/var/multica-dev-backups/before-operation-48b5f3460-20261010T213434Z",
+    "dump_bytes": 66975052,
+    "dump_sha256": "46f489b3cbe141fa7de3f5d3eaef09e291aab652fc1b95827c15ac8970163d04",
+    "dump_entries": 993,
+    "counts": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "old_api_pid": 33181,
+    "old_web_pid": 41313,
+    "env_sha256": "6e4996f0a6e999ee9384a367fe59595494103496eae826670f13afb014699d7b"
+  },
+  "web_staging": {
+    "resident_build_id": "On_k3y5Gqb8ky3ZIlS8J2",
+    "resident_api_origin": "http://127.0.0.1:18080",
+    "public_api_same_origin": true,
+    "qa_build_restored": "-MLrV_otKmlKMLX7cdgXu",
+    "retained_old_static_files": 307,
+    "source_commit": "48b5f3460"
+  },
+  "verification": {
+    "resident_file_flow": "PASS: real private capture worker, signed bytes/hash, original attachment deleted, fixed copy retained, credential-free browser capability redemption.",
+    "resident_home": "PASS: same-origin context/artifact APIs, artifacts/acceptance capabilities true, Chinese light/dark rendering.",
+    "probe_runs": "First resident run: file PASS, home fixture title assertion failed after external setup without reload. Home repeated with explicit server reload and passed (2.2s). No product change.",
+    "probe_workspaces_remaining": 0,
+    "new_domain_business_counts": {
+      "cockpit_artifact": 0,
+      "cockpit_artifact_version": 0,
+      "cockpit_artifact_reviewer_handoff": 0,
+      "cockpit_artifact_capture": 0,
+      "cockpit_artifact_producer_assignment": 0,
+      "cockpit_artifact_node_reference": 0,
+      "cockpit_artifact_meeting_reference": 0,
+      "cockpit_acceptance_definition": 0,
+      "cockpit_acceptance_criterion": 0,
+      "cockpit_acceptance_request": 0,
+      "cockpit_acceptance_request_criterion": 0,
+      "cockpit_acceptance_evidence": 0,
+      "cockpit_acceptance_reviewer_handoff": 0
+    },
+    "counts_before": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "counts_after": {
+      "workspace": 55,
+      "project": 25,
+      "module": 18,
+      "issue": 556,
+      "cockpit_node": 252,
+      "cockpit_meeting": 28,
+      "attachment": 1462,
+      "cockpit_issue_primary": 0,
+      "cockpit_minutes_export": 0
+    },
+    "counts_unchanged": true,
+    "existing_entity_identity_hashes_unchanged": true,
+    "retained_deleted_capture_tombstones": [
+      {
+        "id": "01a127c1-ebd5-717a-a1a6-e5b0ff835306",
+        "workspace_id": "0d4c616c-39f4-4c64-a856-3fe6c7781db2",
+        "storage_key": "workspaces/0d4c616c-39f4-4c64-a856-3fe6c7781db2/artifact-versions/01a127c1-e6f8-7376-9775-ab8f47fd289c/01a127c1-ebd5-717a-a1a6-e5b0ff835306.txt",
+        "state": "verified",
+        "cleanup_status": "deleted",
+        "io_finished": true,
+        "next_cleanup_at": "2026-10-12T05:39:45.73903+08:00",
+        "file_exists": false,
+        "sidecar_exists": false
+      }
+    ],
+    "tombstone_policy": "The minimal finished-IO deletion record remains for 24-hour rechecks; no records were deleted to manufacture an empty ledger.",
+    "test_accounts": "Synthetic login accounts without workspace membership remain; no claim that the user table was emptied."
+  },
+  "cleanup": {
+    "qa_build_restored": "-MLrV_otKmlKMLX7cdgXu",
+    "qa_ports_18880_13800_closed": true,
+    "qa_profile_sha256": "729fd58ef500aba111638976d630cc7d58ffec9cd5bda7337d23da154ba8ecb0",
+    "resident_only_kept_running": true,
+    "no_temporary_font_proxy_or_new_forward_created": true,
+    "no_test_triggered_agent_runs": true,
+    "no_nas_business_operations": true,
+    "nas_configuration_preserved": true
+  },
+  "rollback_boundary": "Prefer frontend rollback while retaining the new backend. After private fixed files have existed, retain d1b8f0e86 anonymous namespace protection and 9064/9065 guards; never restore a bare 7b API over new upload data. No global down or automatic database restore over subsequent user writes.",
+  "screenshots": [
+    "resident-operation-light-zh.png",
+    "resident-operation-dark-zh.png"
+  ],
+  "raw_deployment_evidence": "/tmp/multica-operation-deployment-evidence"
+}

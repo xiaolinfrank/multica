@@ -157,6 +157,7 @@
     "./modals": "./modals/index.ts",
     "./onboarding": "./onboarding/index.ts",
     "./paths": "./paths/index.ts",
+    "./paths/workspace-start": "./paths/workspace-start.ts",
     "./hooks": "./hooks.tsx",
     "./hooks/*": "./hooks/*.ts",
     "./query-client": "./query-client.ts",

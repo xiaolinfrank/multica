@@ -17,12 +17,9 @@ import (
 // project and additionally files into one of that project's modules, so every
 // module reference here resolves within a project when one is given.
 //
-// A module has no collaboration-space path of its own, which is why no command
-// here takes --collab-path. Its deliverables belong in a folder named after the
-// module inside the project's 人机协作空间路径 (`multica project
-// --collab-path`), so the location follows from the module's title. Storing it
-// again per module would add a value that can drift from the folder it names,
-// and make re-cutting a project's modules a multi-place edit.
+// A module has no separate absolute collaboration root. Its stable relative
+// directory_name is joined to the project's collab_path. --directory-name
+// updates the binding without moving files or changing it on title edits.
 // ---------------------------------------------------------------------------
 
 var moduleCmd = &cobra.Command{
@@ -93,6 +90,7 @@ func init() {
 	// module update
 	moduleUpdateCmd.Flags().String("project", "", moduleProjectFlagHelp)
 	moduleUpdateCmd.Flags().String("title", "", "New title")
+	moduleUpdateCmd.Flags().String("directory-name", "", "Bind one relative delivery folder; does not move existing files")
 	moduleUpdateCmd.Flags().String("description", "", "New description; pass an empty string to clear")
 	moduleUpdateCmd.Flags().Float64("position", 0, "New position within the project's module order (lower sorts first)")
 	moduleUpdateCmd.Flags().String("output", "json", "Output format: table or json")
@@ -288,6 +286,10 @@ func runModuleUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	body := map[string]any{}
+	if cmd.Flags().Changed("directory-name") {
+		v, _ := cmd.Flags().GetString("directory-name")
+		body["directory_name"] = v
+	}
 	if cmd.Flags().Changed("title") {
 		v, _ := cmd.Flags().GetString("title")
 		body["title"] = v

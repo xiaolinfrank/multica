@@ -1,0 +1,1 @@
+DROP INDEX CONCURRENTLY IF EXISTS cockpit_agenda_reference_active_idx;

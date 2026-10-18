@@ -1,0 +1,37 @@
+CREATE TABLE cockpit_meeting_work_package (
+ workspace_id UUID NOT NULL,
+ meeting_id UUID NOT NULL,
+ revision BIGINT NOT NULL DEFAULT 1,
+ minutes_issue_id UUID NOT NULL,
+ reviewer_id UUID NOT NULL,
+ ended_at TIMESTAMPTZ,
+ materials_ready BOOLEAN NOT NULL DEFAULT false,
+ released_at TIMESTAMPTZ,
+ release_task_id UUID,
+ current_version_id UUID,
+ published_version_id UUID,
+ created_by UUID NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE cockpit_minutes_version (
+ id UUID NOT NULL,
+ workspace_id UUID NOT NULL,
+ meeting_id UUID NOT NULL,
+ version_number INTEGER NOT NULL,
+ submission_key UUID NOT NULL,
+ content TEXT NOT NULL,
+ content_hash TEXT NOT NULL,
+ source_issue_id UUID NOT NULL,
+ review_issue_id UUID NOT NULL,
+ reviewer_id UUID NOT NULL,
+ decision TEXT NOT NULL DEFAULT 'pending' CHECK (decision IN ('pending','approved','changes_requested','rejected')),
+ feedback TEXT NOT NULL DEFAULT '',
+ submitted_by_type TEXT NOT NULL,
+ submitted_by_id UUID NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ reviewed_by UUID,
+ reviewed_at TIMESTAMPTZ,
+ published_by UUID,
+ published_at TIMESTAMPTZ
+);

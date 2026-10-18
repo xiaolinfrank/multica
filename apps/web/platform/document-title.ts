@@ -13,7 +13,7 @@
  */
 
 /** Root fallback — the title of a page that has nothing more specific to say. */
-export const SITE_TITLE = "BayClaw —— 复星医药大湾区虚拟员工平台";
+export const SITE_TITLE = "BayClaw · 项目与任务执行工作台";
 
 /** Appended to every page-specific title. */
 export const TITLE_SUFFIX = " | BayClaw";

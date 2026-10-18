@@ -1,17 +1,19 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { installCockpitTestLayout } from "./test/cockpit-layout-test-fixture";
+import { beforeEach as beforeLayout, afterEach as afterLayout } from "vitest";
+let restoreLayout = () => {};
+beforeLayout(() => { restoreLayout = installCockpitTestLayout(); });
+afterLayout(() => restoreLayout());
+vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
+vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
+import { buildCockpitDisplayCodesFromIndex } from "@multica/core/cockpit";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
-import type { CockpitBoard, CockpitNode, CockpitPendingChange } from "@multica/core/types";
+import type { CockpitNode } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitTable } from "./cockpit-table";
-import { CockpitChanges } from "./cockpit-changes";
 
-vi.mock("@multica/core/api", () => ({ api: {
-  listCockpitChanges: vi.fn(), applyCockpitChange: vi.fn(),
-  createCockpitChange: vi.fn(), rejectCockpitChange: vi.fn(), withdrawCockpitChange: vi.fn(),
-} }));
-import { api } from "@multica/core/api";
 
 function node(id: string, overrides: Partial<CockpitNode> = {}): CockpitNode {
   return { id, cockpit_id: "cp", parent_id: null, code: id, name: id, position: 0,
@@ -29,13 +31,9 @@ function provider(children: React.ReactNode) {
 }
 function table(query = "") {
   const onSelect = vi.fn();
-  provider(<><input aria-label="Search the board" defaultValue={query} /><CockpitTable board={{ nodes, payments: [], issue_links: [] } as unknown as CockpitBoard} mode="tasks" query={query} rootIds={new Set()} selectedId={null} onSelect={onSelect} onPatchNode={vi.fn()} statusSuggestions={[]} execStatusSuggestions={[]} budgetCategorySuggestions={[]} ownerSuggestions={[]} vendorSuggestions={[]} /></>);
+  provider(<><input aria-label="Search the board" defaultValue={query} /><CockpitTable board={{ nodes, payments: [] }} displayCodes={buildCockpitDisplayCodesFromIndex(nodes)} contextNodeIds={new Set()} taskCounts={new Map()} mode="tasks" query={query} rootIds={new Set()} selectedId={null} onSelect={onSelect} onPatchNode={vi.fn()} statusSuggestions={[]} execStatusSuggestions={[]} budgetCategorySuggestions={[]} ownerSuggestions={[]} vendorSuggestions={[]} /></>);
   return onSelect;
 }
-function change(id: string): CockpitPendingChange {
-  return { id, cockpit_id: "cp", node_id: "leaf", node_code: "old-code", node_name: "Execution task", field: "status", old_value: "Not started", new_value: "In progress", source: "agent", reason: "", status: "pending", created_by_type: "agent", created_by_label: "Agent", decided_by_type: "", decided_by_label: "", decided_at: null, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" };
-}
-beforeEach(() => vi.clearAllMocks());
 describe("cockpit task table", () => {
   it("shows execution leaves with positional codes and ordered sticky scan columns", () => {
     table();
@@ -54,38 +52,5 @@ describe("cockpit task table", () => {
     expect(onSelect).not.toHaveBeenCalled();
     fireEvent.keyDown(search, { key: "Enter" });
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("leaf");
-  });
-});
-describe("cockpit pending review", () => {
-  it("groups root to task and awaits sequential batch decisions", async () => {
-    vi.mocked(api.listCockpitChanges).mockResolvedValue([change("a"), change("b")]);
-    let resolveFirst!: (result: { node: CockpitNode; change: CockpitPendingChange }) => void;
-    vi.mocked(api.applyCockpitChange).mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; })).mockResolvedValue({ node: nodes[2]!, change: { ...change("b"), status: "applied" } });
-    provider(<CockpitChanges wsId="ws" nodes={nodes} onOpenTask={vi.fn()} />);
-    const batch = await screen.findByRole("button", { name: "Apply all" });
-    expect(screen.getAllByText(/03 Programme/).length).toBeGreaterThan(0);
-    await waitFor(() => expect(batch).toBeEnabled());
-    fireEvent.click(batch);
-    expect(api.applyCockpitChange).not.toHaveBeenCalled();
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apply all" }));
-    await waitFor(() => expect(api.applyCockpitChange).toHaveBeenCalledExactlyOnceWith("a"));
-    expect(batch).toBeDisabled();
-    resolveFirst({ node: nodes[2]!, change: { ...change("a"), status: "applied" } });
-    await waitFor(() => expect(api.applyCockpitChange).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(api.applyCockpitChange).mock.calls[1]).toEqual(["b"]);
-  });
-  it("stops batch acceptance on failure without applying remaining proposals", async () => {
-    vi.mocked(api.listCockpitChanges).mockResolvedValue([change("a"), change("b")]);
-    vi.mocked(api.applyCockpitChange).mockRejectedValue(new Error("Conflict"));
-    provider(<CockpitChanges wsId="ws" nodes={nodes} onOpenTask={vi.fn()} />);
-    const batch = await screen.findByRole("button", { name: "Apply all" });
-    await waitFor(() => expect(batch).toBeEnabled());
-    fireEvent.click(batch);
-    expect(api.applyCockpitChange).not.toHaveBeenCalled();
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Apply all" }));
-    await waitFor(() => expect(api.applyCockpitChange).toHaveBeenCalledExactlyOnceWith("a"));
-    await waitFor(() => expect(batch).not.toBeDisabled());
   });
 });

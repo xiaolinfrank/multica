@@ -4,6 +4,7 @@ import (
 	"embed"
 	"io/fs"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -30,19 +31,6 @@ const (
 // two are pinned by the brief's rendered-output tests instead of a shared
 // symbol.
 const PlatformSkillName = "multica-platform"
-
-// builtinSkillSystemKey restricts a built-in skill to one product-defined
-// agent, keyed by that agent's system key. A skill absent from this map is
-// universal and every agent receives it.
-//
-// The scoping exists because a built-in skill costs every agent that receives
-// it: its description sits in the always-loaded skill listing, and its files
-// are written into every task's workdir. Mika's onboarding walkthrough is one
-// agent's procedure, not a platform contract, so shipping it workspace-wide
-// spent that budget on nine agents out of ten that can never use it.
-var builtinSkillSystemKey = map[string]string{
-	"multica-onboarding": MikaSystemKey,
-}
 
 // BuiltinSkills returns the platform's built-in skills for an agent with the
 // given system key (empty for an ordinary workspace agent), embedded at compile
@@ -90,9 +78,13 @@ func (s *TaskService) AllBuiltinSkills() []AgentSkillData {
 }
 
 func loadBuiltinSkills(agentSystemKey string) []AgentSkillData {
+	role := "worker"
+	if agentSystemKey == MikaSystemKey {
+		role = "mika"
+	}
+	names := BuiltinSkillNamesForRole(role)
 	return loadBuiltinSkillDirs(func(name string) bool {
-		want, scoped := builtinSkillSystemKey[name]
-		return !scoped || want == agentSystemKey
+		return slices.Contains(names, name)
 	})
 }
 

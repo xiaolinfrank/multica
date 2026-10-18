@@ -12,7 +12,6 @@ import {
   buildCockpitTree,
   computeCockpitFinanceRows,
   flattenCockpitTree,
-  groupIssueLinksByNode,
   groupPaymentsByNode,
   type CockpitTreeNode,
 } from "./model";
@@ -25,8 +24,9 @@ import {
  */
 function csvCell(value: unknown): string {
   const s = value == null ? "" : String(value);
+  if (typeof value === "number" && Number.isFinite(value)) return s;
   if (/^0\d/.test(s) && /^[\d.]+$/.test(s)) return `="${s}"`;
-  if (/^[=+\-@]/.test(s)) return `"'${s.replace(/"/g, '""')}"`;
+  if (/^[\t\r\n ]*[=+\-@]/.test(s)) return `"'${s.replace(/"/g, '""')}"`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -39,7 +39,16 @@ function layerLabel(depth: number): string {
   return `L${depth + 1}`;
 }
 
-function linkedIssues(links: Map<string, CockpitIssueLink[]>, node: CockpitNode): string {
+type CsvIssueLink = Pick<CockpitIssueLink, "node_id" | "issue_identifier">;
+export type CockpitCsvData = Pick<CockpitBoard, "nodes" | "payments"> & { issue_links: readonly CsvIssueLink[] };
+export interface CockpitCsvOptions { displayCodes?: ReadonlyMap<string, string>; contextNodeIds?: ReadonlySet<string> }
+function groupCsvLinks(links: readonly CsvIssueLink[]): Map<string, CsvIssueLink[]> {
+  const grouped = new Map<string, CsvIssueLink[]>();
+  for (const link of links) { const items = grouped.get(link.node_id); if (items) items.push(link); else grouped.set(link.node_id, [link]); }
+  return grouped;
+}
+
+function linkedIssues(links: Map<string, CsvIssueLink[]>, node: CockpitNode): string {
   return (links.get(node.id) ?? []).map((l) => l.issue_identifier).join(" ");
 }
 
@@ -47,16 +56,16 @@ function linkedIssues(links: Map<string, CockpitIssueLink[]>, node: CockpitNode)
  * The task ledger: every row of the tree, in board order, with every field the
  * node panel can edit. A BOM is prefixed so Excel on Windows opens it as UTF-8.
  */
-export function cockpitTasksCsv(board: CockpitBoard): string {
+export function cockpitTasksCsv(board: CockpitCsvData, options: CockpitCsvOptions = {}): string {
   const tree = buildCockpitTree(board.nodes);
-  const rows = flattenCockpitTree(tree);
+  const rows = flattenCockpitTree(tree).filter((entry) => !options.contextNodeIds?.has(entry.node.id));
   const paymentsByNode = groupPaymentsByNode(board.payments);
-  const linksByNode = groupIssueLinksByNode(board.issue_links);
+  const linksByNode = groupCsvLinks(board.issue_links);
   // The numbers a reader copies from the gantt must find the same rows here:
   // quote the shipped summary codes, not the stored history. A folded member
   // direction is not a gantt row and keeps its stored code.
   const summaryTree = buildCockpitSummaryTree(tree);
-  const displayCodes = buildCockpitDisplayCodes(summaryTree);
+  const displayCodes = options.displayCodes ?? buildCockpitDisplayCodes(summaryTree);
   const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
   const codeOf = (n: CockpitNode): string => displayCodes.get(n.id) ?? n.code;
   // Names too: a renamed direction ("院端一体机与部署") reads its shipped name
@@ -144,10 +153,10 @@ export function cockpitTasksCsv(board: CockpitBoard): string {
 }
 
 /** The spend ledger — one line per node that carries money. */
-export function cockpitFinanceCsv(board: CockpitBoard): string {
+export function cockpitFinanceCsv(board: CockpitCsvData, options: CockpitCsvOptions = {}): string {
   const tree: CockpitTreeNode[] = buildCockpitTree(board.nodes);
-  const linksByNode = groupIssueLinksByNode(board.issue_links);
-  const displayCodes = buildCockpitDisplayCodes(buildCockpitSummaryTree(tree));
+  const linksByNode = groupCsvLinks(board.issue_links);
+  const displayCodes = options.displayCodes ?? buildCockpitDisplayCodes(buildCockpitSummaryTree(tree));
   const codeOf = (n: CockpitNode): string => displayCodes.get(n.id) ?? n.code;
   const rootNumberOf = new Map(
     tree.map((root) => [root.node.code, displayCodes.get(root.node.id) ?? root.node.code]),
@@ -169,7 +178,7 @@ export function cockpitFinanceCsv(board: CockpitBoard): string {
       "分期付款",
     ]),
   ];
-  for (const row of computeCockpitFinanceRows(tree, board.payments)) {
+  for (const row of computeCockpitFinanceRows(tree, board.payments, options.contextNodeIds)) {
     out.push(
       csvRow([
         rootNumberOf.get(row.rootCode) ?? row.rootCode,

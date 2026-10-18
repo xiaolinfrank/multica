@@ -72,6 +72,7 @@ var corsAllowedHeaders = []string{
 	"Idempotency-Key",
 	"If-Match",
 	"X-Workspace-ID",
+	"X-Input-Transfer-Revision",
 	"X-Workspace-Slug",
 	"X-Request-ID",
 	"X-Agent-ID",
@@ -466,7 +467,11 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 	h.Fleet = fleet.New(fleet.LoadDevices())
 	if configFile := strings.TrimSpace(os.Getenv("MULTICA_LOCAL_DASHBOARD_CONFIG")); configFile != "" {
-		local, err := auth.LoadStarLocalDashboard(configFile, signupConfig.AppURL)
+		loadLocalDashboard := auth.LoadStarLocalDashboard
+		if os.Getenv("MULTICA_SINGLE_OWNER") == "true" {
+			loadLocalDashboard = auth.LoadSingleOwnerLocalDashboard
+		}
+		local, err := loadLocalDashboard(configFile, signupConfig.AppURL)
 		if err != nil {
 			slog.Error("local dashboard unavailable; verify private owner configuration")
 		} else {
@@ -1393,7 +1398,13 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// constructors return nil when rdb is nil — every consumer handles that
 	// as "no cache, always hit DB".
 	patCache := auth.NewPATCache(rdb)
+	if os.Getenv("MULTICA_SINGLE_OWNER") == "true" {
+		patCache = nil
+	}
 	daemonTokenCache := auth.NewDaemonTokenCache(rdb)
+	if os.Getenv("MULTICA_SINGLE_OWNER") == "true" {
+		daemonTokenCache = nil
+	}
 	h.PATCache = patCache
 	h.DaemonTokenCache = daemonTokenCache
 	h.MembershipCache = auth.NewMembershipCache(rdb)
@@ -1431,6 +1442,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 
 	// Global middleware
 	r.Use(chimw.RequestID)
+	r.Use(middleware.LocalMaintenance)
 	r.Use(middleware.ClientMetadata)
 	r.Use(middleware.RequestLogger)
 	if opts.HTTPMetrics != nil {
@@ -1518,6 +1530,15 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// The authenticated /api/attachments/{id}/download route below is
 	// unchanged — this one is purely additive.
 	r.Get("/api/attachments/{id}/signed-download", h.DownloadAttachmentWithCapability)
+	r.Get("/api/cockpit/artifact-files/{versionId}/download", h.DownloadCockpitArtifactSignedFile)
+	r.Get("/api/cockpit/input-files/{versionId}/download", h.DownloadCockpitInputSignedFile)
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.InputClaimAuth(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner, h.ValidateLocalSession), middleware.DaemonAuth(queries, patCache, daemonTokenCache, cloudPATVerifier)))
+		r.Get("/api/tasks/{taskId}/input-manifest", h.GetCockpitRunInputManifest)
+		r.Post("/api/tasks/{taskId}/input-preparation", h.RecordCockpitRunInputPreparation)
+		r.Get("/api/cockpit/issues/{issueId}/input-manifest/versions/{manifestVersionId}/items", h.ListCockpitInputManifestItems)
+		r.Post("/api/cockpit/inputs/{inputId}/versions/{versionId}/download-link", h.GetCockpitInputDownloadLink)
+	})
 
 	// Avatar serving. Public for the same reason as the capability download
 	// above: the auth cookie is SameSite=Strict, so an auth-gated URL cannot
@@ -1548,6 +1569,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.With(authRL).Get("/auth/star/start", h.StarSignIn)
 	r.With(authVerifyRL).Get("/auth/star/callback", h.StarCallback)
 	r.Post("/auth/logout", h.Logout)
+	r.Get("/auth/local/status", h.LocalAccountStatus)
+	r.Post("/auth/local/setup", h.SetupLocalAccount)
+	r.Post("/auth/local/login", h.LoginLocalAccount)
+	r.Post("/auth/local/recover", h.RecoverLocalAccount)
 
 	// Public API
 	r.Get("/api/config", h.GetConfig)
@@ -1669,7 +1694,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	// signed-in user's session and the installation header. Keeping it outside
 	// /v1 prevents the Public API from accepting session cookies.
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner))
+		r.Use(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner, h.ValidateLocalSession))
 		r.Route(pluginBridgePrefix, func(r chi.Router) {
 			registerPluginActionRoutes(r, h)
 			// ui / manual only. `event` is dispatched by the host off the event
@@ -1679,7 +1704,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	})
 
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner))
+		r.Use(middleware.Auth(queries, patCache, cloudPATVerifier, cfSigner, h.ValidateLocalSession))
 		r.Use(middleware.RefreshCloudFrontCookies(cfSigner))
 
 		// Plugin Action API. Called by the HOST PAGE on the signed-in user's
@@ -2061,6 +2086,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/", h.CreateIssue)
 				r.Post("/quick-create", h.QuickCreateIssue)
 				r.Post("/preview-trigger", h.PreviewIssueTrigger)
+				r.Post("/operation-basis", h.ReadIssueOperationBasis)
 				r.Post("/batch-update", h.BatchUpdateIssues)
 				r.Post("/batch-delete", h.BatchDeleteIssues)
 				r.Route("/{id}", func(r chi.Router) {
@@ -2117,7 +2143,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				})
 			})
 
-			// Task messages (user-facing, not daemon auth)
+			// Task details and messages (user-facing, not daemon auth)
+			r.Get("/api/tasks/{taskId}", h.GetTaskByUser)
 			r.Get("/api/tasks/{taskId}/messages", h.ListTaskMessagesByUser)
 			r.With(handler.RequireHumanActor).Post("/api/tasks/{taskId}/retry-source-context", h.RetrySourceContextQuickCreate)
 
@@ -2171,12 +2198,52 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 			// correct is a board that goes stale. Import replaces the whole
 			// board and is gated to owner/admin inside the handler.
 			r.Route("/api/cockpit", func(r chi.Router) {
+				registerCockpitInputRoutes(r, h)
+				r.Get("/artifacts", h.ListCockpitArtifacts)
+				r.With(handler.RequireHumanActor).Post("/artifacts", h.CreateCockpitArtifact)
+				r.Route("/artifacts/{artifactId}", func(r chi.Router) {
+					r.Get("/", h.GetCockpitArtifact)
+					r.With(handler.RequireHumanActor).Patch("/", h.EditCockpitArtifact)
+					r.Get("/versions", h.ListCockpitArtifactVersions)
+					r.Post("/versions", h.SubmitCockpitArtifactVersion)
+					r.Get("/versions/{versionId}", h.GetCockpitArtifactVersion)
+					r.With(handler.RequireHumanActor).Post("/versions/{versionId}/review", h.ReviewCockpitArtifactVersion)
+					r.With(handler.RequireHumanActor).Post("/versions/{versionId}/capture/retry", h.RetryCockpitArtifactCapture)
+					r.Get("/versions/{versionId}/download-link", h.GetCockpitArtifactDownloadLink)
+					r.Get("/versions/{versionId}/download", h.DownloadCockpitArtifactFile)
+					r.Get("/source-attachments", h.ListCockpitArtifactSourceAttachments)
+					r.With(handler.RequireHumanActor).Post("/producer", h.AssignCockpitArtifactProducer)
+					r.Get("/producer-history", h.ListCockpitArtifactProducerHistory)
+					r.With(handler.RequireHumanActor).Post("/reviewer", h.ReassignCockpitArtifactReviewer)
+					r.Get("/reviewer-handoffs", h.ListCockpitArtifactReviewerHandoffs)
+					r.With(handler.RequireHumanActor).Post("/archive", h.ArchiveCockpitArtifact)
+					r.With(handler.RequireHumanActor).Post("/unarchive", h.UnarchiveCockpitArtifact)
+					r.Get("/node-references", h.ListCockpitArtifactNodeReferences)
+					r.With(handler.RequireHumanActor).Post("/node-references", h.CreateCockpitArtifactNodeReference)
+					r.With(handler.RequireHumanActor).Delete("/node-references/{referenceId}", h.RemoveCockpitArtifactNodeReference)
+				})
+				r.Get("/context", h.GetCockpitSurfaceContext)
+				r.Get("/plan", h.GetCockpitPlanSurface)
+				r.Get("/plan/node-index", h.GetCockpitNodeIndex)
+				r.Get("/plan/export-data", h.GetCockpitPlanExport)
+				r.Post("/plan/meetings/query", h.GetCockpitPlanMeetingMarkers)
+				r.Get("/scopes/projects", h.ListCockpitScopeProjects)
+				r.Get("/scopes/modules", h.ListCockpitScopeModules)
+				r.Get("/scopes/nodes", h.ListCockpitScopeNodes)
+				r.Get("/scopes/members", h.ListCockpitScopeMembers)
+				r.Get("/scopes/assignees", h.ListCockpitAssigneeChoices)
+				r.Get("/overview", h.GetCockpitOverview)
+				r.Get("/overview/attention", h.ListCockpitOverviewAttention)
+				r.Get("/overview/execution", h.ListCockpitOverviewExecution)
+				r.Get("/overview/meetings", h.ListCockpitOverviewMeetings)
 				r.Get("/", h.GetCockpit)
 				r.Get("/changes", h.ListCockpitChanges)
+				r.Get("/changes/page", h.ListCockpitChangePage)
 				r.Post("/changes", h.CreateCockpitChange)
 				// Batch funnel for agent write-backs; see cockpit_changes.go.
 				r.Post("/changes/ingest", h.IngestCockpitChanges)
 				r.Route("/changes/{changeId}", func(r chi.Router) {
+					r.Get("/preview", h.GetCockpitChangePreview)
 					r.Post("/apply", h.ApplyCockpitChange)
 					r.Post("/reject", h.RejectCockpitChange)
 					r.Post("/withdraw", h.WithdrawCockpitChange)
@@ -2184,8 +2251,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Patch("/", h.UpdateCockpit)
 				r.Put("/import", h.ImportCockpit)
 				r.Get("/snapshots", h.ListCockpitSnapshots)
+				r.Get("/snapshots/page", h.ListCockpitSnapshotPage)
 				r.Post("/snapshots", h.CreateCockpitSnapshot)
 				r.Route("/snapshots/{snapshotId}", func(r chi.Router) {
+					r.Get("/diff", h.GetCockpitSnapshotDiff)
 					r.Post("/restore", h.RestoreCockpitSnapshot)
 					r.Delete("/", h.DeleteCockpitSnapshot)
 				})
@@ -2194,12 +2263,37 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// regardless of registration order.
 				r.Get("/nodes/next-code", h.GetCockpitNextNodeCode)
 				r.Post("/nodes", h.CreateCockpitNode)
+				r.Get("/issues/{issueId}/primary-node", h.GetCockpitIssuePrimaryNode)
+				r.Get("/issues/{issueId}/actions", h.ListCockpitIssueActionSources)
+				r.Get("/issues/{issueId}/artifacts", h.ListCockpitIssueArtifactContexts)
+				r.Get("/issues/{issueId}/nodes", h.ListCockpitIssueNodeReferences)
+				r.Get("/issues/{issueId}/meetings", h.ListCockpitIssueMeetingReferences)
+				r.Delete("/issues/{issueId}/nodes/{nodeId}", h.RemoveCockpitIssueNodeReference)
+				r.Delete("/issues/{issueId}/meetings/{meetingId}", h.RemoveCockpitIssueMeetingReference)
+				r.With(handler.RequireHumanActor).Put("/issues/{issueId}/primary-node", h.SetCockpitIssuePrimaryNode)
 				r.Route("/nodes/{id}", func(r chi.Router) {
+					r.Get("/acceptance", h.GetCockpitAcceptance)
+					r.Get("/acceptance/criteria", h.GetCockpitAcceptanceCriteria)
+					r.With(handler.RequireHumanActor).Put("/acceptance/criteria", h.SaveCockpitAcceptanceCriteria)
+					r.Get("/acceptance/requests", h.ListCockpitAcceptanceRequests)
+					r.With(handler.RequireHumanActor).Post("/acceptance/requests", h.CreateCockpitAcceptanceRequest)
+					r.Get("/acceptance/requests/{requestId}", h.GetCockpitAcceptanceRequest)
+					r.With(handler.RequireHumanActor).Post("/acceptance/requests/{requestId}/review", h.ReviewCockpitAcceptanceRequest)
+					r.With(handler.RequireHumanActor).Post("/acceptance/revoke", h.RevokeCockpitAcceptanceApproval)
+					r.With(handler.RequireHumanActor).Post("/acceptance/requests/{requestId}/reviewer", h.ReassignCockpitAcceptanceReviewer)
+					r.Get("/acceptance/reviewer-handoffs", h.ListCockpitAcceptanceReviewerHandoffs)
+					r.Get("/", h.GetCockpitSurfaceNode)
+					r.Get("/payments", h.ListCockpitNodePayments)
+					r.Get("/meetings", h.ListCockpitNodeMeetings)
 					r.Patch("/", h.UpdateCockpitNode)
+					r.Get("/operation-basis", h.GetNodeOperationBasis)
 					r.Delete("/", h.DeleteCockpitNode)
 					r.Put("/issues", h.SetCockpitNodeIssues)
+					r.Post("/issues", h.AppendCockpitNodeIssue)
 					r.Delete("/issues/{issueId}", h.DeleteCockpitNodeIssue)
 					r.Post("/payments", h.CreateCockpitPayment)
+					r.Get("/tasks", h.ListCockpitNodeTasks)
+					r.With(handler.RequireHumanActor).Post("/tasks", h.CreateCockpitNodeTask)
 				})
 				r.Route("/payments/{paymentId}", func(r chi.Router) {
 					r.Patch("/", h.UpdateCockpitPayment)
@@ -2214,24 +2308,96 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// Upsert is a batch because the meeting form's auto-save can carry
 				// several fresh names in one save.
 				r.Get("/directory", h.ListCockpitDirectory)
+				r.Get("/directory/page", h.ListCockpitDirectoryPage)
+				r.Get("/directory-roots", h.ListCockpitDirectoryRoots)
+				r.Get("/directory-roots/{rootId}", h.GetCockpitDirectoryRoot)
 				r.Put("/directory", h.UpsertCockpitDirectory)
 				r.Delete("/directory", h.DeleteCockpitDirectoryEntry)
 				r.Get("/meetings/destination", h.GetCockpitMeetingDestination)
+				r.Get("/meetings/next-code", h.GetCockpitMeetingNextCode)
 				// Reads the archive folder for meetings nobody recorded, and
 				// turns the chosen ones into rows.
 				r.Get("/meetings/scan", h.ScanCockpitMeetingFolders)
 				r.Post("/meetings/import", h.ImportCockpitMeetingFolders)
 				r.Post("/meetings", h.CreateCockpitMeeting)
+				r.Get("/meetings", h.ListCockpitMeetingRegister)
 				r.Route("/meetings/{meetingId}", func(r chi.Router) {
+					r.Get("/directory-preparation", h.GetCockpitMeetingDirectory)
+					r.Get("/directory-preparations", h.ListCockpitDirectoryOperations)
+					r.Post("/directory-preparations/preview", h.PreviewCockpitMeetingDirectory)
+					r.Post("/directory-preparations", h.CreateCockpitMeetingDirectory)
+					r.Route("/directory-preparations/{operationId}", func(r chi.Router) {
+						r.Get("/", h.GetCockpitDirectoryOperation)
+						r.Get("/steps", h.ListCockpitDirectorySteps)
+						r.Get("/steps/{stepId}/attempts", h.ListCockpitDirectoryAttempts)
+						r.Get("/steps/{stepId}/attempts/{attemptId}", h.GetCockpitDirectoryAttempt)
+						r.Post("/retry-preview", h.PreviewCockpitDirectoryRetry)
+						r.Post("/retry", h.RetryCockpitDirectoryOperation)
+						r.Post("/control", h.ControlCockpitDirectoryOperation)
+					})
+					r.Get("/preparation-operations", h.ListCockpitPreparationOperations)
+					r.Route("/preparation-operations/{operationId}", func(r chi.Router) {
+						r.Get("/", h.GetCockpitPreparationOperation)
+						r.Get("/effects", h.ListCockpitPreparationEffects)
+						r.Get("/effects/{effectId}", h.GetCockpitPreparationEffect)
+						r.Get("/effects/{effectId}/authorization-preview", h.PreviewCockpitPreparationReauthorization)
+						r.With(handler.RequireHumanActor).Post("/effects/{effectId}/reauthorize", h.ReauthorizeCockpitPreparationEffect)
+						r.With(handler.RequireHumanActor).Post("/effects/{effectId}/apply", h.ApplyCockpitPreparationEffect)
+						r.With(handler.RequireHumanActor).Post("/control", h.ControlCockpitPreparationOperation)
+					})
+					r.Get("/cancellation-impact", h.ListCockpitCancellationImpact)
+					r.Get("/cancellation-impact/{issueId}/runs", h.ListCockpitDispositionRuns)
+					r.Post("/cancellation/preview", h.PreviewCockpitMeetingCancellation)
+					r.With(handler.RequireHumanActor).Post("/cancellation", h.CancelCockpitMeeting)
+					r.With(handler.RequireHumanActor).Post("/cancellation/dispositions", h.AppendCockpitMeetingDisposition)
+					r.With(handler.RequireHumanActor).Post("/lifecycle/disposition", h.ChangeCockpitMeetingDisposition)
+					r.Get("/operation-basis", h.GetCockpitMeetingOperationBasis)
+					r.Get("/", h.GetCockpitSurfaceMeeting)
+					r.Get("/issues", h.ListCockpitMeetingIssuePage)
+					r.Get("/nodes", h.ListCockpitMeetingNodePage)
 					r.Patch("/", h.UpdateCockpitMeeting)
 					r.Delete("/", h.DeleteCockpitMeeting)
 					// Opens the meeting's task and creates its folder. Separate
 					// from the create above so either can be retried alone.
 					r.Post("/provision", h.ProvisionCockpitMeeting)
 					r.Put("/issues", h.SetCockpitMeetingIssues)
+					r.Post("/issues", h.AppendCockpitMeetingIssue)
+					r.Put("/issues/{issueId}/roles", h.SetCockpitMeetingIssueRoles)
 					r.Delete("/issues/{issueId}", h.DeleteCockpitMeetingIssue)
 					r.Put("/nodes", h.SetCockpitMeetingNodes)
+					r.Post("/nodes", h.AppendCockpitMeetingNode)
 					r.Delete("/nodes/{nodeId}", h.DeleteCockpitMeetingNode)
+					r.Get("/lifecycle", h.GetCockpitMeetingLifecycle)
+					r.Get("/lifecycle/commands", h.ListCockpitMeetingLifecycleCommands)
+					r.Get("/lifecycle/commands/{commandKey}", h.GetCockpitMeetingLifecycleCommand)
+					r.With(handler.RequireHumanActor).Post("/lifecycle/occurrence", h.ChangeCockpitMeetingOccurrence)
+					r.With(handler.RequireHumanActor).Post("/lifecycle/materials", h.ConfirmCockpitMeetingMaterials)
+					r.Get("/workflow", h.GetCockpitMeetingWorkflow)
+					r.Get("/workflow/summary", h.GetCockpitWorkflowSummary)
+					r.Get("/workflow/versions", h.ListCockpitMinutesVersionHistory)
+					r.Get("/workflow/versions/{versionId}", h.GetCockpitMinutesVersionDetail)
+					r.Get("/workflow/reviewer-handoffs", h.ListCockpitReviewerHandoffHistory)
+					r.Get("/workflow/exports", h.ListCockpitNASExportHistory)
+					r.Get("/workflow/exports/{exportId}/attempts", h.ListCockpitNASExportAttempts)
+					r.With(handler.RequireHumanActor).Post("/workflow", h.EnableCockpitMeetingWorkflow)
+					r.With(handler.RequireHumanActor).Post("/workflow/bindings", h.BindCockpitMeetingMinutesIssue)
+					r.With(handler.RequireHumanActor).Delete("/workflow/bindings/{issueId}", h.UnbindCockpitMeetingMinutesIssue)
+					r.With(handler.RequireHumanActor).Post("/workflow/focus", h.FocusCockpitMeetingMinutesIssue)
+					r.With(handler.RequireHumanActor).Patch("/workflow", h.UpdateCockpitMeetingReadiness)
+					r.With(handler.RequireHumanActor).Post("/workflow/release", h.ReleaseCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/reviewer", h.ChangeCockpitMeetingReviewer)
+					r.Post("/workflow/versions", h.SubmitCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/review", h.ReviewCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/publish", h.PublishCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/unpublish", h.UnpublishCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/nas-export", h.ExportCockpitMeetingMinutes)
+					r.With(handler.RequireHumanActor).Post("/workflow/exports/{exportId}/retry", h.RetryCockpitMinutesExport)
+					r.Get("/workflow/actions", h.ListCockpitMeetingActions)
+					r.Get("/workflow/actions/{actionId}", h.GetCockpitMeetingAction)
+					r.With(handler.RequireHumanActor).Post("/workflow/versions/{versionId}/actions", h.CreateCockpitMeetingAction)
+					r.With(handler.RequireHumanActor).Patch("/workflow/actions/{actionId}", h.UpdateCockpitMeetingAction)
+					r.With(handler.RequireHumanActor).Post("/workflow/actions/{actionId}/resolve", h.ResolveCockpitMeetingAction)
+					r.With(handler.RequireHumanActor).Post("/workflow/actions/{actionId}/revise", h.ReviseCockpitMeetingActionResolution)
 				})
 			})
 
@@ -2241,6 +2407,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/", h.ListProjects)
 				r.Post("/", h.CreateProject)
 				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/operation-basis", h.GetProjectOperationBasis)
 					r.Get("/", h.GetProject)
 					r.Put("/", h.UpdateProject)
 					r.Delete("/", h.DeleteProject)
@@ -2259,6 +2426,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Post("/", h.CreateModule)
 				r.Put("/reorder", h.ReorderModules)
 				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/operation-basis", h.GetModuleOperationBasis)
 					r.Get("/", h.GetModule)
 					r.Put("/", h.UpdateModule)
 					r.Delete("/", h.DeleteModule)

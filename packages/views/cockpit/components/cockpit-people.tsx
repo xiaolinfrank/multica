@@ -17,15 +17,17 @@ import { useMemo } from "react";
 import type { MemberWithUser } from "@multica/core/types";
 import { cn } from "@multica/ui/lib/utils";
 
+export type CockpitMember = Pick<MemberWithUser, "user_id" | "name" | "avatar_url"> & Partial<Pick<MemberWithUser, "email" | "role">>;
+
 export interface CockpitPeople {
   /** Member display names, in the order the workspace lists them. */
   names: string[];
-  byName: Map<string, MemberWithUser>;
+  byName: Map<string, CockpitMember>;
 }
 
-export function useCockpitPeople(members: MemberWithUser[]): CockpitPeople {
+export function useCockpitPeople(members: CockpitMember[]): CockpitPeople {
   return useMemo(() => {
-    const byName = new Map<string, MemberWithUser>();
+    const byName = new Map<string, CockpitMember>();
     const names: string[] = [];
     for (const member of members) {
       const name = member.name.trim();
@@ -40,7 +42,7 @@ export function useCockpitPeople(members: MemberWithUser[]): CockpitPeople {
 }
 
 /** The person's initial, or their picture when the account has one. */
-function PersonAvatar({ member, name }: { member?: MemberWithUser; name: string }) {
+function PersonAvatar({ member, name }: { member?: CockpitMember; name: string }) {
   if (member?.avatar_url) {
     return (
       <img
@@ -70,7 +72,7 @@ export function CockpitPersonLabel({
   chip,
 }: {
   name: string;
-  member?: MemberWithUser;
+  member?: CockpitMember;
   /** Show the account's address, to tell two people of the same name apart. */
   withEmail?: boolean;
   /** Render as a chip, for a list of attendees rather than one organiser. */
@@ -85,7 +87,7 @@ export function CockpitPersonLabel({
     >
       <PersonAvatar member={member} name={name} />
       <span className="truncate">{name}</span>
-      {withEmail && member && (
+      {withEmail && member?.email && (
         <span className="max-w-32 truncate text-micro text-muted-foreground">{member.email}</span>
       )}
     </span>

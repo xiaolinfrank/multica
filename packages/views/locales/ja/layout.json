@@ -37,8 +37,8 @@
   "help": {
     "trigger": "ヘルプ",
     "download_desktop": "デスクトップ版",
-    "docs": "ドキュメント",
-    "changelog": "変更ログ",
+    "docs": "Multica 上流の技術資料",
+    "changelog": "Multica 上流の変更履歴",
     "feedback": "フィードバック",
     "server_version": "サーバーバージョン {{version}}"
   },

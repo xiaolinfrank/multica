@@ -1,5 +1,7 @@
 "use client";
 
+import { preferredWorkspacePath } from "@multica/core/paths";
+
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -55,7 +57,7 @@ export default function Page() {
               paths.workspace(ws.slug).issueDetail(destination.issueId),
             );
           } else if (ws) {
-            router.push(paths.workspace(ws.slug).issues());
+            router.push(preferredWorkspacePath(ws.slug));
           } else {
             router.push(paths.root());
           }

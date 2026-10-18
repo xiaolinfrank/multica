@@ -23,6 +23,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setApiInstance } from "@multica/core/api";
+import { issueOperationPageFixture } from "../operation-basis-test-fixture";
 import { useModalStore } from "@multica/core/modals";
 import type { ApiClient } from "@multica/core/api/client";
 import { issueKeys } from "@multica/core/issues/queries";
@@ -294,6 +295,7 @@ describe("TableView cell editors under data refresh", () => {
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
     setApiInstance({
+      getIssueOperationBasis: async (wsId: string, ids: string[]) => issueOperationPageFixture(wsId, ids),
       listProperties: async () => ({ properties: [] }),
       listMembers: async () => [],
       listAgents: async () => [],

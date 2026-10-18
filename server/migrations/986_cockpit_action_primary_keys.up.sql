@@ -1,0 +1,2 @@
+ALTER TABLE cockpit_issue_primary ADD CONSTRAINT cockpit_issue_primary_pkey PRIMARY KEY USING INDEX cockpit_primary_issue_idx;
+ALTER TABLE cockpit_meeting_action ADD CONSTRAINT cockpit_meeting_action_pkey PRIMARY KEY USING INDEX cockpit_action_id_idx;

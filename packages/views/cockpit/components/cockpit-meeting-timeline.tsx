@@ -10,7 +10,8 @@
 // it, so a pixel decision here can never disagree with the tested one.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CockpitMeeting } from "@multica/core/types";
+import { useReducedMotion } from "motion/react";
+import type { CockpitMeetingCard } from "@multica/core/types";
 import type { CockpitTimelineGroup } from "@multica/core/cockpit";
 import {
   buildCockpitMeetingTimeline,
@@ -70,8 +71,8 @@ const ZOOM_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** Transition shorthand: 0 means "follow the gesture", anything larger is the
  *  eased zoom. Lists the box properties a scale change moves, so a card's
  *  hover transform keeps its own quick timing in TimelineCard. */
-function zoomTransition(ms: number, props: string[]): string | undefined {
-  if (ms <= 0) return undefined;
+function zoomTransition(ms: number, props: string[]): string {
+  if (ms <= 0) return "none";
   return props.map((p) => `${p} ${ms}ms ${ZOOM_EASE}`).join(", ");
 }
 
@@ -85,20 +86,15 @@ const LANE_GEOM = {
 };
 
 export interface CockpitMeetingTimelineProps {
-  meetings: CockpitMeeting[];
+  meetings: CockpitMeetingCard[];
   today: string;
   selectedId: string | null;
   onSelect: (meetingId: string) => void;
 }
 
 /** What a card says about what the meeting produced, and with which icon. */
-function consensusOf(meeting: CockpitMeeting): { icon: "decision" | "agenda"; text: string } | null {
-  const firstLine = (value: string) => value.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
-  const decision = firstLine(meeting.decisions) || firstLine(meeting.actions);
-  if (decision) return { icon: "decision", text: decision };
-  const agenda = firstLine(meeting.note);
-  if (agenda) return { icon: "agenda", text: agenda };
-  return null;
+function consensusOf(meeting: CockpitMeetingCard): { icon: "decision" | "agenda"; text: string } | null {
+  return meeting.display_excerpt ? { icon: "agenda", text: meeting.display_excerpt } : null;
 }
 
 /**
@@ -117,8 +113,9 @@ function TimelineCard({
   selectedId,
   onSelect,
   zoomMs,
+  reduceMotion,
 }: {
-  group: CockpitTimelineGroup;
+  group: CockpitTimelineGroup<CockpitMeetingCard>;
   x: number;
   side: "above" | "below";
   row: number;
@@ -128,6 +125,7 @@ function TimelineCard({
   onSelect: (id: string) => void;
   /** >0 eases position changes (mode switch); 0 follows a pinch gesture. */
   zoomMs: number;
+  reduceMotion: boolean;
 }) {
   const { t } = useT("cockpit");
   const [open, setOpen] = useState(false);
@@ -147,8 +145,9 @@ function TimelineCard({
 
   const cardClassName = cn(
     "group/card absolute z-10 flex -translate-x-1/2 flex-col justify-center gap-0.5 overflow-hidden rounded-lg border bg-card px-2 py-1 text-left",
-    "shadow-xs transition-all duration-150 hover:z-20 hover:shadow-md",
-    side === "above" ? "hover:-translate-y-0.5" : "hover:translate-y-0.5",
+    "shadow-xs hover:z-20",
+    !selected && "hover:shadow-md",
+    !reduceMotion && (side === "above" ? "hover:-translate-y-0.5" : "hover:translate-y-0.5"),
     "focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
     cancelled && "opacity-50",
   );
@@ -163,8 +162,8 @@ function TimelineCard({
     ...(selected ? { boxShadow: `0 0 0 1.5px ${laneColor}` } : {}),
     // The zoom glides the box properties; hover's transform keeps its own
     // quick timing so the card still feels responsive mid-zoom.
-    transition: [
-      zoomTransition(zoomMs, ["left", "top", "bottom"]),
+    transition: reduceMotion ? "none" : [
+      zoomMs > 0 ? zoomTransition(zoomMs, ["left", "top", "bottom"]) : undefined,
       "transform 150ms ease, box-shadow 150ms ease",
     ]
       .filter(Boolean)
@@ -364,6 +363,7 @@ export function CockpitMeetingTimeline({
 }: CockpitMeetingTimelineProps) {
   const { t } = useT("cockpit");
   const locale = useLocale();
+  const reduceMotion = useReducedMotion() === true;
   const captureRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [boxWidth, setBoxWidth] = useState(0);
@@ -380,7 +380,7 @@ export function CockpitMeetingTimeline({
   /** Pinch zooms track the gesture frame-by-frame; buttons and the mode
    *  switch glide. Set by whichever interaction ran last. */
   const [instant, setInstant] = useState(false);
-  const zoomMs = mounted && !instant ? ZOOM_MS : 0;
+  const zoomMs = mounted && !instant && !reduceMotion ? ZOOM_MS : 0;
 
   const timeline = useMemo(() => buildCockpitMeetingTimeline(meetings, today), [meetings, today]);
 
@@ -404,8 +404,6 @@ export function CockpitMeetingTimeline({
   /** Where a pinch is anchored: the domain fraction under the cursor, kept
    *  still by compensating scrollLeft once the new density has rendered. */
   const anchorRef = useRef<{ frac: number; mouseX: number } | null>(null);
-
-  useEffect(() => setMounted(true), []);
 
   // The scrollable box only exists once the board has dated meetings (the
   // empty state renders no scroller), so effects that attach to it re-run
@@ -450,13 +448,15 @@ export function CockpitMeetingTimeline({
       anchor.frac * canvasPx + LANE_LABEL_PX + LANE_PAD_PX - anchor.mouseX;
   }, [canvasPx, fit]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    setMounted(false);
     const box = scrollRef.current;
     if (!box) return;
     const observer = new ResizeObserver(() => setBoxWidth(box.clientWidth));
     observer.observe(box);
     setBoxWidth(box.clientWidth);
-    return () => observer.disconnect();
+    const frame = requestAnimationFrame(() => setMounted(true));
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [hasLanes]);
 
   const ticks = useMemo(
@@ -524,7 +524,7 @@ export function CockpitMeetingTimeline({
     if (!box || todayX === null) return;
     box.scrollTo({
       left: LANE_LABEL_PX + LANE_PAD_PX + todayX - box.clientWidth / 2,
-      behavior: "smooth",
+      behavior: reduceMotion ? "auto" : "smooth",
     });
   };
 
@@ -556,10 +556,10 @@ export function CockpitMeetingTimeline({
   const anyTrack = timeline.lanes.some((lane) => lane.track !== "");
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* The view's own toolbar: scale, "back to today", and the PNG a review
           deck is made of. Kept out of the capture ref below. */}
-      <div className="flex items-center justify-end gap-2 px-4 pb-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 px-4 pb-2">
         {todayX !== null && !fit && (
           <Button variant="ghost" size="sm" className="h-7 gap-1 px-2" onClick={scrollToToday}>
             <Crosshair className="size-3.5" />
@@ -656,11 +656,11 @@ export function CockpitMeetingTimeline({
         </Button>
       </div>
 
-      <div ref={captureRef} className="flex min-h-0 flex-1 flex-col" data-cockpit-timeline>
-        <div ref={scrollRef} data-cockpit-scroll className="min-h-0 flex-1 overflow-auto">
+      <div ref={captureRef} className="flex min-h-0 min-w-0 flex-1 flex-col" data-cockpit-timeline>
+        <div ref={scrollRef} data-cockpit-scroll className="min-h-0 min-w-0 flex-1 overflow-auto">
           <div style={{ width: LANE_LABEL_PX + LANE_PAD_PX * 2 + canvasPx, minWidth: "100%" }}>
             {/* The axis: ticks on a strip the lanes share. */}
-            <div className="sticky top-0 z-30 flex bg-card/95 backdrop-blur-xs">
+            <div className="sticky top-0 z-30 flex bg-card">
               <div
                 className="sticky left-0 z-40 shrink-0 border-b border-border bg-card"
                 style={{ width: LANE_LABEL_PX }}
@@ -797,6 +797,7 @@ export function CockpitMeetingTimeline({
                               selectedId={selectedId}
                               onSelect={onSelect}
                               zoomMs={zoomMs}
+                              reduceMotion={reduceMotion}
                             />
                           );
                         })}

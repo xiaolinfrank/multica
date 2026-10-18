@@ -1,4 +1,6 @@
 "use client";
+
+import { preferredWorkspacePath } from "@multica/core/paths";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 
 import { issueStatusCategory } from "@multica/core/issues";
@@ -27,6 +29,7 @@ import { Layers,
   X,
 } from "lucide-react";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
+import { BayClawBrand } from "@multica/ui/components/common/bayclaw-brand";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/ui/tooltip";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@multica/ui/components/ui/collapsible";
@@ -169,12 +172,12 @@ const personalNav: { key: NavKey; labelKey: NavLabelKey }[] = [
 // @multica/core/paths, so a BayClaw page added here must also be registered
 // in WORKSPACE_PAGES or it silently renders the Issues icon.
 const workNav: { key: NavKey; labelKey: NavLabelKey }[] = [
+  { key: "cockpit", labelKey: "cockpit" },
   { key: "issues", labelKey: "issues" },
   { key: "projects", labelKey: "projects" },
   { key: "autopilots", labelKey: "autopilots" },
   { key: "graph", labelKey: "graph" },
   { key: "gallery", labelKey: "gallery" },
-  { key: "cockpit", labelKey: "cockpit" },
 ];
 
 const aiTeamNav: { key: NavKey; labelKey: NavLabelKey }[] = [
@@ -639,7 +642,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
         ? list.find((w) => w.id === invitation.workspace_id)
         : null;
       if (joined) {
-        push(paths.workspace(joined.slug).issues());
+        push(preferredWorkspacePath(joined.slug));
       }
     },
     onError: () => {
@@ -667,6 +670,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
         {topSlot}
         {/* Workspace Switcher */}
         <SidebarHeader className={cn("py-3", headerClassName)} style={headerStyle}>
+          <div className="px-2 pb-2"><BayClawBrand /></div>
           <SidebarMenu>
             <SidebarMenuItem>
               <DropdownMenu>
@@ -721,7 +725,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                       <DropdownMenuItem
                         key={ws.id}
                         render={
-                          <AppLink href={paths.workspace(ws.slug).issues()} />
+                          <AppLink href={preferredWorkspacePath(ws.slug)} />
                         }
                       >
                         <WorkspaceAvatar name={ws.name} avatarUrl={ws.avatar_url} size="sm" />

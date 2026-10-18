@@ -1,0 +1,9 @@
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_reviewer_id;
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_focus_issue_id;
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_current_version_id;
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_published_version_id;
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_revision;
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_materials_ready;
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_materials_confirmed_at;
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_materials_confirmed_by;
+ALTER TABLE cockpit_meeting DROP COLUMN minutes_configured_by;

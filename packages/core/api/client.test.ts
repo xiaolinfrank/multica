@@ -513,7 +513,7 @@ describe("ApiClient server Table query", () => {
     expect(board.cockpit.title).toBe("");
   });
 
-  it("falls back per part when provisioning a meeting answers badly", async () => {
+  it("keeps provisioning unconfirmed when the server receipt is malformed", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
         new Response(JSON.stringify({ meeting: null, task: "nope" }), {
@@ -525,19 +525,14 @@ describe("ApiClient server Table query", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const client = new ApiClient("https://api.example.test");
-    const result = await client.provisionCockpitMeeting("m1", { create_task: true });
-    // The meeting itself is what the caller re-renders; an empty one is the
-    // honest answer to a response that cannot be read.
-    expect(result.meeting.id).toBe("");
-    expect(result.task).toBeNull();
-    expect(result.issues).toEqual([]);
+    await expect(client.provisionCockpitMeeting("m1", { create_task: true })).rejects.toThrow("cockpit_write_not_confirmed");
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/cockpit/meetings/m1/provision");
   });
 
   it("asks the destination endpoint for the project and module the form is showing", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ project_id: "p1", base_dir: "/Volumes/share/06.06" }), {
+        new Response(JSON.stringify({ project_id: "p1", module_id: "m9", base_dir: "/Volumes/share/06.06" }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
@@ -577,6 +572,39 @@ describe("ApiClient server Table query", () => {
       meeting_id: "m1",
       links: [],
     });
+  });
+
+  it("updates one meeting link's purposes and validates the returned complete set", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ meeting_id: "m/1", links: [
+        { meeting_id: "m/1", issue_id: "i/1", role: "task", roles: ["preparation", "review", "future-role"] },
+        { meeting_id: "m/1", issue_id: "i2", role: "", roles: [] },
+      ] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ links: "invalid" }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ meeting_id: "m1", links: [
+        { meeting_id: "m1", issue_id: "i1", roles: "not-an-array" },
+      ] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new ApiClient("https://api.example.test");
+    const result = await client.setCockpitMeetingIssueRoles("m/1", "i/1", ["preparation", "review", "future-role"]);
+    expect(result.links.map((link) => link.roles)).toEqual([["preparation", "review", "future-role"], []]);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/cockpit/meetings/m%2F1/issues/i%2F1/roles");
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body)).toEqual({ roles: ["preparation", "review", "future-role"] });
+    await expect(client.setCockpitMeetingIssueRoles("m1", "i1", [])).resolves.toEqual({ meeting_id: "m1", links: [] });
+    await expect(client.setCockpitMeetingIssueRoles("m1", "i1", [])).resolves.toEqual({ meeting_id: "m1", links: [] });
+  });
+
+  it("does not default missing fields into an acknowledged binding clear", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "n1" }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    })));
+    const client = new ApiClient("https://api.example.test");
+    const result = await client.updateCockpitNode("n1", { project_id: null, module_id: null });
+    expect(result.id).toBe("");
   });
 
   it("keeps a cockpit node an older backend under-populates", async () => {

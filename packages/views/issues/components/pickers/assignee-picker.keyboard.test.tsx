@@ -67,6 +67,19 @@ function renderPicker(onUpdate: () => void) {
 }
 
 describe("AssigneePicker search keyboard defaults", () => {
+  it("keeps an unassigned read-only trigger unassigned rather than creating an empty member avatar", () => {
+    render(<I18nProvider locale="en" resources={{ en: { issues: enIssues } }}><AssigneePicker assigneeType={null} assigneeId={null} onUpdate={vi.fn()} readOnly restriction={<p>Checking actions</p>} /></I18nProvider>);
+    expect(screen.getByRole("button", { name: "Unassigned" })).toBeVisible();
+    expect(screen.queryByTestId("actor-avatar")).not.toBeInTheDocument();
+  });
+  it("shows the formal handoff entry without offering a silent assignee replacement", async () => {
+    const update = vi.fn(); const user = userEvent.setup();
+    render(<I18nProvider locale="en" resources={{ en: { issues: enIssues } }}><AssigneePicker assigneeType="member" assigneeId="user-1" onUpdate={update}
+      open onOpenChange={() => {}} readOnly restriction={<a href="/ws/cockpit?artifact=a&artifact_version=v">Open formal review</a>} /></I18nProvider>);
+    expect(screen.getByRole("link", { name: "Open formal review" })).toHaveAttribute("href", "/ws/cockpit?artifact=a&artifact_version=v");
+    expect(screen.queryByPlaceholderText(SEARCH_PLACEHOLDER)).toBeNull(); expect(screen.queryByRole("button", { name: "Grace Hopper" })).toBeNull();
+    await user.keyboard("{Enter}"); expect(update).not.toHaveBeenCalled();
+  });
   it("assigns the first match on Enter instead of unassigning", async () => {
     const user = userEvent.setup();
     const onUpdate = vi.fn();

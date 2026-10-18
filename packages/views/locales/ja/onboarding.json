@@ -116,7 +116,7 @@
   "cli_install": {
     "copy_aria": "コピー",
     "intro": "エージェントを実行するには、このコンピュータにエージェントランタイム(Claude Code、Codex、Cursor など)が必要です。サーバーやリモート開発環境でも動作します。",
-    "step1_label": "BayClaw CLI をインストール",
+    "step1_label": "multica CLI をインストール",
     "platform_group": "プラットフォームを選択",
     "platform_macos_linux": "macOS / Linux",
     "platform_windows": "Windows",
@@ -253,13 +253,13 @@
     "stage_stalled_prefix": "まだ何も届いていません。ターミナルに不慣れな場合は、",
     "stage_stalled_term": "デスクトップ",
     "stage_stalled_suffix": "のほうがスムーズです — ワンクリックでこのコンピュータが接続されます。このダイアログを閉じてデスクトップを選ぶか、スキップを押して続けてください。",
-    "cloud_ready_eyebrow": "クラウド実行環境",
-    "cloud_ready_headline": "クラウドコンピュータの準備ができました。",
-    "cloud_ready_lede": "BayClaw のエージェントはプラットフォームの共有サーバー上で動作します。インストールは不要です。ランタイムを選択して続行してください。",
-    "cloud_waiting_headline": "クラウドコンピュータを準備しています…",
-    "cloud_waiting_lede": "プラットフォームチームが各ワークスペースに共有サーバーランタイムを用意します。まだオンラインになっていません。",
-    "cloud_waiting_hint": "共有ランタイムのオンラインを待っています——このページは自動的に更新されます。",
-    "cloud_waiting_footer": "スキップして、後で設定からランタイムをバインドすることもできます。"
+    "cloud_ready_eyebrow": "実行ランタイム",
+    "cloud_ready_headline": "接続済みランタイムを選択できます。",
+    "cloud_ready_lede": "このワークスペースのランタイムを選択してください。この Mac または許可したリモート端末で実行できます。続行前に状態を確認してください。",
+    "cloud_waiting_headline": "選択可能なランタイムがまだありません。",
+    "cloud_waiting_lede": "単一 Mac 向けの完全版では、まず同梱 worker を確認してください。それ以外の構成では、設定から許可したランタイムを接続してください。",
+    "cloud_waiting_hint": "ワークスペースのランタイムを待っています。このページは自動更新されます。",
+    "cloud_waiting_footer": "スキップして、後で設定からランタイムを接続できます。"
   },
   "errors": {
     "skip_failed": "オンボーディングを完了できませんでした",

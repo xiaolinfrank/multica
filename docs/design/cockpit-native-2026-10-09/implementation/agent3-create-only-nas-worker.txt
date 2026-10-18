@@ -1,0 +1,6 @@
+=== RUN   TestRealNASCreateOnlyWorker
+    cockpit_minutes_create_only_real_test.go:45: real worker private NAS root: /Volumes/人机协作空间/.multica-validation-5b392e15-990d-4d5f-af40-c7d94b75caa2
+    cockpit_minutes_create_only_real_test.go:120: verified operation=01a124e4-5ad9-7ed8-8467-dab03a9fba91 attempt=ddcf7f74-62be-48d2-9397-c617806847ca hash=febe7cabf92d2c3ad57714d3d81e96bb2e8d9f59ce55f57499f249a315afc96a bytes=32; one durable attempt
+    cockpit_minutes_create_only_real_test.go:56: removed owned worker NAS root: /Volumes/人机协作空间/.multica-validation-5b392e15-990d-4d5f-af40-c7d94b75caa2
+--- PASS: TestRealNASCreateOnlyWorker (0.70s)
+PASS

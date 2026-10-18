@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/multica-ai/multica/server/internal/issuestatus"
+	"github.com/multica-ai/multica/server/internal/localpaths"
 	"github.com/multica-ai/multica/server/internal/runtimeapps"
 )
 
@@ -559,10 +560,17 @@ func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextF
 		return
 	}
 	b.WriteString("### Collaboration Space\n\n")
-	b.WriteString("Shared storage where this team's people and agents exchange finished work. It is NOT your working directory: it lives on a share the people on this project can open.\n\n")
+	b.WriteString("Persistent project files accessible on this execution host. Keep task scratch in the task working directory.\n\n")
 	fmt.Fprintf(b, "- Project directory: `%s`\n\n", project)
-	if module := strings.TrimSpace(ctx.ModuleTitle); module != "" {
-		fmt.Fprintf(b, "Your work belongs under the folder named after this task's module, `%s/`, inside that directory. Modules have no separate path — the folder is found by name. Create it if it is not there yet.\n\n", module)
+	module := strings.TrimSpace(ctx.ModuleTitle)
+	if ctx.ModuleDirectory != nil {
+		module = *ctx.ModuleDirectory
+	}
+	if module != "" && localpaths.ValidFolder(module) {
+		fmt.Fprintf(b, "Use the bound module folder `%s/` inside the project directory. The binding remains stable when the display title changes. Create it if missing, after checking containment and ownership.\n\n", module)
+	}
+	if ctx.ModuleID != "" && !localpaths.ValidFolder(module) {
+		b.WriteString("Module directory binding is unresolved or unsafe. Ask the owner to bind one safe relative folder; do not guess or write a substitute module directory.\n\n")
 	}
 	b.WriteString("Deliverable files (reports, datasets, decks, exports) go there, in a further subdirectory when the task warrants one. Working notes, scratch files and checkouts stay in your working directory.\n\n")
 	// Whether the agent may NAME the path it wrote is a property of the
@@ -580,7 +588,7 @@ func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextF
 	default:
 		b.WriteString("Name the path you wrote in your issue comment, as plain text, so a person can open it.\n\n")
 	}
-	b.WriteString("If the directory is missing, the shared storage is not mounted on this machine: report that where this surface lets you (see `## Output`) and leave the file in your working directory. Never substitute a nearby path — a deliverable written somewhere else is a deliverable nobody finds.\n\n")
+	b.WriteString("If the configured directory is unavailable, report the observed path or permission problem where this surface permits it. Keep the result in the task workdir and do not claim durable delivery. Never substitute a nearby directory.\n\n")
 }
 
 // writeInstructionPrecedence emits the "Agent Identity wins over the issue

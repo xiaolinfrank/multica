@@ -94,7 +94,10 @@ export function CockpitTaskCreateDialog({
           {nextCode.isPending ? (
             <Spinner className="size-4" />
           ) : nextCode.isError || !nextCode.data?.code ? (
-            <p className="text-caption text-destructive">{t(($) => $.task_create.code_failed)}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-caption text-destructive">{t(($) => $.task_create.code_failed)}</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void nextCode.refetch()}>{t(($) => $.binding.retry)}</Button>
+            </div>
           ) : (
             <p className="font-mono text-body tabular-nums">{nextCode.data.code}</p>
           )}

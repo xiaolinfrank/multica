@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/multica-ai/multica/server/internal/analytics"
 	"github.com/multica-ai/multica/server/internal/auth"
+	"github.com/multica-ai/multica/server/internal/builtinartifact"
+	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/daemonws"
 	"github.com/multica-ai/multica/server/internal/database"
 	"github.com/multica-ai/multica/server/internal/dbreader"
@@ -332,6 +334,13 @@ func newMainHTTPServer(addr string, handler http.Handler) *http.Server {
 }
 
 func main() {
+	if handled, err := builtinartifact.Export(os.Args[1:], os.Stdout, commit); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	logger.Init()
 	// Read the opt-out before constructing any telemetry dependency. In the
 	// disabled case no collector or HTTP client is ever created.
@@ -735,8 +744,40 @@ func main() {
 		slog.Error("maintenance listener disabled", "error", maintenanceErr)
 	}
 
+	// Capabilities are advertised only after every domain service is wired.
+	enableCockpitArtifactRuntime(h)
+	enableCockpitMeetingPreparationRuntime(h)
 	// Start background workers.
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
+	if h.IssueService.CockpitArtifactBackendReady {
+		go h.IssueService.RunCockpitArtifactCaptureWorker(sweepCtx)
+		slog.Info("cockpit artifact capture and retained object cleanup enabled")
+	}
+	nasFiles, nasConfigErr := cockpitnas.New(os.Getenv("COCKPIT_NAS_EXPORT_ROOTS"))
+	if nasConfigErr != nil {
+		slog.Error("cockpit NAS export disabled: invalid root configuration", "error", nasConfigErr)
+		enableCockpitMeetingDirectoryRuntime(h, nil, "prepare_configuration_invalid")
+	} else {
+		h.IssueService.CockpitNASExporter = nasFiles
+		enableCockpitMeetingDirectoryRuntime(h, nasFiles, "")
+		if len(nasFiles.RootIDs()) > 0 {
+			go service.NewCockpitMinutesExportWorker(queries, nasFiles, bus).Run(sweepCtx)
+			slog.Info("cockpit NAS export worker enabled", "roots", len(nasFiles.RootIDs()))
+		}
+	}
+	inputNASConfigError := ""
+	if nasConfigErr != nil {
+		inputNASConfigError = "input_configuration_invalid"
+	}
+	configureCockpitInputRuntime(h, nasFiles, inputNASConfigError)
+	if h.IssueService.CockpitInputBackendReady {
+		go h.IssueService.RunCockpitInputWorker(sweepCtx)
+		slog.Info("cockpit fixed input capture, lease reconciliation and retained object cleanup enabled")
+	}
+	if h.IssueService.CockpitMeetingDirectoryBackendReady {
+		go h.IssueService.RunCockpitDirectoryWorker(sweepCtx)
+		slog.Info("cockpit meeting directory preparation enabled")
+	}
 	autopilotCtx, autopilotCancel := context.WithCancel(context.Background())
 	telemetryWorker := selfhosttelemetry.New(pool, version, telemetryConfig, slog.Default())
 	// Reuse the router's services here. In particular, the router wires the

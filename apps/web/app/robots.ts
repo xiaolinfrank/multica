@@ -1,28 +1,6 @@
 import type { MetadataRoute } from "next";
 
+/** Private self-hosted workbench; it has no public marketing sitemap. */
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = "https://www.multica.ai";
-
-  return {
-    rules: [
-      {
-        userAgent: "*",
-        allow: ["/", "/about", "/changelog"],
-        disallow: [
-          "/api/",
-          "/ws",
-          "/auth/",
-          "/issues",
-          "/board",
-          "/inbox",
-          "/agents",
-          "/settings",
-          "/my-issues",
-          "/runtimes",
-          "/skills",
-        ],
-      },
-    ],
-    sitemap: [`${baseUrl}/sitemap.xml`, `${baseUrl}/docs/sitemap.xml`],
-  };
+  return { rules: [{ userAgent: "*", disallow: "/" }] };
 }

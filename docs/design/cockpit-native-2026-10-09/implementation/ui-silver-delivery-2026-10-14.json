@@ -1,0 +1,93 @@
+{
+  "date": "2026-10-14",
+  "branch": "codex/cockpit-native-foundation",
+  "design": "Silver instruments / 银白仪表台",
+  "study": "ui-silver-design-study-2026-10-14.json",
+  "changes": [
+    "取消蓝色主视觉横幅与装饰编号，改为开放式标题—仪表—明细构图",
+    "SVG 原创金属表壳、厚度、光照与地面投影，状态弧仍使用真实份额",
+    "局部 display 字号与数值比例提升，不改全局字体 token",
+    "真实标题进入卷宗封面，保留来源、版本、审阅状态及链接语义",
+    "会议日期牌与石墨选中态；统一计划、治理、聊天外框与详情材质",
+    "目标日期单独呈现，防止长中文目标中日期断行",
+    "单次仪表入场与响应式导航/封面反馈，减少动态效果时停用"
+  ],
+  "validation": {
+    "host": "fosun_agent_3 / 10.35.182.2",
+    "candidate": "/Users/fosun_agent_3/var/multica-dev-test/cockpit-silver-20261014-PeF7eM/site",
+    "build_id": "75rIVg8diDPW5WCgn22tA",
+    "unit": {
+      "files": 22,
+      "passed": 186,
+      "failed": 0,
+      "skipped": 0,
+      "log": "ui-silver-tests.log"
+    },
+    "browser": {
+      "passed": 1,
+      "log": "ui-browser.log",
+      "matrix": "六页签×1440/768/320×浅深色；六计划视图；月/周日历；工作台长标题；键盘与减少动态效果；甘特紧凑编辑；窄屏审阅卡标题",
+      "screenshots": 50,
+      "fixture_agent_runs": 0,
+      "screenshots_path": "/Users/fosun_main_agent/var/multica/.playwright-mcp/cockpit-silver-final-MdkbTG"
+    },
+    "static": [
+      "views tsc --noEmit",
+      "定向 ESLint",
+      "desktop typecheck:web",
+      "git diff --check"
+    ],
+    "manual_visual_review": [
+      "浅深色总览",
+      "卷宗展柜含长标题及320px",
+      "会议日历+日期牌",
+      "PMO真实数据总览及25项成果预览"
+    ],
+    "manual_pmo_uncaught_page_errors": 0,
+    "manual_pmo_screenshots": [
+      ".playwright-mcp/cockpit-silver-final-pmo-work.png",
+      ".playwright-mcp/cockpit-silver-final-pmo-artifacts.png"
+    ],
+    "not_run": [
+      "全量前端测试",
+      "Go 后端测试",
+      "mobile 测试",
+      "desktop 运行时",
+      "真实 PNG/PDF 下载",
+      "真实智能体 smoke"
+    ],
+    "source_sha256": {
+      "packages/ui/styles/cockpit.css": "fca21be8a5982518cd361d1b09c2fcdc5f747662073d2a06c70d30f890cea6e9",
+      "packages/views/cockpit/components/cockpit-artifacts.tsx": "5f3912f787d3ff934fe27fd26bcde81316f5c5aaefeab68084612f0a538d6453",
+      "packages/views/cockpit/components/cockpit-changes.tsx": "11bf77c59c5922d8cc555c8f457cb35ab3a98b3da7a5edad85f3b8c1bcdc146b",
+      "packages/views/cockpit/components/cockpit-entry.tsx": "0019fd47cb4a55934d6737417360232d2fccec2fc09aab3f110f27a3cc5a6401",
+      "packages/views/cockpit/components/cockpit-gantt.tsx": "b1fb198db9f639757ebdae3587c2d483685f83d1d5c901c0a4e77c71b30b9f1e",
+      "packages/views/cockpit/components/cockpit-meeting-cards.tsx": "3b7f5197401146d3dc983b6846827bb70a63a4df73f4b6b0a877394377a6f16e",
+      "packages/views/cockpit/components/cockpit-meeting-panel.tsx": "3a8dab561ceccfd01c5e8257be697da98cf2f20126fc4faaaa4d180d1a1df268",
+      "packages/views/cockpit/components/cockpit-meeting-stage.tsx": "30969bef286f0591582429f1c81adbac9aed0b353c2dac92f8dd34e05825d07d",
+      "packages/views/cockpit/components/cockpit-meetings.tsx": "053fc4b84aeea50f19260103943ea87367e52dbe895348ede9284a08f62bd3fa",
+      "packages/views/cockpit/components/cockpit-node-panel.tsx": "b63742e12fcfb7ea0eefec7d1374ccb8aa4efaca6eb4280ab4bf15134393d49b",
+      "packages/views/cockpit/components/cockpit-page.tsx": "238c0df26d332e77a236bbeaafd2850bb06b58ed3cedfc8aad02d5ddda0763d2",
+      "packages/views/cockpit/components/cockpit-plan-views.tsx": "ace15ef682819ddfe0c4569f730b0d69ecda12dd24951e22af92ca2d444fe1b4",
+      "packages/views/cockpit/components/cockpit-shell.tsx": "8d6a52aa2f1285474121aad711e22bd82374657b7b5441a869bc73dc8d557e83",
+      "packages/views/cockpit/components/cockpit-status-orbit.tsx": "363c0af0ef62cada8b5f16e757726454231f206b81b212d3886ecf732f3d4f19",
+      "packages/views/cockpit/components/cockpit-work-overview.tsx": "9239633644b4fe15010809bbfa3dda07d70e832f6db0abc627491eababa20cdb",
+      "packages/views/cockpit/components/cockpit-status-orbit.test.tsx": "ddb3d1f79c82ae365bb6451327fedb9439f3f67810b00e34fc1da63987f4980b",
+      "e2e/cockpit-ui-layout.spec.ts": "2cf21730e700eed3c9afebddbe4285ca9bcb22a17d6fc15eaac6ccde586ac77d"
+    }
+  },
+  "delivery": {
+    "preview_url": "http://10.35.182.2:13003/pmo-showcase/cockpit?tab=work",
+    "preview_pid": 43779,
+    "previous_preview_preserved": "http://10.35.182.2:13002/pmo-showcase/cockpit?tab=work",
+    "resident_13000_changed": false,
+    "resident_web_pid": 29818,
+    "api_pid": 13143,
+    "preview_limitation": "13003 与13002一样不在现有 API WebSocket 来源白名单，视觉浏览与页面读取可用，实时推送不可用；未更改安全配置。",
+    "canonical_mika_sources_match_live": true,
+    "pmo_business_data_changed": false,
+    "production_changed": false,
+    "committed": false,
+    "pushed": false
+  }
+}

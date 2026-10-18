@@ -1,0 +1,12 @@
+DROP TRIGGER IF EXISTS cockpit_directory_command_guard ON cockpit_meeting_lifecycle_command;
+DROP FUNCTION IF EXISTS guard_cockpit_directory_command();
+DROP TRIGGER IF EXISTS cockpit_directory_attempt_guard ON cockpit_meeting_directory_attempt;
+DROP TRIGGER IF EXISTS cockpit_directory_step_guard ON cockpit_meeting_directory_step;
+DROP TRIGGER IF EXISTS cockpit_directory_operation_guard ON cockpit_meeting_directory_operation;
+DROP TRIGGER IF EXISTS cockpit_directory_meeting_guard ON cockpit_meeting;
+DROP TRIGGER IF EXISTS cockpit_directory_binding_guard ON cockpit_meeting;
+DROP FUNCTION IF EXISTS guard_cockpit_directory_attempt();
+DROP FUNCTION IF EXISTS guard_cockpit_directory_step();
+DROP FUNCTION IF EXISTS guard_cockpit_directory_operation();
+DROP FUNCTION IF EXISTS guard_cockpit_directory_meeting();
+DROP FUNCTION IF EXISTS guard_cockpit_directory_binding();

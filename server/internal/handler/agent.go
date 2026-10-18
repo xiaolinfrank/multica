@@ -358,6 +358,16 @@ type TaskCancellationActor struct {
 }
 
 type AgentTaskResponse struct {
+	InputManifestVersionID     *string `json:"input_manifest_version_id"`
+	InputPreparationState      string  `json:"input_preparation_state"`
+	InputPreparationHash       *string `json:"input_preparation_hash"`
+	InputPreparedAt            *string `json:"input_prepared_at"`
+	InputPreparedDispatchedAt  *string `json:"input_prepared_dispatched_at"`
+	InputPreparationErrorCode  string  `json:"input_preparation_error_code"`
+	InputManifestHash          string  `json:"input_manifest_hash,omitempty"`
+	InputManifestItemTotal     int64   `json:"input_manifest_item_total,omitempty"`
+	InputManifestRequiredTotal int64   `json:"input_manifest_required_total,omitempty"`
+
 	StartClaimSupported      bool                   `json:"start_claim_supported,omitempty"`
 	CancelledByCommentChange bool                   `json:"cancelled_by_comment_change,omitempty"`
 	CancelledBy              *TaskCancellationActor `json:"cancelled_by,omitempty"`
@@ -427,6 +437,7 @@ type AgentTaskResponse struct {
 	// project subdivision. Issue claims only: chat, autopilot and quick-create
 	// carry a project reference but never a module.
 	ModuleID          string                `json:"module_id,omitempty"`
+	ModuleDirectory   *string               `json:"module_directory,omitempty"`
 	ModuleTitle       string                `json:"module_title,omitempty"`
 	ModuleDescription string                `json:"module_description,omitempty"`
 	ProjectResources  []ProjectResourceData `json:"project_resources,omitempty"` // resources attached to the project
@@ -852,37 +863,43 @@ func taskToResponse(t db.AgentTaskQueue, workspaceID string) AgentTaskResponse {
 		CancelledByCommentChange: t.Status == "cancelled" && cancellation.TaskID != "" && cancellation.TaskID == uuidToString(t.ID),
 		CancelledBy:              taskCancellationActorToResponse(t),
 
-		ID:                     uuidToString(t.ID),
-		AgentID:                uuidToString(t.AgentID),
-		RuntimeID:              uuidToString(t.RuntimeID),
-		IssueID:                uuidToString(t.IssueID),
-		WorkspaceID:            workspaceID,
-		Status:                 t.Status,
-		Priority:               t.Priority,
-		DispatchedAt:           timestampToPtr(t.DispatchedAt),
-		StartedAt:              timestampToPtr(t.StartedAt),
-		CompletedAt:            timestampToPtr(t.CompletedAt),
-		Result:                 result,
-		Error:                  textToPtr(t.Error),
-		FailureReason:          failureReason,
-		BranchName:             branchName,
-		Attempt:                t.Attempt,
-		MaxAttempts:            t.MaxAttempts,
-		ParentTaskID:           uuidToPtr(t.ParentTaskID),
-		IsLeaderTask:           t.IsLeaderTask,
-		CreatedAt:              timestampToString(t.CreatedAt),
-		TriggerCommentID:       uuidToPtr(t.TriggerCommentID),
-		CoalescedCommentIDs:    uuidsToStrings(t.CoalescedCommentIds),
-		DeliveredCommentIDs:    uuidStringsOrEmpty(t.DeliveredCommentIds),
-		TriggerSummary:         textToPtr(t.TriggerSummary),
-		HandoffNote:            handoffNote,
-		WakeupID:               wakeupContext.ID,
-		WakeupSystemRule:       wakeupContext.SystemRule,
-		WakeupJoined:           service.JoinedWakeupNotes(t.Context),
-		WorkDir:                workDir,
-		RelativeWorkDir:        relativeWorkDir(workDir, workspaceID, uuidToString(t.ID)),
-		DurableWorkDir:         durableWorkDir,
-		RelativeDurableWorkDir: relativeWorkDir(durableWorkDir, "", ""),
+		InputManifestVersionID:    uuidToPtr(t.InputManifestVersionID),
+		InputPreparationState:     t.InputPreparationState,
+		InputPreparationHash:      textToPtr(t.InputPreparationHash),
+		InputPreparedAt:           timestampToPtr(t.InputPreparedAt),
+		InputPreparedDispatchedAt: timestampToPtr(t.InputPreparedDispatchedAt),
+		InputPreparationErrorCode: t.InputPreparationErrorCode,
+		ID:                        uuidToString(t.ID),
+		AgentID:                   uuidToString(t.AgentID),
+		RuntimeID:                 uuidToString(t.RuntimeID),
+		IssueID:                   uuidToString(t.IssueID),
+		WorkspaceID:               workspaceID,
+		Status:                    t.Status,
+		Priority:                  t.Priority,
+		DispatchedAt:              timestampToPtr(t.DispatchedAt),
+		StartedAt:                 timestampToPtr(t.StartedAt),
+		CompletedAt:               timestampToPtr(t.CompletedAt),
+		Result:                    result,
+		Error:                     textToPtr(t.Error),
+		FailureReason:             failureReason,
+		BranchName:                branchName,
+		Attempt:                   t.Attempt,
+		MaxAttempts:               t.MaxAttempts,
+		ParentTaskID:              uuidToPtr(t.ParentTaskID),
+		IsLeaderTask:              t.IsLeaderTask,
+		CreatedAt:                 timestampToString(t.CreatedAt),
+		TriggerCommentID:          uuidToPtr(t.TriggerCommentID),
+		CoalescedCommentIDs:       uuidsToStrings(t.CoalescedCommentIds),
+		DeliveredCommentIDs:       uuidStringsOrEmpty(t.DeliveredCommentIds),
+		TriggerSummary:            textToPtr(t.TriggerSummary),
+		HandoffNote:               handoffNote,
+		WakeupID:                  wakeupContext.ID,
+		WakeupSystemRule:          wakeupContext.SystemRule,
+		WakeupJoined:              service.JoinedWakeupNotes(t.Context),
+		WorkDir:                   workDir,
+		RelativeWorkDir:           relativeWorkDir(workDir, workspaceID, uuidToString(t.ID)),
+		DurableWorkDir:            durableWorkDir,
+		RelativeDurableWorkDir:    relativeWorkDir(durableWorkDir, "", ""),
 		// Surface the stable task source. A successful quick-create gains an
 		// issue link for navigation but retains its quick_create kind.
 		ChatSessionID:  uuidToString(t.ChatSessionID),

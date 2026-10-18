@@ -201,11 +201,11 @@ describe("the folder a meeting files its material in", () => {
 
 describe("links", () => {
   const issues: CockpitMeetingIssueLink[] = [
-    { meeting_id: "m1", issue_id: "i2", role: "", issue_number: 2, issue_identifier: "BIO-2",
+    { meeting_id: "m1", issue_id: "i2", role: "", roles: [], issue_number: 2, issue_identifier: "BIO-2",
       issue_title: "Second", issue_status: "todo", position: 1 },
-    { meeting_id: "m1", issue_id: "i1", role: "task", issue_number: 1, issue_identifier: "BIO-1",
+    { meeting_id: "m1", issue_id: "i1", role: "task", roles: [], issue_number: 1, issue_identifier: "BIO-1",
       issue_title: "The meeting task", issue_status: "todo", position: -1 },
-    { meeting_id: "m2", issue_id: "i3", role: "", issue_number: 3, issue_identifier: "BIO-3",
+    { meeting_id: "m2", issue_id: "i3", role: "", roles: [], issue_number: 3, issue_identifier: "BIO-3",
       issue_title: "Other", issue_status: "done", position: 0 },
   ];
   const nodeLinks: CockpitMeetingNodeLink[] = [

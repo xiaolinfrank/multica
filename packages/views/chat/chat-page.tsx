@@ -19,7 +19,7 @@ import { useRegenerateChatQuickActions } from "@multica/core/chat/mutations";
 import { useQuickActionsPendingTimeout } from "@multica/core/chat/use-quick-actions-pending-timeout";
 import { useQuickActionsFailureToast } from "./components/use-quick-actions-failure-toast";
 import { useQuery } from "@tanstack/react-query";
-import type { Agent, ChatSession } from "@multica/core/types";
+import type { Agent, AgentConversationStarter, ChatSession } from "@multica/core/types";
 import { PageHeader } from "../layout/page-header";
 import { useNavigation } from "../navigation";
 import { useT } from "../i18n";
@@ -57,6 +57,18 @@ import { RuntimeRequiredBanner } from "./components/runtime-required-banner";
  * style).
  */
 export function ChatPage() {
+  return <ChatPageSurface />;
+}
+
+export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSystemKey, defaultProjectId = null, title, conversationStarters, initialContext }: {
+  routeHref?: string;
+  defaultAgentSystemKey?: string;
+  fixedAgentSystemKey?: string;
+  defaultProjectId?: string | null;
+  title?: string;
+  conversationStarters?: AgentConversationStarter[];
+  initialContext?: string;
+} = {}) {
   const { t } = useT("chat");
   const { pathname, searchParams, replace } = useNavigation();
   const workspaceSlug = useRequiredWorkspaceSlug();
@@ -65,11 +77,19 @@ export function ChatPage() {
   // to another route, this instance must stop reconciling shared chat state.
   // Also check the live workspace mirror in each effect: the incoming layout
   // can rehydrate the store before this page observes the destination URL.
-  const isCurrentChatRoute = pathname === wsPaths.chat();
+  const baseHref = routeHref ?? wsPaths.chat();
+  const isCurrentChatRoute = pathname === baseHref.split("?")[0];
+  const sessionHref = (sessionId: string | null) => {
+    const query = new URLSearchParams(baseHref.split("?")[1] ?? "");
+    if (sessionId) query.set("session", sessionId);
+    return `${baseHref.split("?")[0]}${query.size ? `?${query}` : ""}`;
+  };
   const isCompact = useIsCompact();
 
   const c = useChatController({
     isActive: isCurrentChatRoute && getCurrentSlug() === workspaceSlug,
+    defaultAgentSystemKey,
+    fixedAgentSystemKey,
   });
   const { data: quickActionsPending = null } = useQuery(
     chatQuickActionsPendingOptions(c.activeSessionId ?? ""),
@@ -122,8 +142,7 @@ export function ChatPage() {
     const live = useChatStore.getState().activeSessionId;
     const current = searchParams.get("session") || null;
     if (live !== current) {
-      const base = wsPaths.chat();
-      replace(live ? `${base}?session=${live}` : base);
+      replace(sessionHref(live));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reconcile store/route changes, not URL updates
   }, [isCurrentChatRoute, workspaceSlug, c.activeSessionId]);
@@ -139,6 +158,18 @@ export function ChatPage() {
   // supersede a still-pending intent: agent/member queries can resolve late,
   // and a deferred intent firing after the user picked a thread (or started
   // another chat) would clobber that choice.
+  const composeScope = useRef<string | null>(null);
+  useEffect(() => {
+    if (!defaultAgentSystemKey || !isCurrentChatRoute || getCurrentSlug() !== workspaceSlug) return;
+    const key = JSON.stringify([workspaceSlug, baseHref, defaultAgentSystemKey, defaultProjectId]);
+    if (composeScope.current === key) return;
+    composeScope.current = key;
+    if (urlSession || urlAgent) return;
+    useChatStore.getState().setSelectedAgentId("");
+    useChatStore.getState().setSelectedProjectId(defaultProjectId);
+    setComposingNew(true);
+  }, [defaultAgentSystemKey, defaultProjectId, isCurrentChatRoute, workspaceSlug, baseHref, urlSession, urlAgent]);
+
   const consumedAgentIntent = useRef<string | null>(null);
   const supersedeAgentIntent = () => {
     if (urlAgent) consumedAgentIntent.current = urlAgent;
@@ -173,7 +204,11 @@ export function ChatPage() {
     // intent effect the ref is already set to this param, so this is a no-op.
     supersedeAgentIntent();
     if (agent) c.handleStartNewChat(agent);
-    else c.handleNewChat();
+    else {
+      c.handleNewChat();
+      if (defaultAgentSystemKey) useChatStore.getState().setSelectedAgentId("");
+    }
+    if (defaultAgentSystemKey) useChatStore.getState().setSelectedProjectId(defaultProjectId);
     setComposingNew(true);
   };
 
@@ -208,13 +243,13 @@ export function ChatPage() {
     if (agent) {
       consumedAgentIntent.current = urlAgent;
       startNewChat(agent);
-      replace(wsPaths.chat());
+      replace(baseHref);
       return;
     }
     if (c.agentsSettled) {
       consumedAgentIntent.current = urlAgent;
       toast.error(t(($) => $.page.agent_link_no_access));
-      replace(wsPaths.chat());
+      replace(baseHref);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- consume when the URL param or the resolving agent list changes
   }, [isCurrentChatRoute, workspaceSlug, urlAgent, c.availableAgents, c.agentsSettled]);
@@ -230,7 +265,7 @@ export function ChatPage() {
 
   const listHeader = (
     <PageHeader>
-      <h1 className="flex-1 text-body font-semibold">{t(($) => $.page.title)}</h1>
+      <h1 className="flex-1 text-body font-semibold">{title ?? t(($) => $.page.title)}</h1>
       {newChatButton}
     </PageHeader>
   );
@@ -299,7 +334,8 @@ export function ChatPage() {
           agent={c.activeAgent}
           hasSessions={c.sessions.length > 0}
           onPickPrompt={c.prefillConversationStarter}
-          customizeHref={c.customizeConversationStartersHref}
+          customizeHref={conversationStarters ? null : c.customizeConversationStartersHref}
+          conversationStarters={conversationStarters}
         />
       )}
 
@@ -329,7 +365,10 @@ export function ChatPage() {
       />
 
       <ChatInput
-        onSend={c.handleSend}
+        onSend={(content, attachments, commitInput, draftAttachments) => c.handleSend(
+          !c.activeSessionId && initialContext ? `${initialContext}\n\n${content}` : content,
+          attachments, commitInput, draftAttachments,
+        )}
         restoreDraftRequest={c.restoreDraftRequest}
         conversationStarterRequest={c.conversationStarterRequest}
         onConversationStarterApplied={c.handleConversationStarterApplied}

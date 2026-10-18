@@ -165,19 +165,25 @@ type AgentTaskQueue struct {
 	// The row id referenced by trigger_evidence_kind (a comment id, autopilot_run id, rule_version id, source task id, ...). No FK; resolvable per-kind in the app layer (MUL-4302 §2).
 	TriggerEvidenceRefID pgtype.UUID `json:"trigger_evidence_ref_id"`
 	// The one human accountable for this run, for audit / visibility / cost only — NEVER consulted for authorization (that is originator_user_id). Invariant: when originator_user_id IS NOT NULL, this equals it; the two diverge only when originator_user_id IS NULL (autopilot rule_owner / degraded owner_fallback name an accountable human while authorization carries none). No FK, no cascade (MUL-4302 §1/§7). NULL means no accountable human was resolved: a pre-migration row, OR a NEW row whose audit source is not-yet-resolved / unattributed (e.g. run_only autopilot until rule_owner lands) — NOT pre-migration only.
-	AccountableUserID         pgtype.UUID `json:"accountable_user_id"`
-	SessionRolloutMissing     bool        `json:"session_rollout_missing"`
-	RetiredSessionID          pgtype.Text `json:"retired_session_id"`
-	QuickActionsDisabled      bool        `json:"quick_actions_disabled"`
-	RegenerateQuickActionsFor pgtype.UUID `json:"regenerate_quick_actions_for"`
-	BranchName                pgtype.Text `json:"branch_name"`
-	DurableWorkDir            pgtype.Text `json:"durable_work_dir"`
-	ChannelContextRevision    pgtype.Int8 `json:"channel_context_revision"`
-	CommentThreadID           pgtype.UUID `json:"comment_thread_id"`
-	CancelledByType           pgtype.Text `json:"cancelled_by_type"`
-	CancelledByID             pgtype.UUID `json:"cancelled_by_id"`
-	CancelledByName           pgtype.Text `json:"cancelled_by_name"`
-	IssueSnapshot             []byte      `json:"issue_snapshot"`
+	AccountableUserID         pgtype.UUID        `json:"accountable_user_id"`
+	SessionRolloutMissing     bool               `json:"session_rollout_missing"`
+	RetiredSessionID          pgtype.Text        `json:"retired_session_id"`
+	QuickActionsDisabled      bool               `json:"quick_actions_disabled"`
+	RegenerateQuickActionsFor pgtype.UUID        `json:"regenerate_quick_actions_for"`
+	BranchName                pgtype.Text        `json:"branch_name"`
+	DurableWorkDir            pgtype.Text        `json:"durable_work_dir"`
+	ChannelContextRevision    pgtype.Int8        `json:"channel_context_revision"`
+	CommentThreadID           pgtype.UUID        `json:"comment_thread_id"`
+	CancelledByType           pgtype.Text        `json:"cancelled_by_type"`
+	CancelledByID             pgtype.UUID        `json:"cancelled_by_id"`
+	CancelledByName           pgtype.Text        `json:"cancelled_by_name"`
+	IssueSnapshot             []byte             `json:"issue_snapshot"`
+	InputManifestVersionID    pgtype.UUID        `json:"input_manifest_version_id"`
+	InputPreparationState     string             `json:"input_preparation_state"`
+	InputPreparationHash      pgtype.Text        `json:"input_preparation_hash"`
+	InputPreparedAt           pgtype.Timestamptz `json:"input_prepared_at"`
+	InputPreparedDispatchedAt pgtype.Timestamptz `json:"input_prepared_dispatched_at"`
+	InputPreparationErrorCode string             `json:"input_preparation_error_code"`
 }
 
 type AgentToLabel struct {
@@ -584,6 +590,288 @@ type Cockpit struct {
 	MeetingAssigneeID   pgtype.UUID        `json:"meeting_assignee_id"`
 }
 
+type CockpitAcceptanceCriterion struct {
+	ID          pgtype.UUID        `json:"id"`
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	NodeID      pgtype.UUID        `json:"node_id"`
+	Title       string             `json:"title"`
+	Description string             `json:"description"`
+	Position    int32              `json:"position"`
+	Revision    int64              `json:"revision"`
+	RemovedAt   pgtype.Timestamptz `json:"removed_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitAcceptanceDefinition struct {
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	NodeID                pgtype.UUID        `json:"node_id"`
+	Revision              int64              `json:"revision"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	LastUpdatedBy         pgtype.UUID        `json:"last_updated_by"`
+	LastRequestHash       string             `json:"last_request_hash"`
+	CurrentRequestID      pgtype.UUID        `json:"current_request_id"`
+	LastApprovedRequestID pgtype.UUID        `json:"last_approved_request_id"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	ApprovalRevokedAt     pgtype.Timestamptz `json:"approval_revoked_at"`
+	ApprovalRevokedBy     pgtype.UUID        `json:"approval_revoked_by"`
+	ApprovalRevokedReason pgtype.Text        `json:"approval_revoked_reason"`
+}
+
+type CockpitAcceptanceEvidence struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RequestID   pgtype.UUID `json:"request_id"`
+	CriterionID pgtype.UUID `json:"criterion_id"`
+	VersionID   pgtype.UUID `json:"version_id"`
+	ArtifactID  pgtype.UUID `json:"artifact_id"`
+	ContentHash string      `json:"content_hash"`
+}
+
+type CockpitAcceptanceRequest struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	NodeID                pgtype.UUID        `json:"node_id"`
+	RequestKey            pgtype.UUID        `json:"request_key"`
+	RequestHash           string             `json:"request_hash"`
+	Revision              int64              `json:"revision"`
+	CriteriaRevision      int64              `json:"criteria_revision"`
+	EvidenceHash          string             `json:"evidence_hash"`
+	ReviewerID            pgtype.UUID        `json:"reviewer_id"`
+	ReviewIssueID         pgtype.UUID        `json:"review_issue_id"`
+	Decision              string             `json:"decision"`
+	Feedback              string             `json:"feedback"`
+	Note                  string             `json:"note"`
+	ReviewedBy            pgtype.UUID        `json:"reviewed_by"`
+	ReviewedAt            pgtype.Timestamptz `json:"reviewed_at"`
+	SupersedesRequestID   pgtype.UUID        `json:"supersedes_request_id"`
+	SupersededByRequestID pgtype.UUID        `json:"superseded_by_request_id"`
+	SupersededAt          pgtype.Timestamptz `json:"superseded_at"`
+	CreatedBy             pgtype.UUID        `json:"created_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitAcceptanceRequestCriterion struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	RequestID   pgtype.UUID `json:"request_id"`
+	CriterionID pgtype.UUID `json:"criterion_id"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	Position    int32       `json:"position"`
+	Revision    int64       `json:"revision"`
+}
+
+type CockpitAcceptanceReviewerHandoff struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	RequestID         pgtype.UUID        `json:"request_id"`
+	CommandKey        pgtype.UUID        `json:"command_key"`
+	RequestHash       string             `json:"request_hash"`
+	FromReviewerID    pgtype.UUID        `json:"from_reviewer_id"`
+	ToReviewerID      pgtype.UUID        `json:"to_reviewer_id"`
+	FromReviewIssueID pgtype.UUID        `json:"from_review_issue_id"`
+	ToReviewIssueID   pgtype.UUID        `json:"to_review_issue_id"`
+	Reason            string             `json:"reason"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	ExpectedRevision  int64              `json:"expected_revision"`
+	ResultingRevision int64              `json:"resulting_revision"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type CockpitArtifact struct {
+	ID                        pgtype.UUID        `json:"id"`
+	WorkspaceID               pgtype.UUID        `json:"workspace_id"`
+	OwnerNodeID               pgtype.UUID        `json:"owner_node_id"`
+	ProjectID                 pgtype.UUID        `json:"project_id"`
+	ModuleID                  pgtype.UUID        `json:"module_id"`
+	SourceIssueID             pgtype.UUID        `json:"source_issue_id"`
+	AuthorizedProducerIssueID pgtype.UUID        `json:"authorized_producer_issue_id"`
+	CreationKey               pgtype.UUID        `json:"creation_key"`
+	RequestHash               string             `json:"request_hash"`
+	CreatedBy                 pgtype.UUID        `json:"created_by"`
+	Title                     string             `json:"title"`
+	Description               string             `json:"description"`
+	ReviewerID                pgtype.UUID        `json:"reviewer_id"`
+	Revision                  int64              `json:"revision"`
+	CurrentVersionID          pgtype.UUID        `json:"current_version_id"`
+	ApprovedVersionID         pgtype.UUID        `json:"approved_version_id"`
+	ArchivedAt                pgtype.Timestamptz `json:"archived_at"`
+	ArchivedBy                pgtype.UUID        `json:"archived_by"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitArtifactCapture struct {
+	VersionID          pgtype.UUID        `json:"version_id"`
+	WorkspaceID        pgtype.UUID        `json:"workspace_id"`
+	ArtifactID         pgtype.UUID        `json:"artifact_id"`
+	SourceAttachmentID pgtype.UUID        `json:"source_attachment_id"`
+	SourceStorageKey   string             `json:"source_storage_key"`
+	SourceObjectUrl    string             `json:"source_object_url"`
+	SourceFilename     string             `json:"source_filename"`
+	SourceContentType  string             `json:"source_content_type"`
+	SourceSizeBytes    int64              `json:"source_size_bytes"`
+	ExpectedHash       pgtype.Text        `json:"expected_hash"`
+	Status             string             `json:"status"`
+	LeaseToken         pgtype.UUID        `json:"lease_token"`
+	LeaseExpiresAt     pgtype.Timestamptz `json:"lease_expires_at"`
+	CurrentAttemptID   pgtype.UUID        `json:"current_attempt_id"`
+	Attempts           int32              `json:"attempts"`
+	CycleAttempts      int32              `json:"cycle_attempts"`
+	NextAttemptAt      pgtype.Timestamptz `json:"next_attempt_at"`
+	LastErrorCode      string             `json:"last_error_code"`
+	LastError          string             `json:"last_error"`
+	CreatedBy          pgtype.UUID        `json:"created_by"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitArtifactCaptureAttempt struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	ArtifactID            pgtype.UUID        `json:"artifact_id"`
+	VersionID             pgtype.UUID        `json:"version_id"`
+	AttemptNumber         int32              `json:"attempt_number"`
+	LeaseToken            pgtype.UUID        `json:"lease_token"`
+	LeaseExpiresAt        pgtype.Timestamptz `json:"lease_expires_at"`
+	StorageKey            string             `json:"storage_key"`
+	ObjectUrl             string             `json:"object_url"`
+	State                 string             `json:"state"`
+	ContentHash           pgtype.Text        `json:"content_hash"`
+	SizeBytes             pgtype.Int8        `json:"size_bytes"`
+	LastError             string             `json:"last_error"`
+	IoFinishedAt          pgtype.Timestamptz `json:"io_finished_at"`
+	CleanupStatus         string             `json:"cleanup_status"`
+	CleanupToken          pgtype.UUID        `json:"cleanup_token"`
+	CleanupLeaseExpiresAt pgtype.Timestamptz `json:"cleanup_lease_expires_at"`
+	CleanupNextAttemptAt  pgtype.Timestamptz `json:"cleanup_next_attempt_at"`
+	CleanupAttempts       int32              `json:"cleanup_attempts"`
+	CleanupError          string             `json:"cleanup_error"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitArtifactMeetingReference struct {
+	ID           pgtype.UUID        `json:"id"`
+	WorkspaceID  pgtype.UUID        `json:"workspace_id"`
+	ArtifactID   pgtype.UUID        `json:"artifact_id"`
+	VersionID    pgtype.UUID        `json:"version_id"`
+	MeetingID    pgtype.UUID        `json:"meeting_id"`
+	TargetLabel  string             `json:"target_label"`
+	Purpose      string             `json:"purpose"`
+	ReferenceKey pgtype.UUID        `json:"reference_key"`
+	RequestHash  string             `json:"request_hash"`
+	CreatedBy    pgtype.UUID        `json:"created_by"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	RemovedBy    pgtype.UUID        `json:"removed_by"`
+	RemovedAt    pgtype.Timestamptz `json:"removed_at"`
+}
+
+type CockpitArtifactNodeReference struct {
+	ID           pgtype.UUID        `json:"id"`
+	WorkspaceID  pgtype.UUID        `json:"workspace_id"`
+	ArtifactID   pgtype.UUID        `json:"artifact_id"`
+	VersionID    pgtype.UUID        `json:"version_id"`
+	NodeID       pgtype.UUID        `json:"node_id"`
+	TargetLabel  string             `json:"target_label"`
+	Purpose      string             `json:"purpose"`
+	ReferenceKey pgtype.UUID        `json:"reference_key"`
+	RequestHash  string             `json:"request_hash"`
+	CreatedBy    pgtype.UUID        `json:"created_by"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	RemovedBy    pgtype.UUID        `json:"removed_by"`
+	RemovedAt    pgtype.Timestamptz `json:"removed_at"`
+}
+
+type CockpitArtifactProducerAssignment struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	ArtifactID        pgtype.UUID        `json:"artifact_id"`
+	CommandKey        pgtype.UUID        `json:"command_key"`
+	RequestHash       string             `json:"request_hash"`
+	FromIssueID       pgtype.UUID        `json:"from_issue_id"`
+	ToIssueID         pgtype.UUID        `json:"to_issue_id"`
+	Reason            string             `json:"reason"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	ExpectedRevision  int64              `json:"expected_revision"`
+	ResultingRevision int64              `json:"resulting_revision"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type CockpitArtifactReviewerHandoff struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	ArtifactID        pgtype.UUID        `json:"artifact_id"`
+	CommandKey        pgtype.UUID        `json:"command_key"`
+	RequestHash       string             `json:"request_hash"`
+	FromReviewerID    pgtype.UUID        `json:"from_reviewer_id"`
+	ToReviewerID      pgtype.UUID        `json:"to_reviewer_id"`
+	VersionID         pgtype.UUID        `json:"version_id"`
+	VersionNumber     pgtype.Int4        `json:"version_number"`
+	FromReviewIssueID pgtype.UUID        `json:"from_review_issue_id"`
+	ToReviewIssueID   pgtype.UUID        `json:"to_review_issue_id"`
+	Reason            string             `json:"reason"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	ExpectedRevision  int64              `json:"expected_revision"`
+	ResultingRevision int64              `json:"resulting_revision"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type CockpitArtifactVersion struct {
+	ID                         pgtype.UUID        `json:"id"`
+	WorkspaceID                pgtype.UUID        `json:"workspace_id"`
+	ArtifactID                 pgtype.UUID        `json:"artifact_id"`
+	VersionNumber              int32              `json:"version_number"`
+	SubmissionKey              pgtype.UUID        `json:"submission_key"`
+	RequestHash                string             `json:"request_hash"`
+	Revision                   int64              `json:"revision"`
+	ProducerIssueID            pgtype.UUID        `json:"producer_issue_id"`
+	ProducerIssueIdentifier    string             `json:"producer_issue_identifier"`
+	ProducerIssueTitle         string             `json:"producer_issue_title"`
+	ProducerRunID              pgtype.UUID        `json:"producer_run_id"`
+	SourceMeetingID            pgtype.UUID        `json:"source_meeting_id"`
+	SourceMeetingTitle         string             `json:"source_meeting_title"`
+	SourceMinutesVersionID     pgtype.UUID        `json:"source_minutes_version_id"`
+	SourceMinutesVersionNumber pgtype.Int4        `json:"source_minutes_version_number"`
+	PayloadKind                string             `json:"payload_kind"`
+	Content                    pgtype.Text        `json:"content"`
+	SourceAttachmentID         pgtype.UUID        `json:"source_attachment_id"`
+	Filename                   string             `json:"filename"`
+	ContentType                string             `json:"content_type"`
+	SizeBytes                  pgtype.Int8        `json:"size_bytes"`
+	ContentHash                pgtype.Text        `json:"content_hash"`
+	StorageKey                 pgtype.Text        `json:"storage_key"`
+	ObjectUrl                  pgtype.Text        `json:"object_url"`
+	CaptureStatus              string             `json:"capture_status"`
+	CaptureErrorCode           string             `json:"capture_error_code"`
+	CaptureError               string             `json:"capture_error"`
+	Decision                   string             `json:"decision"`
+	ReviewerID                 pgtype.UUID        `json:"reviewer_id"`
+	ReviewIssueID              pgtype.UUID        `json:"review_issue_id"`
+	ReviewedBy                 pgtype.UUID        `json:"reviewed_by"`
+	Feedback                   string             `json:"feedback"`
+	ReviewedAt                 pgtype.Timestamptz `json:"reviewed_at"`
+	SubmittedByType            string             `json:"submitted_by_type"`
+	SubmittedByID              pgtype.UUID        `json:"submitted_by_id"`
+	SubmittedByUserID          pgtype.UUID        `json:"submitted_by_user_id"`
+	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                  pgtype.Timestamptz `json:"updated_at"`
+	InputManifestVersionID     pgtype.UUID        `json:"input_manifest_version_id"`
+}
+
+type CockpitCreationIntent struct {
+	WorkspaceID  pgtype.UUID        `json:"workspace_id"`
+	ResourceKind string             `json:"resource_kind"`
+	CreationKey  pgtype.UUID        `json:"creation_key"`
+	RequestHash  string             `json:"request_hash"`
+	ActorID      pgtype.UUID        `json:"actor_id"`
+	ResourceID   pgtype.UUID        `json:"resource_id"`
+	Receipt      []byte             `json:"receipt"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 type CockpitDirectory struct {
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
 	CockpitID   pgtype.UUID        `json:"cockpit_id"`
@@ -595,33 +883,437 @@ type CockpitDirectory struct {
 	Source      string             `json:"source"`
 }
 
+type CockpitInput struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	CreationKey           pgtype.UUID        `json:"creation_key"`
+	RequestHash           string             `json:"request_hash"`
+	CreationReceipt       []byte             `json:"creation_receipt"`
+	Title                 string             `json:"title"`
+	Description           string             `json:"description"`
+	ProjectID             pgtype.UUID        `json:"project_id"`
+	OriginIssueID         pgtype.UUID        `json:"origin_issue_id"`
+	Revision              int64              `json:"revision"`
+	CurrentVersionID      pgtype.UUID        `json:"current_version_id"`
+	ActorType             string             `json:"actor_type"`
+	ActorID               pgtype.UUID        `json:"actor_id"`
+	CredentialOwnerUserID pgtype.UUID        `json:"credential_owner_user_id"`
+	AuthorizingUserID     pgtype.UUID        `json:"authorizing_user_id"`
+	SourceAgentID         pgtype.UUID        `json:"source_agent_id"`
+	SourceRunID           pgtype.UUID        `json:"source_run_id"`
+	SourceIssueID         pgtype.UUID        `json:"source_issue_id"`
+	SourceRuntimeID       pgtype.UUID        `json:"source_runtime_id"`
+	ArchivedAt            pgtype.Timestamptz `json:"archived_at"`
+	ArchivedBy            pgtype.UUID        `json:"archived_by"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitInputReference struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	MeetingID             pgtype.UUID        `json:"meeting_id"`
+	AgendaID              pgtype.UUID        `json:"agenda_id"`
+	InputID               pgtype.UUID        `json:"input_id"`
+	InputVersionID        pgtype.UUID        `json:"input_version_id"`
+	Purpose               string             `json:"purpose"`
+	CreationKey           pgtype.UUID        `json:"creation_key"`
+	RequestHash           string             `json:"request_hash"`
+	CreationReceipt       []byte             `json:"creation_receipt"`
+	ActorType             string             `json:"actor_type"`
+	ActorID               pgtype.UUID        `json:"actor_id"`
+	CredentialOwnerUserID pgtype.UUID        `json:"credential_owner_user_id"`
+	AuthorizingUserID     pgtype.UUID        `json:"authorizing_user_id"`
+	SourceAgentID         pgtype.UUID        `json:"source_agent_id"`
+	SourceRunID           pgtype.UUID        `json:"source_run_id"`
+	SourceIssueID         pgtype.UUID        `json:"source_issue_id"`
+	SourceRuntimeID       pgtype.UUID        `json:"source_runtime_id"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	RemovedAt             pgtype.Timestamptz `json:"removed_at"`
+	RemovedBy             pgtype.UUID        `json:"removed_by"`
+	RemovalKey            pgtype.UUID        `json:"removal_key"`
+	RemovalHash           pgtype.Text        `json:"removal_hash"`
+	RemovalReceipt        []byte             `json:"removal_receipt"`
+}
+
+type CockpitInputTransfer struct {
+	ID                       pgtype.UUID        `json:"id"`
+	WorkspaceID              pgtype.UUID        `json:"workspace_id"`
+	InputID                  pgtype.UUID        `json:"input_id"`
+	VersionID                pgtype.UUID        `json:"version_id"`
+	TransferNumber           int32              `json:"transfer_number"`
+	CommandKey               pgtype.UUID        `json:"command_key"`
+	RequestHash              string             `json:"request_hash"`
+	CommandReceipt           []byte             `json:"command_receipt"`
+	ActorType                pgtype.Text        `json:"actor_type"`
+	ActorID                  pgtype.UUID        `json:"actor_id"`
+	CredentialOwnerUserID    pgtype.UUID        `json:"credential_owner_user_id"`
+	AuthorizingUserID        pgtype.UUID        `json:"authorizing_user_id"`
+	SourceAgentID            pgtype.UUID        `json:"source_agent_id"`
+	SourceRunID              pgtype.UUID        `json:"source_run_id"`
+	SourceIssueID            pgtype.UUID        `json:"source_issue_id"`
+	SourceRuntimeID          pgtype.UUID        `json:"source_runtime_id"`
+	Kind                     string             `json:"kind"`
+	Mode                     string             `json:"mode"`
+	State                    string             `json:"state"`
+	Revision                 int64              `json:"revision"`
+	ReplacesTransferID       pgtype.UUID        `json:"replaces_transfer_id"`
+	OwnedStorageKey          string             `json:"owned_storage_key"`
+	LeaseToken               pgtype.UUID        `json:"lease_token"`
+	LeaseExpiresAt           pgtype.Timestamptz `json:"lease_expires_at"`
+	NextAttemptAt            pgtype.Timestamptz `json:"next_attempt_at"`
+	ExpectedBytes            int64              `json:"expected_bytes"`
+	BytesReceived            pgtype.Int8        `json:"bytes_received"`
+	ContentPinAt             pgtype.Timestamptz `json:"content_pin_at"`
+	PinnedSizeBytes          pgtype.Int8        `json:"pinned_size_bytes"`
+	ContentHash              pgtype.Text        `json:"content_hash"`
+	SourceBeforeRootIdentity pgtype.Text        `json:"source_before_root_identity"`
+	SourceBeforeFileIdentity pgtype.Text        `json:"source_before_file_identity"`
+	SourceBeforeSize         pgtype.Int8        `json:"source_before_size"`
+	SourceBeforeMtimeNs      pgtype.Int8        `json:"source_before_mtime_ns"`
+	SourceAfterFileIdentity  pgtype.Text        `json:"source_after_file_identity"`
+	SourceAfterSize          pgtype.Int8        `json:"source_after_size"`
+	SourceAfterMtimeNs       pgtype.Int8        `json:"source_after_mtime_ns"`
+	SessionExpiresAt         pgtype.Timestamptz `json:"session_expires_at"`
+	IoFinishedAt             pgtype.Timestamptz `json:"io_finished_at"`
+	IoOutcome                pgtype.Text        `json:"io_outcome"`
+	ErrorCode                string             `json:"error_code"`
+	ErrorMessage             string             `json:"error_message"`
+	FinalizeKey              pgtype.UUID        `json:"finalize_key"`
+	FinalizeHash             pgtype.Text        `json:"finalize_hash"`
+	FinalizeReceipt          []byte             `json:"finalize_receipt"`
+	AbortKey                 pgtype.UUID        `json:"abort_key"`
+	AbortHash                pgtype.Text        `json:"abort_hash"`
+	AbortReceipt             []byte             `json:"abort_receipt"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
+	FinishedAt               pgtype.Timestamptz `json:"finished_at"`
+	WorkspaceDeletedAt       pgtype.Timestamptz `json:"workspace_deleted_at"`
+	CleanupState             string             `json:"cleanup_state"`
+	CleanupDueAt             pgtype.Timestamptz `json:"cleanup_due_at"`
+	CleanupLeaseToken        pgtype.UUID        `json:"cleanup_lease_token"`
+	CleanupLeaseExpiresAt    pgtype.Timestamptz `json:"cleanup_lease_expires_at"`
+	CleanupVerifiedAt        pgtype.Timestamptz `json:"cleanup_verified_at"`
+}
+
+type CockpitInputVersion struct {
+	ID                         pgtype.UUID        `json:"id"`
+	WorkspaceID                pgtype.UUID        `json:"workspace_id"`
+	InputID                    pgtype.UUID        `json:"input_id"`
+	VersionNumber              int32              `json:"version_number"`
+	SubmissionKey              pgtype.UUID        `json:"submission_key"`
+	RequestHash                string             `json:"request_hash"`
+	SubmissionReceipt          []byte             `json:"submission_receipt"`
+	Revision                   int64              `json:"revision"`
+	ActorType                  string             `json:"actor_type"`
+	ActorID                    pgtype.UUID        `json:"actor_id"`
+	CredentialOwnerUserID      pgtype.UUID        `json:"credential_owner_user_id"`
+	AuthorizingUserID          pgtype.UUID        `json:"authorizing_user_id"`
+	SourceAgentID              pgtype.UUID        `json:"source_agent_id"`
+	SourceRunID                pgtype.UUID        `json:"source_run_id"`
+	SourceIssueID              pgtype.UUID        `json:"source_issue_id"`
+	SourceRuntimeID            pgtype.UUID        `json:"source_runtime_id"`
+	SourceKind                 string             `json:"source_kind"`
+	PayloadKind                string             `json:"payload_kind"`
+	SourceAttachmentID         pgtype.UUID        `json:"source_attachment_id"`
+	SourceAttachmentIssueID    pgtype.UUID        `json:"source_attachment_issue_id"`
+	SourceRootID               pgtype.UUID        `json:"source_root_id"`
+	SourceRootPath             pgtype.Text        `json:"source_root_path"`
+	SourceRelativePath         pgtype.Text        `json:"source_relative_path"`
+	SourceRootConfigHash       pgtype.Text        `json:"source_root_config_hash"`
+	SourceRootIdentity         pgtype.Text        `json:"source_root_identity"`
+	SourceFileIdentity         pgtype.Text        `json:"source_file_identity"`
+	SourceSize                 pgtype.Int8        `json:"source_size"`
+	SourceMtimeNs              pgtype.Int8        `json:"source_mtime_ns"`
+	SourceArtifactID           pgtype.UUID        `json:"source_artifact_id"`
+	SourceArtifactVersionID    pgtype.UUID        `json:"source_artifact_version_id"`
+	Filename                   string             `json:"filename"`
+	ContentType                string             `json:"content_type"`
+	DeclaredSizeBytes          pgtype.Int8        `json:"declared_size_bytes"`
+	ClientSha256               pgtype.Text        `json:"client_sha256"`
+	PinnedSizeBytes            pgtype.Int8        `json:"pinned_size_bytes"`
+	ContentHash                pgtype.Text        `json:"content_hash"`
+	PinnedAt                   pgtype.Timestamptz `json:"pinned_at"`
+	CaptureState               string             `json:"capture_state"`
+	CaptureErrorCode           string             `json:"capture_error_code"`
+	CaptureError               string             `json:"capture_error"`
+	ActiveTransferID           pgtype.UUID        `json:"active_transfer_id"`
+	AcceptedTransferID         pgtype.UUID        `json:"accepted_transfer_id"`
+	CurrentTransferID          pgtype.UUID        `json:"current_transfer_id"`
+	ReadyAt                    pgtype.Timestamptz `json:"ready_at"`
+	Availability               string             `json:"availability"`
+	VerificationGeneration     int64              `json:"verification_generation"`
+	VerificationLeaseToken     pgtype.UUID        `json:"verification_lease_token"`
+	VerificationLeaseExpiresAt pgtype.Timestamptz `json:"verification_lease_expires_at"`
+	VerificationDueAt          pgtype.Timestamptz `json:"verification_due_at"`
+	CheckedAt                  pgtype.Timestamptz `json:"checked_at"`
+	ProofExpiresAt             pgtype.Timestamptz `json:"proof_expires_at"`
+	ProviderObjectIdentity     pgtype.Text        `json:"provider_object_identity"`
+	VerificationErrorCode      string             `json:"verification_error_code"`
+	CreatedAt                  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitIssueInputManifest struct {
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	IssueID          pgtype.UUID        `json:"issue_id"`
+	Revision         int64              `json:"revision"`
+	CurrentVersionID pgtype.UUID        `json:"current_version_id"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	UpdatedBy        pgtype.UUID        `json:"updated_by"`
+}
+
+type CockpitIssueInputManifestItem struct {
+	WorkspaceID       pgtype.UUID `json:"workspace_id"`
+	ManifestVersionID pgtype.UUID `json:"manifest_version_id"`
+	Position          int32       `json:"position"`
+	InputVersionID    pgtype.UUID `json:"input_version_id"`
+	Purpose           string      `json:"purpose"`
+	Required          bool        `json:"required"`
+}
+
+type CockpitIssueInputManifestVersion struct {
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	IssueID       pgtype.UUID        `json:"issue_id"`
+	VersionNumber int32              `json:"version_number"`
+	CommandKey    pgtype.UUID        `json:"command_key"`
+	RequestHash   string             `json:"request_hash"`
+	Receipt       []byte             `json:"receipt"`
+	ManifestHash  string             `json:"manifest_hash"`
+	Note          string             `json:"note"`
+	ItemTotal     int32              `json:"item_total"`
+	RequiredTotal int32              `json:"required_total"`
+	CreatedBy     pgtype.UUID        `json:"created_by"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type CockpitIssuePrimary struct {
+	IssueID        pgtype.UUID        `json:"issue_id"`
+	WorkspaceID    pgtype.UUID        `json:"workspace_id"`
+	NodeID         pgtype.UUID        `json:"node_id"`
+	Revision       int64              `json:"revision"`
+	CreationKey    pgtype.UUID        `json:"creation_key"`
+	CreationNodeID pgtype.UUID        `json:"creation_node_id"`
+	CreationHash   string             `json:"creation_hash"`
+	CreatedBy      pgtype.UUID        `json:"created_by"`
+	UpdatedBy      pgtype.UUID        `json:"updated_by"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	IssueDeletedAt pgtype.Timestamptz `json:"issue_deleted_at"`
+}
+
 type CockpitMeeting struct {
+	ID                          pgtype.UUID        `json:"id"`
+	WorkspaceID                 pgtype.UUID        `json:"workspace_id"`
+	CockpitID                   pgtype.UUID        `json:"cockpit_id"`
+	MeetDate                    pgtype.Date        `json:"meet_date"`
+	TimeRange                   string             `json:"time_range"`
+	Title                       string             `json:"title"`
+	Attendees                   string             `json:"attendees"`
+	MeetNo                      string             `json:"meet_no"`
+	Link                        string             `json:"link"`
+	Note                        string             `json:"note"`
+	CreatedAt                   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                   pgtype.Timestamptz `json:"updated_at"`
+	Code                        string             `json:"code"`
+	Kind                        string             `json:"kind"`
+	Status                      string             `json:"status"`
+	Parties                     string             `json:"parties"`
+	Organizer                   string             `json:"organizer"`
+	Location                    string             `json:"location"`
+	StartTime                   pgtype.Time        `json:"start_time"`
+	EndTime                     pgtype.Time        `json:"end_time"`
+	Minutes                     string             `json:"minutes"`
+	Decisions                   string             `json:"decisions"`
+	Actions                     string             `json:"actions"`
+	NasDir                      string             `json:"nas_dir"`
+	Detected                    bool               `json:"detected"`
+	Track                       string             `json:"track"`
+	LifecycleRevision           int64              `json:"lifecycle_revision"`
+	AgendaRevision              int64              `json:"agenda_revision"`
+	OccurrenceState             string             `json:"occurrence_state"`
+	StartedConfirmedAt          pgtype.Timestamptz `json:"started_confirmed_at"`
+	StartedConfirmedBy          pgtype.UUID        `json:"started_confirmed_by"`
+	EndedAt                     pgtype.Timestamptz `json:"ended_at"`
+	EndedBy                     pgtype.UUID        `json:"ended_by"`
+	EndedSource                 pgtype.Text        `json:"ended_source"`
+	ActualStartedAt             pgtype.Timestamptz `json:"actual_started_at"`
+	ActualEndedAt               pgtype.Timestamptz `json:"actual_ended_at"`
+	LifecycleUpdatedAt          pgtype.Timestamptz `json:"lifecycle_updated_at"`
+	LifecycleUpdatedBy          pgtype.UUID        `json:"lifecycle_updated_by"`
+	CancelledAt                 pgtype.Timestamptz `json:"cancelled_at"`
+	CancelledBy                 pgtype.UUID        `json:"cancelled_by"`
+	CancelledReason             string             `json:"cancelled_reason"`
+	ArchivedAt                  pgtype.Timestamptz `json:"archived_at"`
+	ArchivedBy                  pgtype.UUID        `json:"archived_by"`
+	ArchivedReason              string             `json:"archived_reason"`
+	NasDirRevision              int64              `json:"nas_dir_revision"`
+	MinutesReviewerID           pgtype.UUID        `json:"minutes_reviewer_id"`
+	MinutesFocusIssueID         pgtype.UUID        `json:"minutes_focus_issue_id"`
+	MinutesCurrentVersionID     pgtype.UUID        `json:"minutes_current_version_id"`
+	MinutesPublishedVersionID   pgtype.UUID        `json:"minutes_published_version_id"`
+	MinutesRevision             int64              `json:"minutes_revision"`
+	MinutesMaterialsReady       bool               `json:"minutes_materials_ready"`
+	MinutesMaterialsConfirmedAt pgtype.Timestamptz `json:"minutes_materials_confirmed_at"`
+	MinutesMaterialsConfirmedBy pgtype.UUID        `json:"minutes_materials_confirmed_by"`
+	MinutesConfiguredBy         pgtype.UUID        `json:"minutes_configured_by"`
+}
+
+type CockpitMeetingAction struct {
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	MeetingID           pgtype.UUID        `json:"meeting_id"`
+	VersionID           pgtype.UUID        `json:"version_id"`
+	VersionNumber       int32              `json:"version_number"`
+	SourceContentHash   string             `json:"source_content_hash"`
+	ProposalKey         pgtype.UUID        `json:"proposal_key"`
+	ProposalHash        string             `json:"proposal_hash"`
+	Title               string             `json:"title"`
+	Description         string             `json:"description"`
+	SourceQuote         string             `json:"source_quote"`
+	Status              string             `json:"status"`
+	Resolution          string             `json:"resolution"`
+	Revision            int64              `json:"revision"`
+	NodeID              pgtype.UUID        `json:"node_id"`
+	NodeCode            string             `json:"node_code"`
+	NodeName            string             `json:"node_name"`
+	IssueID             pgtype.UUID        `json:"issue_id"`
+	Reason              string             `json:"reason"`
+	DecisionKey         pgtype.UUID        `json:"decision_key"`
+	DecisionHash        string             `json:"decision_hash"`
+	DecisionRevision    pgtype.Int8        `json:"decision_revision"`
+	CreatedBy           pgtype.UUID        `json:"created_by"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	ResolvedBy          pgtype.UUID        `json:"resolved_by"`
+	ResolvedAt          pgtype.Timestamptz `json:"resolved_at"`
+	PreviousResolutions []byte             `json:"previous_resolutions"`
+}
+
+type CockpitMeetingAgenda struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	MeetingID         pgtype.UUID        `json:"meeting_id"`
+	Revision          int64              `json:"revision"`
+	Title             string             `json:"title"`
+	Purposes          []string           `json:"purposes"`
+	DesiredOutcome    string             `json:"desired_outcome"`
+	Notes             string             `json:"notes"`
+	FacilitatorUserID pgtype.UUID        `json:"facilitator_user_id"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	SortOrder         int64              `json:"sort_order"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	UpdatedBy         pgtype.UUID        `json:"updated_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	RemovedAt         pgtype.Timestamptz `json:"removed_at"`
+	RemovedBy         pgtype.UUID        `json:"removed_by"`
+}
+
+type CockpitMeetingAgendaReference struct {
 	ID          pgtype.UUID        `json:"id"`
 	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	CockpitID   pgtype.UUID        `json:"cockpit_id"`
-	MeetDate    pgtype.Date        `json:"meet_date"`
-	TimeRange   string             `json:"time_range"`
-	Title       string             `json:"title"`
-	Attendees   string             `json:"attendees"`
-	MeetNo      string             `json:"meet_no"`
-	Link        string             `json:"link"`
-	Note        string             `json:"note"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	Code        string             `json:"code"`
+	MeetingID   pgtype.UUID        `json:"meeting_id"`
+	AgendaID    pgtype.UUID        `json:"agenda_id"`
 	Kind        string             `json:"kind"`
-	Status      string             `json:"status"`
-	Parties     string             `json:"parties"`
-	Organizer   string             `json:"organizer"`
-	Location    string             `json:"location"`
-	StartTime   pgtype.Time        `json:"start_time"`
-	EndTime     pgtype.Time        `json:"end_time"`
-	Minutes     string             `json:"minutes"`
-	Decisions   string             `json:"decisions"`
-	Actions     string             `json:"actions"`
-	NasDir      string             `json:"nas_dir"`
-	Detected    bool               `json:"detected"`
-	Track       string             `json:"track"`
+	TargetID    pgtype.UUID        `json:"target_id"`
+	Purpose     string             `json:"purpose"`
+	CreatedBy   pgtype.UUID        `json:"created_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	RemovedAt   pgtype.Timestamptz `json:"removed_at"`
+	RemovedBy   pgtype.UUID        `json:"removed_by"`
+}
+
+type CockpitMeetingDirectoryAttempt struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	MeetingID       pgtype.UUID        `json:"meeting_id"`
+	OperationID     pgtype.UUID        `json:"operation_id"`
+	StepID          pgtype.UUID        `json:"step_id"`
+	AttemptNumber   int32              `json:"attempt_number"`
+	GrantCommandKey pgtype.UUID        `json:"grant_command_key"`
+	GrantRevision   int64              `json:"grant_revision"`
+	LeaseToken      pgtype.UUID        `json:"lease_token"`
+	State           string             `json:"state"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	FinishedAt      pgtype.Timestamptz `json:"finished_at"`
+	Outcome         pgtype.Text        `json:"outcome"`
+	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
+	ErrorCode       string             `json:"error_code"`
+	ErrorMessage    string             `json:"error_message"`
+	Receipt         []byte             `json:"receipt"`
+	LateReceipt     []byte             `json:"late_receipt"`
+	LateObservedAt  pgtype.Timestamptz `json:"late_observed_at"`
+}
+
+type CockpitMeetingDirectoryOperation struct {
+	ID                      pgtype.UUID        `json:"id"`
+	WorkspaceID             pgtype.UUID        `json:"workspace_id"`
+	MeetingID               pgtype.UUID        `json:"meeting_id"`
+	CreationCommandKey      pgtype.UUID        `json:"creation_command_key"`
+	RequestHash             string             `json:"request_hash"`
+	PlanHash                string             `json:"plan_hash"`
+	Revision                int64              `json:"revision"`
+	State                   string             `json:"state"`
+	RootID                  pgtype.UUID        `json:"root_id"`
+	RootPath                string             `json:"root_path"`
+	PrepareSubpath          string             `json:"prepare_subpath"`
+	RelativeDirectory       string             `json:"relative_directory"`
+	Directory               string             `json:"directory"`
+	TargetHash              string             `json:"target_hash"`
+	RootConfigHash          string             `json:"root_config_hash"`
+	ObservedNasDir          string             `json:"observed_nas_dir"`
+	ObservedBindingRevision int64              `json:"observed_binding_revision"`
+	AcceptedBindingRevision pgtype.Int8        `json:"accepted_binding_revision"`
+	BindAfterBase           bool               `json:"bind_after_base"`
+	BindingResult           string             `json:"binding_result"`
+	CreatedByType           string             `json:"created_by_type"`
+	CreatedBy               pgtype.UUID        `json:"created_by"`
+	CredentialOwnerUserID   pgtype.UUID        `json:"credential_owner_user_id"`
+	AuthorizingUserID       pgtype.UUID        `json:"authorizing_user_id"`
+	SourceRunID             pgtype.UUID        `json:"source_run_id"`
+	SourceIssueID           pgtype.UUID        `json:"source_issue_id"`
+	SourceAgentID           pgtype.UUID        `json:"source_agent_id"`
+	SourceRuntimeID         pgtype.UUID        `json:"source_runtime_id"`
+	SourceTaskTokenID       pgtype.UUID        `json:"source_task_token_id"`
+	SourceRelationKind      string             `json:"source_relation_kind"`
+	SourceAgendaReferenceID pgtype.UUID        `json:"source_agenda_reference_id"`
+	SourcePrincipal         []byte             `json:"source_principal"`
+	LastGrantCommandKey     pgtype.UUID        `json:"last_grant_command_key"`
+	ResponsibleUserID       pgtype.UUID        `json:"responsible_user_id"`
+	Input                   []byte             `json:"input"`
+	Receipt                 []byte             `json:"receipt"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	FinishedAt              pgtype.Timestamptz `json:"finished_at"`
+}
+
+type CockpitMeetingDirectoryStep struct {
+	ID              pgtype.UUID        `json:"id"`
+	WorkspaceID     pgtype.UUID        `json:"workspace_id"`
+	MeetingID       pgtype.UUID        `json:"meeting_id"`
+	OperationID     pgtype.UUID        `json:"operation_id"`
+	Position        int32              `json:"position"`
+	ParentStepID    pgtype.UUID        `json:"parent_step_id"`
+	Kind            string             `json:"kind"`
+	Label           string             `json:"label"`
+	RelativePath    string             `json:"relative_path"`
+	PathHash        string             `json:"path_hash"`
+	State           string             `json:"state"`
+	Revision        int64              `json:"revision"`
+	GrantCommandKey pgtype.UUID        `json:"grant_command_key"`
+	GrantRevision   int64              `json:"grant_revision"`
+	AttemptCount    int32              `json:"attempt_count"`
+	LastAttemptID   pgtype.UUID        `json:"last_attempt_id"`
+	NextAttemptAt   pgtype.Timestamptz `json:"next_attempt_at"`
+	LeaseToken      pgtype.UUID        `json:"lease_token"`
+	LeaseExpiresAt  pgtype.Timestamptz `json:"lease_expires_at"`
+	LastObservedAt  pgtype.Timestamptz `json:"last_observed_at"`
+	Outcome         pgtype.Text        `json:"outcome"`
+	LastErrorCode   string             `json:"last_error_code"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 type CockpitMeetingIssue struct {
@@ -631,6 +1323,28 @@ type CockpitMeetingIssue struct {
 	Role        string             `json:"role"`
 	Position    float64            `json:"position"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	Roles       []string           `json:"roles"`
+}
+
+type CockpitMeetingLifecycleCommand struct {
+	WorkspaceID          pgtype.UUID        `json:"workspace_id"`
+	MeetingID            pgtype.UUID        `json:"meeting_id"`
+	CommandKey           pgtype.UUID        `json:"command_key"`
+	Kind                 string             `json:"kind"`
+	ActorID              pgtype.UUID        `json:"actor_id"`
+	RequestHash          string             `json:"request_hash"`
+	Revision             int64              `json:"revision"`
+	AgendaRevision       int64              `json:"agenda_revision"`
+	AgendaID             pgtype.UUID        `json:"agenda_id"`
+	ReferenceID          pgtype.UUID        `json:"reference_id"`
+	IssueID              pgtype.UUID        `json:"issue_id"`
+	Receipt              []byte             `json:"receipt"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	OperationID          pgtype.UUID        `json:"operation_id"`
+	EffectID             pgtype.UUID        `json:"effect_id"`
+	ActorType            string             `json:"actor_type"`
+	DirectoryOperationID pgtype.UUID        `json:"directory_operation_id"`
+	DirectoryStepID      pgtype.UUID        `json:"directory_step_id"`
 }
 
 type CockpitMeetingNode struct {
@@ -639,6 +1353,92 @@ type CockpitMeetingNode struct {
 	NodeID      pgtype.UUID        `json:"node_id"`
 	Position    float64            `json:"position"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type CockpitMeetingPreparationEffect struct {
+	ID                    pgtype.UUID        `json:"id"`
+	WorkspaceID           pgtype.UUID        `json:"workspace_id"`
+	MeetingID             pgtype.UUID        `json:"meeting_id"`
+	OperationID           pgtype.UUID        `json:"operation_id"`
+	SlotID                pgtype.UUID        `json:"slot_id"`
+	Position              int32              `json:"position"`
+	Kind                  string             `json:"kind"`
+	Label                 string             `json:"label"`
+	CommandKey            pgtype.UUID        `json:"command_key"`
+	DependencyID          pgtype.UUID        `json:"dependency_id"`
+	RequestHash           string             `json:"request_hash"`
+	Input                 []byte             `json:"input"`
+	AuthorizationKey      pgtype.UUID        `json:"authorization_key"`
+	AuthorizationRevision int64              `json:"authorization_revision"`
+	AuthorizationHash     string             `json:"authorization_hash"`
+	AuthorizationSnapshot []byte             `json:"authorization_snapshot"`
+	State                 string             `json:"state"`
+	Revision              int64              `json:"revision"`
+	ErrorCode             string             `json:"error_code"`
+	Reason                string             `json:"reason"`
+	AgendaID              pgtype.UUID        `json:"agenda_id"`
+	ReferenceID           pgtype.UUID        `json:"reference_id"`
+	IssueID               pgtype.UUID        `json:"issue_id"`
+	RunID                 pgtype.UUID        `json:"run_id"`
+	TargetMeetingID       pgtype.UUID        `json:"target_meeting_id"`
+	Receipt               []byte             `json:"receipt"`
+	AppliedBy             pgtype.UUID        `json:"applied_by"`
+	AppliedAt             pgtype.Timestamptz `json:"applied_at"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitMeetingPreparationOperation struct {
+	ID                          pgtype.UUID        `json:"id"`
+	WorkspaceID                 pgtype.UUID        `json:"workspace_id"`
+	MeetingID                   pgtype.UUID        `json:"meeting_id"`
+	Kind                        string             `json:"kind"`
+	CommandKey                  pgtype.UUID        `json:"command_key"`
+	RequestHash                 string             `json:"request_hash"`
+	ContextToken                string             `json:"context_token"`
+	TemplateID                  pgtype.UUID        `json:"template_id"`
+	TemplateVersionID           pgtype.UUID        `json:"template_version_id"`
+	Input                       []byte             `json:"input"`
+	State                       string             `json:"state"`
+	Revision                    int64              `json:"revision"`
+	AuthorizedLifecycleRevision int64              `json:"authorized_lifecycle_revision"`
+	AuthorizedAgendaRevision    int64              `json:"authorized_agenda_revision"`
+	CreatedBy                   pgtype.UUID        `json:"created_by"`
+	ResponsibleUserID           pgtype.UUID        `json:"responsible_user_id"`
+	CreatedAt                   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitMeetingTemplate struct {
+	ID               pgtype.UUID        `json:"id"`
+	WorkspaceID      pgtype.UUID        `json:"workspace_id"`
+	Revision         int64              `json:"revision"`
+	CurrentVersionID pgtype.UUID        `json:"current_version_id"`
+	Title            string             `json:"title"`
+	Description      string             `json:"description"`
+	IsActive         bool               `json:"is_active"`
+	CreatedBy        pgtype.UUID        `json:"created_by"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitMeetingTemplateVersion struct {
+	ID           pgtype.UUID        `json:"id"`
+	WorkspaceID  pgtype.UUID        `json:"workspace_id"`
+	TemplateID   pgtype.UUID        `json:"template_id"`
+	Number       int32              `json:"number"`
+	Title        string             `json:"title"`
+	Description  string             `json:"description"`
+	IsActive     bool               `json:"is_active"`
+	ConfigSchema int32              `json:"config_schema"`
+	Config       []byte             `json:"config"`
+	ConfigHash   string             `json:"config_hash"`
+	SlotCount    int32              `json:"slot_count"`
+	CommandKey   pgtype.UUID        `json:"command_key"`
+	RequestHash  string             `json:"request_hash"`
+	Receipt      []byte             `json:"receipt"`
+	CreatedBy    pgtype.UUID        `json:"created_by"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type CockpitMilestone struct {
@@ -655,6 +1455,87 @@ type CockpitMilestone struct {
 	Position    float64            `json:"position"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CockpitMinutesExport struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	MeetingID         pgtype.UUID        `json:"meeting_id"`
+	VersionID         pgtype.UUID        `json:"version_id"`
+	VersionNumber     int32              `json:"version_number"`
+	SourceIssueID     pgtype.UUID        `json:"source_issue_id"`
+	RootID            string             `json:"root_id"`
+	RootPath          string             `json:"root_path"`
+	Directory         string             `json:"directory"`
+	RelativePath      string             `json:"relative_path"`
+	TargetPath        string             `json:"target_path"`
+	ContentHash       string             `json:"content_hash"`
+	Status            string             `json:"status"`
+	Attempts          int32              `json:"attempts"`
+	CycleAttempts     int32              `json:"cycle_attempts"`
+	Revision          int64              `json:"revision"`
+	NextRetryAt       pgtype.Timestamptz `json:"next_retry_at"`
+	LeaseToken        pgtype.UUID        `json:"lease_token"`
+	LeaseExpiresAt    pgtype.Timestamptz `json:"lease_expires_at"`
+	LastErrorCode     string             `json:"last_error_code"`
+	LastError         string             `json:"last_error"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+	SizeBytes         pgtype.Int8        `json:"size_bytes"`
+	WriteMode         string             `json:"write_mode"`
+	VerifiedPath      pgtype.Text        `json:"verified_path"`
+	ReceiptPath       pgtype.Text        `json:"receipt_path"`
+	VerifiedAttemptID pgtype.UUID        `json:"verified_attempt_id"`
+	ReceiptHash       pgtype.Text        `json:"receipt_hash"`
+}
+
+type CockpitMinutesExportAttempt struct {
+	ID                  pgtype.UUID        `json:"id"`
+	WorkspaceID         pgtype.UUID        `json:"workspace_id"`
+	MeetingID           pgtype.UUID        `json:"meeting_id"`
+	ExportID            pgtype.UUID        `json:"export_id"`
+	AttemptNumber       int32              `json:"attempt_number"`
+	TargetPath          string             `json:"target_path"`
+	ReceiptPath         string             `json:"receipt_path"`
+	ContentHash         string             `json:"content_hash"`
+	Status              string             `json:"status"`
+	VerifiedPath        pgtype.Text        `json:"verified_path"`
+	VerifiedReceiptPath pgtype.Text        `json:"verified_receipt_path"`
+	VerifiedAttemptID   pgtype.UUID        `json:"verified_attempt_id"`
+	ReceiptHash         pgtype.Text        `json:"receipt_hash"`
+	SizeBytes           pgtype.Int8        `json:"size_bytes"`
+	LastErrorCode       string             `json:"last_error_code"`
+	LastError           string             `json:"last_error"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	VerifiedAt          pgtype.Timestamptz `json:"verified_at"`
+}
+
+type CockpitMinutesVersion struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	MeetingID         pgtype.UUID        `json:"meeting_id"`
+	VersionNumber     int32              `json:"version_number"`
+	SubmissionKey     pgtype.UUID        `json:"submission_key"`
+	Content           string             `json:"content"`
+	ContentHash       string             `json:"content_hash"`
+	SourceIssueID     pgtype.UUID        `json:"source_issue_id"`
+	ReviewIssueID     pgtype.UUID        `json:"review_issue_id"`
+	ReviewerID        pgtype.UUID        `json:"reviewer_id"`
+	Decision          string             `json:"decision"`
+	Feedback          string             `json:"feedback"`
+	SubmittedByType   string             `json:"submitted_by_type"`
+	SubmittedByID     pgtype.UUID        `json:"submitted_by_id"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	ReviewedBy        pgtype.UUID        `json:"reviewed_by"`
+	ReviewedAt        pgtype.Timestamptz `json:"reviewed_at"`
+	PublishedBy       pgtype.UUID        `json:"published_by"`
+	PublishedAt       pgtype.Timestamptz `json:"published_at"`
+	UnpublishedAt     pgtype.Timestamptz `json:"unpublished_at"`
+	UnpublishedBy     pgtype.UUID        `json:"unpublished_by"`
+	UnpublishedReason pgtype.Text        `json:"unpublished_reason"`
 }
 
 type CockpitNode struct {
@@ -686,6 +1567,8 @@ type CockpitNode struct {
 	UpdatedByID     pgtype.UUID        `json:"updated_by_id"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ProjectID       pgtype.UUID        `json:"project_id"`
+	ModuleID        pgtype.UUID        `json:"module_id"`
 }
 
 type CockpitNodeIssue struct {
@@ -727,6 +1610,24 @@ type CockpitPendingChange struct {
 	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	SourceTaskID   pgtype.UUID        `json:"source_task_id"`
+	DecisionNote   string             `json:"decision_note"`
+}
+
+type CockpitReviewerHandoff struct {
+	ID                pgtype.UUID        `json:"id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	MeetingID         pgtype.UUID        `json:"meeting_id"`
+	HandoffKey        pgtype.UUID        `json:"handoff_key"`
+	FromReviewerID    pgtype.UUID        `json:"from_reviewer_id"`
+	ToReviewerID      pgtype.UUID        `json:"to_reviewer_id"`
+	VersionID         pgtype.UUID        `json:"version_id"`
+	FromReviewIssueID pgtype.UUID        `json:"from_review_issue_id"`
+	ToReviewIssueID   pgtype.UUID        `json:"to_review_issue_id"`
+	Reason            string             `json:"reason"`
+	CreatedBy         pgtype.UUID        `json:"created_by"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	Revision          int64              `json:"revision"`
 }
 
 type CockpitSnapshot struct {
@@ -1355,14 +2256,15 @@ type Member struct {
 }
 
 type Module struct {
-	ID          pgtype.UUID        `json:"id"`
-	WorkspaceID pgtype.UUID        `json:"workspace_id"`
-	ProjectID   pgtype.UUID        `json:"project_id"`
-	Title       string             `json:"title"`
-	Description pgtype.Text        `json:"description"`
-	Position    float64            `json:"position"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID            pgtype.UUID        `json:"id"`
+	WorkspaceID   pgtype.UUID        `json:"workspace_id"`
+	ProjectID     pgtype.UUID        `json:"project_id"`
+	Title         string             `json:"title"`
+	Description   pgtype.Text        `json:"description"`
+	Position      float64            `json:"position"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	DirectoryName pgtype.Text        `json:"directory_name"`
 }
 
 type NotificationPreference struct {
@@ -1590,6 +2492,19 @@ type SeatCapacityOutbox struct {
 	DeadLetteredAt pgtype.Timestamptz `json:"dead_lettered_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type SingleOwnerAccount struct {
+	Singleton         int16              `json:"singleton"`
+	UserID            pgtype.UUID        `json:"user_id"`
+	WorkspaceID       pgtype.UUID        `json:"workspace_id"`
+	LoginName         string             `json:"login_name"`
+	PasswordHash      string             `json:"password_hash"`
+	RecoveryHash      string             `json:"recovery_hash"`
+	CredentialVersion string             `json:"credential_version"`
+	FailedAttempts    int32              `json:"failed_attempts"`
+	BlockedUntil      pgtype.Timestamptz `json:"blocked_until"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 }
 
 type Skill struct {

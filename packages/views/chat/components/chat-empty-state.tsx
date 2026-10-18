@@ -2,7 +2,7 @@
 
 import { Settings2 } from "lucide-react";
 import { selectConversationStarters } from "@multica/core/agents";
-import type { Agent } from "@multica/core/types";
+import type { Agent, AgentConversationStarter } from "@multica/core/types";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
@@ -17,8 +17,10 @@ export function EmptyState({
   hasSessions = true,
   onPickPrompt,
   customizeHref = null,
+  conversationStarters,
 }: {
   agent: Agent | null;
+  conversationStarters?: AgentConversationStarter[];
   hasSessions?: boolean;
   onPickPrompt: (prompt: string) => void;
   /**
@@ -68,7 +70,7 @@ export function EmptyState({
           className="w-full max-w-sm space-y-2"
           aria-label={t(($) => $.conversation_starters.aria_label)}
         >
-          <ConversationStarterList starters={starters} onPick={onPickPrompt} />
+          <ConversationStarterList starters={conversationStarters ?? starters} onPick={onPickPrompt} />
           {customizeHref ? (
             <div className="flex justify-center pt-1">
               <AppLink

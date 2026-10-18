@@ -1,579 +1,173 @@
 "use client";
 
-// The meeting register: the board's diary, in whichever shape the question
-// needs. A list to audit the year, a month to see the rhythm, a week to plan
-// the next one, an agenda to read what is coming, and a timeline to show what
-// each line of the programme has moved. Five views over one sorted set — the
-// derivations live in @multica/core/cockpit so the register, the overview
-// card and the gantt can never disagree about what is upcoming.
-//
-// Search and filters sit above all five: one reading of the register, so the
-// count in the toolbar, the chips and the rows on screen are the same fact.
-
-import { useMemo, useState } from "react";
-import type { CockpitBoard, CockpitMeeting } from "@multica/core/types";
+import { useEffect, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
-  cockpitMeetingSpan,
-  cockpitMeetingTrackColor,
-  cockpitMeetingsByDay,
-  cockpitMonthGrid,
-  cockpitWeekDays,
-  emptyCockpitMeetingFilter,
-  filterCockpitMeetings,
-  groupMeetingIssues,
-  groupMeetingNodes,
-  isCockpitMeetingFilterActive,
-  monthKey,
-  parseDay,
-  shiftMonthKey,
-  splitCockpitMeetings,
-  addDays,
-  formatDay,
-  type CockpitMeetingFilter,
+  addDays, cockpitMeetingRegisterOptions, cockpitMonthGrid, cockpitScopeViewKey, cockpitWeekDays,
+  EMPTY_COCKPIT_MEETING_CONTEXT, emptyCockpitMeetingFilter, formatDay, isCockpitMeetingFilterActive,
+  monthKey, parseDay, shiftMonthKey, cockpitSurfacePath, useCockpitScopeViewStore, type CockpitMeetingFilter, type CockpitScope,
 } from "@multica/core/cockpit";
-import { cn } from "@multica/ui/lib/utils";
+import type { CockpitMeetingRegisterQuery } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
-import { Badge } from "@multica/ui/components/ui/badge";
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  FolderOpen,
-  Link2,
-  Plus,
-  ScanSearch,
-} from "lucide-react";
+import { Spinner } from "@multica/ui/components/ui/spinner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
+import { cn } from "@multica/ui/lib/utils";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, ScanSearch } from "lucide-react";
+import { AppLink, useNavigation } from "../../navigation";
 import { useLocale, useT } from "../../i18n";
+import { SegmentedToggle } from "../../common/segmented-toggle";
+import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
+import { CockpitMeetingCards } from "./cockpit-meeting-cards";
 import { CockpitMeetingFilterBar, CockpitMeetingFilterChips } from "./cockpit-meeting-filter";
 import { CockpitMeetingTimeline } from "./cockpit-meeting-timeline";
-import { SegmentedPill, useSegmentedPill } from "./cockpit-segmented";
+import { CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 
 export type CockpitMeetingsView = "list" | "month" | "week" | "agenda" | "timeline";
-
 const VIEWS: CockpitMeetingsView[] = ["list", "month", "week", "agenda", "timeline"];
 
 export interface CockpitMeetingsProps {
-  board: CockpitBoard;
+  wsId: string;
+  scope: CockpitScope;
   today: string;
   selectedId: string | null;
   onSelect: (meetingId: string) => void;
   onCreate: () => void;
-  /** Reads the archive folder for meetings nobody recorded. */
   onScan: () => void;
   readOnly?: boolean;
+  templatesAvailable?: boolean;
+  dispositionAvailable?: boolean;
+  toolbarActions?: React.ReactNode;
 }
 
-/** One meeting as a chip inside a calendar cell. */
-function MeetingChip({
-  meeting,
-  selected,
-  onSelect,
-  label,
-}: {
-  meeting: CockpitMeeting;
-  selected: boolean;
-  onSelect: () => void;
-  label: string;
-}) {
-  const span = cockpitMeetingSpan(meeting);
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-label={label}
-      aria-current={selected ? "true" : undefined}
-      className={cn(
-        "flex w-full min-w-0 items-center gap-1 rounded-sm px-1 py-0.5 text-left text-micro",
-        "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-        selected && "bg-accent",
-      )}
-    >
-      {meeting.track && (
-        <span
-          aria-hidden
-          className="size-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: cockpitMeetingTrackColor(meeting.track) }}
-        />
-      )}
-      {span && <span className="shrink-0 tabular-nums text-muted-foreground">{span.slice(0, 5)}</span>}
-      <span className="min-w-0 flex-1 truncate">{meeting.title}</span>
-    </button>
-  );
-}
-
-export function CockpitMeetings({
-  board,
-  today,
-  selectedId,
-  onSelect,
-  onCreate,
-  onScan,
-  readOnly,
-}: CockpitMeetingsProps) {
+/** Server-filtered metadata pages. Calendar counts cover the window, never just the first metadata page. */
+export function CockpitMeetings({ wsId, scope, today, selectedId, onSelect, onCreate, onScan, readOnly, dispositionAvailable = false, toolbarActions }: CockpitMeetingsProps) {
   const { t } = useT("cockpit");
   const locale = useLocale();
-  const [view, setView] = useState<CockpitMeetingsView>("list");
-  const viewPillRef = useSegmentedPill(view);
-  // The period the calendar views are looking at. Both start on today and are
-  // moved by the same two arrows, so switching between them keeps the place.
-  const [anchor, setAnchor] = useState(today);
-  const [filter, setFilter] = useState<CockpitMeetingFilter>(emptyCockpitMeetingFilter);
-
-  const meetings = board.meetings;
-  const issuesByMeeting = useMemo(() => groupMeetingIssues(board.meeting_issues), [board.meeting_issues]);
-  const nodesByMeeting = useMemo(() => groupMeetingNodes(board.meeting_nodes), [board.meeting_nodes]);
-
-  // The "has links" flag reads the same count the list's link column shows.
-  const linkCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const meeting of meetings) {
-      const n =
-        (issuesByMeeting.get(meeting.id)?.length ?? 0) +
-        (nodesByMeeting.get(meeting.id)?.length ?? 0);
-      counts.set(meeting.id, n);
+  const navigation = useNavigation();
+  const relatedNodeIds = [...new Set((navigation.searchParams.get("meeting_nodes") || "").split(",").filter(Boolean))];
+  const relatedNodeId = navigation.searchParams.get("meeting_node") || "";
+  const routeFrom = navigation.searchParams.get("from") || "";
+  const routeTo = navigation.searchParams.get("to") || "";
+  const archiveParam = navigation.searchParams.get("meeting_archive");
+  const routeArchive = archiveParam === "active" || archiveParam === "archived" || archiveParam === "all" ? archiveParam : null;
+  const key = JSON.stringify([cockpitScopeViewKey(wsId, scope), relatedNodeId, relatedNodeIds]);
+  const initial = useMemo<typeof EMPTY_COCKPIT_MEETING_CONTEXT>(() => ({ ...EMPTY_COCKPIT_MEETING_CONTEXT, archive: routeArchive ?? "active", from: routeFrom, to: routeTo }), [routeFrom, routeTo, routeArchive]);
+  const state = useCockpitScopeViewStore((store) => store.meetings[key] ?? initial);
+  const update = (patch: Parameters<ReturnType<typeof useCockpitScopeViewStore.getState>["updateMeeting"]>[1]) => useCockpitScopeViewStore.getState().updateMeeting(key, patch);
+  useEffect(() => {
+    const current = useCockpitScopeViewStore.getState().meetings[key];
+    if ((routeFrom || routeTo) && (current?.from !== routeFrom || current?.to !== routeTo)) useCockpitScopeViewStore.getState().updateMeeting(key, { from: routeFrom, to: routeTo, selectedDay: null });
+  }, [key, routeFrom, routeTo]);
+  useEffect(() => { const current = useCockpitScopeViewStore.getState().meetings[key]; if (routeArchive && current?.archive !== routeArchive) useCockpitScopeViewStore.getState().updateMeeting(key, { archive: routeArchive }); }, [key, routeArchive]);
+  const changeArchive = (archive: "active" | "archived" | "all") => { update({ archive }); const params = new URLSearchParams(navigation.searchParams); params.set("meeting_archive", archive); navigation.replace(`${navigation.pathname}?${params}`); };
+  const filter: CockpitMeetingFilter = useMemo(() => ({ query: state.query, from: state.from, to: state.to, tracks: state.tracks,
+    kinds: state.kinds, statuses: state.statuses, parties: state.parties, only: state.only }), [state]);
+  const changeFilter = (next: CockpitMeetingFilter) => {
+    update({ ...next, selectedDay: null });
+    if (next.from !== filter.from || next.to !== filter.to) {
+      const params = new URLSearchParams(navigation.searchParams);
+      if (next.from) params.set("from", next.from); else params.delete("from");
+      if (next.to) params.set("to", next.to); else params.delete("to");
+      navigation.replace(`${navigation.pathname}${params.size ? `?${params}` : ""}`);
     }
-    return counts;
-  }, [meetings, issuesByMeeting, nodesByMeeting]);
-
-  // One reading of the register for every view on the tab.
-  const filtered = useMemo(
-    () => filterCockpitMeetings(meetings, filter, { linkCounts }),
-    [meetings, filter, linkCounts],
-  );
-  const filtering = isCockpitMeetingFilterActive(filter);
-
-  const byDay = useMemo(() => cockpitMeetingsByDay(filtered), [filtered]);
-  const split = useMemo(() => splitCockpitMeetings(filtered, today), [filtered, today]);
-
-  const month = useMemo(() => {
-    const date = parseDay(anchor);
-    return date ? monthKey(date) : monthKey(new Date(Date.UTC(2026, 0, 1)));
-  }, [anchor]);
-  const monthDays = useMemo(() => cockpitMonthGrid(month), [month]);
-  const weekDays = useMemo(() => cockpitWeekDays(anchor), [anchor]);
-
-  const dayName = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" }),
-    [locale],
-  );
-  const monthName = useMemo(
-    () => new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", timeZone: "UTC" }),
-    [locale],
-  );
-
+  };
+  const q = useCockpitSearch(state.query);
+  const searching = q !== state.query.trim();
+  const view = state.view;
+  const anchor = state.anchorDay ?? today;
+  const calendar = view === "month" || view === "week";
+  const month = monthKey(parseDay(anchor) ?? new Date(`${today}T00:00:00Z`));
+  const days = useMemo(() => view === "month" ? cockpitMonthGrid(month) : cockpitWeekDays(anchor), [view, month, anchor]);
+  const selectedDay = calendar && state.selectedDay && days.includes(state.selectedDay) && (!filter.from || state.selectedDay >= filter.from) && (!filter.to || state.selectedDay <= filter.to) ? state.selectedDay : null;
+  const windowFrom = calendar ? days[0] ?? "" : "";
+  const windowTo = calendar ? days.at(-1) ?? "" : "";
+  const from = windowFrom && filter.from ? (windowFrom > filter.from ? windowFrom : filter.from) : windowFrom || filter.from;
+  const to = windowTo && filter.to ? (windowTo < filter.to ? windowTo : filter.to) : windowTo || filter.to;
+  const disjointDates = Boolean(from && to && from > to);
+  const query: CockpitMeetingRegisterQuery = { archive: state.archive, node_id: relatedNodeId || undefined, node_ids: relatedNodeIds.length ? relatedNodeIds : undefined, q: q || undefined, date_from: from || undefined, date_to: to || undefined,
+    tracks: filter.tracks, kinds: filter.kinds, statuses: filter.statuses, parties: filter.parties, only: filter.only,
+    page_size: calendar ? 1 : 25 };
+  const signature = JSON.stringify([scope, query]);
+  const cursors = state.cursorKey === signature ? state.cursors : [""];
+  const register = useQuery({ ...cockpitMeetingRegisterOptions(wsId, scope, { ...query, cursor: calendar ? undefined : cursors.at(-1) || undefined }), enabled: Boolean(wsId && !searching && !disjointDates) });
+  const day = useQuery({ ...cockpitMeetingRegisterOptions(wsId, scope, { ...query, date_from: selectedDay ?? undefined, date_to: selectedDay ?? undefined,
+    page_size: 25, cursor: cursors.at(-1) || undefined }), enabled: Boolean(wsId && calendar && selectedDay && !searching && !disjointDates) });
+  const pageQuery = calendar ? day : register;
+  const page = pageQuery.data;
+  const listRef = useRef<HTMLDivElement>(null);
+  useCockpitScrollMemory(listRef, JSON.stringify(["meeting-list", key, view, cursors.at(-1) ?? ""]), Boolean(page), JSON.stringify([filter, selectedDay]));
+  const data = register.data;
+  const dayCounts = new Map(data?.day_counts.map((entry) => [entry.date, entry.total]) ?? []);
+  const viewLabels: Record<CockpitMeetingsView, string> = { list: t(($) => $.meetings.view_list), month: t(($) => $.meetings.view_month), week: t(($) => $.meetings.view_week), agenda: t(($) => $.meetings.view_agenda), timeline: t(($) => $.meetings.view_timeline) };
+  const dayName = new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" });
+  const monthName = new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", timeZone: "UTC" });
+  const period = view === "month" ? monthName.format(new Date(`${month}-01T00:00:00Z`)) : `${days[0]} – ${days.at(-1)}`;
   const shift = (direction: -1 | 1) => {
-    if (view === "month") {
-      setAnchor(`${shiftMonthKey(month, direction)}-01`);
-      return;
-    }
     const date = parseDay(anchor);
-    if (date) setAnchor(formatDay(addDays(date, direction * 7)));
+    if (view === "month") update({ anchorDay: `${shiftMonthKey(month, direction)}-01`, selectedDay: null });
+    else if (date) update({ anchorDay: formatDay(addDays(date, direction * 7)), selectedDay: null });
   };
+  const reset = () => changeFilter(emptyCockpitMeetingFilter());
+  const previous = () => { if (cursors.length > 1) update({ cursorKey: signature, cursors: cursors.slice(0, -1) }); };
+  const pager = page ? <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={pageQuery.isFetching || searching}
+    onPrevious={previous} onNext={() => { if (page.next_cursor) update({ cursorKey: signature, cursors: [...cursors, page.next_cursor] }); }} />
+    : cursors.length > 1 ? <Button type="button" variant="outline" size="sm" disabled={pageQuery.isFetching} onClick={previous}>{t(($) => $.task_flow.previous)}</Button> : null;
+  const error = (retry: () => void) => <div role="alert" className="space-y-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-caption">
+    <p>{t(($) => $.errors.load_failed)}</p><Button type="button" variant="outline" size="sm" onClick={retry}>{t(($) => $.binding.retry)}</Button></div>;
+  const loading = <div role="status" className="flex items-center gap-2 p-5 text-caption text-muted-foreground"><Spinner />{t(($) => $.work_overview.loading)}</div>;
+  const empty = <div className="space-y-3 rounded-xl border border-dashed border-border p-6 text-caption text-muted-foreground">
+    <p>{state.archive === "archived" ? t(($) => $.meeting_disposition.empty_archived) : isCockpitMeetingFilterActive(filter) || selectedDay ? t(($) => $.meetings.no_results) : t(($) => $.meetings.empty)}</p>
+    {state.archive === "archived" ? <Button type="button" variant="outline" size="sm" onClick={() => changeArchive("active")}>{t(($) => $.meeting_disposition.filter_active)}</Button> : isCockpitMeetingFilterActive(filter) ? <Button type="button" variant="outline" size="sm" onClick={reset}>{t(($) => $.meetings.filter_clear)}</Button>
+      : !readOnly && <Button type="button" variant="outline" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.meeting.new)}</Button>}
+  </div>;
 
-  const periodLabel = useMemo(() => {
-    const date = parseDay(view === "month" ? `${month}-01` : anchor);
-    if (!date) return "";
-    if (view === "month") return monthName.format(date);
-    const days = weekDays;
-    return days.length ? `${days[0]} – ${days[days.length - 1]}` : "";
-  }, [view, month, anchor, monthName, weekDays]);
-
-  const linkCount = (meeting: CockpitMeeting) => linkCounts.get(meeting.id) ?? 0;
-
-  const rows = useMemo(
-    () => [...split.upcoming].reverse().concat(split.past, split.undated),
-    [split],
-  );
-
-  const viewLabels: Record<CockpitMeetingsView, string> = {
-    list: t(($) => $.meetings.view_list),
-    month: t(($) => $.meetings.view_month),
-    week: t(($) => $.meetings.view_week),
-    agenda: t(($) => $.meetings.view_agenda),
-    timeline: t(($) => $.meetings.view_timeline),
-  };
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
-        <div
-          ref={viewPillRef}
-          className="cockpit-segmented flex items-center gap-0.5 rounded-md bg-muted p-0.5"
-          role="group"
-          aria-label={t(($) => $.meetings.view)}
-        >
-          <SegmentedPill />
-          {VIEWS.map((key) => (
-            <button
-              key={key}
-              type="button"
-              data-active={view === key}
-              aria-pressed={view === key}
-              onClick={() => setView(key)}
-              className={cn(
-                "rounded-sm px-2.5 py-1 text-caption transition-colors",
-                view === key
-                  ? "font-medium text-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {viewLabels[key]}
-            </button>
-          ))}
-        </div>
-
-        {(view === "month" || view === "week") && (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t(($) => $.meetings.previous)}
-              onClick={() => shift(-1)}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <span className="min-w-40 text-center text-caption tabular-nums">{periodLabel}</span>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t(($) => $.meetings.next)}
-              onClick={() => shift(1)}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setAnchor(today)}>
-              {t(($) => $.meetings.today)}
-            </Button>
-          </div>
-        )}
-
-        <CockpitMeetingFilterBar
-          filter={filter}
-          onChange={setFilter}
-          meetings={meetings}
-          today={today}
-        />
-
-        {/* The page toolbar carries "New meeting" — this bar says what is on
-            screen, it does not repeat the primary action beside it. Reading
-            the share back IS about what is on screen, so it lives here. */}
-        <span className="ml-auto text-caption text-muted-foreground tabular-nums">
-          {filtering
-            ? t(($) => $.meetings.results, { shown: filtered.length, total: meetings.length })
-            : t(($) => $.meetings.count, { n: meetings.length })}
-        </span>
-        {!readOnly && (
-          <Button variant="outline" size="sm" className="h-7 gap-1 px-2" onClick={onScan}>
-            <ScanSearch className="size-3.5" />
-            {t(($) => $.meetings.scan)}
-          </Button>
-        )}
+  return <section aria-label={t(($) => $.shell.meetings)} className="cockpit-meeting-workspace flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="cockpit-filter-strip flex flex-wrap items-center gap-3 px-4 py-3">
+      <div role="group" aria-label={t(($) => $.meetings.view)} className="min-w-0 max-w-full overflow-x-auto">
+        <SegmentedToggle value={view} options={VIEWS.map((value) => [value, viewLabels[value]] as const)} onChange={(value) => update({ view: value })}
+          buttonClassName="min-h-8 whitespace-nowrap rounded-md px-3 py-1.5 text-caption focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
       </div>
-
-      <CockpitMeetingFilterChips
-        filter={filter}
-        onChange={setFilter}
-        shown={filtered.length}
-        total={meetings.length}
-      />
-
-      {view === "timeline" ? (
-        <CockpitMeetingTimeline
-          meetings={filtered}
-          today={today}
-          selectedId={selectedId}
-          onSelect={onSelect}
-        />
-      ) : (
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {meetings.length === 0 ? (
-          <div className="flex flex-col items-start gap-2">
-            <p className="text-body text-muted-foreground">{t(($) => $.meetings.empty)}</p>
-            {!readOnly && (
-              <div className="flex items-center gap-2">
-                <Button size="sm" className="h-7 gap-1 px-2" onClick={onCreate}>
-                  <Plus className="size-3.5" />
-                  {t(($) => $.meeting.new)}
-                </Button>
-                {/* An empty register over a share that already holds meeting
-                    folders is exactly when reading them back is wanted. */}
-                <Button variant="outline" size="sm" className="h-7 gap-1 px-2" onClick={onScan}>
-                  <ScanSearch className="size-3.5" />
-                  {t(($) => $.meetings.scan)}
-                </Button>
-              </div>
-            )}
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-start gap-2">
-            <p className="text-body text-muted-foreground">{t(($) => $.meetings.no_results)}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2"
-              onClick={() => setFilter(emptyCockpitMeetingFilter())}
-            >
-              {t(($) => $.meetings.filter_clear)}
-            </Button>
-          </div>
-        ) : view === "list" ? (
-          <table className="w-full border-collapse text-caption">
-            <thead>
-              <tr className="border-b border-border text-left text-micro tracking-wide text-muted-foreground uppercase">
-                <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_code)}</th>
-                <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_when)}</th>
-                <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_title)}</th>
-                <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meeting.kind)}</th>
-                <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meeting.track)}</th>
-                <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_parties)}</th>
-                <th scope="col" className="py-1 pr-3 font-medium">{t(($) => $.meetings.column_links)}</th>
-                <th scope="col" className="py-1 font-medium">{t(($) => $.meetings.column_folder)}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((meeting) => (
-                <tr
-                  key={meeting.id}
-                  className={cn(
-                    "border-b border-border/60",
-                    selectedId === meeting.id && "bg-accent",
-                  )}
-                >
-                  <td className="py-1 pr-3 font-mono text-micro text-muted-foreground">
-                    {meeting.code}
-                  </td>
-                  <td className="py-1 pr-3 whitespace-nowrap tabular-nums">
-                    {meeting.meet_date ?? t(($) => $.meetings.undated_section)}
-                    {cockpitMeetingSpan(meeting) && (
-                      <span className="ml-1 text-muted-foreground">
-                        {cockpitMeetingSpan(meeting)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="max-w-80 py-1 pr-3">
-                    <button
-                      type="button"
-                      onClick={() => onSelect(meeting.id)}
-                      aria-label={t(($) => $.meetings.select, { title: meeting.title })}
-                      className="w-full truncate rounded-sm px-1 text-left hover:bg-accent"
-                    >
-                      {meeting.title || t(($) => $.meeting.title_placeholder)}
-                    </button>
-                    {meeting.detected && (
-                      <span className="ml-1 inline-flex items-center gap-0.5 align-middle text-micro text-muted-foreground">
-                        <ScanSearch className="size-3" aria-hidden />
-                        {t(($) => $.meeting.detected)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-1 pr-3">
-                    {meeting.kind && <Badge variant="secondary">{meeting.kind}</Badge>}
-                  </td>
-                  <td className="py-1 pr-3">
-                    {meeting.track && (
-                      <span className="inline-flex items-center gap-1 text-micro">
-                        <span
-                          className="size-1.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: cockpitMeetingTrackColor(meeting.track) }}
-                          aria-hidden
-                        />
-                        {meeting.track}
-                      </span>
-                    )}
-                  </td>
-                  <td className="max-w-56 truncate py-1 pr-3 text-muted-foreground">
-                    {meeting.parties}
-                  </td>
-                  <td className="py-1 pr-3 text-muted-foreground">
-                    {linkCount(meeting) > 0 && (
-                      <span className="inline-flex items-center gap-1 tabular-nums">
-                        <Link2 className="size-3" aria-hidden />
-                        {linkCount(meeting)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-1 text-muted-foreground">
-                    {meeting.nas_dir && <FolderOpen className="size-3.5" aria-hidden />}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : view === "month" ? (
-          <div className="grid grid-cols-7 gap-px rounded-md border border-border bg-border">
-            {monthDays.slice(0, 7).map((day) => {
-              const date = parseDay(day);
-              return (
-                <div
-                  key={`head-${day}`}
-                  className="bg-card px-1 py-1 text-center text-micro text-muted-foreground"
-                >
-                  {date ? dayName.format(date) : ""}
-                </div>
-              );
-            })}
-            {monthDays.map((day) => {
-              const inMonth = day.startsWith(month);
-              const dayMeetings = byDay.get(day) ?? [];
-              return (
-                <div
-                  key={day}
-                  className={cn(
-                    "flex min-h-24 flex-col gap-0.5 bg-card p-1",
-                    !inMonth && "bg-muted/40",
-                    day === today && "ring-1 ring-inset ring-brand",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "text-micro tabular-nums",
-                      inMonth ? "text-muted-foreground" : "text-faint-foreground",
-                      day === today && "font-semibold text-foreground",
-                    )}
-                  >
-                    {day.slice(8)}
-                  </span>
-                  {dayMeetings.map((meeting) => (
-                    <MeetingChip
-                      key={meeting.id}
-                      meeting={meeting}
-                      selected={selectedId === meeting.id}
-                      onSelect={() => onSelect(meeting.id)}
-                      label={t(($) => $.meetings.select, { title: meeting.title })}
-                    />
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        ) : view === "week" ? (
-          <div className="grid grid-cols-7 gap-px rounded-md border border-border bg-border">
-            {weekDays.map((day) => {
-              const date = parseDay(day);
-              const dayMeetings = byDay.get(day) ?? [];
-              return (
-                <div
-                  key={day}
-                  className={cn(
-                    "flex min-h-64 flex-col gap-1 bg-card p-2",
-                    day === today && "ring-1 ring-inset ring-brand",
-                  )}
-                >
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-micro text-muted-foreground">
-                      {date ? dayName.format(date) : ""}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-caption tabular-nums",
-                        day === today && "font-semibold",
-                      )}
-                    >
-                      {day.slice(5)}
-                    </span>
-                  </div>
-                  {dayMeetings.length === 0 ? (
-                    <span className="text-micro text-faint-foreground">—</span>
-                  ) : (
-                    dayMeetings.map((meeting) => (
-                      <button
-                        key={meeting.id}
-                        type="button"
-                        onClick={() => onSelect(meeting.id)}
-                        aria-label={t(($) => $.meetings.select, { title: meeting.title })}
-                        aria-current={selectedId === meeting.id ? "true" : undefined}
-                        className={cn(
-                          "flex flex-col gap-0.5 rounded-sm border border-border p-1 text-left",
-                          "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                          selectedId === meeting.id && "bg-accent",
-                        )}
-                      >
-                        <span className="flex items-center gap-1 text-micro tabular-nums text-muted-foreground">
-                          {meeting.track && (
-                            <span
-                              aria-hidden
-                              className="size-1.5 shrink-0 rounded-full"
-                              style={{ backgroundColor: cockpitMeetingTrackColor(meeting.track) }}
-                            />
-                          )}
-                          {cockpitMeetingSpan(meeting) || t(($) => $.meeting.all_day)}
-                        </span>
-                        <span className="text-caption leading-tight">{meeting.title}</span>
-                        {meeting.parties && (
-                          <span className="truncate text-micro text-muted-foreground">
-                            {meeting.parties}
-                          </span>
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {([
-              ["upcoming", split.upcoming, t(($) => $.meetings.upcoming_section)],
-              ["past", split.past, t(($) => $.meetings.past_section)],
-              ["undated", split.undated, t(($) => $.meetings.undated_section)],
-            ] as const).map(([key, list, heading]) =>
-              list.length === 0 ? null : (
-                <section key={key} className="flex flex-col gap-1">
-                  <h3 className="text-micro font-medium tracking-wide text-muted-foreground uppercase">
-                    {heading}
-                  </h3>
-                  <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
-                    {list.map((meeting) => (
-                      <li key={meeting.id}>
-                        <button
-                          type="button"
-                          onClick={() => onSelect(meeting.id)}
-                          aria-label={t(($) => $.meetings.select, { title: meeting.title })}
-                          aria-current={selectedId === meeting.id ? "true" : undefined}
-                          className={cn(
-                            "flex w-full items-baseline gap-3 px-3 py-2 text-left",
-                            "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                            selectedId === meeting.id && "bg-accent",
-                          )}
-                        >
-                          <span className="inline-flex w-40 shrink-0 items-center gap-1 text-caption tabular-nums text-muted-foreground">
-                            {meeting.track && (
-                              <span
-                                aria-hidden
-                                className="size-1.5 shrink-0 rounded-full"
-                                style={{ backgroundColor: cockpitMeetingTrackColor(meeting.track) }}
-                              />
-                            )}
-                            <CalendarDays className="inline size-3 shrink-0" aria-hidden />
-                            <span className="truncate">
-                              {meeting.meet_date ?? "—"}
-                              {cockpitMeetingSpan(meeting) && ` ${cockpitMeetingSpan(meeting)}`}
-                            </span>
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-body">
-                              {meeting.title || t(($) => $.meeting.title_placeholder)}
-                            </span>
-                            {(meeting.parties || meeting.location) && (
-                              <span className="block truncate text-caption text-muted-foreground">
-                                {[meeting.parties, meeting.location].filter(Boolean).join(" · ")}
-                              </span>
-                            )}
-                          </span>
-                          {meeting.status && <Badge variant="secondary">{meeting.status}</Badge>}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ),
-            )}
-          </div>
-        )}
-      </div>
-      )}
+      {dispositionAvailable && <Select value={state.archive} items={(["active", "archived", "all"] as const).map((value) => ({ value, label: t(($) => $.meeting_disposition[`filter_${value}`]) }))} onValueChange={(archive) => { if (archive === "active" || archive === "archived" || archive === "all") changeArchive(archive); }}><SelectTrigger aria-label={t(($) => $.meeting_disposition.archive_filter)}><SelectValue /></SelectTrigger><SelectContent>{(["active", "archived", "all"] as const).map((value) => <SelectItem key={value} value={value}>{t(($) => $.meeting_disposition[`filter_${value}`])}</SelectItem>)}</SelectContent></Select>}
+      <CockpitMeetingFilterBar filter={filter} onChange={changeFilter} meetings={page?.items ?? data?.items ?? []} today={today} />
+      {(toolbarActions || !readOnly) && <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-2">
+        {toolbarActions}
+        {!readOnly && <><Button type="button" variant="outline" size="sm" onClick={onScan}><ScanSearch className="size-3.5" />{t(($) => $.meetings.scan)}</Button>
+          <Button type="button" size="sm" onClick={onCreate}><Plus className="size-3.5" />{t(($) => $.meeting.new)}</Button></>}
+      </div>}
     </div>
-  );
+    {(relatedNodeId || relatedNodeIds.length > 0) && <div className="border-b border-border bg-muted/40 px-4 py-2 text-caption"><span>{t(($) => $.meeting_center.related_work_item)}</span> <AppLink href={cockpitSurfacePath(navigation.pathname, "meetings", scope)} className="text-primary hover:underline">{t(($) => $.meeting_center.back_to_register)}</AppLink></div>}
+    {data && <CockpitMeetingFilterChips filter={filter} onChange={changeFilter} shown={calendar ? data.total : data.items.length} total={data.total} />}
+    <div className="@container/meeting-register min-h-0 flex-1 overflow-y-auto p-4 lg:p-5">
+      <div className={cn("mx-auto flex min-h-0 max-w-[1480px] flex-col gap-4", calendar ? "min-h-full" : "h-full")}>
+        <div className="cockpit-agenda-heading flex flex-wrap items-center gap-3"><span className="cockpit-page-symbol" aria-hidden><CalendarDays className="size-6" /></span>
+          <div className="mr-auto min-w-0"><h2 className="text-display-sm font-semibold tracking-tight">{calendar ? period : t(($) => $.shell.meetings)}</h2>{data && <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.meetings.count, { n: data.total })}</p>}</div>{calendar && <><Button type="button" variant="ghost" size="icon-sm" aria-label={t(($) => $.meetings.previous)} onClick={() => shift(-1)}><ChevronLeft /></Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => update({ anchorDay: today, selectedDay: today })}>{t(($) => $.meetings.today)}</Button>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={t(($) => $.meetings.next)} onClick={() => shift(1)}><ChevronRight /></Button></>}</div>
+        {disjointDates ? empty : register.isError && !data ? error(() => void register.refetch()) : register.isPending || searching ? loading : <>
+          {register.isError && data && <div role="alert" className="rounded-lg bg-warning-subtle p-3 text-caption">{t(($) => $.work_overview.refresh_failed)}<Button type="button" variant="ghost" size="sm" onClick={() => void register.refetch()}>{t(($) => $.binding.retry)}</Button></div>}
+          <div className={cn("min-h-0 gap-4", calendar ? "grid items-start @min-[64rem]/meeting-register:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]" : "flex flex-1 flex-col")}>
+          {calendar && <div className="cockpit-calendar min-w-0 overflow-x-auto"><div className="grid min-w-[560px] grid-cols-7 gap-px bg-border">
+            {days.slice(0, 7).map((date) => <div key={`head-${date}`} className="bg-card py-2 text-center text-caption text-muted-foreground">{dayName.format(new Date(`${date}T00:00:00Z`))}</div>)}
+            {days.map((date) => <Button key={date} type="button" variant="ghost" aria-label={t(($) => $.meeting_center.open_day, { date, count: dayCounts.get(date) ?? 0 })} aria-pressed={selectedDay === date}
+              onClick={() => update({ selectedDay: date })} className={cn("cockpit-calendar-day h-auto min-h-20 min-w-0 flex-col items-start justify-start gap-2 rounded-none p-2 text-left", date === selectedDay ? "bg-accent ring-1 ring-inset ring-brand hover:bg-accent" : "bg-card hover:bg-muted", view === "month" && !date.startsWith(month) && "text-muted-foreground")}>
+              <span className={cn("text-caption tabular-nums", date === today && "rounded bg-brand px-1.5 text-brand-foreground")}>{date.slice(8)}</span>
+              {(dayCounts.get(date) ?? 0) > 0 && <span className="max-w-full whitespace-normal break-words rounded bg-brand/10 px-1.5 py-0.5 text-micro text-brand">{t(($) => $.meetings.count, { n: dayCounts.get(date) ?? 0 })}</span>}
+            </Button>)}
+          </div></div>}
+          <div className={cn("flex min-h-0 min-w-0 flex-col gap-3", !calendar && "flex-1")}>
+          {calendar && !selectedDay ? <p className="rounded-xl border border-dashed border-border bg-card p-4 text-caption text-muted-foreground">{t(($) => $.meeting_center.choose_day)}</p> : <>
+            {selectedDay && <h3 className="text-title-sm font-medium">{selectedDay}</h3>}
+            <div className="shrink-0">{pager}</div>
+            {pageQuery.isError && !page ? error(() => void pageQuery.refetch()) : pageQuery.isPending ? loading : page && <>
+              {pageQuery.isError && <p role="alert" className="text-caption text-destructive">{t(($) => $.work_overview.refresh_failed)}</p>}
+              {page.items.length === 0 ? empty : view === "timeline" ? <><p className="text-caption text-muted-foreground">{t(($) => $.meeting_center.page_timeline)}</p><div className="min-h-[480px] flex-1"><CockpitMeetingTimeline meetings={page.items} today={today} selectedId={selectedId} onSelect={onSelect} /></div></>
+                : <div ref={listRef} className={cn("cockpit-agenda-list min-h-0 overflow-y-auto overscroll-contain", calendar ? "max-h-[40rem]" : "flex-1")}><CockpitMeetingCards items={page.items} scope={scope} selectedId={selectedId} /></div>}
+            </>}
+          </>}
+          </div>
+          </div>
+        </>}
+      </div>
+    </div>
+  </section>;
 }

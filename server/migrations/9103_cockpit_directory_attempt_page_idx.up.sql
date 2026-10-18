@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY cockpit_directory_attempt_page_idx ON cockpit_meeting_directory_attempt(workspace_id,step_id,attempt_number);

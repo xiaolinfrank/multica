@@ -1,3 +1,5 @@
+
+import { preferredWorkspacePath } from "@multica/core/paths";
 import { useQuery } from "@tanstack/react-query";
 import { InvitePage } from "@multica/views/invite";
 import { InvitationsPage } from "@multica/views/invitations";
@@ -74,7 +76,7 @@ function WindowOverlayInner() {
             } else if (ws && destination?.kind === "issue") {
               push(paths.workspace(ws.slug).issueDetail(destination.issueId));
             } else if (ws) {
-              push(paths.workspace(ws.slug).issues());
+              push(preferredWorkspacePath(ws.slug));
             }
           }}
         />
@@ -99,7 +101,7 @@ function WindowOverlayInner() {
                 paths.workspace(ws.slug).issueDetail(destination.issueId),
               );
             } else if (ws) {
-              push(paths.workspace(ws.slug).issues());
+              push(preferredWorkspacePath(ws.slug));
             } else {
               push(paths.root());
             }

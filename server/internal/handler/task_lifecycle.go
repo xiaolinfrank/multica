@@ -144,6 +144,7 @@ func (h *Handler) PinTaskSession(w http.ResponseWriter, r *http.Request) {
 // All fields are optional; an empty body keeps the legacy "rerun the issue's
 // current assignee" behaviour used by the CLI.
 type RerunIssueRequest struct {
+	ExpectedInputManifestVersionID json.RawMessage `json:"expected_input_manifest_version_id"`
 	// TaskID identifies the execution-log row the user clicked retry on.
 	// When set, the rerun targets the agent that ran that specific task
 	// (and reuses its leader/worker role) rather than the issue's current
@@ -208,9 +209,39 @@ func (h *Handler) RerunIssue(w http.ResponseWriter, r *http.Request) {
 		return h.canInvokeAgent(r.Context(), agent, actorType, actorID, originatorUserID, workspaceID)
 	}
 
-	task, err := h.TaskService.RerunIssue(r.Context(), issue.ID, sourceTaskID, pgtype.UUID{}, actorUserID, canInvoke)
+	var expectedManifest []pgtype.UUID
+	if req.ExpectedInputManifestVersionID != nil {
+		if sourceTaskID.Valid || !actorUserID.Valid {
+			writeError(w, http.StatusBadRequest, "An explicit new manifest selection cannot be combined with a source Run or machine actor.")
+			return
+		}
+		var value *string
+		if json.Unmarshal(req.ExpectedInputManifestVersionID, &value) != nil {
+			writeError(w, http.StatusBadRequest, "invalid expected_input_manifest_version_id")
+			return
+		}
+		id := pgtype.UUID{}
+		if value != nil {
+			var ok bool
+			id, ok = parseUUIDOrBadRequest(w, *value, "expected_input_manifest_version_id")
+			if !ok {
+				return
+			}
+		}
+		expectedManifest = []pgtype.UUID{id}
+	}
+	task, err := h.TaskService.RerunIssue(r.Context(), issue.ID, sourceTaskID, pgtype.UUID{}, actorUserID, canInvoke, expectedManifest...)
+	var inputErr *service.CockpitInputError
+	if errors.As(err, &inputErr) {
+		writeCockpitInputError(w, r, err)
+		return
+	}
 	if errors.Is(err, service.ErrRerunInvokeNotAllowed) {
 		h.writeDispatchBlocked(w, http.StatusForbidden, ReasonInvocationNotAllowed)
+		return
+	}
+	if errors.Is(err, service.ErrCockpitWorkflowExecutionBlocked) {
+		writeError(w, http.StatusConflict, "meeting workflow conditions do not allow this agent run")
 		return
 	}
 	if errors.Is(err, service.ErrIssueInTriage) {

@@ -3,7 +3,6 @@
 // Structural levels expose basic fields; task-level details remain stored when hidden.
 
 import type {
-  CockpitIssueLink,
   CockpitMeeting,
   CockpitNode,
   CockpitNodePatch,
@@ -11,7 +10,7 @@ import type {
   CockpitPaymentPatch,
 } from "@multica/core/types";
 import { useEffect, useRef, useState } from "react";
-import { cockpitMeetingSpan, splitCockpitVendors } from "@multica/core/cockpit";
+import { cockpitMeetingSpan, splitCockpitVendors, type CockpitNodeView } from "@multica/core/cockpit";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -24,9 +23,12 @@ import {
 } from "@multica/ui/components/ui/alert-dialog";
 import { Button } from "@multica/ui/components/ui/button";
 import { Separator } from "@multica/ui/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@multica/ui/components/ui/tabs";
 import { cn } from "@multica/ui/lib/utils";
 import { LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import { useT } from "../../i18n";
+import { useNavigation } from "../../navigation";
+import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import {
   CockpitField,
   EditableDate,
@@ -37,8 +39,8 @@ import {
   EditableTokens,
   ProgressField,
 } from "./cockpit-fields";
-import { CockpitIssueLinks } from "./cockpit-issue-links";
 import { ExecStatusChip, StatusChip } from "./cockpit-status";
+import { formatAmount } from "./cockpit-table";
 
 export interface CockpitNodePanelProps {
   node: CockpitNode;
@@ -47,9 +49,8 @@ export interface CockpitNodePanelProps {
   displayCode?: string;
   parent: CockpitNode | undefined;
   payments: CockpitPayment[];
-  links: CockpitIssueLink[];
   /** The meetings that discussed this work item, newest first. */
-  meetings: CockpitMeeting[];
+  meetings: Pick<CockpitMeeting, "id" | "title" | "meet_date" | "time_range" | "start_time" | "end_time">[];
   isBranch: boolean;
   statusSuggestions: string[];
   execStatusSuggestions: string[];
@@ -57,18 +58,26 @@ export interface CockpitNodePanelProps {
   ownerSuggestions: string[];
   vendorSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
+  binding?: React.ReactNode;
+  notice?: React.ReactNode;
+  taskWorkspace?: React.ReactNode;
+  artifactWorkspace?: React.ReactNode;
+  acceptanceWorkspace?: React.ReactNode;
+  referenceWorkspace?: React.ReactNode;
+  paymentPaging?: React.ReactNode;
+  meetingPaging?: React.ReactNode;
+  paymentTotal?: number;
+  section: CockpitNodeView;
+  onSectionChange: (section: CockpitNodeView) => void;
   /** Resolve only after the server has deleted the node; reject on failure. */
   onDelete: () => Promise<unknown>;
+  deleteAllowed: boolean;
+  deleteRestriction?: React.ReactNode;
   /** Localized destructive consequences, including descendants for a branch. */
   deleteConfirmationDescription: string;
   /** Zero-based tree depth, matching CockpitTreeNode.depth. */
   depth: number;
   onClose: () => void;
-  onLinkIssue: (issueId: string) => void;
-  onUnlinkIssue: (issueId: string) => void;
-  /** Opens a create dialog filed under this work item's module, with the title
-   *  opened on its row code. Absent when that module cannot be resolved. */
-  onCreateIssue?: () => void;
   /** Opens one of this item's meetings in the register. */
   onOpenMeeting: (meetingId: string) => void;
   onCreatePayment: () => void;
@@ -82,7 +91,6 @@ export function CockpitNodePanel({
   displayCode,
   parent,
   payments,
-  links,
   meetings,
   isBranch,
   statusSuggestions,
@@ -91,13 +99,23 @@ export function CockpitNodePanel({
   ownerSuggestions,
   vendorSuggestions,
   onPatch,
+  binding,
+  notice,
+  taskWorkspace,
+  artifactWorkspace,
+  acceptanceWorkspace,
+  referenceWorkspace,
+  paymentPaging,
+  meetingPaging,
+  paymentTotal: confirmedPaymentTotal,
+  section,
+  onSectionChange,
   onDelete,
+  deleteAllowed,
+  deleteRestriction,
   deleteConfirmationDescription,
   depth,
   onClose,
-  onLinkIssue,
-  onUnlinkIssue,
-  onCreateIssue,
   onOpenMeeting,
   onCreatePayment,
   onPatchPayment,
@@ -110,7 +128,14 @@ export function CockpitNodePanel({
   const [deleting, setDeleting] = useState(false);
   const [deleteFailed, setDeleteFailed] = useState(false);
   const deletingRef = useRef(false);
-  const taskDetails = depth >= 2;
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const taskDetails = Boolean(taskWorkspace) || depth >= 2;
+  const navigation = useNavigation();
+  const deleteContext = JSON.stringify([node.id, section, navigation.pathname, navigation.searchParams.toString()]);
+  const captureDelete = useCockpitCommandContext(deleteContext);
+  useEffect(() => { deletingRef.current = false; setConfirmOpen(false); setDeleting(false); setDeleteFailed(false); }, [deleteContext]);
+
+  useEffect(() => { closeButton.current?.focus(); }, [node.id]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -126,30 +151,33 @@ export function CockpitNodePanel({
   }, [confirmOpen, onClose]);
 
   const confirmDelete = async () => {
-    if (deletingRef.current) return;
+    if (deletingRef.current || !deleteAllowed) return;
+    const isCurrent = captureDelete();
     deletingRef.current = true;
     setDeleting(true);
     setDeleteFailed(false);
     try {
       await onDelete();
-      setConfirmOpen(false);
-      onClose();
+      if (isCurrent()) { setConfirmOpen(false); onClose(); }
     } catch {
-      setDeleteFailed(true);
+      if (isCurrent()) setDeleteFailed(true);
     } finally {
-      deletingRef.current = false;
-      setDeleting(false);
+      if (isCurrent()) { deletingRef.current = false; setDeleting(false); }
     }
   };
 
   const unset = t(($) => $.common.unset);
-  const paymentTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+  const paymentTotal = confirmedPaymentTotal ?? payments.reduce((sum, p) => sum + p.amount, 0);
+  // Finance editing belongs to execution tasks; a structural row keeps only a
+  // read-only view of payments filed there by older data.
+  const paymentsEditable = taskDetails && !readOnly;
 
   return (
-    <aside className="cockpit-panel-enter flex w-96 max-w-full shrink-0 flex-col border-l border-border bg-card max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:shadow-2xl">
-      <header className="flex items-start gap-2 border-b border-border p-3">
+    <aside className={cn("cockpit-workbench cockpit-panel-enter @container/node-panel flex min-w-0 max-w-full shrink-0 flex-col border-l border-border bg-card @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0",
+      (taskWorkspace || referenceWorkspace) ? "w-[54rem]" : "w-96")}>
+      <header tabIndex={0} className="cockpit-workbench-header flex max-h-[30%] shrink-0 items-start gap-2 overflow-y-auto border-b border-border p-4 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             {parent && (
               <span className="truncate font-mono text-micro text-muted-foreground">
                 {parent.code}
@@ -183,23 +211,37 @@ export function CockpitNodePanel({
               label={t(($) => $.node.name)}
               placeholder={t(($) => $.node.name_placeholder)}
               disabled={readOnly}
-              displayClassName="text-title-sm font-semibold"
+              displayClassName="max-w-full whitespace-normal break-words text-title-sm font-semibold [overflow-wrap:anywhere]"
             />
           </div>
         </div>
         <button
+          ref={closeButton}
           type="button"
           onClick={onClose}
           disabled={deleting}
           aria-label={t(($) => $.panel.close)}
-          className="rounded-sm p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="sticky top-0 z-10 flex size-8 shrink-0 items-center justify-center rounded-md bg-card text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-4" />
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-3">
-        <div className="grid grid-cols-2 gap-3">
+      {notice && <div className="shrink-0 border-b border-border p-3">{notice}</div>}
+      {((section === "artifacts" && !artifactWorkspace) || (section === "acceptance" && !acceptanceWorkspace)) && <p role="status" className="px-4 py-3 text-caption text-muted-foreground">{t(($) => $.feature_availability.unavailable)}</p>}
+      <Tabs value={!taskWorkspace || (section === "artifacts" && !artifactWorkspace) || (section === "acceptance" && !acceptanceWorkspace) ? "details" : section} onValueChange={(value) => { if (value === "tasks" || value === "artifacts" || value === "acceptance" || value === "details") onSectionChange(value); }} className="min-h-0 flex-1 gap-0">
+        {taskWorkspace && <TabsList variant="line" className="min-h-11 w-full shrink-0 flex-wrap border-b border-border px-4 py-1 group-data-horizontal/tabs:h-auto">
+          <TabsTrigger value="tasks" className="h-9">{t(($) => $.task_flow.tasks_tab)}</TabsTrigger>
+          {artifactWorkspace && <TabsTrigger value="artifacts" className="h-9">{t(($) => $.shell.artifacts)}</TabsTrigger>}
+          {acceptanceWorkspace && <TabsTrigger value="acceptance" className="h-9">{t(($) => $.acceptance.title)}</TabsTrigger>}
+          <TabsTrigger value="details" className="h-9">{t(($) => $.task_flow.details_tab)}</TabsTrigger>
+        </TabsList>}
+        {taskWorkspace && <TabsContent value="tasks" keepMounted className="min-h-0 overflow-y-auto p-4">{taskWorkspace}</TabsContent>}
+        {artifactWorkspace && <TabsContent value="artifacts" className="flex min-h-0 flex-1 flex-col overflow-hidden [&[hidden]]:hidden">{artifactWorkspace}</TabsContent>}
+        {acceptanceWorkspace && <TabsContent value="acceptance" className="min-h-0 overflow-y-auto p-4">{acceptanceWorkspace}</TabsContent>}
+        <TabsContent value="details" className="min-h-0 min-w-0 overflow-y-auto overscroll-contain p-4">
+        {binding && <div className="mb-4">{binding}</div>}
+        <div className="grid min-w-0 grid-cols-1 gap-4 @min-[28rem]/node-panel:grid-cols-2">
           <CockpitField label={t(($) => $.node.owner)}>
             <EditableSuggest
               value={node.owner}
@@ -240,7 +282,7 @@ export function CockpitNodePanel({
               disabled={readOnly}
             />
           </CockpitField>
-          <CockpitField label={t(($) => $.node.progress)} className="col-span-2">
+          <CockpitField label={t(($) => $.node.progress)} className="min-w-0 @min-[28rem]/node-panel:col-span-2">
             {/* A branch's progress is the weighted roll-up of its leaves, so
                 editing it here would be overwritten by the next read. */}
             <ProgressField
@@ -249,9 +291,10 @@ export function CockpitNodePanel({
               label={t(($) => $.node.progress)}
               disabled={readOnly || isBranch}
             />
+            {isBranch && <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.progress_branch_hint)}</p>}
           </CockpitField>
           {taskDetails && (
-            <CockpitField label={t(($) => $.node.collaborators)} className="col-span-2">
+            <CockpitField label={t(($) => $.node.collaborators)} className="min-w-0 @min-[28rem]/node-panel:col-span-2">
             <EditableText
               value={node.collaborators}
               onCommit={(collaborators) => onPatch({ collaborators })}
@@ -265,22 +308,17 @@ export function CockpitNodePanel({
 
         <Separator className="my-4" />
         <CockpitField label={t(($) => $.node.linked_issues)}>
-          <CockpitIssueLinks
-            links={links}
-            onLink={onLinkIssue}
-            onUnlink={onUnlinkIssue}
-            onCreate={onCreateIssue}
-            disabled={readOnly}
-          />
+          {taskWorkspace ? <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.reference_location)}</p> : referenceWorkspace}
         </CockpitField>
 
         {/* The other direction of the meeting register: what was discussed
             here, and when. Read-only — a meeting is attached from the meeting,
             which is where the rest of its record lives. */}
-        {meetings.length > 0 && (
+        {(meetings.length > 0 || meetingPaging) && (
           <CockpitField label={t(($) => $.meetings.node_meetings)} className="mt-3">
+            {meetingPaging}
             <ul className="flex flex-col gap-0.5">
-              {meetings.slice(0, 5).map((meeting) => (
+              {meetings.map((meeting) => (
                 <li key={meeting.id}>
                   <button
                     type="button"
@@ -305,7 +343,7 @@ export function CockpitNodePanel({
           <>
             <Separator className="my-4" />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid min-w-0 grid-cols-1 gap-4 @min-[28rem]/node-panel:grid-cols-2">
               <CockpitField label={t(($) => $.node.vendor)}>
                 <EditableTokens
                   value={node.vendor}
@@ -353,7 +391,7 @@ export function CockpitNodePanel({
                   }
                 />
               </CockpitField>
-              <CockpitField label={t(($) => $.node.contract)} className="col-span-2">
+              <CockpitField label={t(($) => $.node.contract)} className="min-w-0 @min-[28rem]/node-panel:col-span-2">
                 <EditableText
                   value={node.contract}
                   onCommit={(contract) => onPatch({ contract })}
@@ -367,19 +405,20 @@ export function CockpitNodePanel({
           </>
         )}
 
-        {(taskDetails || payments.length > 0) && (
+        {(taskDetails || payments.length > 0 || paymentPaging) && (
             <div className="mt-3">
-              <div className="flex items-baseline gap-2">
+              {paymentPaging}
+              <div className="flex flex-wrap items-baseline gap-2">
                 <span className="text-micro font-medium tracking-wide text-muted-foreground uppercase">
                   {t(($) => $.node.payments)}
                 </span>
                 {payments.length > 0 && (
                   <span className="text-micro text-muted-foreground tabular-nums">
-                    {t(($) => $.finance.payment_total, { total: paymentTotal })}
+                    {t(($) => $.finance.payment_total, { total: formatAmount(paymentTotal) })}
                   </span>
                 )}
                 <span className="flex-1" />
-                {!readOnly && (
+                {paymentsEditable && (
                   <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5" onClick={onCreatePayment}>
                     <Plus className="size-3" />
                     {t(($) => $.node.add_payment)}
@@ -391,13 +430,13 @@ export function CockpitNodePanel({
               ) : (
                 <ul className="mt-1 flex flex-col gap-1">
                   {payments.map((payment) => (
-                    <li key={payment.id} className="group/pay flex items-center gap-2">
+                    <li key={payment.id} className="group/pay flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border p-2">
                       <EditableText
                         value={payment.label}
                         onCommit={(label) => onPatchPayment(payment.id, { label })}
                         label={t(($) => $.payment.label)}
                         placeholder={t(($) => $.payment.label)}
-                        disabled={readOnly}
+                        disabled={!paymentsEditable}
                         displayClassName="w-16 text-caption"
                       />
                       <EditableDate
@@ -405,17 +444,17 @@ export function CockpitNodePanel({
                         onCommit={(pay_date) => onPatchPayment(payment.id, { pay_date })}
                         label={t(($) => $.payment.date)}
                         placeholder={unset}
-                        disabled={readOnly}
+                        disabled={!paymentsEditable}
                       />
                       <EditableNumber
                         value={payment.amount}
                         onCommit={(amount) => onPatchPayment(payment.id, { amount: amount ?? 0 })}
                         label={t(($) => $.payment.amount)}
                         placeholder="0"
-                        disabled={readOnly}
+                        disabled={!paymentsEditable}
                       />
                       <span className="flex-1" />
-                      {!readOnly && (
+                      {paymentsEditable && (
                         <button
                           type="button"
                           onClick={() => onDeletePayment(payment.id)}
@@ -447,6 +486,7 @@ export function CockpitNodePanel({
                   disabled={readOnly}
                   rows={2}
                 />
+                <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.current_progress_hint)}</p>
               </CockpitField>
               <CockpitField label={t(($) => $.node.deliverable)}>
                 <EditableTextArea
@@ -486,10 +526,11 @@ export function CockpitNodePanel({
             {t(($) => $.node.source, { source: node.source })}
           </p>
         )}
-      </div>
+        </TabsContent>
+      </Tabs>
 
       {!readOnly && (
-        <footer className="border-t border-border p-3">
+        <footer className="shrink-0 border-t border-border px-4 py-3">
           <AlertDialog open={confirmOpen} onOpenChange={(open) => {
             if (deletingRef.current) return;
             setConfirmOpen(open);
@@ -506,10 +547,11 @@ export function CockpitNodePanel({
                 </AlertDialogTitle>
                 <AlertDialogDescription>{deleteConfirmationDescription}</AlertDialogDescription>
               </AlertDialogHeader>
+              {deleteRestriction}
               {deleteFailed && <p role="alert" className="text-caption text-destructive">{t(($) => $.errors.save_failed)}</p>}
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={deleting}>{common(($) => $.cancel)}</AlertDialogCancel>
-                <Button variant="destructive" disabled={deleting} aria-busy={deleting} onClick={confirmDelete}>
+                <Button variant="destructive" disabled={deleting || !deleteAllowed} aria-busy={deleting} onClick={confirmDelete}>
                   {deleting && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
                   {deleting ? common(($) => $.loading) : common(($) => $.delete)}
                 </Button>

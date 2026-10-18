@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cockpit_input_principal_page ON cockpit_input (workspace_id,source_agent_id,source_issue_id,authorizing_user_id,created_at DESC,id) WHERE actor_type='agent';

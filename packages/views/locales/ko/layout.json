@@ -37,8 +37,8 @@
   "help": {
     "trigger": "도움말",
     "download_desktop": "데스크톱 앱",
-    "docs": "문서",
-    "changelog": "변경 로그",
+    "docs": "Multica 업스트림 기술 문서",
+    "changelog": "Multica 업스트림 변경 기록",
     "feedback": "피드백",
     "server_version": "서버 버전 {{version}}"
   },

@@ -1,5 +1,9 @@
 "use client";
 
+import { invalidateCockpitInputs, invalidateCockpitRunInputs } from "../cockpit/input-queries";
+import { cockpitScopeSelectorKeys } from "../cockpit/scope-selector-queries";
+import { cockpitActorLabelKeys } from "../cockpit/actor-queries";
+
 import { useEffect, useRef } from "react";
 import { forgetLocalSearchIndex } from "../search-index/instance";
 import { useQueryClient, type InfiniteData, type QueryClient, type QueryFilters } from "@tanstack/react-query";
@@ -13,12 +17,14 @@ import { getCurrentWsId, getCurrentSlug } from "../platform/workspace-storage";
 import { issueKeys } from "../issues/queries";
 import { projectKeys } from "../projects/queries";
 import { moduleKeys } from "../modules/queries";
+import { cockpitKeys, invalidateCockpitTaskFlow, invalidateCockpitWorkflowsForIssue } from "../cockpit/queries";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
 import { runtimeKeys } from "../runtimes/queries";
 import { labelKeys } from "../labels/queries";
 import { propertyKeys } from "../properties/queries";
 import { issueStatusKeys } from "../issue-statuses/queries";
+import { invalidateIssueOperationBasis } from "../issues/operation-basis";
 import {
   agentTaskSnapshotKeys,
   workspaceWorkingAgentsKeys,
@@ -49,6 +55,7 @@ import {
 } from "../issues/cache-coordinator";
 import { onInboxNew, onInboxInvalidate, onInboxIssueStatusChanged, onInboxIssueDeleted, onInboxSummaryInvalidate } from "../inbox/ws-updaters";
 import { onCockpitChanged } from "../cockpit/ws-updaters";
+import { invalidateCockpitArtifactSourceAttachments } from "../cockpit/artifact-queries";
 import {
   notificationPreferenceOptions,
   notificationPreferenceKeys,
@@ -647,6 +654,9 @@ export async function handleInboxNew(
 function invalidateWorkspaceScopedQueries(qc: QueryClient): void {
   const wsId = getCurrentWsId();
   if (wsId) {
+    // Recover progress/permissions missed while disconnected; selected NAS
+    // observations live outside this cache and keep their original identity.
+    void invalidateCockpitInputs(qc, wsId);
     qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
     // Through the inbox's own entry point, not a plain invalidate: a reconnect
     // can land during the list's first load, and a plain invalidate would be
@@ -662,6 +672,7 @@ function invalidateWorkspaceScopedQueries(qc: QueryClient): void {
     qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: autopilotKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: agentTaskSnapshotKeys.all(wsId) });
+    qc.invalidateQueries({ queryKey: agentTasksKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: workspaceWorkingAgentsKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: agentActivityKeys.all(wsId) });
     qc.invalidateQueries({ queryKey: agentRunCountsKeys.all(wsId) });
@@ -803,7 +814,10 @@ export function useRealtimeSync(
       agent: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: workspaceKeys.agents(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // Squad members status is derived per agent, so any agent
           // change (status flip, archive, runtime swap) needs to refresh the
           // per-squad members-status cache without refetching the static squad
@@ -813,7 +827,12 @@ export function useRealtimeSync(
       },
       member: () => {
         const wsId = getCurrentWsId();
-        if (wsId) qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
+        if (wsId) {
+          invalidateIssueOperationBasis(qc, wsId);
+          qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
+          // Membership affects picker recovery and all formal human capabilities.
+          qc.invalidateQueries({ queryKey: cockpitKeys.all(wsId) });
+        }
       },
       // workspace:updated is handled by the specific handler below
       // (compares prefixes to decide whether to also invalidate issues).
@@ -830,7 +849,10 @@ export function useRealtimeSync(
       project: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          invalidateIssueOperationBasis(qc, wsId);
           qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
           // Project deletion sweeps the project's module rows too, so a
           // project:* event must also drop module caches or ghost modules
           // linger under a project that no longer exists.
@@ -845,12 +867,20 @@ export function useRealtimeSync(
       },
       module: () => {
         const wsId = getCurrentWsId();
-        if (wsId) qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+        if (wsId) {
+          invalidateIssueOperationBasis(qc, wsId);
+          qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
+        }
       },
       squad: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: workspaceKeys.squads(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // squad:deleted triggers assignee transfer — refresh issues too.
           qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
         }
@@ -883,6 +913,9 @@ export function useRealtimeSync(
         const wsId = getCurrentWsId();
         if (wsId) {
           qc.invalidateQueries({ queryKey: issueStatusKeys.all(wsId) });
+          // The compact work-item summary resolves unknown/custom categories on the server.
+          qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
           // Status-group order is server-owned and depends on catalog positions.
           // Rows/facets and unrelated groupings do not change on catalog edits.
           qc.invalidateQueries({
@@ -902,6 +935,8 @@ export function useRealtimeSync(
       daemon: () => {
         const wsId = getCurrentWsId();
         if (wsId) {
+          qc.invalidateQueries({ queryKey: cockpitScopeSelectorKeys.all(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitActorLabelKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
           // Shared agents may carry a redacted runtime liveness projection;
           // refetch it when a daemon changes state even if its private runtime
@@ -1079,6 +1114,18 @@ export function useRealtimeSync(
 
     const unsubAny = ws.onAny((msg) => {
       if (specificEvents.has(msg.type)) return;
+      if (msg.type === "task:dispatch") {
+        const wsId = getCurrentWsId();
+        const payload = msg.payload;
+        if (wsId && payload && typeof payload === "object" && "task_id" in payload
+          && typeof payload.task_id === "string" && payload.task_id) {
+          void invalidateCockpitRunInputs(qc, wsId, payload.task_id);
+        }
+      }
+      if (msg.type === "project:deleted") {
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+      }
       const prefix = msg.type.split(":")[0] ?? "";
       if (prefix === "agent" || (prefix === "task" && msg.type !== "task:progress")) {
         const wsId = getCurrentWsId();
@@ -1099,6 +1146,8 @@ export function useRealtimeSync(
       if (!issue?.id) return;
       const wsId = getCurrentWsId();
       if (wsId) {
+        invalidateCockpitWorkflowsForIssue(qc, wsId, issue.id);
+        invalidateIssueOperationBasis(qc, wsId);
         onIssueUpdated(qc, wsId, issue, {
           assigneeChanged: payload.assignee_changed,
           statusChanged: payload.status_changed,
@@ -1123,14 +1172,14 @@ export function useRealtimeSync(
     // and no flicker on the editor who is mid-keystroke elsewhere on the board.
     const unsubCockpitChanged = ws.on("cockpit:changed", (p) => {
       const wsId = getCurrentWsId();
-      if (wsId) onCockpitChanged(qc, wsId, p as CockpitChangedPayload);
+      if (wsId) { onCockpitChanged(qc, wsId, p as CockpitChangedPayload); invalidateIssueOperationBasis(qc, wsId); }
     });
 
     const unsubIssueCreated = ws.on("issue:created", (p) => {
       const { issue } = p as IssueCreatedPayload;
       if (!issue) return;
       const wsId = getCurrentWsId();
-      if (wsId) onIssueCreated(qc, wsId, issue);
+      if (wsId) { onIssueCreated(qc, wsId, issue); invalidateCockpitTaskFlow(qc, wsId); invalidateIssueOperationBasis(qc, wsId); }
     });
 
     const unsubIssueDeleted = ws.on("issue:deleted", (p) => {
@@ -1139,6 +1188,8 @@ export function useRealtimeSync(
       const wsId = getCurrentWsId();
       if (wsId) {
         onIssueDeleted(qc, wsId, issue_id);
+        invalidateIssueOperationBasis(qc, wsId);
+        invalidateCockpitTaskFlow(qc, wsId);
         void onInboxIssueDeleted(qc, wsId, issue_id);
       }
     });
@@ -1152,8 +1203,12 @@ export function useRealtimeSync(
     const unsubModuleDeleted = ws.on("module:deleted", () => {
       const wsId = getCurrentWsId();
       if (wsId) {
+        invalidateIssueOperationBasis(qc, wsId);
         qc.invalidateQueries({ queryKey: moduleKeys.all(wsId) });
         qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+        qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+        qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+        qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
       }
     });
 
@@ -1169,7 +1224,10 @@ export function useRealtimeSync(
       if (!issue_id) return;
       qc.invalidateQueries({ queryKey: issueKeys.attachments(issue_id) });
       const wsId = getCurrentWsId();
-      if (wsId) onIssueAuxiliaryRevision(qc, wsId, issue_id, issue_revision);
+      if (wsId) {
+        onIssueAuxiliaryRevision(qc, wsId, issue_id, issue_revision);
+        invalidateCockpitArtifactSourceAttachments(qc, wsId, issue_id);
+      }
     });
 
     const unsubIssueMetadataChanged = ws.on("issue_metadata:changed", (p) => {
@@ -1379,6 +1437,8 @@ export function useRealtimeSync(
 
     const unsubWsUpdated = ws.on("workspace:updated", (p) => {
       applyWorkspaceUpdatedToCache(qc, p as WorkspaceUpdatedPayload);
+      const wsId = (p as WorkspaceUpdatedPayload).workspace?.id;
+      if (wsId) qc.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
     });
 
     const unsubWsDeleted = ws.on("workspace:deleted", (p) => {

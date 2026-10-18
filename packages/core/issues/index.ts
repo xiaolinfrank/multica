@@ -21,3 +21,5 @@ export {
 } from "./status-category";
 export * from "./pending-creations";
 export * from "./wakeups";
+export * from "./operation-basis";
+export * from "./batch-receipt";

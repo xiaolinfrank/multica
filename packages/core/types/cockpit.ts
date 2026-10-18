@@ -49,6 +49,9 @@ export interface CockpitNode {
   cockpit_id: string;
   /** null for a root node. Depth is derived by walking this, not stored. */
   parent_id: string | null;
+  /** Explicit mapping; unbound descendants inherit through stable parent IDs. */
+  project_id?: string | null;
+  module_id?: string | null;
   /** The human address of the node — "L1-02", "L3-01-08". Unique per board. */
   code: string;
   name: string;
@@ -101,6 +104,154 @@ export interface CockpitIssueLink {
   position: number;
 }
 
+/** A bounded task projection; never includes descriptions or run history. */
+export interface CockpitTask {
+  id: string;
+  identifier: string;
+  title: string;
+  status: string;
+  status_category: string;
+  priority: string;
+  assignee_type: string | null;
+  assignee_id: string | null;
+  assignee_name: string;
+  due_date: string | null;
+  project_id: string | null;
+  module_id: string | null;
+  primary_node_id: string | null;
+  primary_node_code: string;
+  primary_node_name: string;
+  primary_revision: number;
+  creation_key?: string | null;
+}
+
+export interface CockpitPrimaryNode {
+  issue_id: string;
+  node_id: string | null;
+  revision: number;
+  project_id: string | null;
+  module_id: string | null;
+  node_code: string;
+  node_name: string;
+}
+
+export interface CockpitTaskPage {
+  node_id: string;
+  items: CockpitTask[];
+  total: number;
+  filtered_total: number;
+  next_cursor: string | null;
+  summary: {
+    total: number;
+    by_status: Array<{ status: string; category: string; count: number }>;
+    by_category: Record<string, number>;
+    done: number;
+    closed: number;
+    unknown: number;
+  };
+  eligibility: { eligible: boolean; reason: string; project_id: string | null; module_id: string | null };
+}
+
+export interface CockpitTaskQuery {
+  q?: string;
+  status?: string;
+  category?: string;
+  relation?: "primary" | "reference";
+  cursor?: string;
+  page_size?: number;
+}
+
+export interface CockpitTaskCreate {
+  creation_key: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+  due_date?: string;
+}
+
+export interface CockpitMeetingAction {
+  id: string;
+  meeting_id: string;
+  version_id: string;
+  version_number: number;
+  source_content_hash: string;
+  source_quote: string;
+  title: string;
+  description: string;
+  status: string;
+  resolution: string | null;
+  revision: number;
+  proposal_key: string;
+  decision_key: string | null;
+  node_id: string | null;
+  node_code: string;
+  node_name: string;
+  issue: CockpitTask | null;
+  reason: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  can_edit: boolean;
+  can_resolve: boolean;
+  source_superseded: boolean;
+}
+
+export interface CockpitActionPage {
+  meeting_id: string;
+  items: CockpitMeetingAction[];
+  total: number;
+  filtered_total: number;
+  next_cursor: string | null;
+  can_add: boolean;
+}
+
+export interface CockpitActionQuery {
+  version_id?: string;
+  status?: string;
+  q?: string;
+  cursor?: string;
+  page_size?: number;
+}
+
+export interface CockpitActionDraft {
+  title: string;
+  description: string;
+  source_quote: string;
+}
+
+export interface CockpitActionResolution {
+  expected_revision: number;
+  decision_key: string;
+  outcome: "create" | "reuse" | "dismiss";
+  node_id?: string;
+  issue_id?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+  priority?: string;
+  due_date?: string;
+  reason?: string;
+}
+
+export interface CockpitIssueActionSource {
+  id: string;
+  meeting_id: string;
+  meeting_code: string;
+  meeting_title: string;
+  version_id: string;
+  version_number: number;
+  title: string;
+}
+export interface CockpitIssueActionSourcesPage {
+  issue_id: string;
+  items: CockpitIssueActionSource[];
+  total: number;
+  next_cursor: string | null;
+}
+
 export interface CockpitMilestone {
   id: string;
   name: string;
@@ -136,6 +287,17 @@ export interface CockpitMeeting {
    *  stands. */
   kind: string;
   status: string;
+  /** Explicit occurrence facts; absent on older servers, never derived from status. */
+  occurrence_state?: string;
+  ended_at?: string | null;
+  actual_started_at?: string | null;
+  actual_ended_at?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancelled_reason?: string;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archived_reason?: string;
   /** Which line of the programme this meeting advances ("高质量数据集" …),
    *  in the board's own words. The timeline lanes are these values; empty
    *  lands the meeting in the unfiled lane. */
@@ -202,6 +364,12 @@ export interface CockpitMeetingIssueLink {
   /** "task" for the issue the platform opened with the meeting, "" for one
    *  someone attached by hand. */
   role: string;
+  /** Explicit purposes. Legacy `role` is provenance, never inferred into these. */
+  roles: string[];
+  /** Purposes owned by the workflow, including historical review tasks. */
+  required_roles?: string[];
+  has_direct_reference?: boolean;
+  has_agenda_reference?: boolean;
   issue_number: number;
   /** Workspace-prefixed identifier, e.g. "BIO-314". Assembled server-side. */
   issue_identifier: string;
@@ -219,6 +387,10 @@ export interface CockpitMeetingNodeLink {
 
 export interface CockpitBoard {
   cockpit: Cockpit;
+  /** Aggregate protection signal; older backends omit it. */
+  has_meeting_workflows?: boolean;
+  has_meeting_lifecycle?: boolean;
+  has_meeting_preparation?: boolean;
   nodes: CockpitNode[];
   payments: CockpitPayment[];
   issue_links: CockpitIssueLink[];
@@ -234,6 +406,8 @@ export interface CockpitBoard {
  * rather than patch; `snapshots` means only the version history moved.
  */
 export type CockpitEventScope =
+  | "artifacts"
+  | "acceptance"
   | "cockpit"
   | "node"
   | "payment"
@@ -242,6 +416,14 @@ export type CockpitEventScope =
   | "meeting"
   | "meeting_issues"
   | "meeting_nodes"
+  | "meeting_workflow"
+  | "meeting_lifecycle"
+  | "meeting_directory"
+  | "inputs"
+  | "input_manifests"
+  | "meeting_preparation"
+  | "meeting_actions"
+  | "primary_node"
   | "directory"
   | "board"
   | "changes"
@@ -278,6 +460,8 @@ export type CockpitNodePatch = Partial<
     CockpitNode,
     | "code"
     | "parent_id"
+    | "project_id"
+    | "module_id"
     | "name"
     | "position"
     | "color"
@@ -310,6 +494,11 @@ export type CockpitMilestonePatch = Partial<
     "name" | "plan_date" | "actual_date" | "status" | "node_id" | "condition" | "guard" | "position"
   >
 >;
+
+export type CockpitNodeCreate = Omit<CockpitNodePatch, "code"> & ({ auto_code: true; creation_key: string; code?: never } | { code: string; auto_code?: false; creation_key?: string });
+export type CockpitNodeCreated = CockpitNode & { workspace_id?: string; creation_key?: string; replayed?: boolean };
+export type CockpitMeetingCreate = CockpitMeetingPatch & { node_id?: string; creation_key?: string };
+export type CockpitMeetingCreated = CockpitMeeting & { node_link?: CockpitMeetingNodeLink; workspace_id?: string; creation_key?: string; replayed?: boolean };
 
 export type CockpitMeetingPatch = Partial<
   Pick<
@@ -364,6 +553,9 @@ export interface CockpitMeetingProvision {
 }
 
 export interface CockpitMeetingProvisionResult {
+  directory_operation_id?: string;
+  directory_state?: string;
+  dir_error_code?: string;
   meeting: CockpitMeeting;
   issues: CockpitMeetingIssueLink[];
   task: CockpitMeetingIssueLink | null;
@@ -374,6 +566,161 @@ export interface CockpitMeetingProvisionResult {
   dir: string;
   dir_created: boolean;
   dir_error: string;
+}
+
+export interface CockpitWorkflowIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  status: string;
+  assignee_type: string;
+  assignee_id: string | null;
+}
+
+export interface CockpitMinutesVersion {
+  id: string;
+  version_number: number;
+  submission_key: string;
+  content: string;
+  content_hash: string;
+  source_issue_id: string;
+  review_issue: CockpitWorkflowIssue;
+  reviewer_id: string;
+  /** Preserve unknown decisions; only explicit pending/approved states grant actions. */
+  decision: string;
+  feedback: string;
+  submitted_by_type: string;
+  submitted_by_id: string;
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  published_by: string | null;
+  published_at: string | null;
+}
+
+/** R1 (design-principles-2026-10-12): a minutes binding is an association;
+ * several may exist per meeting; is_focus marks the current focus pointer. */
+export interface CockpitMinutesBinding {
+  issue: CockpitWorkflowIssue | null;
+  is_focus: boolean;
+  roles: string[];
+}
+
+export interface CockpitMeetingWorkflow {
+  enabled: boolean;
+  meeting_id: string;
+  revision: number;
+  ended_at: string | null;
+  materials_ready: boolean;
+  released_at: string | null;
+  release_task_id: string | null;
+  reviewer_id: string | null;
+  minutes_issue: CockpitWorkflowIssue | null;
+  /** R1: every minutes binding (associations); minutes_issue is the focus pointer. */
+  minutes_issues: CockpitMinutesBinding[];
+  current_version_id: string | null;
+  published_version_id: string | null;
+  versions: CockpitMinutesVersion[];
+  can_manage: boolean;
+  can_submit: boolean;
+  can_review: boolean;
+  can_publish: boolean;
+  can_reassign_reviewer: boolean;
+  reviewer_handoffs: CockpitReviewerHandoff[];
+  nas_destination: CockpitNasDestination | null;
+  nas_unavailable_reason: string;
+  can_export_nas: boolean;
+  nas_exports: CockpitNasExport[];
+}
+
+export interface CockpitNasDestination {
+  root_id: string;
+  directory: string;
+  /** Absent on older atomic servers. Unknown modes never grant writes. */
+  write_mode?: string;
+}
+
+export interface CockpitNasExport {
+  id: string;
+  version_id: string;
+  version_number: number;
+  source_issue_id: string;
+  content_hash: string;
+  root_id: string;
+  directory: string;
+  target_path: string;
+  write_mode?: string;
+  verified_path?: string | null;
+  receipt_path?: string | null;
+  verified_attempt_id?: string | null;
+  receipt_hash?: string | null;
+  size_bytes: number | null;
+  /** Unknown states remain readable but never grant file operations. */
+  status: string;
+  attempts: number;
+  revision: number;
+  next_retry_at: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  last_error_code: string;
+  last_error: string;
+  can_retry: boolean;
+}
+
+export interface CockpitReviewerHandoff {
+  id: string;
+  handoff_key: string;
+  from_reviewer_id: string;
+  to_reviewer_id: string;
+  /** Current profile display names only; identity and authority remain ID-based. */
+  from_reviewer_name?: string;
+  to_reviewer_name?: string;
+  created_by_name?: string;
+  version_id: string | null;
+  from_review_issue: CockpitWorkflowIssue | null;
+  to_review_issue: CockpitWorkflowIssue | null;
+  reason: string;
+  created_by: string;
+  created_at: string;
+  revision: number;
+}
+
+export interface CockpitReviewerHandoffCommand {
+  expected_revision: number;
+  handoff_key: string;
+  reviewer_id: string;
+  reason: string;
+}
+
+export interface CockpitMeetingWorkflowSetup {
+  reviewer_id: string;
+  existing_issue_id?: string;
+  project_id?: string;
+  module_id?: string;
+  node_id?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+}
+
+export interface CockpitMeetingReadinessPatch {
+  expected_revision: number;
+  ended?: true;
+  materials_ready?: boolean;
+}
+
+export interface CockpitMinutesSubmission {
+  expected_revision: number;
+  submission_key: string;
+  content: string;
+}
+
+export type CockpitMinutesDecision = "approved" | "changes_requested" | "rejected";
+
+export interface CockpitMinutesReview {
+  expected_revision: number;
+  decision: CockpitMinutesDecision;
+  feedback: string;
 }
 
 /** Where a new meeting would be filed, for the form to show before it is. */
@@ -440,7 +787,19 @@ export interface CockpitMeetingImportItem {
   kind?: string;
 }
 
+export interface CockpitMeetingImportDirectoryResult {
+  name: string;
+  meeting_id: string;
+  directory_operation_id: string;
+  directory_state: string;
+  dir_created: boolean;
+  dir_error: string;
+  dir_error_code: string;
+}
+export interface CockpitMeetingImportTaskError { name: string; meeting_id: string; error: string }
 export interface CockpitMeetingImportResult {
+  directory_results?: CockpitMeetingImportDirectoryResult[] | null;
+  task_errors?: CockpitMeetingImportTaskError[];
   meetings: CockpitMeeting[];
   issues: CockpitMeetingIssueLink[];
   /** Folders that were asked for and not imported, each with why. One folder
@@ -477,6 +836,12 @@ export interface CockpitPendingChange {
   decided_at: string | null;
   created_at: string;
   updated_at: string;
+  /** The agent task that filed the proposal ("" when filed by hand). */
+  source_task_id: string;
+  /** The issue the source task runs on; null for hand-filed proposals. */
+  source_issue: { id: string; ref: string; title: string } | null;
+  /** Human decision note or the system reason for an automatic withdrawal. */
+  decision_note: string;
 }
 
 /** One judgement from a batch ingest, per proposal. Machine-readable so an

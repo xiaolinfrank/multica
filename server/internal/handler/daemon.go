@@ -1961,7 +1961,7 @@ func (h *Handler) ClaimTasksByRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claimed, err := h.TaskService.ClaimTasksForRuntimes(r.Context(), authorized, maxTasks)
+	claimed, err := h.TaskService.ClaimTasksForRuntimes(service.WithFixedInputManifestClaimCapability(r.Context(), requestHasClientCapability(r, service.CockpitFixedInputManifestCapability)), authorized, maxTasks)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to claim tasks: "+err.Error())
 		return
@@ -2481,6 +2481,19 @@ func claimResponseAgentIdentityMatches(resp AgentTaskResponse) bool {
 func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQueue, runtime db.AgentRuntime, runtimeID, runtimeWorkspaceID string) (resp AgentTaskResponse, deliveredCommentIDs []pgtype.UUID, issueSnapshot []byte, agentSkillCount, builtinSkillCount int, failure *claimBuildFailure) {
 	// Build response with fresh agent data (name + skills + custom_env + custom_args).
 	resp = taskToResponse(*task, runtimeWorkspaceID)
+	if task.InputManifestVersionID.Valid {
+		versions, err := h.Queries.GetCockpitInputManifestVersionsByIDs(r.Context(), db.GetCockpitInputManifestVersionsByIDsParams{WorkspaceID: runtime.WorkspaceID, Ids: []pgtype.UUID{task.InputManifestVersionID}})
+		if err != nil || len(versions) != 1 || versions[0].IssueID != task.IssueID {
+			if err == nil {
+				err = fmt.Errorf("fixed input manifest identity is missing or inconsistent")
+			}
+			return resp, nil, nil, 0, 0, h.rejectClaimSourceLoad(r.Context(), task, err, "input_manifest", uuidToString(task.InputManifestVersionID))
+		}
+		resp.InputManifestHash = versions[0].ManifestHash
+		resp.InputManifestItemTotal = int64(versions[0].ItemTotal)
+		resp.InputManifestRequiredTotal = int64(versions[0].RequiredTotal)
+	}
+
 	if err := (&service.IssueWakeupService{Tasks: h.TaskService}).CheckClaim(r.Context(), *task); err != nil {
 		if !errors.Is(err, service.ErrWakeupForbidden) {
 			return resp, nil, nil, 0, 0, h.rejectClaimSourceLoad(r.Context(), task, err, "wakeup", resp.WakeupID)
@@ -3914,7 +3927,7 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 	authMs = time.Since(start).Milliseconds()
 
 	claimStart := time.Now()
-	task, err := h.TaskService.ClaimTaskForRuntime(r.Context(), parseUUID(runtimeID))
+	task, err := h.TaskService.ClaimTaskForRuntime(service.WithFixedInputManifestClaimCapability(r.Context(), requestHasClientCapability(r, service.CockpitFixedInputManifestCapability)), parseUUID(runtimeID))
 	claimMs = time.Since(claimStart).Milliseconds()
 	if err != nil {
 		outcome = "error_claim"
@@ -4245,7 +4258,7 @@ func (h *Handler) StartTask(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
 
 	// Verify the caller owns this task's workspace.
-	_, workspaceID, ok := h.requireDaemonTaskAccessWithWorkspace(w, r, taskID)
+	current, workspaceID, ok := h.requireDaemonTaskAccessWithWorkspace(w, r, taskID)
 	if !ok {
 		return
 	}
@@ -4260,6 +4273,38 @@ func (h *Handler) StartTask(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
+	}
+	startContext := service.WithInputClaimDaemonIdentity(r.Context(), middleware.DaemonIDFromContext(r.Context()))
+	if current.InputManifestVersionID.Valid {
+		if !slices.Contains(req.Capabilities, service.CockpitFixedInputManifestCapability) || req.RuntimeID == "" || req.DispatchedAt == "" {
+			writeJSON(w, http.StatusConflict, map[string]string{"code": "input_preparation_required", "error": "The daemon must prepare the fixed inputs and start the exact claim."})
+			return
+		}
+		runtime, ok := h.requireDaemonRuntimeAccess(w, r, req.RuntimeID)
+		if !ok {
+			return
+		}
+		if runtime.ID != current.RuntimeID {
+			writeError(w, http.StatusConflict, "The task belongs to a different runtime claim.")
+			return
+		}
+		credentialOwner := runtime.OwnerID
+		if daemonID := middleware.DaemonIDFromContext(r.Context()); daemonID != "" {
+			if !runtime.DaemonID.Valid || runtime.DaemonID.String != daemonID {
+				writeError(w, http.StatusForbidden, "This daemon does not own the runtime.")
+				return
+			}
+		} else {
+			// DaemonAuth has replaced this header with the authenticated JWT/PAT
+			// identity. Never substitute the runtime's owner for another member.
+			var err error
+			credentialOwner, err = util.ParseUUID(requestUserID(r))
+			if err != nil || credentialOwner != runtime.OwnerID {
+				writeError(w, http.StatusForbidden, "This credential does not own the runtime.")
+				return
+			}
+		}
+		startContext = service.WithInputClaimCredentialOwner(startContext, credentialOwner)
 	}
 	enableTaskSupplement := slices.Contains(req.Capabilities, protocol.DaemonCapabilityTaskSupplementV1)
 	var task *db.AgentTaskQueue
@@ -4279,13 +4324,18 @@ func (h *Handler) StartTask(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "dispatched_at must be a PostgreSQL claim timestamp")
 			return
 		}
-		task, err = h.TaskService.StartTaskForClaim(r.Context(), db.LockAgentTaskStartClaimParams{
+		task, err = h.TaskService.StartTaskForClaim(startContext, db.LockAgentTaskStartClaimParams{
 			ID: parseUUID(taskID), RuntimeID: runtimeID,
 			DispatchedAt: pgtype.Timestamptz{Time: generation, Valid: true},
 		}, enableTaskSupplement)
 	}
 	if err != nil {
 		slog.Warn("start task failed", "task_id", taskID, "error", err)
+		var inputErr *service.CockpitInputError
+		if errors.As(err, &inputErr) {
+			writeCockpitInputError(w, r, err)
+			return
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			status := http.StatusConflict
 			if legacy {
@@ -5947,43 +5997,15 @@ func attachTaskUsage(resp []AgentTaskResponse, byTask map[string][]TaskUsageData
 	}
 }
 
-// ListTaskMessagesByUser returns task messages for a task.
-// Used by the frontend under regular user auth (not daemon auth).
-// Verifies the task belongs to the caller's workspace.
+// ListTaskMessagesByUser returns task messages under the same workspace and
+// VIEW policy as the single-run metadata endpoint.
 func (h *Handler) ListTaskMessagesByUser(w http.ResponseWriter, r *http.Request) {
-	taskID := chi.URLParam(r, "taskId")
-	taskUUID, ok := parseUUIDOrBadRequest(w, taskID, "task_id")
+	task, _, ok := h.loadTaskForRead(w, r)
 	if !ok {
 		return
 	}
-
-	task, err := h.Queries.GetAgentTask(r.Context(), taskUUID)
-	if err != nil {
-		if !isNotFound(err) {
-			slog.Warn("get agent task failed", "task_id", taskID, "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to load task")
-			return
-		}
-		writeError(w, http.StatusNotFound, "task not found")
-		return
-	}
-
-	// Verify the task belongs to the caller's workspace. A failed lookup is a
-	// 5xx here too: this endpoint does not drive the daemon's interrupt, but
-	// telling a reader "this task does not exist" because the DB blinked is
-	// the same lie, and it trains clients to give up on a retryable error.
-	wsID, err := h.TaskService.ResolveTaskWorkspaceIDChecked(r.Context(), task)
-	if err != nil {
-		slog.Warn("resolve task workspace failed", "task_id", taskID, "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to load task")
-		return
-	}
-	// Mismatch stays a 404 rather than a 403: a task in another workspace must
-	// be indistinguishable from one that does not exist.
-	if wsID == "" || wsID != middleware.WorkspaceIDFromContext(r.Context()) {
-		writeError(w, http.StatusNotFound, "task not found")
-		return
-	}
+	taskUUID := task.ID
+	taskID := uuidToString(task.ID)
 
 	var (
 		messages []db.TaskMessage

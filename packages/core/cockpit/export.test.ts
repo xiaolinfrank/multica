@@ -66,6 +66,27 @@ function board(over: Partial<CockpitBoard>): CockpitBoard {
   };
 }
 
+describe("complete scoped CSV export", () => {
+  it("uses the confirmed global codes, preserves reference identifiers and excludes context-only ancestor amounts", () => {
+    const source = {
+      nodes: [node({ id: "ancestor", code: "project-old", name: "Outside scope", budget_amount: 900 }),
+        node({ id: "module", code: "module-old", parent_id: "ancestor", name: "Scoped module", budget_amount: 40 })],
+      payments: [], issue_links: [{ node_id: "module", issue_identifier: "BIO-42" }],
+    };
+    const options = { displayCodes: new Map([["ancestor", "09"], ["module", "09.03"]]), contextNodeIds: new Set(["ancestor"]) };
+    const tasks = cockpitTasksCsv(source, options);
+    expect(tasks).toContain('="09.03"'); expect(tasks).toContain("BIO-42"); expect(tasks).toContain("Scoped module");
+    expect(tasks).not.toContain("Outside scope"); expect(tasks).not.toContain("900");
+    const finance = cockpitFinanceCsv(source, options);
+    expect(finance).toContain('="09.03"'); expect(finance).toContain("BIO-42"); expect(finance).not.toContain("900");
+  });
+
+  it("keeps whitespace-prefixed formula text inert in an explicitly requested export", () => {
+    const csv = cockpitTasksCsv({ nodes: [node({ id: "row", code: "row", name: "\t=SUM(1,2)" })], payments: [], issue_links: [] });
+    expect(csv).toContain('"\'\t=SUM(1,2)"');
+  });
+});
+
 describe("cockpitTasksCsv", () => {
   it("emits one line per node in board order, with the parent by code", () => {
     const csv = cockpitTasksCsv(

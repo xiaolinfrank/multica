@@ -189,7 +189,7 @@
   "connect": {
     "title": "コンピュータを追加",
     "description": "追加したいコンピュータで、この 2 つのコマンドを実行してください。デーモンがオンラインになった瞬間に検出します。",
-    "step1_label": "BayClaw CLI をインストール",
+    "step1_label": "multica CLI をインストール",
     "platform_group": "プラットフォームを選択",
     "platform_macos_linux": "macOS / Linux",
     "platform_windows": "Windows",
@@ -257,7 +257,7 @@
     "read_only": "読み取り専用",
     "read_only_title": "CLI を更新できるのは、ランタイムの所有者とワークスペース管理者のみです。",
     "local_build": "ローカルビルド",
-    "local_build_title": "このランタイムはリリース版ではないバージョンを報告しているため、Multica はアップグレードの有無を判断できません。マシン上で直接更新してください。",
+    "local_build_title": "このランタイムはリリース版ではないバージョンを報告しているため、BayClaw はアップグレードの有無を判断できません。マシン上で直接更新してください。",
     "latest": "最新",
     "available": "利用可能",
     "action": "更新",

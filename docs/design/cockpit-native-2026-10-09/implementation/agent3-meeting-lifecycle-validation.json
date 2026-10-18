@@ -1,0 +1,260 @@
+{
+  "host": "fosun_agent_3",
+  "phase": "K meeting agenda, preparation and occurrence",
+  "status": "passed",
+  "scope": "Runtime tests only on agent3; no real Agent, NAS or production operations",
+  "source": {
+    "release_archive_commit": "6a5622cef",
+    "frontend_commit": "cdc9a2130",
+    "core_commit": "76610cbe8",
+    "server_commit": "882aee4953af108e2dfbaab42ab32d0c68821c55",
+    "server_tree": "3eb752456569bfbf385f56af36a86f4ff004fec3",
+    "archive_sha256": "321d5e7868977cb497faf22709956851d6d61887d545f75a15b279ac47ceff3d",
+    "api_sha256": "8046799677a3e658de7a3000eb7d2e46741cf1467d26c05bed770a305c709a0e",
+    "server_manifest_file_sha256": "4021b5329578324f4873cb5440e0e409347672cb447ad7cf161027e8ff9109e2",
+    "server_source_files": 3933,
+    "server_source_manifest_sha256": "d34f132a4cd2817c6d66203470308e3c4f2bd182490d6c065b6590ab093db530",
+    "frontend_manifest_file_sha256": "4b85df5956c305c339e68c112e0535eeda6cf39fa8f949b9218fd7286ece45e5",
+    "frontend_and_e2e_snapshot_files": 2768,
+    "all_snapshot_files_matched_release_archive": true,
+    "core_v2_pack_sha256": "55cfb527d2a68a77c247591019f050cf0d5fcb6e96f857aa82454ff9e4f81df7",
+    "ddl_twenty_file_digest": "973c742c0837ccc920ff8bf74e51db9b0ef49f6eb2c8af538e557d9c5459b662"
+  },
+  "test_database": {
+    "name": "multica_test",
+    "schema": 9075,
+    "ledger_rows": 761,
+    "old_ledger_rows_before_migration": 751,
+    "old_ledger_entries_and_timestamps_preserved": true,
+    "retained_deleted_capture_tombstones": 7,
+    "capture_ledger_hash_before_after": "3c4f1fbad7389a5845a4e4c7a11f8dbd",
+    "workspace_count_after_cleanup": 0
+  },
+  "frontend_tests": {
+    "core_unique_cases": 98,
+    "core_files": {
+      "api/cockpit-meeting-lifecycle.test.ts": 16,
+      "cockpit/meeting-agenda-draft-store.test.ts": 5,
+      "cockpit/meeting-lifecycle-mutations.test.tsx": 4,
+      "cockpit/ws-updaters.test.ts": 25,
+      "api/cockpit-read.test.ts": 11,
+      "cockpit/artifact-mutations.test.tsx": 5,
+      "cockpit/navigation.test.ts": 17,
+      "cockpit/scope-view-store.test.ts": 10,
+      "api/cockpit-issue-references.test.ts": 5
+    },
+    "views_unique_cases": 38,
+    "views_files": {
+      "cockpit/components/cockpit-meeting-lifecycle.test.tsx": 5,
+      "cockpit/components/cockpit-meeting-agenda.test.tsx": 7,
+      "cockpit/components/use-cockpit-meeting-command.test.tsx": 2,
+      "cockpit/components/cockpit-artifact-references.test.tsx": 3,
+      "cockpit/components/cockpit-meeting-issue-links.test.tsx": 5,
+      "issues/components/cockpit-meetings-section.test.tsx": 10,
+      "cockpit/components/cockpit-versions.test.tsx": 4,
+      "cockpit/components/cockpit-meeting-cards.test.tsx": 2
+    },
+    "locale_parity": 203,
+    "dedup_note": "Per-file final unique counts; successful retargets and earlier failures are not added."
+  },
+  "go_tests": {
+    "service_full": {
+      "unique_parent_count": 581,
+      "failures": 0,
+      "skips": 0,
+      "race_reports": 0,
+      "binary_sha256": "6768dc1dd5c860d2efffef18bba90abe531634cb76c7c648fa079af496d88e9d",
+      "source_commit": "2835fadf41b44f35ec7a7166ae986d86c841ca9e",
+      "log": "lifecycle-service-full.log",
+      "overlap": "includes all45 earlier targeted service parents; do not add"
+    },
+    "service_history_increment": {
+      "parents": 1,
+      "test": "TestCockpitLifecycleCommandHistoryNewestFirstWithTimestampTies",
+      "red_binary_sha256": "0b65690b83cb6a8ffeba2175a87fe4a0c91f977bb3304b9381efd49f1ea5b84a",
+      "green_binary_sha256": "d14e5dd9a30b2d60904180d96c092e2e1795dead5d7b33b11e533d82d0ae61ce",
+      "coverage": [
+        "33 rows, 25+8 pages",
+        "newest correction first",
+        "31 tied timestamps use descending UUID order",
+        "no duplicate or missing rows",
+        "previous ASC cursor rejected"
+      ]
+    },
+    "handler_full": {
+      "unique_parent_count": 2644,
+      "failures": 0,
+      "skips": [
+        "TestFetchFromSkillsSh_AnthropicPptxIntegration"
+      ],
+      "race_reports": 0,
+      "binary_sha256": "c6a6d7afd5cfad72200fe0a3ef8f0dd1ede619129f5a46b08e6a5fc83f110222",
+      "source_commit": "2835fadf41b44f35ec7a7166ae986d86c841ca9e",
+      "log": "lifecycle-handler-full.log",
+      "overlap": "includes all17 earlier targeted HTTP parents; do not add"
+    },
+    "cli": {
+      "unique_parent_count": 9,
+      "cases": [
+        "TestCockpitMeetingLifecycleCLIReadsOneBoundedRecord",
+        "TestCockpitMeetingLifecycleCLIRetainsIntentAndRejectsWrongReceipt",
+        "TestCockpitMeetingLifecycleCLIRejectsUnboundedOrCrossScopePages",
+        "TestCockpitSurfaceCLIWireAndSinglePages",
+        "TestCockpitSurfaceCLIRejectsInvalidInputBeforeHTTP",
+        "TestCockpitMeetingShowUsesExactMeetingAndBoundedRelationships",
+        "TestCockpitSurfaceCLIRefusesUnconfirmedReadReceipts",
+        "TestCockpitSurfaceCLITextExplainsLegacyAndContinuation",
+        "TestCockpitSurfaceCLIJSONPreservesExactFieldDecimals"
+      ],
+      "logs": [
+        "lifecycle-cli-v2.log"
+      ],
+      "binary_sha256": "dd6579582a453a2e0e6a1de9951fb7c15399f60020a42513a3342b8d26fe008a"
+    },
+    "migration": {
+      "parents": 2,
+      "cases": [
+        "TestCockpitMeetingLifecycleMigrationKeepsOneEndAuthority",
+        "TestSQLCSchemaExpansionMatchesNumericMigrationOrder"
+      ],
+      "migration_binary_sha256": "bf23a9971e2ea95518da86a2a7bc9b9da2b7ddb1b4eb9ce610c56f1caff2d0f9",
+      "order_binary_sha256": "f7d6b0554196a481bb1e05f09907261d57b66a760367a141a53150db47b43b86",
+      "temporary_schema_cleanup": true,
+      "public_test_ledger_and_seven_tombstones_unchanged_by_tests": true
+    },
+    "scale": {
+      "report": "agent3-meeting-lifecycle-read-scale.json",
+      "parents": 1,
+      "subtests": 17,
+      "read_scenarios": 16,
+      "observations_each": 21,
+      "passed": true,
+      "cleanup_complete": true,
+      "not_a_cold_cache_or_concurrent_user_benchmark": true
+    }
+  },
+  "regressions": [
+    {
+      "kind": "product",
+      "case": "history receipt nested identity",
+      "before": "15 pass / 1 fail API test",
+      "after": "all16 pass; strict nested agenda/reference identity retained"
+    },
+    {
+      "kind": "product",
+      "case": "write completed during a pre-write GET",
+      "before": "expected 2 reads, observed1",
+      "after": "cached and initially empty query both reread; lifecycle mutations4 pass"
+    },
+    {
+      "kind": "fixture",
+      "case": "Go queued run count used nonexistent queue.workspace_id",
+      "before": "1 service / 1 HTTP failed",
+      "after": "JOIN issue; both pass"
+    },
+    {
+      "kind": "fixture",
+      "case": "schema-order package cwd resolver",
+      "before": "looked for wrong sqlc.yaml",
+      "after": "actual package cwd test pass with numeric runner comparator"
+    },
+    {
+      "kind": "fixture",
+      "case": "derived URL ordering",
+      "before": "2 failures exact query order",
+      "after": "2 named cases pass"
+    },
+    {
+      "kind": "fixture",
+      "case": "WebSocket new metadata / lifecycle invalidation",
+      "before": "2 failures",
+      "after": "WS25 pass"
+    },
+    {
+      "kind": "product",
+      "case": "command history ASC hid newest correction",
+      "red": "canonical new 33-row test failed",
+      "green": "DESC tuple keyset and new cursor namespace pass the same test"
+    }
+  ],
+  "browser": {
+    "final_passed": 2,
+    "final_failed": 0,
+    "duration_seconds": 13.9,
+    "same_run": true,
+    "api_commit": "882aee495",
+    "web_build_id": "sgQdBp7NUDFXHZua1K70w",
+    "files": [
+      "e2e/cockpit-meeting-agenda.spec.ts",
+      "e2e/cockpit-meeting-workflow.spec.ts"
+    ],
+    "earlier_attempts": [
+      {
+        "attempt": 1,
+        "failures": [
+          "unscoped Next resolved background disabled pager during route transition",
+          "reviewer name resolved underlying assignee before popover candidate loaded"
+        ]
+      },
+      {
+        "attempt": 2,
+        "failures": [
+          "new correction was on old ASC history continuation page",
+          "Published first text matched hidden background card at1100px"
+        ]
+      },
+      {
+        "attempt": 3,
+        "passed": "agenda complete with old ASC API",
+        "failure": "test scope used setup-only Minutes workflow region after enablement"
+      }
+    ],
+    "final_changes": [
+      "selectors await route and scope actual interactive region",
+      "history changed to newest first after explicit UX review and RED/GREEN",
+      "390 focused meeting removes duplicate background controls and restores search after Close",
+      "app locale used for occurrence/history dates"
+    ],
+    "assertions": [
+      "31 large-body topics, 25-row metadata with no body",
+      "one topic body loaded on demand",
+      "peer revision conflict preserves draft",
+      "lost preparation response recovered using original command GET",
+      "fixed pending artifact remains explicitly pending",
+      "meeting ended without enabling minutes workflow or creating Agent runs",
+      "read-only precise history detail and old history continuation",
+      "390 English and Chinese dark no document overflow, occurrence begins above330px, Close restores search",
+      "legacy minutes readiness/release/review/publish and1100px remain usable"
+    ],
+    "agent_runs": 0,
+    "owned_workspaces_remaining": 0
+  },
+  "builds": {
+    "initial_interrupted": {
+      "exit_code": 143,
+      "reason": "Root corrected an accidental props type-only member before TypeScript phase completed"
+    },
+    "first_qa_build": "ce_AJFbaZB_ojs9Vk90Sj",
+    "final_qa_build": "sgQdBp7NUDFXHZua1K70w",
+    "resident_profile_build": "rsFBqY8qC4JLtgOxpLQwR",
+    "temporary_font_proxy_used": false
+  },
+  "screenshots": [
+    {
+      "file": "meeting-agenda-390-zh-dark.png",
+      "sha256": "87a4ad15da438ce261dd2381a48fb97d3a494911e4bdf2b9a6af629c2eade51a"
+    },
+    {
+      "file": "meeting-agenda-notes-390-zh-dark.png",
+      "sha256": "4d0c1c3dd2e2c7ee9551e8a6b137590ac7d60df7c2e0094fee7d7f96a60a3324"
+    },
+    {
+      "file": "meeting-lifecycle-published.png",
+      "sha256": "a3d451f7a4c340300f80d3a610f64f4fb9cd6f18b6cc5f1f9769541c7c36a5f0"
+    },
+    {
+      "file": "meeting-lifecycle-workflow-narrow.png",
+      "sha256": "33c009179e353ffd7fa316b3158f252df11a15949ebf3c3f6fbbed84b955e033"
+    }
+  ]
+}

@@ -1,117 +1,41 @@
 "use client";
 
-// Choosing a meeting off the register. Unlike the issue picker next door this
-// needs no search endpoint: the board read already carries every meeting, so
-// the filtering is local and the list is complete the moment it opens.
-//
-// Newest first, because what gets linked by hand is almost always a meeting
-// that just happened.
-
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { CockpitMeeting } from "@multica/core/types";
-import { cockpitMeetingFolderName } from "@multica/core/cockpit";
+import { cockpitMeetingFolderName, cockpitMeetingRegisterOptions, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@multica/ui/components/ui/command";
+import { Input } from "@multica/ui/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
-import { Check, Plus } from "lucide-react";
 import { useT } from "../../i18n";
+import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 
-/** How a meeting reads in one line: its number, then what it was about. The
- *  same rule the register and the folder name use, so one meeting is quoted
- *  the same way wherever it appears. */
-export function cockpitMeetingLabel(meeting: CockpitMeeting): string {
+export function cockpitMeetingLabel(meeting: Pick<CockpitMeeting, "code" | "title">): string {
   return cockpitMeetingFolderName({ code: meeting.code, title: meeting.title });
 }
 
-export function CockpitMeetingPicker({
-  meetings,
-  selectedIds,
-  onToggle,
-  label,
-  disabled,
-}: {
-  meetings: CockpitMeeting[];
-  /** Already-linked meeting ids, ticked so a second click reads as a toggle. */
-  selectedIds: Set<string>;
-  onToggle: (meetingId: string) => void;
-  label: string;
-  disabled?: boolean;
+/** Adding one reference never treats a loaded page as the complete relation set. */
+export function CockpitMeetingPicker({ wsId, onSelect, label, disabled }: {
+  wsId: string; onSelect: (meetingId: string) => Promise<unknown>; label: string; disabled?: boolean;
 }) {
-  const { t } = useT("cockpit");
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const rows = useMemo(() => {
-    const sorted = [...meetings].sort((a, b) => {
-      const byDate = (b.meet_date ?? "").localeCompare(a.meet_date ?? "");
-      return byDate !== 0 ? byDate : b.code.localeCompare(a.code);
-    });
-    const needle = query.trim().toLowerCase();
-    if (!needle) return sorted;
-    // Parties are in the haystack because half the programme's meetings are
-    // remembered by who was in the room, not by what they were titled.
-    return sorted.filter((m) =>
-      `${m.code} ${m.title} ${m.parties} ${m.meet_date ?? ""}`.toLowerCase().includes(needle),
-    );
-  }, [meetings, query]);
-
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setQuery("");
-      }}
-    >
-      <PopoverTrigger
-        disabled={disabled}
-        render={
-          <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-caption">
-            <Plus className="size-3" />
-            {label}
-          </Button>
-        }
-      />
-      <PopoverContent align="start" className="w-[26rem] p-0">
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder={t(($) => $.issue_meetings.search_placeholder)}
-            value={query}
-            onValueChange={setQuery}
-          />
-          <CommandList>
-            <CommandEmpty>{t(($) => $.issue_meetings.no_results)}</CommandEmpty>
-            {rows.length > 0 && (
-              <CommandGroup>
-                {rows.map((meeting) => {
-                  const linked = selectedIds.has(meeting.id);
-                  return (
-                    <CommandItem
-                      key={meeting.id}
-                      value={meeting.id}
-                      onSelect={() => onToggle(meeting.id)}
-                      className="gap-2"
-                    >
-                      <span className="shrink-0 font-mono text-caption text-muted-foreground">
-                        {meeting.code || meeting.meet_date || "—"}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-body">{meeting.title}</span>
-                      {linked && <Check className="size-3.5 shrink-0 text-brand" />}
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
+  const { t } = useT("cockpit"); const [open, setOpen] = useState(false); const [text, setText] = useState("");
+  const q = useCockpitSearch(text); const changing = text.trim() !== q;
+  const [cursors, setCursors] = useState<string[]>([""]); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const lock = useRef(false);
+  const query = useQuery({ ...cockpitMeetingRegisterOptions(wsId, EMPTY_COCKPIT_SCOPE, { q, cursor: cursors.at(-1) || undefined, page_size: 25 }), enabled: open && !changing });
+  return <Popover open={open && !disabled} onOpenChange={(next) => { if (!lock.current) { setOpen(next); setError(""); } }}>
+    <PopoverTrigger disabled={disabled} render={<Button type="button" variant="ghost" size="sm" />}>{label}</PopoverTrigger>
+    <PopoverContent align="start" className="w-[min(26rem,calc(100vw-2rem))] space-y-2">
+      <Input value={text} disabled={saving} aria-label={t(($) => $.issue_meetings.search_placeholder)} placeholder={t(($) => $.issue_meetings.search_placeholder)}
+        onChange={(event) => { setText(event.target.value); setCursors([""]); }} />
+      {query.isError ? <CockpitFlowError onRetry={() => void query.refetch()} /> : query.isPending || changing ? <p role="status" className="text-caption">{t(($) => $.workflow.loading)}</p> : <>
+        <div className="max-h-72 overflow-y-auto overscroll-contain">{query.data.items.map((meeting) => <Button key={meeting.id} type="button" variant="ghost" size="sm" disabled={saving}
+          className="h-auto w-full justify-start whitespace-normal text-left" onClick={() => { if (lock.current) return; lock.current = true; setSaving(true); setError("");
+            void Promise.resolve().then(() => onSelect(meeting.id)).then(() => setOpen(false)).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed))).finally(() => { lock.current = false; setSaving(false); }); }}>
+          {cockpitMeetingLabel(meeting)}</Button>)}{query.data.items.length === 0 && <p className="p-2 text-caption text-muted-foreground">{t(($) => $.issue_meetings.no_results)}</p>}</div>
+        <CockpitFlowPaging page={cursors.length} shown={query.data.items.length} total={query.data.total} busy={query.isFetching || saving} hasNext={Boolean(query.data.next_cursor)}
+          onPrevious={() => setCursors((old) => old.slice(0, -1))} onNext={() => { if (query.data.next_cursor) setCursors((old) => [...old, query.data.next_cursor!]); }} />
+      </>}
+      {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
+    </PopoverContent>
+  </Popover>;
 }

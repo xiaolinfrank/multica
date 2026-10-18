@@ -10,8 +10,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/logger"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -30,11 +29,9 @@ import (
 // tree with dates, owners, budget and instalments, plus milestones, meetings
 // and links to the issues that carry the work out.
 //
-// Two shapes of read exist on purpose. GET /api/cockpit returns the WHOLE board
-// in one response — a few hundred rows that every view needs at once, where a
-// second round trip per section would only buy latency. Every write returns the
-// single row it touched, and the realtime event carries that row, so a keystroke
-// never costs a board re-read.
+// GET /api/cockpit preserves the full-board contract for installed clients.
+// Native surfaces use explicit context, scoped plans and bounded object pages.
+// Writes acknowledge the changed resource; realtime invalidates derived reads.
 //
 // Reads and writes are both open to any workspace member: a planning board that
 // only admins can correct is a board that goes stale. Replacing the entire board
@@ -77,6 +74,8 @@ type CockpitNodeResponse struct {
 	ID              string   `json:"id"`
 	CockpitID       string   `json:"cockpit_id"`
 	ParentID        *string  `json:"parent_id"`
+	ProjectID       *string  `json:"project_id"`
+	ModuleID        *string  `json:"module_id"`
 	Code            string   `json:"code"`
 	Name            string   `json:"name"`
 	Position        float64  `json:"position"`
@@ -181,12 +180,14 @@ type CockpitMeetingIssueResponse struct {
 	IssueID   string `json:"issue_id"`
 	// "task" for the issue the platform opened with the meeting, "" for a
 	// link someone made by hand.
-	Role            string  `json:"role"`
-	IssueNumber     int32   `json:"issue_number"`
-	IssueIdentifier string  `json:"issue_identifier"`
-	IssueTitle      string  `json:"issue_title"`
-	IssueStatus     string  `json:"issue_status"`
-	Position        float64 `json:"position"`
+	Role            string   `json:"role"`
+	Roles           []string `json:"roles"`
+	RequiredRoles   []string `json:"required_roles"`
+	IssueNumber     int32    `json:"issue_number"`
+	IssueIdentifier string   `json:"issue_identifier"`
+	IssueTitle      string   `json:"issue_title"`
+	IssueStatus     string   `json:"issue_status"`
+	Position        float64  `json:"position"`
 }
 
 // CockpitMeetingNodeResponse is one work-breakdown item a meeting was about.
@@ -198,12 +199,13 @@ type CockpitMeetingNodeResponse struct {
 
 // CockpitBoardResponse is the single read every view starts from.
 type CockpitBoardResponse struct {
-	Cockpit    CockpitResponse            `json:"cockpit"`
-	Nodes      []CockpitNodeResponse      `json:"nodes"`
-	Payments   []CockpitPaymentResponse   `json:"payments"`
-	IssueLinks []CockpitNodeIssueResponse `json:"issue_links"`
-	Milestones []CockpitMilestoneResponse `json:"milestones"`
-	Meetings   []CockpitMeetingResponse   `json:"meetings"`
+	HasMeetingWorkflows bool                       `json:"has_meeting_workflows"`
+	Cockpit             CockpitResponse            `json:"cockpit"`
+	Nodes               []CockpitNodeResponse      `json:"nodes"`
+	Payments            []CockpitPaymentResponse   `json:"payments"`
+	IssueLinks          []CockpitNodeIssueResponse `json:"issue_links"`
+	Milestones          []CockpitMilestoneResponse `json:"milestones"`
+	Meetings            []CockpitMeetingResponse   `json:"meetings"`
 	// What each meeting is attached to. Flat lists rather than nested inside
 	// the meeting, matching issue_links: the client groups them once and the
 	// realtime frame can replace one meeting's set without resending a
@@ -310,6 +312,8 @@ func cockpitNodeToResponse(n db.CockpitNode) CockpitNodeResponse {
 		ID:              uuidToString(n.ID),
 		CockpitID:       uuidToString(n.CockpitID),
 		ParentID:        uuidToPtr(n.ParentID),
+		ProjectID:       uuidToPtr(n.ProjectID),
+		ModuleID:        uuidToPtr(n.ModuleID),
 		Code:            n.Code,
 		Name:            n.Name,
 		Position:        n.Position,
@@ -394,6 +398,8 @@ func cockpitMeetingIssueToResponse(l db.ListCockpitMeetingIssuesRow, prefix stri
 		MeetingID:       uuidToString(l.MeetingID),
 		IssueID:         uuidToString(l.IssueID),
 		Role:            l.Role,
+		Roles:           append([]string{}, l.Roles...),
+		RequiredRoles:   append([]string{}, l.RequiredRoles...),
 		IssueNumber:     l.IssueNumber,
 		IssueIdentifier: fmt.Sprintf("%s-%d", prefix, l.IssueNumber),
 		IssueTitle:      l.IssueTitle,
@@ -595,7 +601,27 @@ func (h *Handler) autoSnapshotCockpitAfterEdit(r *http.Request, cc cockpitContex
 	if time.Since(latest.CreatedAt.Time) < cockpitAutoSnapshotInterval {
 		return
 	}
-	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, h.Queries, cc)
+	actorType, actorLabel := h.cockpitActor(r, cc)
+	tx, err := h.TxStarter.Begin(ctx)
+	if err != nil {
+		return
+	}
+	defer tx.Rollback(ctx)
+	if _, err = tx.Exec(ctx, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+		return
+	}
+	q := h.Queries.WithTx(tx)
+	if _, err = q.LockWorkspaceForChatSessionCreate(ctx, cc.workspaceID); err != nil {
+		return
+	}
+	if _, err = q.LockCockpitSnapshotBoard(ctx, db.LockCockpitSnapshotBoardParams{WorkspaceID: cc.workspaceID, ID: cc.cockpit.ID}); err != nil {
+		return
+	}
+	cc.cockpit, err = q.GetCockpitByWorkspace(ctx, cc.workspaceID)
+	if err != nil {
+		return
+	}
+	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, q, cc, true)
 	if err != nil {
 		slog.Warn("cockpit auto snapshot read failed", append(logger.RequestAttrs(r), "error", err)...)
 		return
@@ -613,8 +639,7 @@ func (h *Handler) autoSnapshotCockpitAfterEdit(r *http.Request, cc cockpitContex
 	if sameCockpitPayload(latest.Payload, payload) {
 		return
 	}
-	actorType, actorLabel := h.cockpitActor(r, cc)
-	if _, err := h.Queries.CreateCockpitSnapshot(ctx, db.CreateCockpitSnapshotParams{
+	if _, err := q.CreateCockpitSnapshot(ctx, db.CreateCockpitSnapshotParams{
 		WorkspaceID:    cc.workspaceID,
 		CockpitID:      cc.cockpit.ID,
 		TriggerKind:    "auto",
@@ -626,11 +651,14 @@ func (h *Handler) autoSnapshotCockpitAfterEdit(r *http.Request, cc cockpitContex
 		slog.Warn("CreateCockpitSnapshot(auto) failed", append(logger.RequestAttrs(r), "error", err)...)
 		return
 	}
-	if _, err := h.Queries.PruneCockpitSnapshots(ctx, db.PruneCockpitSnapshotsParams{
+	if _, err := q.PruneCockpitSnapshots(ctx, db.PruneCockpitSnapshotsParams{
 		CockpitID: cc.cockpit.ID,
 		Keep:      cockpitSnapshotKeep,
 	}); err != nil {
 		slog.Warn("PruneCockpitSnapshots failed", append(logger.RequestAttrs(r), "error", err)...)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return
 	}
 	h.publishCockpit(r, cc, "snapshots", "created", nil)
 }
@@ -641,7 +669,7 @@ func sameCockpitPayload(stored, fresh []byte) bool {
 	if len(stored) == 0 {
 		return false
 	}
-	var doc CockpitImportRequest
+	var doc cockpitSnapshotDocument
 	if err := json.Unmarshal(stored, &doc); err != nil {
 		return false
 	}
@@ -817,17 +845,26 @@ func (h *Handler) GetCockpit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
 		return
 	}
+	hasWorkflows, err := h.Queries.HasCockpitMinutesLinksForBoard(ctx, db.HasCockpitMinutesLinksForBoardParams{
+		WorkspaceID: cc.workspaceID, CockpitID: cc.cockpit.ID,
+	})
+	if err != nil {
+		slog.Warn("HasCockpitWorkPackagesForBoard failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load cockpit")
+		return
+	}
 
 	prefix := h.getIssuePrefix(ctx, cc.workspaceID)
 	resp := CockpitBoardResponse{
-		Cockpit:       cockpitToResponse(cc.cockpit),
-		Nodes:         make([]CockpitNodeResponse, len(nodes)),
-		Payments:      make([]CockpitPaymentResponse, len(payments)),
-		IssueLinks:    make([]CockpitNodeIssueResponse, len(links)),
-		Milestones:    make([]CockpitMilestoneResponse, len(milestones)),
-		Meetings:      make([]CockpitMeetingResponse, len(meetings)),
-		MeetingIssues: make([]CockpitMeetingIssueResponse, len(meetingIssues)),
-		MeetingNodes:  make([]CockpitMeetingNodeResponse, len(meetingNodes)),
+		HasMeetingWorkflows: hasWorkflows,
+		Cockpit:             cockpitToResponse(cc.cockpit),
+		Nodes:               make([]CockpitNodeResponse, len(nodes)),
+		Payments:            make([]CockpitPaymentResponse, len(payments)),
+		IssueLinks:          make([]CockpitNodeIssueResponse, len(links)),
+		Milestones:          make([]CockpitMilestoneResponse, len(milestones)),
+		Meetings:            make([]CockpitMeetingResponse, len(meetings)),
+		MeetingIssues:       make([]CockpitMeetingIssueResponse, len(meetingIssues)),
+		MeetingNodes:        make([]CockpitMeetingNodeResponse, len(meetingNodes)),
 	}
 	for i, n := range nodes {
 		resp.Nodes[i] = cockpitNodeToResponse(n)
@@ -905,6 +942,10 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dir := req.MeetingDir
+	if dir == nil && (project.effective(cc.cockpit.MeetingProjectID) != cc.cockpit.MeetingProjectID || module.effective(cc.cockpit.MeetingModuleID) != cc.cockpit.MeetingModuleID || node.effective(cc.cockpit.MeetingNodeID) != cc.cockpit.MeetingNodeID) {
+		blank := ""
+		dir = &blank
+	}
 	if dir != nil {
 		normalized, err := normalizeCollabPath(*dir)
 		if err != nil {
@@ -965,6 +1006,8 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 
 type CockpitNodeRequest struct {
 	ParentID        *string  `json:"parent_id"`
+	ProjectID       *string  `json:"project_id"`
+	ModuleID        *string  `json:"module_id"`
 	Code            *string  `json:"code"`
 	Name            *string  `json:"name"`
 	Position        *float64 `json:"position"`
@@ -1027,141 +1070,63 @@ func (h *Handler) resolveCockpitParent(w http.ResponseWriter, r *http.Request, c
 	return parent, true
 }
 
-// numericDottedCodeRe marks stored codes built of two or more two-digit
-// dot-separated segments ("01.03", "04.03.10"): the board's published
-// address family, and the shape the gantt's positional display codes quote.
-// A bare module code ("01") stays out — minting "01.01" under it would
-// produce a direction-shaped code the frontend files as structure.
-var numericDottedCodeRe = regexp.MustCompile(`^\d{2}\.\d{2}(\.\d{2})*$`)
-
-// storedZeroSegmentCodeRe mirrors the display layer's governance carve-out:
-// a first child whose stored code ends in ".00" keeps that published code
-// and the siblings after it number from 01, so the row occupies no number
-// in the parent's sequence.
-var storedZeroSegmentCodeRe = regexp.MustCompile(`^\d{2}(\.\d{2})*\.00$`)
-
-// nextCockpitChildCode picks the first number past everything the board has
-// ever handed out under this parent. The separator mirrors the parent's own
-// style: dotted parents ("01.03") continue dotted ("01.03.06"), anything else
-// ("AI-03-02", "01") keeps the legacy PARENT-NN shape. The count starts from
-// the live child rows as well as the ledger, because a deleted row's number
-// stays spent while a child wearing an unrelated legacy code ("L3-01-33")
-// still occupies a visible position the answer must step past — otherwise
-// the preview reads as a duplicate of a sibling the reader can see. Codes
-// with a non-numeric tail (hand-edited rows) keep their ledger entry but do
-// not join the count: 02.02.1 and 02.02.01 are distinct codes, both stay
-// spent, and neither is re-issued.
-func nextCockpitChildCode(parentCode string, used []string, childCount int) string {
-	sep := "-"
-	if numericDottedCodeRe.MatchString(parentCode) {
-		sep = "."
-	}
-	prefix := parentCode + sep
-	max := childCount
-	for _, code := range used {
-		if !strings.HasPrefix(code, prefix) {
-			continue
-		}
-		n, err := strconv.Atoi(code[len(prefix):])
-		if err != nil || n <= 0 {
-			continue
-		}
-		if n > max {
-			max = n
-		}
-	}
-	return prefix + fmt.Sprintf("%02d", max+1)
-}
-
-// liveChildFloor counts the rows currently under parentID for next-code
-// purposes. A first child wearing a ".00" governance code sits outside the
-// numbered sequence the gantt shows, so it does not push the next number.
-func liveChildFloor(nodes []db.CockpitNode, parentID pgtype.UUID) int {
-	count := 0
-	var first *db.CockpitNode
-	for i := range nodes {
-		n := &nodes[i]
-		if n.ParentID != parentID {
-			continue
-		}
-		count++
-		if first == nil || n.Position < first.Position {
-			first = n
-		}
-	}
-	if first != nil && storedZeroSegmentCodeRe.MatchString(first.Code) {
-		count--
-	}
-	return count
-}
-
 // GetCockpitNextNodeCode answers what code the next execution task under a
 // direction would wear. Codes are handed out once (migration 948), so the
 // answer steps past every number the board has ever used — deleted rows
-// included. The client shows this for confirmation and sends it back on
-// create; a concurrent create still meets the unique conflict as the final
-// arbiter, so the answer is a preview, never a reservation.
+// included. The preview reserves nothing: keyed auto_code creates allocate
+// their final number under the board lock. Legacy manual codes remain valid.
 func (h *Handler) GetCockpitNextNodeCode(w http.ResponseWriter, r *http.Request) {
-	cc, ok := h.requireCockpit(w, r)
+	p, ok := h.cockpitSurfaceQuery(w, r)
 	if !ok {
 		return
 	}
-
-	parent, ok := h.resolveCockpitParent(w, r, cc, r.URL.Query().Get("parent_id"), pgtype.UUID{})
-	if !ok {
-		return
+	var parent pgtype.UUID
+	if value := r.URL.Query().Get("parent_id"); value != "" {
+		parent, ok = parseUUIDOrBadRequest(w, value, "parent_id")
+		if !ok {
+			return
+		}
 	}
-
-	used, err := h.Queries.ListCockpitUsedCodes(r.Context(), cc.cockpit.ID)
-	if err != nil {
-		slog.Warn("ListCockpitUsedCodes failed", append(logger.RequestAttrs(r), "error", err)...)
-		writeError(w, http.StatusInternalServerError, "failed to load used codes")
-		return
+	out, err := h.IssueService.GetCockpitNodeCodePreview(r.Context(), p, parent)
+	if !writeCockpitSurfaceError(w, r, err) {
+		writeJSON(w, http.StatusOK, out)
 	}
-	// The ledger is written on create; a row that somehow predates it (or a
-	// delete racing this read) must still not let its number come back, so
-	// the live nodes join the count too.
-	nodes, err := h.Queries.ListCockpitNodes(r.Context(), cc.cockpit.ID)
-	if err != nil {
-		slog.Warn("ListCockpitNodes failed", append(logger.RequestAttrs(r), "error", err)...)
-		writeError(w, http.StatusInternalServerError, "failed to load used codes")
-		return
-	}
-	// The live child count keeps the answer ahead of rows whose codes name
-	// no number under this parent (e.g. legacy L3-coded tasks).
-	childCount := liveChildFloor(nodes, parent.ID)
-	for _, n := range nodes {
-		used = append(used, n.Code)
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"code": nextCockpitChildCode(parent.Code, used, childCount)})
 }
 
 func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
-	cc, ok := h.requireCockpit(w, r)
+	var req CockpitNodeCreateRequest
+	raw, ok := decodeCockpitBody(w, r, &req)
+	if !ok {
+		return
+	}
+	cc, command, ok := h.prepareCockpitCreation(w, r, "node", req.CreationKey, raw)
 	if !ok {
 		return
 	}
 
-	var req CockpitNodeRequest
-	raw, ok := decodeCockpitBody(w, r, &req)
+	binding, ok := parseCockpitNodeBinding(w, req.ProjectID, req.ModuleID, raw)
 	if !ok {
 		return
 	}
 
 	code := textOrEmpty(req.Code)
-	if code == "" || len([]rune(code)) > 64 {
+	autoCode := req.AutoCode != nil && *req.AutoCode
+	_, codeSupplied := raw["code"]
+	if autoCode && (!command.Key.Valid || codeSupplied) {
+		writeError(w, http.StatusBadRequest, "auto_code requires creation_key and an omitted code")
+		return
+	}
+	if !autoCode && (code == "" || len([]rune(code)) > 64) {
 		writeError(w, http.StatusBadRequest, "code must be 1-64 characters")
 		return
 	}
 
 	var parentID pgtype.UUID
 	if req.ParentID != nil && strings.TrimSpace(*req.ParentID) != "" {
-		parent, ok := h.resolveCockpitParent(w, r, cc, *req.ParentID, pgtype.UUID{})
+		parentID, ok = parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ParentID), "parent_id")
 		if !ok {
 			return
 		}
-		parentID = parent.ID
 	}
 
 	startDate, _, ok := cockpitDate(w, raw, "start_date", req.StartDate)
@@ -1184,14 +1149,59 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	// before, and a spent code never comes back, even after its row was
 	// deleted. Imports are the one exception (see runCockpitImport): a
 	// restored snapshot replays its own codes.
-	tx, err := h.TxStarter.Begin(r.Context())
+	tx, qtx, board, replay, err := h.beginCockpitCreation(r.Context(), cc.workspaceID, pgtype.UUID{}, command)
 	if err != nil {
-		slog.Warn("CreateCockpitNode tx failed", append(logger.RequestAttrs(r), "error", err)...)
-		writeError(w, http.StatusInternalServerError, "failed to create cockpit node")
+		writeCockpitCreationError(w, err)
 		return
 	}
 	defer tx.Rollback(r.Context())
-	qtx := h.Queries.WithTx(tx)
+	if replay != nil {
+		writeJSON(w, http.StatusOK, replay)
+		return
+	}
+	cc.cockpit = board
+	if parentID.Valid {
+		parent, e := qtx.GetCockpitNode(r.Context(), db.GetCockpitNodeParams{ID: parentID, WorkspaceID: cc.workspaceID})
+		if e != nil || parent.CockpitID != cc.cockpit.ID {
+			writeError(w, http.StatusBadRequest, "parent node no longer exists on this board")
+			return
+		}
+	}
+	projectID, moduleID, bindErr := resolveCockpitNodeBinding(r.Context(), qtx, cc.workspaceID, db.CockpitNode{}, binding)
+	if bindErr != nil {
+		writeError(w, bindErr.status, bindErr.msg)
+		return
+	}
+	if existing, e := qtx.GetCockpitNodeBindingConflict(r.Context(), db.GetCockpitNodeBindingConflictParams{WorkspaceID: cc.workspaceID, CockpitID: cc.cockpit.ID, ProjectID: projectID, ModuleID: moduleID}); e == nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "this project or module already has a plan item", "code": "node_binding_exists", "workspace_id": uuidToString(cc.workspaceID), "creation_key": uuidToString(command.Key), "existing_node_id": uuidToString(existing)})
+		return
+	} else if !errors.Is(e, pgx.ErrNoRows) {
+		writeError(w, 500, "failed to check existing plan binding")
+		return
+	}
+	if autoCode {
+		code, err = service.ReadCockpitNextNodeCode(r.Context(), qtx, cc.workspaceID, parentID)
+		if err != nil {
+			writeCockpitSurfaceError(w, r, err)
+			return
+		}
+	}
+	position := floatOrZero(req.Position)
+	if req.Position == nil {
+		maximum, e := qtx.GetCockpitSiblingMaximumPosition(r.Context(), db.GetCockpitSiblingMaximumPositionParams{WorkspaceID: cc.workspaceID, CockpitID: cc.cockpit.ID, ParentID: parentID})
+		if e != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read sibling order")
+			return
+		}
+		position = maximum + 1
+		if position <= maximum {
+			position = math.Nextafter(maximum, math.Inf(1))
+		}
+		if math.IsNaN(position) || math.IsInf(position, 0) {
+			writeError(w, http.StatusConflict, "sibling order needs to be reset before appending a node")
+			return
+		}
+	}
 
 	spent, err := qtx.RecordCockpitUsedCode(r.Context(), db.RecordCockpitUsedCodeParams{
 		WorkspaceID: cc.workspaceID,
@@ -1207,13 +1217,16 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "this code has been used before and stays spent")
 		return
 	}
+	actorType, _ := h.cockpitActor(r, cc)
 	node, err := qtx.CreateCockpitNode(r.Context(), db.CreateCockpitNodeParams{
 		WorkspaceID:     cc.workspaceID,
 		CockpitID:       cc.cockpit.ID,
 		ParentID:        parentID,
+		ProjectID:       projectID,
+		ModuleID:        moduleID,
 		Code:            code,
 		Name:            textOrEmpty(req.Name),
-		Position:        floatOrZero(req.Position),
+		Position:        position,
 		Color:           textOrEmpty(req.Color),
 		Owner:           textOrEmpty(req.Owner),
 		Collaborators:   textOrEmpty(req.Collaborators),
@@ -1231,16 +1244,31 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		ExecStatus:      textOrEmpty(req.ExecStatus),
 		Contract:        textOrEmpty(req.Contract),
 		Source:          textOrEmpty(req.Source),
-		UpdatedByType:   "member",
+		UpdatedByType:   actorType,
 		UpdatedByID:     cc.member.UserID,
 	})
 	if err != nil {
 		if isUniqueViolation(err) {
-			writeError(w, http.StatusConflict, "a node with this code already exists")
+			writeError(w, http.StatusConflict, "a node with this code or project/module binding already exists")
+			return
+		}
+		if writeCockpitPrimaryIntegrityError(w, err) {
 			return
 		}
 		slog.Warn("CreateCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to create cockpit node")
+		return
+	}
+	if err := checkCockpitBindingTree(r.Context(), qtx, cc.cockpit.ID); err != nil {
+		writeError(w, err.status, err.msg)
+		return
+	}
+	resp := CockpitNodeCreateResponse{CockpitNodeResponse: cockpitNodeToResponse(node), WorkspaceID: uuidToString(cc.workspaceID)}
+	if command != nil {
+		resp.CreationKey = uuidToString(command.Key)
+	}
+	if err := saveCockpitCreationReceipt(r.Context(), qtx, command, node.ID, resp); err != nil {
+		writeCockpitCreationError(w, err)
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
@@ -1249,12 +1277,19 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := cockpitNodeToResponse(node)
 	h.publishCockpit(r, cc, "node", "created", resp)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
+	// Direct plan edits are a human prerogative: an agent that sees the board
+	// drift files a proposal (POST /api/cockpit/changes) and a person applies
+	// it after review. A machine credential that could PATCH nodes directly
+	// would bypass the governance queue entirely.
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "direct plan edits require a human actor; propose the change via POST /api/cockpit/changes so it can be reviewed")
+		return
+	}
 	cc, ok := h.requireCockpit(w, r)
 	if !ok {
 		return
@@ -1270,9 +1305,40 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	binding, ok := parseCockpitNodeBinding(w, req.ProjectID, req.ModuleID, raw)
+	if !ok {
+		return
+	}
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+	if err := lockCockpitBindings(r.Context(), qtx, cc.workspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
+		return
+	}
+	current, err = qtx.GetCockpitNode(r.Context(), db.GetCockpitNodeParams{ID: current.ID, WorkspaceID: cc.workspaceID})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "node no longer exists")
+		return
+	}
+	projectID, moduleID, bindErr := resolveCockpitNodeBinding(r.Context(), qtx, cc.workspaceID, current, binding)
+	if bindErr != nil {
+		writeError(w, bindErr.status, bindErr.msg)
+		return
+	}
+
+	actorType, _ := h.cockpitActor(r, cc)
 	params := db.UpdateCockpitNodeParams{
 		ID:              current.ID,
 		WorkspaceID:     cc.workspaceID,
+		ProjectID:       projectID,
+		ModuleID:        moduleID,
+		ClearProject:    !projectID.Valid,
+		ClearModule:     !moduleID.Valid,
 		Code:            optionalText(req.Code),
 		Name:            optionalText(req.Name),
 		Position:        optionalFloat(req.Position),
@@ -1289,7 +1355,7 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		ExecStatus:      optionalText(req.ExecStatus),
 		Contract:        optionalText(req.Contract),
 		Source:          optionalText(req.Source),
-		UpdatedByType:   "member",
+		UpdatedByType:   actorType,
 		UpdatedByID:     cc.member.UserID,
 	}
 
@@ -1342,64 +1408,42 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		params.Code = pgtype.Text{String: code, Valid: true}
 	}
 
-	// Only a code change touches the ledger (migration 948): a rename
-	// spends the new code, while the old one stays spent — it named a row
-	// once, and that is enough. The ledger write doubles as the spent-code
-	// gate, and rename plus ledger row land in one transaction so a
-	// mid-flight failure cannot leave a code both worn and unrecorded.
-	// Re-asserting the code the row already wears is a plain update.
-	codeChanged := req.Code != nil && strings.TrimSpace(*req.Code) != current.Code
-	var node db.CockpitNode
-	if codeChanged {
-		tx, err := h.TxStarter.Begin(r.Context())
-		if err != nil {
-			slog.Warn("UpdateCockpitNode tx failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
-			return
-		}
-		defer tx.Rollback(r.Context())
-		qtx := h.Queries.WithTx(tx)
+	// The board lock serializes reparenting, binding edits and replacement.
+	// Code allocation remains atomic with the row update.
+	if req.Code != nil && strings.TrimSpace(*req.Code) != current.Code {
 		spent, err := qtx.RecordCockpitUsedCode(r.Context(), db.RecordCockpitUsedCodeParams{
-			WorkspaceID: cc.workspaceID,
-			CockpitID:   cc.cockpit.ID,
-			Code:        strings.TrimSpace(*req.Code),
+			WorkspaceID: cc.workspaceID, CockpitID: cc.cockpit.ID, Code: strings.TrimSpace(*req.Code),
 		})
 		if err != nil {
-			slog.Warn("RecordCockpitUsedCode failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+			writeError(w, http.StatusInternalServerError, "failed to record node code")
 			return
 		}
 		if spent == 0 {
 			writeError(w, http.StatusConflict, "this code has been used before and stays spent")
 			return
 		}
-		node, err = qtx.UpdateCockpitNode(r.Context(), params)
-		if err != nil {
-			if isUniqueViolation(err) {
-				writeError(w, http.StatusConflict, "a node with this code already exists")
-				return
-			}
-			slog.Warn("UpdateCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+	}
+	node, err := qtx.UpdateCockpitNode(r.Context(), params)
+	if err != nil {
+		if writeCockpitPrimaryIntegrityError(w, err) {
 			return
 		}
-		if err := tx.Commit(r.Context()); err != nil {
-			slog.Warn("UpdateCockpitNode commit failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "a node with this code or project/module binding already exists")
 			return
 		}
-	} else {
-		var err error
-		node, err = h.Queries.UpdateCockpitNode(r.Context(), params)
-		if err != nil {
-			if isUniqueViolation(err) {
-				writeError(w, http.StatusConflict, "a node with this code already exists")
-				return
-			}
-			slog.Warn("UpdateCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+		writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+		return
+	}
+	if _, parentTouched := raw["parent_id"]; parentTouched || binding.projectSet || binding.moduleSet {
+		if err := checkCockpitBindingTree(r.Context(), qtx, cc.cockpit.ID); err != nil {
+			writeError(w, err.status, err.msg)
 			return
 		}
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
+		return
 	}
 
 	resp := cockpitNodeToResponse(node)
@@ -1421,7 +1465,18 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	children, err := h.Queries.ListCockpitNodeChildIDs(r.Context(), db.ListCockpitNodeChildIDsParams{
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+	if err := lockCockpitBindings(r.Context(), qtx, cc.workspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
+		return
+	}
+	children, err := qtx.ListCockpitNodeChildIDs(r.Context(), db.ListCockpitNodeChildIDsParams{
 		CockpitID: cc.cockpit.ID,
 		ParentID:  node.ID,
 	})
@@ -1439,7 +1494,7 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 	// instalments and issue links are cleared here, in the same request, before
 	// the row they belong to disappears.
 	ctx := r.Context()
-	if err := h.Queries.DeleteCockpitPaymentsByNode(ctx, db.DeleteCockpitPaymentsByNodeParams{
+	if err := qtx.DeleteCockpitPaymentsByNode(ctx, db.DeleteCockpitPaymentsByNodeParams{
 		NodeID:      node.ID,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
@@ -1447,7 +1502,7 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
-	if err := h.Queries.DeleteCockpitNodeIssuesByNode(ctx, db.DeleteCockpitNodeIssuesByNodeParams{
+	if err := qtx.DeleteCockpitNodeIssuesByNode(ctx, db.DeleteCockpitNodeIssuesByNodeParams{
 		NodeID:      node.ID,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
@@ -1455,7 +1510,7 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
-	if err := h.Queries.DeleteCockpitMeetingNodesByNode(ctx, db.DeleteCockpitMeetingNodesByNodeParams{
+	if err := qtx.DeleteCockpitMeetingNodesByNode(ctx, db.DeleteCockpitMeetingNodesByNodeParams{
 		NodeID:      node.ID,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
@@ -1463,24 +1518,35 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
-	if err := h.Queries.DeleteCockpitChangesByNode(ctx, db.DeleteCockpitChangesByNodeParams{
-		NodeID:      node.ID,
-		WorkspaceID: cc.workspaceID,
+	if _, err := qtx.SystemWithdrawCockpitPendingChangesByNode(ctx, db.SystemWithdrawCockpitPendingChangesByNodeParams{
+		NodeID:       node.ID,
+		WorkspaceID:  cc.workspaceID,
+		DecisionNote: "node deleted",
 	}); err != nil {
-		slog.Warn("DeleteCockpitChangesByNode failed", append(logger.RequestAttrs(r), "error", err)...)
+		slog.Warn("SystemWithdrawCockpitPendingChangesByNode failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
-	if err := h.Queries.DeleteCockpitNode(ctx, db.DeleteCockpitNodeParams{
+	if err := qtx.DeleteCockpitNode(ctx, db.DeleteCockpitNodeParams{
 		ID:          node.ID,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
 		slog.Warn("DeleteCockpitNode failed", append(logger.RequestAttrs(r), "error", err)...)
+		if writeCockpitPrimaryIntegrityError(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
 
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
+		return
+	}
 	h.publishCockpit(r, cc, "node", "deleted", map[string]any{"id": uuidToString(node.ID)})
+	// Pending proposals against the node were system-withdrawn in the same
+	// transaction; open queues refresh on the same event.
+	h.publishCockpit(r, cc, "changes", "withdrawn", nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1548,6 +1614,12 @@ func (h *Handler) SetCockpitNodeIssues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i, issueID := range resolved {
+		if !req.Replace {
+			if _, err := h.appendCockpitNodeIssue(ctx, cc, node.ID, issueID); writeCockpitReferenceError(w, err) {
+				return
+			}
+			continue
+		}
 		if _, err := h.Queries.CreateCockpitNodeIssue(ctx, db.CreateCockpitNodeIssueParams{
 			WorkspaceID: cc.workspaceID,
 			NodeID:      node.ID,
@@ -1938,13 +2010,13 @@ type CockpitMeetingRequest struct {
 }
 
 func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
-	cc, ok := h.requireCockpit(w, r)
+	var req CockpitMeetingCreateRequest
+	raw, ok := decodeCockpitBody(w, r, &req)
 	if !ok {
 		return
 	}
-
-	var req CockpitMeetingRequest
-	raw, ok := decodeCockpitBody(w, r, &req)
+	// The submitted anchor and absent auto-code remain part of the original intent.
+	cc, command, ok := h.prepareCockpitCreation(w, r, "meeting", req.CreationKey, raw)
 	if !ok {
 		return
 	}
@@ -1965,21 +2037,15 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The form sends the number it previewed; every other way of filing a
-	// meeting — the overview's quick add, a bare API call — sends none, and
-	// numbering here is what keeps those rows in the register's sequence.
-	code := textOrEmpty(req.Code)
-	if strings.TrimSpace(code) == "" && meetDate.Valid {
-		existing, err := h.Queries.ListCockpitMeetings(r.Context(), cc.cockpit.ID)
-		if err != nil {
-			slog.Warn("ListCockpitMeetings failed", append(logger.RequestAttrs(r), "error", err)...)
-			writeError(w, http.StatusInternalServerError, "failed to load meetings")
+	var nodeID pgtype.UUID
+	if req.NodeID != nil {
+		nodeID, ok = parseUUIDOrBadRequest(w, *req.NodeID, "node_id")
+		if !ok {
 			return
 		}
-		code = nextMeetingCode(existing, meetDate.Time)
 	}
 
-	meeting, err := h.Queries.CreateCockpitMeeting(r.Context(), db.CreateCockpitMeetingParams{
+	created, err := h.createCockpitMeetingRecord(r.Context(), db.CreateCockpitMeetingParams{
 		WorkspaceID: cc.workspaceID,
 		CockpitID:   cc.cockpit.ID,
 		MeetDate:    meetDate,
@@ -1987,7 +2053,7 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		StartTime:   startTime,
 		EndTime:     endTime,
 		Title:       textOrEmpty(req.Title),
-		Code:        code,
+		Code:        textOrEmpty(req.Code),
 		Kind:        textOrEmpty(req.Kind),
 		Status:      textOrEmpty(req.Status),
 		Track:       textOrEmpty(req.Track),
@@ -2003,15 +2069,24 @@ func (h *Handler) CreateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		Actions:     textOrEmpty(req.Actions),
 		NasDir:      nasDir,
 		Detected:    req.Detected != nil && *req.Detected,
-	})
+	}, false, nodeID, command)
 	if err != nil {
-		slog.Warn("CreateCockpitMeeting failed", append(logger.RequestAttrs(r), "error", err)...)
-		writeError(w, http.StatusInternalServerError, "failed to create meeting")
+		writeCockpitCreationError(w, err)
 		return
 	}
-
-	resp := cockpitMeetingToResponse(meeting)
-	h.publishCockpit(r, cc, "meeting", "created", resp)
+	if created.Replay != nil {
+		writeJSON(w, http.StatusOK, created.Replay)
+		return
+	}
+	cc.cockpit = created.Board
+	resp := created.Response
+	if link := created.NodeLink; link != nil {
+		resp.NodeLink = &CockpitMeetingNodeResponse{MeetingID: uuidToString(link.MeetingID), NodeID: uuidToString(link.NodeID), Position: link.Position}
+		// Older clients invalidate the board for an atomic multi-entity change.
+		h.publishCockpit(r, cc, "board", "meeting_created", resp)
+	} else {
+		h.publishCockpit(r, cc, "meeting", "created", resp.CockpitMeetingResponse)
+	}
 	writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -2055,7 +2130,21 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		nasDir = pgtype.Text{String: normalized, Valid: true}
 	}
 
-	meeting, err := h.Queries.UpdateCockpitMeeting(r.Context(), db.UpdateCockpitMeetingParams{
+	tx, q, ok := h.beginCockpitMeetingMutation(w, r, cc, id)
+	if !ok {
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if _, minutes := raw["minutes"]; minutes || req.Decisions != nil || req.Actions != nil {
+		if wp, werr := q.GetCockpitMeetingWorkPackage(r.Context(), db.GetCockpitMeetingWorkPackageParams{WorkspaceID: cc.workspaceID, ID: id}); werr == nil && wp.MinutesIssueID.Valid {
+			writeError(w, http.StatusConflict, "this meeting uses versioned minutes; submit a workflow version instead")
+			return
+		} else if werr != nil && !errors.Is(werr, pgx.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
+			return
+		}
+	}
+	meeting, err := q.UpdateCockpitMeeting(r.Context(), db.UpdateCockpitMeetingParams{
 		ID:             id,
 		WorkspaceID:    cc.workspaceID,
 		MeetDate:       meetDate,
@@ -2093,6 +2182,10 @@ func (h *Handler) UpdateCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update meeting")
+		return
+	}
 	resp := cockpitMeetingToResponse(meeting)
 	h.publishCockpit(r, cc, "meeting", "updated", resp)
 	writeJSON(w, http.StatusOK, resp)
@@ -2108,10 +2201,71 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// No cascading deletes in the schema (repository rule): the meeting's own
-	// links go first, in the same request, so a re-used UUID can never adopt
+	// links go first in the same transaction, so a re-used UUID can never adopt
 	// another meeting's attachments.
 	ctx := r.Context()
-	if err := h.Queries.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{
+	tx, err := h.TxStarter.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete meeting")
+		return
+	}
+	defer tx.Rollback(ctx)
+	q := h.Queries.WithTx(tx)
+	if err := lockCockpitBindings(ctx, q, cc.workspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock cockpit")
+		return
+	}
+	if _, err := q.LockCockpitMeetingForWork(ctx, db.LockCockpitMeetingForWorkParams{ID: id, WorkspaceID: cc.workspaceID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			w.WriteHeader(http.StatusNoContent)
+		} else {
+			writeError(w, http.StatusInternalServerError, "failed to lock meeting")
+		}
+		return
+	}
+	// R1 (design-principles-2026-10-12): minutes bindings are associations;
+	// deleting a meeting sweeps them. Only submitted minutes versions carry
+	// formal history and retain the meeting.
+	if versions, err := q.CountCockpitMinutesVersions(ctx, db.CountCockpitMinutesVersionsParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check meeting workflow")
+		return
+	} else if versions > 0 {
+		writeError(w, http.StatusConflict, "meetings with submitted minutes versions cannot be deleted individually")
+		return
+	}
+	if retained, err := q.HasCockpitArtifactMeeting(ctx, db.HasCockpitArtifactMeetingParams{WorkspaceID: cc.workspaceID, SourceMeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check fixed artifact provenance")
+		return
+	} else if retained {
+		writeError(w, http.StatusConflict, "This meeting is retained by fixed artifact provenance; preserve its history")
+		return
+	}
+	if retained, err := q.HasCockpitMeetingPreparationHistory(ctx, db.HasCockpitMeetingPreparationHistoryParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check meeting preparation history")
+		return
+	} else if retained {
+		writeError(w, http.StatusConflict, "This meeting retains preparation history; archive it instead")
+		return
+	}
+	if retained, err := q.HasCockpitDirectoryHistory(ctx, db.HasCockpitDirectoryHistoryParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil || !retained.Valid {
+		writeError(w, http.StatusInternalServerError, "failed to check meeting directory history")
+		return
+	} else if retained.Bool {
+		writeError(w, http.StatusConflict, "This meeting retains directory history; open its meeting directory or archive it instead")
+		return
+	}
+	if retained, err := q.HasCockpitInputMeetingReferences(ctx, db.HasCockpitInputMeetingReferencesParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check meeting input references")
+		return
+	} else if retained {
+		writeErrorCode(w, http.StatusConflict, "meeting_input_references", "This meeting retains historical material references; archive it to preserve them")
+		return
+	}
+	if err := q.DeleteRemovedCockpitInputReferencesByMeeting(ctx, db.DeleteRemovedCockpitInputReferencesByMeetingParams{WorkspaceID: cc.workspaceID, MeetingID: id}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear removed input references")
+		return
+	}
+	if err := q.DeleteCockpitMeetingIssuesByMeeting(ctx, db.DeleteCockpitMeetingIssuesByMeetingParams{
 		MeetingID:   id,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
@@ -2119,7 +2273,7 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete meeting")
 		return
 	}
-	if err := h.Queries.DeleteCockpitMeetingNodesByMeeting(ctx, db.DeleteCockpitMeetingNodesByMeetingParams{
+	if err := q.DeleteCockpitMeetingNodesByMeeting(ctx, db.DeleteCockpitMeetingNodesByMeetingParams{
 		MeetingID:   id,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
@@ -2127,11 +2281,15 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete meeting")
 		return
 	}
-	if err := h.Queries.DeleteCockpitMeeting(ctx, db.DeleteCockpitMeetingParams{
+	if err := q.DeleteCockpitMeeting(ctx, db.DeleteCockpitMeetingParams{
 		ID:          id,
 		WorkspaceID: cc.workspaceID,
 	}); err != nil {
 		slog.Warn("DeleteCockpitMeeting failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete meeting")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete meeting")
 		return
 	}
@@ -2148,6 +2306,8 @@ func (h *Handler) DeleteCockpitMeeting(w http.ResponseWriter, r *http.Request) {
 // exists — and because a person editing that document thinks in "L1-02", not
 // in UUIDs.
 type CockpitImportNode struct {
+	ProjectID       *string                `json:"project_id,omitempty"`
+	ModuleID        *string                `json:"module_id,omitempty"`
 	Code            string                 `json:"code"`
 	ParentCode      string                 `json:"parent_code"`
 	Name            string                 `json:"name"`
@@ -2228,16 +2388,19 @@ type CockpitImportMeeting struct {
 	// task" from "an issue someone attached", and a restore that forgot it
 	// would quietly demote the task to an ordinary link.
 	TaskIssueID string `json:"task_issue_id"`
+	// Workflow purposes are keyed by the same issue reference as IssueIDs.
+	IssueRoles map[string][]string `json:"issue_roles,omitempty"`
 }
 
 type CockpitImportRequest struct {
-	Title      string                   `json:"title"`
-	GoalTitle  string                   `json:"goal_title"`
-	GoalDate   string                   `json:"goal_date"`
-	Basis      string                   `json:"basis"`
-	Nodes      []CockpitImportNode      `json:"nodes"`
-	Milestones []CockpitImportMilestone `json:"milestones"`
-	Meetings   []CockpitImportMeeting   `json:"meetings"`
+	nodeBindings []cockpitNodeBindingPatch
+	Title        string                   `json:"title"`
+	GoalTitle    string                   `json:"goal_title"`
+	GoalDate     string                   `json:"goal_date"`
+	Basis        string                   `json:"basis"`
+	Nodes        []CockpitImportNode      `json:"nodes"`
+	Milestones   []CockpitImportMilestone `json:"milestones"`
+	Meetings     []CockpitImportMeeting   `json:"meetings"`
 	// The three summary cards. Pointers because absent and empty differ here:
 	// an authored plan has no card text and its import must leave whatever the
 	// board already says, while a snapshot always carries the values it froze
@@ -2343,11 +2506,15 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !parseCockpitImportBindings(w, &req) {
+		return
+	}
 	resp, impErr := h.runCockpitImport(r, cc, req, "import")
 	if impErr != nil {
 		writeError(w, impErr.status, impErr.msg)
 		return
 	}
+	h.publishCockpit(r, cc, "changes", "withdrawn", nil)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -2357,6 +2524,7 @@ func (h *Handler) ImportCockpit(w http.ResponseWriter, r *http.Request) {
 // run is allowed to destroy the board. Empty trigger skips the snapshot: it is
 // used by paths that have already frozen the board themselves.
 func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req CockpitImportRequest, trigger string) (CockpitImportResponse, *cockpitImportError) {
+	actorType, _ := h.cockpitActor(r, cc)
 	ctx := r.Context()
 	board := cc.cockpit
 
@@ -2400,6 +2568,42 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 	defer tx.Rollback(ctx)
 	qtx := h.Queries.WithTx(tx)
 
+	if err := lockCockpitBindings(ctx, qtx, cc.workspaceID); err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to lock cockpit bindings"}
+	}
+	if protected, err := qtx.HasCockpitLifecycleForBoard(ctx, db.HasCockpitLifecycleForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect meeting lifecycle"}
+	} else if protected {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "meeting agendas or occurrence facts protect this board; open the meeting instead of replacing its identities"}
+	}
+	if protected, err := qtx.HasCockpitMeetingPreparation(ctx, cc.workspaceID); err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect meeting preparation history"}
+	} else if protected {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "meeting templates and preparation history protect this board; preserve their stable identities"}
+	}
+	if protected, err := qtx.HasCockpitDirectoryWorkspaceHistory(ctx, cc.workspaceID); err != nil || !protected.Valid {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect directory preparation history"}
+	} else if protected.Bool {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "directory preparation history protects meeting identities; open its Resources instead of replacing the board"}
+	}
+	if protected, err := qtx.HasCockpitInputReferencesForBoard(ctx, db.HasCockpitInputReferencesForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect meeting input references"}
+	} else if protected {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "meeting input references protect this board; open meeting Resources to remove their exact references before replacing meeting identities"}
+	}
+	if protected, err := qtx.HasCockpitPlanningForBoard(ctx, db.HasCockpitPlanningForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect primary ownership and meeting actions"}
+	} else if protected {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "L3 primary ownership or meeting action history protects this board from full replacement"}
+	}
+	bound, err := qtx.CockpitHasBoundNodes(ctx, db.CockpitHasBoundNodesParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
+	if err != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect cockpit bindings"}
+	}
+	if bound {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "this cockpit has stable project/module bindings; whole-board import or restore would replace node identities; edit existing nodes instead"}
+	}
+
 	if trigger != "" {
 		if err := h.snapshotCockpitBoard(ctx, qtx, r, cc, trigger, ""); err != nil {
 			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, err.msg}
@@ -2426,9 +2630,20 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 	}
 
+	protectedWorkflow, workflowErr := qtx.HasCockpitMinutesLinksForBoard(ctx, db.HasCockpitMinutesLinksForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
+	if workflowErr != nil {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to check meeting workflows"}
+	}
+	if protectedWorkflow {
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "meeting work packages protect this board from full replacement; edit the existing plan instead"}
+	}
+
 	// Replace order matters: children of the old tree carry payment and issue
 	// rows that reference node ids about to disappear.
 	for _, del := range []func() error{
+		func() error {
+			return qtx.DeleteRemovedCockpitInputReferencesByBoard(ctx, db.DeleteRemovedCockpitInputReferencesByBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
+		},
 		func() error {
 			return qtx.DeleteCockpitPaymentsByCockpit(ctx, board.ID)
 		},
@@ -2441,9 +2656,19 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		func() error {
 			return qtx.DeleteCockpitMeetingNodesByCockpit(ctx, board.ID)
 		},
-		// Pending changes and their history name node ids that are about to
-		// stop existing; the review queue restarts empty with the new board.
-		func() error { return qtx.DeleteCockpitChangesByCockpit(ctx, board.ID) },
+		// Pending proposals name node ids that are about to stop existing;
+		// they are closed as system withdrawals (decided history is kept).
+		func() error {
+			note := "board replaced by import"
+			if trigger == "restore" {
+				note = "board restored from snapshot"
+			}
+			_, err := qtx.SystemWithdrawCockpitPendingChangesByCockpit(ctx, db.SystemWithdrawCockpitPendingChangesByCockpitParams{
+				CockpitID:    board.ID,
+				DecisionNote: note,
+			})
+			return err
+		},
 		func() error { return qtx.DeleteCockpitNodes(ctx, board.ID) },
 		func() error { return qtx.DeleteCockpitMilestones(ctx, board.ID) },
 		func() error { return qtx.DeleteCockpitMeetings(ctx, board.ID) },
@@ -2459,7 +2684,7 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 	// a constraint on the author for no gain.
 	idByCode := make(map[string]pgtype.UUID, len(req.Nodes))
 	paymentCount, linkCount := 0, 0
-	for _, n := range req.Nodes {
+	for nodeIndex, n := range req.Nodes {
 		code := strings.TrimSpace(n.Code)
 		if code == "" {
 			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "every node needs a code"}
@@ -2480,9 +2705,15 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, "progress on node " + code + " must be between 0 and 100"}
 		}
 
+		projectID, moduleID, bindErr := resolveCockpitNodeBinding(ctx, qtx, cc.workspaceID, db.CockpitNode{}, req.nodeBindings[nodeIndex])
+		if bindErr != nil {
+			return CockpitImportResponse{}, bindErr
+		}
 		created, err := qtx.CreateCockpitNode(ctx, db.CreateCockpitNodeParams{
 			WorkspaceID:     cc.workspaceID,
 			CockpitID:       board.ID,
+			ProjectID:       projectID,
+			ModuleID:        moduleID,
 			Code:            code,
 			Name:            n.Name,
 			Position:        n.Position,
@@ -2503,10 +2734,13 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			ExecStatus:      n.ExecStatus,
 			Contract:        n.Contract,
 			Source:          n.Source,
-			UpdatedByType:   "member",
+			UpdatedByType:   actorType,
 			UpdatedByID:     cc.member.UserID,
 		})
 		if err != nil {
+			if isUniqueViolation(err) {
+				return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "a node with this project/module binding already exists"}
+			}
 			slog.Warn("cockpit import node failed", append(logger.RequestAttrs(r), "error", err)...)
 			return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 		}
@@ -2542,7 +2776,7 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 				ID:            nodeID,
 				WorkspaceID:   cc.workspaceID,
 				ParentID:      parentID,
-				UpdatedByType: "member",
+				UpdatedByType: actorType,
 				UpdatedByID:   cc.member.UserID,
 			}); err != nil {
 				slog.Warn("cockpit import parent failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -2664,6 +2898,10 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 			Actions:     m.Actions,
 			NasDir:      m.NasDir,
 			Detected:    m.Detected,
+			// Snapshots never carried occurrence facts; a restored meeting is
+			// human data, so it lands scheduled (the detected flag still asks
+			// for its folder-guess check).
+			OccurrenceState: "scheduled",
 		})
 		if err != nil {
 			slog.Warn("cockpit import meeting failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -2693,6 +2931,20 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 				slog.Warn("cockpit import meeting issue failed", append(logger.RequestAttrs(r), "error", err)...)
 				return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
 			}
+			if purposes, present := m.IssueRoles[ref]; present {
+				// Imports preserve unknown future purpose values in snapshots while
+				// validating shape and size. They never interpret those purposes.
+				roles, err := normalizeCockpitMeetingRoles(purposes, purposes)
+				if err != nil {
+					return CockpitImportResponse{}, &cockpitImportError{http.StatusBadRequest, err.Error()}
+				}
+				if _, err := qtx.UpdateCockpitMeetingIssueRoles(ctx, db.UpdateCockpitMeetingIssueRolesParams{
+					WorkspaceID: cc.workspaceID, MeetingID: meeting.ID, IssueID: issueID, Roles: roles,
+				}); err != nil {
+					return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import meeting issue roles"}
+				}
+			}
+
 			position++
 		}
 		position = 0
@@ -2714,6 +2966,9 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		}
 	}
 
+	if err := checkCockpitBindingTree(ctx, qtx, board.ID); err != nil {
+		return CockpitImportResponse{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		slog.Warn("cockpit import commit failed", append(logger.RequestAttrs(r), "error", err)...)
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to import cockpit"}
@@ -2745,6 +3000,12 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 // ---------------------------------------------------------------------------
 // Version snapshots
 // ---------------------------------------------------------------------------
+
+// Comparison metadata belongs to snapshot storage, never to the import contract.
+type cockpitSnapshotDocument struct {
+	CockpitImportRequest
+	PlanIdentity *service.CockpitPlanSnapshotIdentity `json:"plan_identity,omitempty"`
+}
 
 type CockpitSnapshotResponse struct {
 	ID             string `json:"id"`
@@ -2782,7 +3043,7 @@ func (h *Handler) cockpitActor(r *http.Request, cc cockpitContext) (actorType, l
 // of a board the accompanying write then rejected is noise, and committing
 // them together means the undo record can never lag the change it undoes.
 func (h *Handler) snapshotCockpitBoard(ctx context.Context, qtx *db.Queries, r *http.Request, cc cockpitContext, trigger, label string) *cockpitImportError {
-	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, qtx, cc)
+	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, qtx, cc, false)
 	if err != nil {
 		slog.Warn("cockpit snapshot read failed", append(logger.RequestAttrs(r), "error", err)...)
 		return &cockpitImportError{http.StatusInternalServerError, "failed to freeze cockpit snapshot"}
@@ -2824,35 +3085,35 @@ func (h *Handler) snapshotCockpitBoard(ctx context.Context, qtx *db.Queries, r *
 // accepts them exactly as it accepts "BIO-314". The second return is false
 // when the board carries no content at all — freezing an empty board protects
 // nothing and buries the real history.
-func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockpitContext) (CockpitImportRequest, bool, error) {
+func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockpitContext, stableIdentity bool) (cockpitSnapshotDocument, bool, error) {
 	board := cc.cockpit
 	nodes, err := qtx.ListCockpitNodes(ctx, board.ID)
 	if err != nil {
-		return CockpitImportRequest{}, false, err
+		return cockpitSnapshotDocument{}, false, err
 	}
 	payments, err := qtx.ListCockpitPayments(ctx, board.ID)
 	if err != nil {
-		return CockpitImportRequest{}, false, err
+		return cockpitSnapshotDocument{}, false, err
 	}
 	links, err := qtx.ListCockpitNodeIssues(ctx, board.ID)
 	if err != nil {
-		return CockpitImportRequest{}, false, err
+		return cockpitSnapshotDocument{}, false, err
 	}
 	milestones, err := qtx.ListCockpitMilestones(ctx, board.ID)
 	if err != nil {
-		return CockpitImportRequest{}, false, err
+		return cockpitSnapshotDocument{}, false, err
 	}
 	meetings, err := qtx.ListCockpitMeetings(ctx, board.ID)
 	if err != nil {
-		return CockpitImportRequest{}, false, err
+		return cockpitSnapshotDocument{}, false, err
 	}
 	meetingIssues, err := qtx.ListCockpitMeetingIssues(ctx, board.ID)
 	if err != nil {
-		return CockpitImportRequest{}, false, err
+		return cockpitSnapshotDocument{}, false, err
 	}
 	meetingNodes, err := qtx.ListCockpitMeetingNodes(ctx, board.ID)
 	if err != nil {
-		return CockpitImportRequest{}, false, err
+		return cockpitSnapshotDocument{}, false, err
 	}
 
 	empty := len(nodes) == 0 && len(milestones) == 0 && len(meetings) == 0 &&
@@ -2860,7 +3121,7 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 		board.Basis == "" && board.SummaryOverall == "" &&
 		board.SummaryNext == "" && board.SummarySupport == ""
 	if empty {
-		return CockpitImportRequest{}, false, nil
+		return cockpitSnapshotDocument{}, false, nil
 	}
 
 	codeByID := make(map[pgtype.UUID]string, len(nodes))
@@ -2884,9 +3145,16 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 		issuesByNode[l.NodeID] = append(issuesByNode[l.NodeID], uuidToString(l.IssueID))
 	}
 	issuesByMeeting := make(map[pgtype.UUID][]string)
+	rolesByMeeting := make(map[pgtype.UUID]map[string][]string)
 	taskByMeeting := make(map[pgtype.UUID]string)
 	for _, l := range meetingIssues {
 		issuesByMeeting[l.MeetingID] = append(issuesByMeeting[l.MeetingID], uuidToString(l.IssueID))
+		if len(l.Roles) > 0 {
+			if rolesByMeeting[l.MeetingID] == nil {
+				rolesByMeeting[l.MeetingID] = make(map[string][]string)
+			}
+			rolesByMeeting[l.MeetingID][uuidToString(l.IssueID)] = l.Roles
+		}
 		if l.Role == "task" {
 			taskByMeeting[l.MeetingID] = uuidToString(l.IssueID)
 		}
@@ -2905,7 +3173,7 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 		return ""
 	}
 
-	doc := CockpitImportRequest{
+	doc := cockpitSnapshotDocument{CockpitImportRequest: CockpitImportRequest{
 		Title:          board.Title,
 		GoalTitle:      board.GoalTitle,
 		GoalDate:       dateStr(board.GoalDate),
@@ -2916,13 +3184,15 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 		Nodes:          make([]CockpitImportNode, 0, len(nodes)),
 		Milestones:     make([]CockpitImportMilestone, 0, len(milestones)),
 		Meetings:       make([]CockpitImportMeeting, 0, len(meetings)),
-	}
+	}}
 	for _, n := range nodes {
 		parentCode := ""
 		if n.ParentID.Valid {
 			parentCode = codeByID[n.ParentID]
 		}
 		doc.Nodes = append(doc.Nodes, CockpitImportNode{
+			ProjectID:       uuidToPtr(n.ProjectID),
+			ModuleID:        uuidToPtr(n.ModuleID),
 			Code:            n.Code,
 			ParentCode:      parentCode,
 			Name:            n.Name,
@@ -2996,7 +3266,14 @@ func buildCockpitSnapshotDocument(ctx context.Context, qtx *db.Queries, cc cockp
 			IssueIDs:    issuesByMeeting[m.ID],
 			NodeCodes:   nodesByMeeting[m.ID],
 			TaskIssueID: taskByMeeting[m.ID],
+			IssueRoles:  rolesByMeeting[m.ID],
 		})
+	}
+	if stableIdentity {
+		doc.PlanIdentity, err = service.BuildCockpitPlanSnapshotIdentity(board, nodes, payments, milestones)
+		if err != nil {
+			return cockpitSnapshotDocument{}, false, err
+		}
 	}
 	return doc, true, nil
 }
@@ -3049,6 +3326,7 @@ func (h *Handler) CreateCockpitSnapshot(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	actorType, actorLabel := h.cockpitActor(r, cc)
 	ctx := r.Context()
 	tx, err := h.TxStarter.Begin(ctx)
 	if err != nil {
@@ -3056,10 +3334,29 @@ func (h *Handler) CreateCockpitSnapshot(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer tx.Rollback(ctx)
+	if _, err = tx.Exec(ctx, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
+		writeError(w, 500, "failed to save cockpit snapshot")
+		return
+	}
 	qtx := h.Queries.WithTx(tx)
-
-	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, qtx, cc)
+	if _, err = qtx.LockWorkspaceForChatSessionCreate(ctx, cc.workspaceID); err != nil {
+		writeError(w, 404, "workspace no longer exists")
+		return
+	}
+	if _, err = qtx.LockCockpitSnapshotBoard(ctx, db.LockCockpitSnapshotBoardParams{WorkspaceID: cc.workspaceID, ID: cc.cockpit.ID}); err != nil {
+		writeError(w, 409, "cockpit changed; reload before saving a snapshot")
+		return
+	}
+	cc.cockpit, err = qtx.GetCockpitByWorkspace(ctx, cc.workspaceID)
 	if err != nil {
+		writeError(w, 404, "cockpit no longer exists")
+		return
+	}
+	doc, hasContent, err := buildCockpitSnapshotDocument(ctx, qtx, cc, true)
+	if err != nil {
+		if writeCockpitSnapshotDiffLimit(w, err) {
+			return
+		}
 		slog.Warn("cockpit snapshot read failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to save cockpit snapshot")
 		return
@@ -3073,7 +3370,6 @@ func (h *Handler) CreateCockpitSnapshot(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "failed to save cockpit snapshot")
 		return
 	}
-	actorType, actorLabel := h.cockpitActor(r, cc)
 	snap, err := qtx.CreateCockpitSnapshot(ctx, db.CreateCockpitSnapshotParams{
 		WorkspaceID:    cc.workspaceID,
 		CockpitID:      cc.cockpit.ID,
@@ -3155,11 +3451,15 @@ func (h *Handler) RestoreCockpitSnapshot(w http.ResponseWriter, r *http.Request)
 	}
 
 	cc := cockpitContext{workspaceID: wsUUID, member: member, cockpit: board}
+	if !parseCockpitImportBindings(w, &req) {
+		return
+	}
 	resp, impErr := h.runCockpitImport(r, cc, req, "restore")
 	if impErr != nil {
 		writeError(w, impErr.status, impErr.msg)
 		return
 	}
+	h.publishCockpit(r, cc, "changes", "withdrawn", nil)
 	writeJSON(w, http.StatusOK, resp)
 }
 

@@ -90,7 +90,7 @@ WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
 
 -- name: CreateCockpitNode :one
 INSERT INTO cockpit_node (
-    workspace_id, cockpit_id, parent_id, code, name, position, color,
+    workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position, color,
     owner, collaborators, start_date, end_date, status, progress,
     deliverable, dependencies, note, current_progress, vendor,
     budget_category, budget_amount, exec_status, contract, source,
@@ -99,6 +99,8 @@ INSERT INTO cockpit_node (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
     sqlc.narg('parent_id')::uuid,
+    sqlc.narg('project_id')::uuid,
+    sqlc.narg('module_id')::uuid,
     sqlc.arg('code')::text,
     sqlc.arg('name')::text,
     sqlc.arg('position')::double precision,
@@ -130,6 +132,10 @@ RETURNING *;
 -- edit — a task whose planned end is withdrawn is not a task whose end is
 -- unchanged — so it gets its own flag rather than an in-band sentinel.
 UPDATE cockpit_node SET
+    project_id       = CASE WHEN sqlc.arg('clear_project')::bool THEN NULL
+                            ELSE COALESCE(sqlc.narg('project_id')::uuid, project_id) END,
+    module_id        = CASE WHEN sqlc.arg('clear_module')::bool THEN NULL
+                            ELSE COALESCE(sqlc.narg('module_id')::uuid, module_id) END,
     parent_id        = CASE WHEN sqlc.arg('clear_parent')::bool THEN NULL
                             ELSE COALESCE(sqlc.narg('parent_id')::uuid, parent_id) END,
     code             = COALESCE(sqlc.narg('code')::text, code),
@@ -322,7 +328,7 @@ INSERT INTO cockpit_meeting (
     attendees, meet_no, link, note,
     code, kind, status, parties, organizer, location,
     start_time, end_time, minutes, decisions, actions, nas_dir, detected,
-    track
+    track, occurrence_state
 ) VALUES (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
@@ -346,7 +352,8 @@ INSERT INTO cockpit_meeting (
     sqlc.arg('actions')::text,
     sqlc.arg('nas_dir')::text,
     sqlc.arg('detected')::bool,
-    sqlc.arg('track')::text
+    sqlc.arg('track')::text,
+    sqlc.arg('occurrence_state')::text
 )
 RETURNING *;
 
@@ -398,12 +405,17 @@ DELETE FROM cockpit_meeting WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
 -- there is no foreign key to have cascaded it away (repository rule). Joined
 -- to cockpit_meeting so one read serves the whole board.
 SELECT
-    l.meeting_id, l.issue_id, l.role, l.position,
+    l.meeting_id, l.issue_id, l.role, l.roles, l.position,
+    array_remove(ARRAY[
+      CASE WHEN 'minutes'=ANY(l.roles) THEN 'minutes' END,
+      CASE WHEN EXISTS(SELECT 1 FROM cockpit_minutes_version v WHERE v.workspace_id=l.workspace_id AND v.meeting_id=l.meeting_id AND v.review_issue_id=l.issue_id)
+        OR EXISTS(SELECT 1 FROM cockpit_reviewer_handoff h WHERE h.workspace_id=l.workspace_id AND h.meeting_id=l.meeting_id AND (h.from_review_issue_id=l.issue_id OR h.to_review_issue_id=l.issue_id)) THEN 'review' END
+    ]::text[],NULL)::text[] AS required_roles,
     i.number AS issue_number,
     i.title  AS issue_title,
     i.status AS issue_status
 FROM cockpit_meeting_issue l
-JOIN cockpit_meeting m ON m.id = l.meeting_id
+JOIN cockpit_meeting m ON m.id = l.meeting_id AND m.workspace_id = l.workspace_id
 JOIN issue i ON i.id = l.issue_id AND i.workspace_id = l.workspace_id
 WHERE m.cockpit_id = sqlc.arg('cockpit_id')::uuid
 ORDER BY l.position, i.number;
@@ -628,7 +640,7 @@ LIMIT 1;
 -- name: CreateCockpitPendingChange :one
 INSERT INTO cockpit_pending_change (
     workspace_id, cockpit_id, node_id, field, old_value, new_value,
-    source, reason, created_by_type, created_by_label
+    source, reason, created_by_type, created_by_label, source_task_id
 ) VALUES (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
@@ -639,7 +651,8 @@ INSERT INTO cockpit_pending_change (
     sqlc.arg('source')::text,
     sqlc.arg('reason')::text,
     sqlc.arg('created_by_type')::text,
-    sqlc.arg('created_by_label')::text
+    sqlc.arg('created_by_label')::text,
+    sqlc.narg('source_task_id')::uuid
 )
 RETURNING *;
 
@@ -647,9 +660,15 @@ RETURNING *;
 -- The queue's whole history, open first. LEFT JOIN because a change can
 -- outlive its node between the moment cleanup runs and the moment a reader
 -- looks — a row naming no node renders as "node gone" instead of vanishing.
-SELECT c.*, n.code AS node_code, n.name AS node_name
+-- The source joins attribute a proposal to the task that filed it (and the
+-- issue that task runs on) so a reviewer can open the originating context;
+-- both are LEFT JOINs: proposals filed by hand have no source task.
+SELECT c.*, n.code AS node_code, n.name AS node_name,
+       st.issue_id AS source_issue_id, si.number AS source_issue_number, si.title AS source_issue_title
 FROM cockpit_pending_change c
 LEFT JOIN cockpit_node n ON n.id = c.node_id
+LEFT JOIN agent_task_queue st ON st.id = c.source_task_id
+LEFT JOIN issue si ON si.id = st.issue_id
 WHERE c.cockpit_id = sqlc.arg('cockpit_id')::uuid
 ORDER BY (c.status = 'pending') DESC, c.created_at DESC, c.id DESC
 LIMIT 500;
@@ -669,13 +688,15 @@ WHERE node_id = sqlc.arg('node_id')::uuid
 -- name: UpdateCockpitPendingChangeProposal :one
 -- A re-ingest for a field that already has an open proposal replaces the
 -- proposal: latest intent wins, the queue never shows two competing values
--- for the same field.
+-- for the same field. The source task is re-stamped with that latest intent,
+-- so the row always names the task a reviewer should hold accountable.
 UPDATE cockpit_pending_change SET
     old_value = sqlc.arg('old_value')::text,
     new_value = sqlc.arg('new_value')::text,
     reason     = sqlc.arg('reason')::text,
+    source_task_id = sqlc.narg('source_task_id')::uuid,
     updated_at = now()
-WHERE id = sqlc.arg('id')::uuid
+WHERE id = sqlc.arg('id')::uuid AND status = 'pending'
 RETURNING *;
 
 -- name: DecideCockpitPendingChange :one
@@ -687,6 +708,7 @@ UPDATE cockpit_pending_change SET
     old_value        = sqlc.arg('old_value')::text,
     decided_by_type  = sqlc.arg('decided_by_type')::text,
     decided_by_label = sqlc.arg('decided_by_label')::text,
+    decision_note    = sqlc.arg('decision_note')::text,
     decided_at       = now(),
     updated_at       = now()
 WHERE id = sqlc.arg('id')::uuid
@@ -694,16 +716,60 @@ WHERE id = sqlc.arg('id')::uuid
   AND status = 'pending'
 RETURNING *;
 
--- name: DeleteCockpitChangesByNode :exec
--- Node deletion. The node's proposals and decided history go with it: there
--- is no foreign key to cascade them (repository rule), and a queue row about
--- a row that no longer exists is not history, it is litter.
-DELETE FROM cockpit_pending_change
+-- name: SystemWithdrawCockpitPendingChangesByNode :many
+-- Node deletion. Still-pending proposals are closed as a system withdrawal —
+-- the node they target is gone, so a reviewer can never act on them — while
+-- decided history is kept: "every governance request is saved" is the
+-- product contract, and the note says why the row stopped being actionable.
+UPDATE cockpit_pending_change SET
+    status = 'withdrawn',
+    decided_by_type = 'system',
+    decided_by_label = 'system',
+    decision_note = sqlc.arg('decision_note')::text,
+    decided_at = now(),
+    updated_at = now()
 WHERE node_id = sqlc.arg('node_id')::uuid
-  AND workspace_id = sqlc.arg('workspace_id')::uuid;
+  AND workspace_id = sqlc.arg('workspace_id')::uuid
+  AND status = 'pending'
+RETURNING id;
 
--- name: DeleteCockpitChangesByCockpit :exec
--- Import/restore only: the board is being replaced wholesale, so its change
--- history refers to nodes that are about to stop existing.
-DELETE FROM cockpit_pending_change
-WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
+-- name: SystemWithdrawCockpitPendingChangesByCockpit :many
+-- Import/restore only: the board is being replaced wholesale, so pending
+-- proposals name nodes that are about to stop existing. They are closed as a
+-- system withdrawal (the note records which replacement did it); decided
+-- history outlives the board it reviewed and stays queryable.
+UPDATE cockpit_pending_change SET
+    status = 'withdrawn',
+    decided_by_type = 'system',
+    decided_by_label = 'system',
+    decision_note = sqlc.arg('decision_note')::text,
+    decided_at = now(),
+    updated_at = now()
+WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
+  AND status = 'pending'
+RETURNING id;
+
+-- name: LockCockpitForWorkspaceChanges :one
+-- Serializes tree bindings, tree replacement and referenced resource deletion.
+SELECT id FROM cockpit WHERE workspace_id = $1 FOR UPDATE;
+
+-- name: CockpitHasBoundNodes :one
+SELECT EXISTS (
+    SELECT 1 FROM cockpit_node
+    WHERE workspace_id = $1 AND cockpit_id = $2
+      AND (project_id IS NOT NULL OR module_id IS NOT NULL)
+)::bool;
+
+-- name: ClearCockpitNodeModuleBinding :exec
+UPDATE cockpit_node SET project_id = NULL, module_id = NULL, updated_at = now()
+WHERE workspace_id = $1 AND module_id = $2;
+
+-- name: ClearCockpitNodeProjectBindings :exec
+UPDATE cockpit_node SET project_id = NULL, module_id = NULL, updated_at = now()
+WHERE workspace_id = $1 AND project_id = $2;
+
+-- name: GetProjectForCockpitBinding :one
+SELECT * FROM project WHERE id = $1 AND workspace_id = $2 FOR SHARE;
+
+-- name: GetModuleForCockpitBinding :one
+SELECT * FROM module WHERE id = $1 AND workspace_id = $2 FOR SHARE;

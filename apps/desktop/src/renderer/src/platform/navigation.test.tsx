@@ -1,3 +1,4 @@
+import { useWorkspaceStartStore } from "@multica/core/paths";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, render } from "@testing-library/react";
 import { useEffect } from "react";
@@ -32,6 +33,8 @@ import { currentPath, useNavigation } from "@multica/views/navigation";
 import { useTabStore, getActiveTab } from "@/stores/tab-store";
 
 beforeEach(() => {
+  // These existing session cases exercise the saved Issues entry preference.
+  useWorkspaceStartStore.setState({ page: "issues" });
   overlay.open.mockReset();
   overlay.close.mockReset();
   overlay.overlay = null;

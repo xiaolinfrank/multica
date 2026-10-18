@@ -30,6 +30,9 @@ Multica is a task management platform where people and agents collaborate on iss
 
 Use `Makefile`, workspace `package.json` files, and `pnpm-workspace.yaml` for current commands and versions. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and worktree operations.
 
+- For this deployment, the designated test environment is `fosun_agent_3` (`10.35.182.2`), under `~/var/multica-dev`. The coordinating Mac and its local worktrees are for development, builds, and static checks; do not provision or treat a local service stack as the test environment.
+- Run runtime/API, Redis integration, and browser acceptance verification on agent 3. Identify the host in verification reports; local checks never count as agent 3 acceptance. Inspect the existing remote configuration and [scripts/dev-node-sync.sh](scripts/dev-node-sync.sh) before synchronization or service operations; preserve the remote environment rather than copying production configuration.
+- Redis integration on agent 3 uses [scripts/test-redis.sh](scripts/test-redis.sh) and the separate `~/var/multica-dev-test/redis.env` profile. Test Redis is disposable and distinct from application Redis; see [the operator guide](docs/development/agent3-redis-tests.md) for binary-only execution when Go is unavailable on the test host.
 - Use the checkout's managed environment: `make up`, `make status`, `make down`. `make down` preserves data; `make destroy` removes the environment and its data.
 - Worktrees share PostgreSQL but have isolated databases/ports. Use the environment scripts and `.env.worktree`; do not copy the main checkout's `.env` or manually create a database through an assumed PostgreSQL instance.
 - Regenerate sqlc with `make sqlc` after SQL changes.
@@ -77,7 +80,7 @@ Installed desktop clients may talk to newer backends. Preserve response compatib
 - Do not add foreign keys, cascading deletes, or cascading updates. Validate relationships and clean up dependents in application code, using a transaction when the operation must be atomic.
 - Every migration-created index, including indexes on new tables, uses `CREATE [UNIQUE] INDEX CONCURRENTLY`. Each concurrent index build gets its own single-statement migration file; the runner executes files outside an explicit transaction.
 - Conditionally skipped migrations are still recorded in `schema_migrations`. Later DDL touching conditional objects must be idempotent (`IF EXISTS` / `IF NOT EXISTS`); document recovery if the missing object would break runtime behavior.
-- BayClaw fork migrations that have already run in production are frozen: the runner keys `schema_migrations` on the full filename stem with no checksum, so renaming one replays it. Upstream's `TestMigrationNumericPrefixesAreUnique` tolerates historical duplicate numeric prefixes only through 128, which covers the fork's `127_workspace_shared_env`; keep fork-only numbering unique. New fork-only migrations use the 900-999 range to avoid colliding with upstream numbering.
+- BayClaw fork migrations that have already run in production are frozen: the runner keys `schema_migrations` on the full filename stem with no checksum, so renaming one replays it. Upstream's `TestMigrationNumericPrefixesAreUnique` tolerates historical duplicate numeric prefixes only through 128, which covers the fork's `127_workspace_shared_env`; keep fork-only numbering unique. New fork-only migrations use the 9000-9999 range to avoid colliding with upstream numbering. Existing 900-999 migrations keep their full filenames. Sort migrations by numeric prefix, with stable filename ordering only for historical duplicate prefixes.
 
 ## Backend UUID Rules
 
@@ -112,6 +115,8 @@ Workspace-scoped queries filter by `workspace_id`; membership gates access and `
 - For `pnpm ui:add @reui/<name>`, decline overwrite prompts. Keep `REUI_LICENSE_KEY` in the environment, never in repo files. Adapt vendored primitives into `packages/ui/components/ui/` and compositions into `packages/views/`.
 - Use shared semantic tokens in `packages/ui/styles/`. Typography uses the role-named `--text-*` scale in `packages/ui/styles/tokens.css`, not Tailwind's default size ramp.
 - Selected states remain identifiable on hover. Handle overflow, long text, and scrolling deliberately; avoid unnecessary local state and dividers.
+- Readiness requirements and blocked actions must expose their reason and an adjacent way to inspect or satisfy the prerequisite. For work outside the UI, identify the responsible role and location. Preserve drafts and return context when opening a repair destination; label human confirmation separately from system verification.
+- For new or expanded views of growing business collections (issues, actions, artifacts, history, and resource pickers), bound server reads and provide search, filters, and pagination or incremental loading. CSS clipping and client-side slicing alone are not data bounds. Keep full-scope counts separate from page counts, preserve return context, and keep navigation controls reachable with long titles and narrow layouts.
 
 ## Testing
 
@@ -130,4 +135,5 @@ Workspace-scoped queries filter by `workspace_id`; membership gates access and `
 - Do not add internal compatibility shims, dual writes, fallback paths, or legacy adapters unless requested. This does not relax API response compatibility above.
 - New global pre-workspace routes use a single word or `/{noun}/{verb}`, not hyphenated root names. Update `server/internal/handler/reserved_slugs.json`, run `pnpm generate:reserved-slugs`, and commit `packages/core/paths/reserved-slugs.ts` when changing reserved slugs.
 - When changing CLI commands/flags, API fields, or product behavior documented by built-in skills under `server/internal/service/builtin_skills/*`, update the relevant `references/<domain>.md` in the same PR.
+- Cockpit behavior changes must update the built-in `multica-cockpit` skill, its CLI contracts and their tests in the same change. The cockpit chat reuses platform chat; select built-in Mika by `system_key`, never display name. Preserve workspace/project/module context and human review boundaries.
 - Use atomic conventional commits and the repository PR template. For releases, follow [.github/RELEASING.md](.github/RELEASING.md); default to a patch bump unless specified otherwise.

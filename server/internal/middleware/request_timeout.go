@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // RequestTimeout caps the lifetime of short, synchronous API requests so that
@@ -47,6 +49,10 @@ func isLongLivedRequest(r *http.Request) bool {
 	switch {
 	case p == "/ws", strings.HasPrefix(p, "/api/daemon/ws"):
 		return true
+	case r.Method == http.MethodGet && isCockpitArtifactDownloadPath(p):
+		return true
+	case isCockpitInputStreamRequest(r.Method, p):
+		return true
 	// File downloads / streaming responses.
 	case strings.HasPrefix(p, "/uploads/"),
 		strings.HasPrefix(p, "/api/avatars/"),
@@ -61,4 +67,37 @@ func isLongLivedRequest(r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+// These handlers enforce their own byte and I/O budgets. Other input metadata
+// and command endpoints retain the normal short request deadline.
+func isCockpitInputStreamRequest(method, path string) bool {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) < 5 || parts[0] != "api" || parts[1] != "cockpit" {
+		return false
+	}
+	validID := func(raw string) bool {
+		id, err := uuid.Parse(raw)
+		return err == nil && id != uuid.Nil && id.String() == raw
+	}
+	if method == http.MethodGet && len(parts) == 5 && parts[2] == "input-files" && parts[4] == "download" {
+		return validID(parts[3])
+	}
+	return method == http.MethodPut && len(parts) == 9 && parts[2] == "inputs" && parts[4] == "versions" && parts[6] == "transfers" && parts[8] == "bytes" &&
+		validID(parts[3]) && validID(parts[5]) && validID(parts[7])
+}
+
+func isCockpitArtifactDownloadPath(path string) bool {
+	if !strings.HasPrefix(path, "/api/cockpit/") {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	validID := func(raw string) bool {
+		id, err := uuid.Parse(raw)
+		return err == nil && id != uuid.Nil && id.String() == strings.ToLower(raw)
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "cockpit" && parts[2] == "artifact-files" && parts[4] == "download" {
+		return validID(parts[3])
+	}
+	return len(parts) == 7 && parts[0] == "api" && parts[1] == "cockpit" && parts[2] == "artifacts" && parts[4] == "versions" && parts[6] == "download" && validID(parts[3]) && validID(parts[5])
 }

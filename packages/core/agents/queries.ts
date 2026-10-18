@@ -121,7 +121,21 @@ export const agentTasksKeys = {
   all: (wsId: string) => ["workspaces", wsId, "agent-tasks"] as const,
   detail: (wsId: string, agentId: string) =>
     [...agentTasksKeys.all(wsId), agentId] as const,
+  task: (wsId: string, taskId: string) =>
+    [...agentTasksKeys.all(wsId), "task", taskId] as const,
 };
+
+export function taskDetailOptions(wsId: string, taskId: string) {
+  return queryOptions({
+    queryKey: agentTasksKeys.task(wsId, taskId),
+    queryFn: async ({ signal }) => {
+      const task = await api.getTask(wsId, taskId, signal);
+      if (!task) throw new Error("The requested run could not be confirmed");
+      return task;
+    },
+    enabled: Boolean(wsId && taskId), retry: false, staleTime: 0,
+  });
+}
 
 // History is fetched one bounded page at a time. Aggregate metrics use
 // agentActivity30dOptions so they do not depend on how many pages were opened.

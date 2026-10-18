@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS cockpit_creation_intent_resource_idx ON cockpit_creation_intent(workspace_id,resource_kind,resource_id);

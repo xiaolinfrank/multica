@@ -90,6 +90,39 @@ func TestRequestTimeout_HealthCheckExemptFromDeadlineLeak(t *testing.T) {
 	}
 }
 
+func TestRequestTimeout_ArtifactDownloadExemptionsAreExact(t *testing.T) {
+	const artifact = "10000000-0000-4000-8000-000000000001"
+	const version = "20000000-0000-4000-8000-000000000001"
+	direct := "/api/cockpit/artifacts/" + artifact + "/versions/" + version + "/download"
+	signed := "/api/cockpit/artifact-files/" + version + "/download"
+	for _, tc := range []struct {
+		name, method, path string
+		exempt             bool
+	}{
+		{"authenticated file", http.MethodGet, direct, true},
+		{"signed file", http.MethodGet, signed + "?token=opaque", true},
+		{"link stays bounded", http.MethodGet, direct + "-link", false},
+		{"wrong method", http.MethodPost, direct, false},
+		{"signed wrong method", http.MethodPost, signed, false},
+		{"suffix", http.MethodGet, signed + "/extra", false},
+		{"trailing slash", http.MethodGet, direct + "/", false},
+		{"empty identity", http.MethodGet, "/api/cockpit/artifact-files//download", false},
+		{"invalid identity", http.MethodGet, "/api/cockpit/artifact-files/not-an-id/download", false},
+		{"lookalike prefix", http.MethodGet, "/prefix" + direct, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var deadline bool
+			h := RequestTimeout(time.Second)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				_, deadline = r.Context().Deadline()
+			}))
+			h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(tc.method, tc.path, nil))
+			if deadline == tc.exempt {
+				t.Fatalf("deadline = %v, exempt = %v", deadline, tc.exempt)
+			}
+		})
+	}
+}
+
 // TestRequestTimeout_PropagatesCancellation confirms the deadline shows up as
 // Done() after the timeout elapses, which is what unblocks a pgxpool query
 // blocked on a stalled Postgres.

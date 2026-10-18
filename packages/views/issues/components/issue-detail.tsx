@@ -4,6 +4,7 @@ import {
   issueBehavesAs,
   issueBehavesAsAny,
   issueStatusCategory,
+  useIssueOperationBasis, issueOperationAllowed, issueStatusOperationAllowed, issueUpdateOperationAllowed,
 } from "@multica/core/issues";
 import { useStatusLabel } from "../utils/status-label";
 import { priorityLabel } from "../utils/priority-label";
@@ -95,6 +96,7 @@ import { SubIssuesAgentWorkingChip } from "./sub-issues-agent-working-chip";
 import { ProjectPicker } from "../../projects/components/project-picker";
 import { ModulePicker } from "../../projects/components/module-picker";
 import { IssuePropertyPills } from "./issue-property-pills";
+import { IssueOperationRestriction, type IssueOperationObservation } from "./issue-operation-restriction";
 import { LocalDirectoryHint } from "../../projects/components/local-directory-hint";
 import { useNewRunIds } from "./use-run-comment-motion";
 import { AgentRunComment, CommentCard } from "./comment-card";
@@ -114,12 +116,13 @@ import { ExecutionLogSection } from "./execution-log-section";
 import { IssueLiveAgentProcess } from "./issue-agent-process";
 import { WorkspaceFilesSection } from "./workspace-files-section";
 import { WakeupsSection } from "./wakeups-section";
-import { IssueLinkedMeetings } from "./issue-linked-meetings";
 import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
-import { CockpitNodesSection } from "./cockpit-nodes-section";
+import { CockpitClearPrimaryNode, CockpitNodesSection } from "./cockpit-nodes-section";
 import { CockpitMeetingsSection } from "./cockpit-meetings-section";
+import { CockpitIssueInputManifest, CockpitIssueInputManifestInspector } from "../../cockpit/components/cockpit-issue-input-manifest";
+import { CockpitArtifactContexts } from "./cockpit-artifact-contexts";
 import { useGitHubSettings } from "@multica/core/github";
 import { DeliverablesSection } from "./deliverables/deliverables-section";
 import { DeliverablesOverview } from "./deliverables/deliverables-overview";
@@ -837,8 +840,10 @@ function SubIssueRow({
   childProgress,
   rowProps,
   customProperties,
+  observation,
 }: {
   child: Issue;
+  observation: IssueOperationObservation;
   /** The sub-issue's OWN children progress (it can itself be a parent). */
   childProgress?: { done: number; total: number };
   /** User-level display preference: which built-in fields the row shows. */
@@ -863,6 +868,7 @@ function SubIssueRow({
 
   const handleUpdate = useCallback(
     (updates: Partial<UpdateIssueRequest>) => {
+      if (!issueUpdateOperationAllowed(observation.basis, updates, childStatusCatalog.categoryOf)) { toast.error(t(($) => $.operation_basis.blocked)); return; }
       updateIssue.mutate(
         {
           id: child.id,
@@ -878,7 +884,7 @@ function SubIssueRow({
         },
       );
     },
-    [child.id, updateIssue, t],
+    [child.id, updateIssue, t, observation.basis, childStatusCatalog.categoryOf],
   );
 
   // AppLink wraps only the title/identifier area. Pickers and checkbox are
@@ -927,6 +933,8 @@ function SubIssueRow({
         <StatusPicker
           status={child.status}
           onUpdate={handleUpdate}
+          allowsCategory={(category) => issueStatusOperationAllowed(observation.basis, category)}
+          restriction={<IssueOperationRestriction observation={observation} operation="status" />}
           align="start"
           trigger={
             <StatusIcon
@@ -1024,6 +1032,8 @@ function SubIssueRow({
             assigneeType={child.assignee_type}
             assigneeId={child.assignee_id}
             onUpdate={handleUpdate}
+            readOnly={!issueOperationAllowed(observation.basis, "assignee")}
+            restriction={<IssueOperationRestriction observation={observation} operation="assignee" />}
             align="end"
             trigger={
               child.assignee_type && child.assignee_id ? (
@@ -1544,6 +1554,15 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       return cached?.description != null ? cached : undefined;
     },
   });
+  const operationPolicy = useIssueOperationBasis(wsId, issue ? [issue.id] : []);
+  const operation = { basis: issue ? operationPolicy.byIssue.get(issue.id) : undefined, pending: operationPolicy.isPending, error: operationPolicy.isError, retry: () => { void operationPolicy.refetch(); } };
+  const basis = operation.basis;
+  const allowsStatusCategory = useCallback((category: string) => issueStatusOperationAllowed(basis, category), [basis]);
+  const assigneeReadOnly = !issueOperationAllowed(basis, "assignee");
+  const scopeReadOnly = !issueOperationAllowed(basis, "scope");
+  const formalRestriction = <IssueOperationRestriction observation={operation} operation="status" />;
+  const assigneeRestriction = <IssueOperationRestriction observation={operation} operation="assignee" />;
+  const scopeRestriction = <div className="space-y-2"><IssueOperationRestriction observation={operation} operation="scope" />{issue && basis?.scope.reason_codes.includes("primary_scope") && <CockpitClearPrimaryNode issueId={issue.id} />}</div>;
   const descriptionSourceId = `description:${id}`;
   const descriptionAnnotations = useCommentAnnotations({
     draftKey: `new:${id}`,
@@ -2076,6 +2095,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   // this answer, so a defaulted or stale empty array must not count as "no
   // sub-issues" (MUL-5714).
   const childCountKnown = childIssuesLoaded && !childIssuesFetching;
+  const childOperations = useIssueOperationBasis(wsId, childIssues.map((child) => child.id));
   // Parent's children — used to render the "x/y" progress next to the
   // "Sub-issue of …" breadcrumb under the title.
   const { data: parentChildIssues = [] } = useQuery({
@@ -2444,7 +2464,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
 
   // Shared issue actions (mutations, pin, copy-link, modal dispatch, etc.).
   // Called before the `if (!issue)` early return so hook order stays stable.
-  const actions = useIssueActions(issue);
+  const actions = useIssueActions(issue, operation);
   const handleUpdateField = actions.updateField;
 
   // Labels live in their own query (not on the issue body) — fetch the count
@@ -2689,15 +2709,20 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               align="start"
               onMarkDuplicate={actions.openMarkDuplicate}
               isDuplicate={isDuplicateIssue(issue)}
+              allowsCategory={allowsStatusCategory}
+              restriction={formalRestriction}
             />
           </PropRow>
           <PropRow label={t(($) => $.detail.prop_assignee)}>
-            <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" />
+            <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" readOnly={assigneeReadOnly} restriction={assigneeRestriction} />
           </PropRow>
+          {formalRestriction && <div className="col-span-2 py-2">{formalRestriction}</div>}
           <PropRow label={t(($) => $.detail.prop_project)}>
             <ProjectPicker
               projectId={issue.project_id}
               onUpdate={handleUpdateField}
+              readOnly={scopeReadOnly}
+              restriction={scopeRestriction}
             />
           </PropRow>
           <PropRow label={t(($) => $.detail.prop_module)}>
@@ -2705,6 +2730,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               moduleId={issue.module_id ?? null}
               projectId={issue.project_id}
               onUpdate={handleUpdateField}
+              readOnly={scopeReadOnly}
+              restriction={scopeRestriction}
             />
           </PropRow>
 
@@ -2888,12 +2915,6 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       />
       <PluginPanelSection issueId={issue.id} />
 
-      {/* Linked meetings — the reverse read of the cockpit's meeting→issue
-          links, so the meeting a task was born in (or was discussed at) is
-          one click away. Self-contained; hides when the workspace board links
-          nothing to this issue. */}
-      <IssueLinkedMeetings issueId={issue.id} />
-
       {/* Parent issue — standalone section, only when the issue has a
           parent. Setting a parent is reachable via the issue actions menu;
           this card surfaces an existing parent without occupying sidebar
@@ -2955,12 +2976,14 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       {/* Cockpit work items — the gantt tasks this issue is carried out
           through, editable from either end of the relation. Self-contained;
           hides itself when the workspace's board has no work breakdown. */}
-      <CockpitNodesSection issueId={id} />
+      <CockpitNodesSection issueId={issue.id} />
 
       {/* Cockpit meetings — the register entries this issue is recorded
           against, including the meeting that filed it. Editable from either
           end; hides itself when the workspace keeps no register. */}
-      <CockpitMeetingsSection issueId={id} />
+      <CockpitMeetingsSection issueId={issue.id} />
+      <CockpitArtifactContexts issueId={issue.id} />
+      <CockpitIssueInputManifest issueId={issue.id} />
 
       {/* Deliverables — the files this issue's comments delivered. Hidden
           while there are none. */}
@@ -3208,7 +3231,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                       variant="ghost"
                       size="icon-sm"
                       className="text-muted-foreground"
-                      onClick={() => { handleUpdateField({ status: "done" }); onDone?.(); }}
+                      disabled={!allowsStatusCategory("done")}
+                      aria-label={t(($) => $.detail.mark_done_tooltip)}
+                      onClick={() => { if (allowsStatusCategory("done")) handleUpdateField({ status: "done" }, { onSuccess: () => onDone?.() }); }}
                     >
                       <CircleCheck />
                     </Button>
@@ -3273,7 +3298,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               // to the list we came from, falling back to all issues.
               onDeletedFallbackPath={onDelete ? undefined : paths.issues()}
               trigger={
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground">
+                <Button variant="ghost" size="icon-sm" className="text-muted-foreground" aria-label={t(($) => $.operation_basis.actions)}>
                   <MoreHorizontal />
                 </Button>
               }
@@ -3328,6 +3353,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         >
           <IssueDuplicateBanner
             issue={issue}
+            canUnmark={allowsStatusCategory("unstarted")}
+            restriction={formalRestriction}
             onUnmark={() =>
               handleUpdateField(
                 { status: "todo" },
@@ -3477,6 +3504,12 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                 onUpdate={handleUpdateField}
                 onMarkDuplicate={actions.openMarkDuplicate}
                 isDuplicate={isDuplicateIssue(issue)}
+                allowsStatusCategory={allowsStatusCategory}
+                assigneeReadOnly={assigneeReadOnly}
+                scopeReadOnly={scopeReadOnly}
+                assigneeRestriction={assigneeRestriction}
+                scopeRestriction={scopeRestriction}
+                restriction={formalRestriction}
               />
             </div>
           )}
@@ -3678,6 +3711,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                             <SubIssueRow
                               key={child.id}
                               child={child}
+                              observation={{ basis: childOperations.byIssue.get(child.id), pending: childOperations.pendingIds.has(child.id), error: childOperations.errorIds.has(child.id), retry: () => { void childOperations.refetch(); } }}
                               childProgress={subIssueProgress?.get(child.id)}
                               rowProps={subIssueRowProps}
                               customProperties={subIssueCustomProps}
@@ -3977,6 +4011,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
       onOpenOverview={openOverviewFromViewer}
     >
       <AttachmentVersionsProvider files={deliverableFiles}>{layout}</AttachmentVersionsProvider>
+      {!isPeek && <CockpitIssueInputManifestInspector issueId={issue.id} />}
       <DeliverablesOverview
         open={overview.open}
         onClose={closeOverview}

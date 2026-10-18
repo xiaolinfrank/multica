@@ -1,3 +1,4 @@
+import { useWorkspaceStartStore } from "@multica/core/paths";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import {
@@ -15,6 +16,8 @@ import {
 } from "./tab-store";
 
 beforeEach(() => {
+  // These existing session cases exercise the saved Issues entry preference.
+  useWorkspaceStartStore.setState({ page: "issues" });
   useTabStore.getState().reset();
 });
 
@@ -53,6 +56,24 @@ describe("sanitizeTabPath", () => {
   it("normalizes a bare workspace url to its default surface (replaces the in-router index redirect)", () => {
     expect(sanitizeTabPath("/acme")).toBe("/acme/issues");
     expect(sanitizeTabPath("/acme?welcome=1")).toBe("/acme/issues?welcome=1");
+  });
+});
+
+describe("preferred workspace entry", () => {
+  it("starts fresh workspaces in cockpit without rewriting explicit links or restored sessions", () => {
+    useWorkspaceStartStore.setState({ page: "cockpit" });
+    expect(sanitizeTabPath("/acme")).toBe("/acme/cockpit");
+    expect(sanitizeTabPath("/acme/issues/ABC-1?tab=activity#comment-c1")).toBe("/acme/issues/ABC-1?tab=activity#comment-c1");
+    useTabStore.getState().switchWorkspace("acme");
+    expect(getActiveTab(useTabStore.getState())?.url).toBe("/acme/cockpit");
+    const issueTab = useTabStore.getState().addTab("/acme/issues/ABC-1", "Issue");
+    if (!issueTab) throw new Error("failed to open issue fixture");
+    useTabStore.getState().setActiveTab(issueTab);
+    useWorkspaceStartStore.getState().setPage("inbox");
+    useTabStore.getState().switchWorkspace("other");
+    expect(getActiveTab(useTabStore.getState())?.url).toBe("/other/inbox");
+    useTabStore.getState().switchWorkspace("acme");
+    expect(getActiveTab(useTabStore.getState())?.url).toBe("/acme/issues/ABC-1");
   });
 });
 
@@ -148,9 +169,9 @@ describe("useTabStore actions", () => {
       index: 0,
     });
     expect(s.byWorkspace.acme.browsingHistory).toEqual(["/acme/issues"]);
-    expect(s.byWorkspace.acme.browsingHistoryTitles).toEqual({
-      "/acme/issues": "Issues",
-    });
+    // Page labels are resolved by the shared presentation layer, not guessed
+    // in the store (the selected entry may be Cockpit, Inbox or My issues).
+    expect(s.byWorkspace.acme.browsingHistoryTitles).toEqual({});
   });
 
   it("switchWorkspace without openPath restores the group's last active tab", () => {
@@ -520,7 +541,6 @@ describe("navigateActiveSession", () => {
     expect(
       useTabStore.getState().byWorkspace.acme.browsingHistoryTitles,
     ).toEqual({
-      "/acme/issues": "Issues",
       "/acme/issues/issue-1": "MUL-1: Fix history",
     });
   });

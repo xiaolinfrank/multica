@@ -105,9 +105,10 @@ func TestTaskWriteFence_BlocksOnWorkspaceLockAlone(t *testing.T) {
 		}
 	}
 
-	blockedEnqueue("enqueue via the victim's agent", f.victimAgent, f.neighbourRuntime, f.neighbourIssue)
+	blockedEnqueue("enqueue via the victim's agent", f.victimAgent, f.neighbourRuntime, "")
 	blockedEnqueue("enqueue via the victim's runtime", f.neighbourAgent, f.victimRuntime, f.neighbourIssue)
-	blockedEnqueue("enqueue via the victim's issue", f.neighbourAgent, f.neighbourRuntime, f.victimIssue)
+	// Issue-backed tasks require the Agent and Issue to share a workspace.
+	blockedEnqueue("enqueue via the victim's issue", f.victimAgent, f.neighbourRuntime, f.victimIssue)
 
 	// Reassignment onto the victim's runtime is fenced too.
 	reassign, err := testPool.Begin(ctx)
@@ -153,6 +154,33 @@ func TestTaskWriteFence_BlocksOnWorkspaceLockAlone(t *testing.T) {
 	if _, err := statusUpdate.Exec(ctx,
 		`UPDATE agent_task_queue SET status = 'failed' WHERE id = $1`, f.taskViaAgent); err != nil {
 		t.Errorf("status-only update was blocked: %v", err)
+	}
+}
+
+// Cross-workspace Issue references are rejected before an enqueue can select
+// a fixed input manifest or write a task. Legacy mixed-owner rows stay readable.
+func TestTaskWriteFenceRejectsIssueOutsideAgentWorkspace(t *testing.T) {
+	if testPool == nil {
+		t.Skip("database not available")
+	}
+	ctx := context.Background()
+	f := newWorkspaceDeletePathFixture(t, "inputscope")
+	count := func() int64 {
+		t.Helper()
+		var n int64
+		if err := testPool.QueryRow(ctx, "SELECT count(*) FROM agent_task_queue WHERE agent_id=$1 OR agent_id=$2", f.victimAgent, f.neighbourAgent).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := count()
+	for _, target := range [][3]string{{f.victimAgent, f.neighbourRuntime, f.neighbourIssue}, {f.neighbourAgent, f.neighbourRuntime, f.victimIssue}} {
+		if err := enqueueViaRealQuery(ctx, testHandler.Queries, target[0], target[1], target[2]); !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatalf("mixed Issue/Agent scope was admitted: %v", err)
+		}
+	}
+	if after := count(); after != before {
+		t.Fatalf("rejected scope wrote tasks: before=%d after=%d", before, after)
 	}
 }
 
@@ -304,16 +332,17 @@ VALUES ($1, $2, 'member', $3, $4) RETURNING id
 	errs := make([]error, 2*rounds)
 	for i := 0; i < rounds; i++ {
 		wg.Add(2)
-		// Owners drawn from both workspaces, in mirrored roles.
+		// Agent and Issue stay together; the opposite runtime still exercises
+		// both workspace locks in mirrored roles through the canonical query.
 		go func(i int) {
 			defer wg.Done()
 			errs[2*i] = enqueueViaRealQuery(ctx, testHandler.Queries,
-				f.victimAgent, f.neighbourRuntime, neighbourIssues[i])
+				f.victimAgent, f.neighbourRuntime, victimIssues[i])
 		}(i)
 		go func(i int) {
 			defer wg.Done()
 			errs[2*i+1] = enqueueViaRealQuery(ctx, testHandler.Queries,
-				f.neighbourAgent, f.victimRuntime, victimIssues[i])
+				f.neighbourAgent, f.victimRuntime, neighbourIssues[i])
 		}(i)
 	}
 	wg.Wait()

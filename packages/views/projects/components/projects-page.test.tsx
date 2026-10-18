@@ -1,6 +1,7 @@
+import { containerOperationFixture } from "../../issues/container-operation-test-fixture";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project } from "@multica/core/types";
 import { renderWithI18n } from "../../test/i18n";
@@ -33,9 +34,12 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@tanstack/react-query", () => ({
+vi.mock("@tanstack/react-query", async (original) => ({
+  ...(await original<typeof import("@tanstack/react-query")>()),
+  useQueries: ({ queries }: { queries: { queryKey: readonly unknown[] }[] }) => queries.map((options) => ({ data: containerOperationFixture(String(options.queryKey[1]), "project", String(options.queryKey[4])), isPending: false, isError: false, refetch: vi.fn() })),
   useQuery: (options: { queryKey?: readonly unknown[] }) => {
     const key = options.queryKey?.[0];
+    if (key === "issue-operation-basis") return { data: containerOperationFixture(String(options.queryKey?.[1]), "project", String(options.queryKey?.[4])), isPending: false, isError: false, refetch: vi.fn() };
     if (key === "projects") {
       return { data: mocks.projects, isLoading: false };
     }
@@ -55,7 +59,7 @@ vi.mock("@tanstack/react-query", () => ({
 vi.mock("@multica/core/projects", () => ({
   projectListOptions: () => ({ queryKey: ["projects"] }),
   useUpdateProject: () => ({ mutate: mocks.updateProject }),
-  useDeleteProject: () => ({ mutate: mocks.deleteProject }),
+  useDeleteProject: () => ({ mutate: mocks.deleteProject, mutateAsync: mocks.deleteProject }),
   useProjectViewStore: (selector: (state: unknown) => unknown) =>
     selector(mocks.projectViewState),
 }));
@@ -240,7 +244,7 @@ beforeEach(() => {
   mocks.agents = [];
   mocks.pins = [];
   mocks.updateProject.mockClear();
-  mocks.deleteProject.mockClear();
+  mocks.deleteProject.mockReset();
   mocks.createPin.mockClear();
   mocks.deletePin.mockClear();
   mocks.openModal.mockClear();
@@ -353,4 +357,17 @@ describe("ProjectsPage compact row navigation", () => {
     expect(push).not.toHaveBeenCalled();
     open.mockRestore();
   });
+});
+
+it("preserves failed project selections and the dialog after an earlier delete was confirmed", async () => {
+  mocks.projects = [PROJECT, { ...PROJECT, id: "project-2", title: "Second project" }];
+  mocks.deleteProject.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Second project is retained"));
+  renderProjects(); const user = userEvent.setup();
+  for (const title of [PROJECT.title, "Second project"]) { const row = screen.getByText(title).closest('[role="row"]')!; await user.click(within(row as HTMLElement).getByRole("button", { pressed: false })); }
+  const toolbar = screen.getByRole("button", { name: "Clear selection" }).parentElement!.parentElement!;
+  await user.click(within(toolbar).getByRole("button", { name: "Delete" })); const dialog = await screen.findByRole("dialog");
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("Second project is retained");
+  expect(mocks.deleteProject.mock.calls.map((args) => args[0])).toEqual([PROJECT.id, "project-2"]);
+  await waitFor(() => expect(within(dialog).queryByText(PROJECT.title)).not.toBeInTheDocument()); expect(within(dialog).getByText("Second project")).toBeVisible();
 });

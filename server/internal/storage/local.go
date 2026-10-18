@@ -275,27 +275,18 @@ func (s *LocalStorage) GetFilePath(key string) string {
 }
 
 func (s *LocalStorage) ServeFile(w http.ResponseWriter, r *http.Request, filename string) {
-	// The sidecar and the staging file are implementation details of the local
-	// backend; refuse to serve them directly so /uploads/<key>.meta.json (or a
-	// half-written .<key>.tmp) doesn't become a stable read API. Comes before
-	// any disk work so a path-traversal attempt at a sibling can't trigger an
-	// out-of-tree read.
-	if isInternalLocalPath(filename) {
+	file, parent, err := s.openPublicFile(filename)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-
-	filePath := filepath.Join(s.uploadDir, filename)
-	// filepath.Join cleans the path but doesn't enforce containment, so a
-	// caller passing "../etc/passwd" lands outside uploadDir. http.ServeFile
-	// rejects such requests on r.URL.Path, but readLocalMeta runs first —
-	// without this guard a crafted path could trigger a stray disk read on
-	// an arbitrary <some-path>.meta.json before the 400 lands.
-	if !isUnder(s.uploadDir, filePath) {
+	defer file.Close()
+	defer parent.Close()
+	info, err := file.Stat()
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	slog.Info("serving file", "filename", filename, "filepath", filePath)
 
 	// Mirror the S3 Upload path: when sidecar metadata exists for this key,
 	// set Content-Disposition with the original uploaded filename. Without
@@ -303,13 +294,14 @@ func (s *LocalStorage) ServeFile(w http.ResponseWriter, r *http.Request, filenam
 	// UUID + extension) instead of the human-readable name the uploader
 	// chose. Uploads from before the sidecar landed have no .meta.json on
 	// disk and fall through to the existing behavior.
-	if meta, ok := readLocalMeta(filePath); ok && meta.Filename != "" {
-		w.Header().Set("Content-Disposition", ContentDisposition(meta.ContentType, meta.Filename))
+	if sidecar, err := openPublicRegular(parent, filepath.Base(filename)+metaSuffix); err == nil {
+		var meta localMeta
+		if json.NewDecoder(io.LimitReader(sidecar, 64<<10)).Decode(&meta) == nil && meta.Filename != "" {
+			w.Header().Set("Content-Disposition", ContentDisposition(meta.ContentType, meta.Filename))
+		}
+		sidecar.Close()
 	}
-
-	// Use http.ServeFile which has built-in path traversal protection
-	// It sanitizes the path and prevents access outside the directory
-	http.ServeFile(w, r, filePath)
+	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
 }
 
 // isUnder reports whether target resolves to a path inside dir (or equal to

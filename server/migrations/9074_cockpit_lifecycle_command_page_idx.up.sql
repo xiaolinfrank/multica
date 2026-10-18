@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY cockpit_lifecycle_command_page_idx ON cockpit_meeting_lifecycle_command (workspace_id,meeting_id,created_at,command_key);

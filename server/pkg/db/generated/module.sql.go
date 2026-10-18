@@ -12,18 +12,19 @@ import (
 )
 
 const createModule = `-- name: CreateModule :one
-INSERT INTO module (workspace_id, project_id, title, description, position)
+INSERT INTO module (workspace_id, project_id, title, description, directory_name, position)
 VALUES (
-    $1, $2, $3, $4,
+    $1, $2, $3, $4, $5,
     COALESCE((SELECT MAX(position) FROM module WHERE project_id = $2), 0) + 1
-) RETURNING id, workspace_id, project_id, title, description, position, created_at, updated_at
+) RETURNING id, workspace_id, project_id, title, description, position, created_at, updated_at, directory_name
 `
 
 type CreateModuleParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	ProjectID   pgtype.UUID `json:"project_id"`
-	Title       string      `json:"title"`
-	Description pgtype.Text `json:"description"`
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	ProjectID     pgtype.UUID `json:"project_id"`
+	Title         string      `json:"title"`
+	Description   pgtype.Text `json:"description"`
+	DirectoryName pgtype.Text `json:"directory_name"`
 }
 
 // Appends to the project: position is MAX+1 computed inside the INSERT. This
@@ -37,6 +38,7 @@ func (q *Queries) CreateModule(ctx context.Context, arg CreateModuleParams) (Mod
 		arg.ProjectID,
 		arg.Title,
 		arg.Description,
+		arg.DirectoryName,
 	)
 	var i Module
 	err := row.Scan(
@@ -48,6 +50,7 @@ func (q *Queries) CreateModule(ctx context.Context, arg CreateModuleParams) (Mod
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DirectoryName,
 	)
 	return i, err
 }
@@ -135,7 +138,7 @@ func (q *Queries) DetachProjectModuleIssues(ctx context.Context, arg DetachProje
 }
 
 const getModuleInWorkspace = `-- name: GetModuleInWorkspace :one
-SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at FROM module
+SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at, directory_name FROM module
 WHERE id = $1 AND workspace_id = $2
 `
 
@@ -156,6 +159,7 @@ func (q *Queries) GetModuleInWorkspace(ctx context.Context, arg GetModuleInWorks
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DirectoryName,
 	)
 	return i, err
 }
@@ -205,7 +209,7 @@ func (q *Queries) GetModuleIssueStats(ctx context.Context, arg GetModuleIssueSta
 }
 
 const getModulesByIDs = `-- name: GetModulesByIDs :many
-SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at FROM module
+SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at, directory_name FROM module
 WHERE workspace_id = $1 AND id = ANY($2::uuid[])
 `
 
@@ -235,6 +239,7 @@ func (q *Queries) GetModulesByIDs(ctx context.Context, arg GetModulesByIDsParams
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DirectoryName,
 		); err != nil {
 			return nil, err
 		}
@@ -247,7 +252,7 @@ func (q *Queries) GetModulesByIDs(ctx context.Context, arg GetModulesByIDsParams
 }
 
 const listModules = `-- name: ListModules :many
-SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at FROM module
+SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at, directory_name FROM module
 WHERE workspace_id = $1
   AND ($2::uuid IS NULL OR project_id = $2)
 ORDER BY position ASC, created_at ASC
@@ -278,6 +283,7 @@ func (q *Queries) ListModules(ctx context.Context, arg ListModulesParams) ([]Mod
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DirectoryName,
 		); err != nil {
 			return nil, err
 		}
@@ -317,20 +323,22 @@ func (q *Queries) ReorderModules(ctx context.Context, arg ReorderModulesParams) 
 
 const updateModule = `-- name: UpdateModule :one
 UPDATE module SET
-    title = COALESCE($3, title),
-    description = $4,
-    position = COALESCE($5, position),
+    directory_name = COALESCE($3, directory_name),
+    title = COALESCE($4, title),
+    description = $5,
+    position = COALESCE($6, position),
     updated_at = now()
 WHERE id = $1 AND workspace_id = $2
-RETURNING id, workspace_id, project_id, title, description, position, created_at, updated_at
+RETURNING id, workspace_id, project_id, title, description, position, created_at, updated_at, directory_name
 `
 
 type UpdateModuleParams struct {
-	ID          pgtype.UUID   `json:"id"`
-	WorkspaceID pgtype.UUID   `json:"workspace_id"`
-	Title       pgtype.Text   `json:"title"`
-	Description pgtype.Text   `json:"description"`
-	Position    pgtype.Float8 `json:"position"`
+	ID            pgtype.UUID   `json:"id"`
+	WorkspaceID   pgtype.UUID   `json:"workspace_id"`
+	DirectoryName pgtype.Text   `json:"directory_name"`
+	Title         pgtype.Text   `json:"title"`
+	Description   pgtype.Text   `json:"description"`
+	Position      pgtype.Float8 `json:"position"`
 }
 
 // title and position keep the prior value when absent (COALESCE);
@@ -339,6 +347,7 @@ func (q *Queries) UpdateModule(ctx context.Context, arg UpdateModuleParams) (Mod
 	row := q.db.QueryRow(ctx, updateModule,
 		arg.ID,
 		arg.WorkspaceID,
+		arg.DirectoryName,
 		arg.Title,
 		arg.Description,
 		arg.Position,
@@ -353,6 +362,7 @@ func (q *Queries) UpdateModule(ctx context.Context, arg UpdateModuleParams) (Mod
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DirectoryName,
 	)
 	return i, err
 }

@@ -1,15 +1,15 @@
 import { normalizeStatusPatch } from "./status-category";
 import {
-  hashKey,
   useMutation,
   useQueryClient,
   type QueryClient,
-  type QueryKey,
 } from "@tanstack/react-query";
 import { api } from "../api";
+import { invalidateCockpitArtifactSourceAttachments } from "../cockpit/artifact-queries";
 import { issueKeys } from "./queries";
+import { invalidateIssueOperationBasis } from "./operation-basis";
+import { issueBatchAppliedIds, issueBatchErrorReceipt } from "./batch-receipt";
 import { projectKeys } from "../projects/queries";
-import { inboxKeys, type ArchivedInboxCache } from "../inbox/queries";
 import {
   cancelInboxLists,
   isInboxListRequestInFlight,
@@ -21,8 +21,6 @@ import {
   invalidateLastActivitySortedIssueLists,
   invalidateStaleListKeys,
   rollbackIssueChange,
-  type IssueFlatCache,
-  type IssueTableRowCache,
 } from "./cache-coordinator";
 import { issueChangedDims } from "./surface/membership";
 import { addIssueToBuckets } from "./cache-helpers";
@@ -31,14 +29,11 @@ import {
   collectDeletedIssueCacheMetadata,
   invalidateDeletedIssueDependentCaches,
   invalidateDeletedIssueParentCaches,
-  invalidateIssueScopedCaches,
-  pruneDeletedIssueFromListCaches,
-  pruneDeletedIssueFromParentChildrenCaches,
 } from "./delete-cache";
 import { useWorkspaceId } from "../hooks";
 import { useRecentContextStore } from "../chat/recent-context-store";
 import { useRecentIssuesStore } from "./stores";
-import type { InboxItem, Issue, IssueReaction } from "../types";
+import type { Issue, IssueReaction, IssueBatchReceipt } from "../types";
 import type {
   CreateCommentSubIssueManualRequest,
   CreateIssueRequest,
@@ -353,6 +348,7 @@ export function useUpdateIssue() {
     },
     onSettled: (_data, err, vars, ctx) => {
       settleInboxAfterIssueWrite(qc, wsId, ctx?.inboxWrite, err !== null);
+      invalidateIssueOperationBasis(qc, wsId);
       // The issue's own list + detail caches are reconciled surgically in
       // onSuccess / onError, so they are deliberately NOT invalidated here — a
       // full-list refetch on settle is what made drags flicker. Only aggregate
@@ -378,6 +374,7 @@ export function useUpdateIssue() {
       // payload mutates the attachment join table.
       if (vars.attachment_ids?.length) {
         qc.invalidateQueries({ queryKey: issueKeys.attachments(vars.id) });
+        invalidateCockpitArtifactSourceAttachments(qc, wsId, vars.id);
       }
       // A duplicate mark is not on Issue; refresh both sides now rather than
       // waiting for the realtime echo.
@@ -415,269 +412,70 @@ export function useUpdateIssue() {
   });
 }
 
+function invalidateIssueBatchViews(qc: QueryClient, wsId: string) {
+  for (const queryKey of [issueKeys.list(wsId), issueKeys.myAll(wsId), issueKeys.flatAll(wsId), issueKeys.tableAll(wsId),
+    issueKeys.assigneeGroupsAll(wsId), issueKeys.myAssigneeGroupsAll(wsId), issueKeys.projectGanttAll(wsId),
+    issueKeys.childrenByParentsAll(wsId), issueKeys.childProgress(wsId), projectKeys.all(wsId)]) {
+    void qc.invalidateQueries({ queryKey });
+  }
+  invalidateIssueOperationBasis(qc, wsId);
+}
+
 export function useDeleteIssue() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
-    mutationFn: (id: string) => api.deleteIssue(id),
-    onMutate: async (id) => {
-      await Promise.all([
-        qc.cancelQueries({ queryKey: issueKeys.list(wsId) }),
-        qc.cancelQueries({ queryKey: issueKeys.myAll(wsId) }),
-        qc.cancelQueries({ queryKey: issueKeys.flatAll(wsId) }),
-      ]);
-      const metadata = collectDeletedIssueCacheMetadata(qc, wsId, id);
-      await Promise.all(
-        metadata.parentIssueIds.map((parentId) =>
-          qc.cancelQueries({ queryKey: issueKeys.children(wsId, parentId) }),
-        ),
-      );
-      const prevLists = qc.getQueriesData<ListIssuesCache>({ queryKey: issueKeys.list(wsId) });
-      const prevMyLists = qc.getQueriesData<ListIssuesCache>({
-        queryKey: issueKeys.myAll(wsId),
-      });
-      const prevFlatLists = qc.getQueriesData<IssueFlatCache>({
-        queryKey: issueKeys.flatAll(wsId),
-      });
-      const prevDetail = qc.getQueryData<Issue>(issueKeys.detail(wsId, id));
-      const prevChildren = new Map<string, Issue[] | undefined>();
-      for (const parentId of metadata.parentIssueIds) {
-        prevChildren.set(
-          parentId,
-          qc.getQueryData<Issue[]>(issueKeys.children(wsId, parentId)),
-        );
-      }
-
-      pruneDeletedIssueFromListCaches(qc, wsId, id);
-      pruneDeletedIssueFromParentChildrenCaches(qc, wsId, id, metadata);
-      qc.removeQueries({ queryKey: issueKeys.detail(wsId, id) });
-      return {
-        id,
-        metadata,
-        prevLists,
-        prevMyLists,
-        prevFlatLists,
-        prevDetail,
-        prevChildren,
-      };
-    },
-    onError: (_err, _id, ctx) => {
-      if (ctx?.prevLists) {
-        for (const [key, snapshot] of ctx.prevLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevMyLists) {
-        for (const [key, snapshot] of ctx.prevMyLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevFlatLists) {
-        for (const [key, snapshot] of ctx.prevFlatLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevDetail) {
-        qc.setQueryData(issueKeys.detail(wsId, ctx.id), ctx.prevDetail);
-      }
-      if (ctx?.prevChildren) {
-        for (const [parentId, snapshot] of ctx.prevChildren) {
-          qc.setQueryData(issueKeys.children(wsId, parentId), snapshot);
-        }
-      }
-    },
+    mutationKey: ["deleteIssue", wsId],
+    mutationFn: (id: string) => api.deleteIssue(wsId, id),
+    // Keep the visible object and all dependent state until the server confirms deletion.
+    onMutate: (id) => ({ metadata: collectDeletedIssueCacheMetadata(qc, wsId, id) }),
     onSuccess: (_data, id, ctx) => {
       useRecentContextStore.getState().forgetContext(wsId, { type: "issue", id });
       cleanupDeletedIssueCaches(qc, wsId, id, ctx?.metadata);
     },
-    onSettled: (_data, _err, _id, ctx) => {
-      qc.invalidateQueries({ queryKey: issueKeys.list(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.flatAll(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.assigneeGroupsAll(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.myAssigneeGroupsAll(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.projectGanttAll(wsId) });
-      qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
+    onSettled: (_data, err, id, ctx) => {
+      invalidateIssueBatchViews(qc, wsId);
       if (ctx?.metadata) invalidateDeletedIssueParentCaches(qc, wsId, ctx.metadata);
+      if (err) void qc.invalidateQueries({ queryKey: issueKeys.detail(wsId, id) });
     },
   });
 }
+
+export type BatchUpdateIssuesInput = {
+  ids: string[];
+  updates: UpdateIssueRequest;
+  expected_revisions?: Record<string, number>;
+};
+export type BatchDeleteIssuesInput = {
+  ids: string[];
+  expected_revisions?: Record<string, number>;
+};
 
 export function useBatchUpdateIssues() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   return useMutation({
     mutationKey: issueWriteMutationKey(wsId),
-    mutationFn: ({
-      ids,
-      updates,
-    }: {
-      ids: string[];
-      updates: UpdateIssueRequest;
-    }) => api.batchUpdateIssues(ids, updates),
-    onMutate: async ({ ids, updates }) => {
-      // Control and description-merge fields are not safe optimistic cache
-      // patches. The server resolves description against description_base, so
-      // preserve the authoritative raw description (including media markers)
-      // until a refetch returns the committed result.
-      const {
-        suppress_run: _suppressRun,
-        description: _description,
-        description_base: _descriptionBase,
-        ...patch
-      } = updates;
-      await qc.cancelQueries({ queryKey: issueKeys.list(wsId) });
-      await qc.cancelQueries({ queryKey: issueKeys.myAll(wsId) });
-      await qc.cancelQueries({ queryKey: issueKeys.flatAll(wsId) });
-      await qc.cancelQueries({ queryKey: issueKeys.tableAll(wsId) });
-      const inboxWrite =
-        patch.status !== undefined || patch.priority !== undefined
-          ? { interrupted: cancelInboxLists(qc, wsId) }
-          : undefined;
-
-      // Run every issue through the coordinator — the same rules table the
-      // single-issue update uses, so a batch edit patches/removes across the
-      // workspace board AND every filtered myList surface identically.
-      // Snapshots are first-wins per cache key: after the first issue's
-      // application a cache already carries partial patches, so only the
-      // first snapshot per key is pristine for rollback.
-      const prevListByHash = new Map<string, [QueryKey, ListIssuesCache]>();
-      const prevFlatListByHash = new Map<string, [QueryKey, IssueFlatCache]>();
-      const prevTableRowByHash = new Map<
-        string,
-        [QueryKey, IssueTableRowCache]
-      >();
-      const prevDetailById = new Map<string, Issue>();
-      let prevInboxList: InboxItem[] | undefined;
-      let prevArchivedInboxCaches: [QueryKey, ArchivedInboxCache | undefined][] | undefined;
-      const staleKeys: QueryKey[] = [];
-      for (const id of ids) {
-        const base = qc.getQueryData<Issue>(issueKeys.detail(wsId, id));
-        const change = applyIssueChange(qc, wsId, id, patch as Partial<Issue>, {
-          changed: issueChangedDims(patch, base),
-          baseIssue: base,
-        });
-        for (const [key, snapshot] of change.prevLists) {
-          const hash = hashKey(key);
-          if (!prevListByHash.has(hash)) prevListByHash.set(hash, [key, snapshot]);
-        }
-        for (const [key, snapshot] of change.prevFlatLists) {
-          const hash = hashKey(key);
-          if (!prevFlatListByHash.has(hash)) {
-            prevFlatListByHash.set(hash, [key, snapshot]);
-          }
-        }
-        for (const [key, snapshot] of change.prevTableRows) {
-          const hash = hashKey(key);
-          if (!prevTableRowByHash.has(hash)) {
-            prevTableRowByHash.set(hash, [key, snapshot]);
-          }
-        }
-        if (change.prevDetail) prevDetailById.set(id, change.prevDetail);
-        if (prevInboxList === undefined && change.prevInboxList !== undefined) {
-          prevInboxList = change.prevInboxList;
-        }
-        if (
-          prevArchivedInboxCaches === undefined &&
-          change.prevArchivedInboxCaches !== undefined
-        ) {
-          prevArchivedInboxCaches = change.prevArchivedInboxCaches;
-        }
-        staleKeys.push(...change.staleKeys);
-      }
-
-      // Mirror the optimistic patch into any loaded children cache so
-      // sub-issue rows on a parent's detail page reflect the change too.
-      const idSet = new Set(ids);
-      const childrenCaches = qc.getQueriesData<Issue[]>({
-        queryKey: [...issueKeys.all(wsId), "children"],
-      });
-      const prevChildren = new Map<string, Issue[] | undefined>();
-      const affectedParentIds = new Set<string>();
-      for (const [key, data] of childrenCaches) {
-        if (!data?.some((c) => idSet.has(c.id))) continue;
-        const parentId = key[key.length - 1];
-        if (typeof parentId !== "string") continue;
-        affectedParentIds.add(parentId);
-        prevChildren.set(parentId, data);
-        qc.setQueryData<Issue[]>(issueKeys.children(wsId, parentId), (old) =>
-          old?.map((c) => (idSet.has(c.id) ? { ...c, ...normalizeStatusPatch(patch) } : c)),
-        );
-      }
-
-      return {
-        prevLists: [...prevListByHash.values()],
-        prevFlatLists: [...prevFlatListByHash.values()],
-        prevTableRows: [...prevTableRowByHash.values()],
-        prevDetailById,
-        prevInboxList,
-        prevArchivedInboxCaches,
-        inboxWrite,
-        staleKeys,
-        prevChildren,
-        affectedParentIds,
-      };
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prevLists) {
-        for (const [key, snapshot] of ctx.prevLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevFlatLists) {
-        for (const [key, snapshot] of ctx.prevFlatLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevTableRows) {
-        for (const [key, snapshot] of ctx.prevTableRows) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevDetailById) {
-        for (const [id, snapshot] of ctx.prevDetailById) {
-          qc.setQueryData(issueKeys.detail(wsId, id), snapshot);
-        }
-      }
-      if (ctx?.prevInboxList !== undefined) {
-        qc.setQueryData(inboxKeys.list(wsId), ctx.prevInboxList);
-      }
-      for (const [key, snapshot] of ctx?.prevArchivedInboxCaches ?? []) {
-        qc.setQueryData(key, snapshot);
-      }
-      if (ctx?.prevChildren) {
-        for (const [parentId, snapshot] of ctx.prevChildren) {
-          qc.setQueryData(issueKeys.children(wsId, parentId), snapshot);
-        }
-      }
-    },
-    onSettled: (_data, err, _vars, ctx) => {
+    mutationFn: ({ ids, updates, expected_revisions }: BatchUpdateIssuesInput) =>
+      api.batchUpdateIssues(wsId, ids, updates, { expected_revisions }),
+    onMutate: ({ ids, updates }) => ({
+      metadata: ids.map((id) => collectDeletedIssueCacheMetadata(qc, wsId, id)),
+      // This batch does not patch server facts. Both success and partial/unknown
+      // failure owe a server read, paid after all concurrent issue writes settle.
+      inboxWrite: updates.status !== undefined || updates.priority !== undefined ? { interrupted: true } : undefined,
+    }),
+    onSettled: (_receipt, err, vars, ctx) => {
       settleInboxAfterIssueWrite(qc, wsId, ctx?.inboxWrite, err !== null);
-      // Deliberately NOT invalidating issueKeys.list / myAll here: the onMutate
-      // pass above is a complete surgical reconcile for the loaded bucketed
-      // boards, so a full-board refetch on settle would only re-introduce the
-      // flicker the single-issue update already removed. Aggregate / grouped
-      // caches that cannot be recomputed from a single-issue patch are
-      // refreshed below, plus the specific keys the coordinator flagged as
-      // drifted — the surgical replacement for the old blanket "invalidate
-      // myAll on project move" safety net (MUL-3669 / #4548).
+      invalidateIssueBatchViews(qc, wsId);
       invalidateIssueDerivatives(qc, wsId, {
-        statusOrProjectChanged:
-          _vars.updates.status !== undefined ||
-          Object.prototype.hasOwnProperty.call(_vars.updates, "project_id"),
+        statusOrProjectChanged: vars.updates.status !== undefined || Object.prototype.hasOwnProperty.call(vars.updates, "project_id"),
       });
-      qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });
-      if (ctx) {
-        invalidateStaleListKeys(qc, ctx.staleKeys);
-      }
-      if (ctx?.affectedParentIds && ctx.affectedParentIds.size > 0) {
-        for (const parentId of ctx.affectedParentIds) {
-          qc.invalidateQueries({
-            queryKey: issueKeys.children(wsId, parentId),
-          });
-        }
-        qc.invalidateQueries({ queryKey: issueKeys.childProgress(wsId) });
-      }
+      const ids = new Set(vars.ids);
+      void qc.invalidateQueries({ queryKey: issueKeys.all(wsId), predicate: (query) =>
+        query.queryKey[2] === "detail" && typeof query.queryKey[3] === "string" && ids.has(query.queryKey[3]) });
+      const parents = new Set(ctx?.metadata.flatMap((entry) => entry.parentIssueIds) ?? []);
+      if (vars.updates.parent_issue_id) parents.add(vars.updates.parent_issue_id);
+      for (const parentId of parents) void qc.invalidateQueries({ queryKey: issueKeys.children(wsId, parentId) });
     },
   });
 }
@@ -685,132 +483,27 @@ export function useBatchUpdateIssues() {
 export function useBatchDeleteIssues() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
+  const acknowledge = (receipt: IssueBatchReceipt | null, metadata?: Map<string, ReturnType<typeof collectDeletedIssueCacheMetadata>>) => {
+    for (const id of issueBatchAppliedIds(receipt)) {
+      useRecentContextStore.getState().forgetContext(wsId, { type: "issue", id });
+      cleanupDeletedIssueCaches(qc, wsId, id, metadata?.get(id));
+    }
+  };
   return useMutation({
-    mutationFn: (ids: string[]) => api.batchDeleteIssues(ids),
-    onMutate: async (ids) => {
-      await Promise.all([
-        qc.cancelQueries({ queryKey: issueKeys.list(wsId) }),
-        qc.cancelQueries({ queryKey: issueKeys.myAll(wsId) }),
-        qc.cancelQueries({ queryKey: issueKeys.flatAll(wsId) }),
-      ]);
-      const metadataById = new Map(
-        ids.map((id) => [
-          id,
-          collectDeletedIssueCacheMetadata(qc, wsId, id),
-        ]),
-      );
-      const parentIssueIds = new Set<string>();
-      for (const metadata of metadataById.values()) {
-        for (const parentId of metadata.parentIssueIds) {
-          parentIssueIds.add(parentId);
-        }
-      }
-      await Promise.all(
-        Array.from(parentIssueIds).map((parentId) =>
-          qc.cancelQueries({ queryKey: issueKeys.children(wsId, parentId) }),
-        ),
-      );
-      const prevLists = qc.getQueriesData<ListIssuesCache>({ queryKey: issueKeys.list(wsId) });
-      const prevMyLists = qc.getQueriesData<ListIssuesCache>({
-        queryKey: issueKeys.myAll(wsId),
-      });
-      const prevFlatLists = qc.getQueriesData<IssueFlatCache>({
-        queryKey: issueKeys.flatAll(wsId),
-      });
-      const prevChildren = new Map<string, Issue[] | undefined>();
-      for (const parentId of parentIssueIds) {
-        prevChildren.set(
-          parentId,
-          qc.getQueryData<Issue[]>(issueKeys.children(wsId, parentId)),
-        );
-      }
-
-      for (const id of ids) {
-        const metadata = metadataById.get(id);
-        pruneDeletedIssueFromListCaches(qc, wsId, id);
-        if (metadata) {
-          pruneDeletedIssueFromParentChildrenCaches(qc, wsId, id, metadata);
-        }
-      }
-      return {
-        prevLists,
-        prevMyLists,
-        prevFlatLists,
-        prevChildren,
-        parentIssueIds,
-        metadataById,
-      };
-    },
-    onError: (_err, _ids, ctx) => {
-      if (ctx?.prevLists) {
-        for (const [key, snapshot] of ctx.prevLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevMyLists) {
-        for (const [key, snapshot] of ctx.prevMyLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevFlatLists) {
-        for (const [key, snapshot] of ctx.prevFlatLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevChildren) {
-        for (const [parentId, snapshot] of ctx.prevChildren) {
-          qc.setQueryData(issueKeys.children(wsId, parentId), snapshot);
-        }
-      }
-    },
-    onSuccess: (data, ids, ctx) => {
-      if (data.deleted === ids.length) {
-        const { forgetContext } = useRecentContextStore.getState();
-        for (const id of ids) {
-          forgetContext(wsId, { type: "issue", id });
-          cleanupDeletedIssueCaches(qc, wsId, id, ctx?.metadataById.get(id));
-        }
-        return;
-      }
-
-      if (ctx?.prevLists) {
-        for (const [key, snapshot] of ctx.prevLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevMyLists) {
-        for (const [key, snapshot] of ctx.prevMyLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevFlatLists) {
-        for (const [key, snapshot] of ctx.prevFlatLists) {
-          qc.setQueryData(key, snapshot);
-        }
-      }
-      if (ctx?.prevChildren) {
-        for (const [parentId, snapshot] of ctx.prevChildren) {
-          qc.setQueryData(issueKeys.children(wsId, parentId), snapshot);
-        }
-      }
-      for (const id of ids) {
-        invalidateIssueScopedCaches(qc, wsId, id);
-      }
-      qc.invalidateQueries({ queryKey: issueKeys.all(wsId) });
+    mutationKey: ["batchDeleteIssues", wsId],
+    mutationFn: ({ ids, expected_revisions }: BatchDeleteIssuesInput) => api.batchDeleteIssues(wsId, ids, { expected_revisions }),
+    onMutate: ({ ids }) => ({ metadata: new Map(ids.map((id) => [id, collectDeletedIssueCacheMetadata(qc, wsId, id)])) }),
+    onSuccess: (receipt, _vars, ctx) => acknowledge(receipt, ctx?.metadata),
+    onError: (error, vars, ctx) => acknowledge(issueBatchErrorReceipt(error, wsId, vars.ids, "delete"), ctx?.metadata),
+    onSettled: (_receipt, err, vars, ctx) => {
+      invalidateIssueBatchViews(qc, wsId);
       invalidateDeletedIssueDependentCaches(qc, wsId);
-    },
-    onSettled: (_data, _err, _ids, ctx) => {
-      qc.invalidateQueries({ queryKey: issueKeys.list(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.flatAll(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.assigneeGroupsAll(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.myAssigneeGroupsAll(wsId) });
-      qc.invalidateQueries({ queryKey: issueKeys.projectGanttAll(wsId) });
-      qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
-      if (ctx?.parentIssueIds && ctx.parentIssueIds.size > 0) {
-        invalidateDeletedIssueParentCaches(qc, wsId, {
-          parentIssueIds: Array.from(ctx.parentIssueIds),
-        });
+      const parentIssueIds = [...new Set([...(ctx?.metadata.values() ?? [])].flatMap((entry) => entry.parentIssueIds))];
+      invalidateDeletedIssueParentCaches(qc, wsId, { parentIssueIds });
+      if (err) {
+        const ids = new Set(vars.ids);
+        void qc.invalidateQueries({ queryKey: issueKeys.all(wsId), predicate: (query) =>
+          query.queryKey[2] === "detail" && typeof query.queryKey[3] === "string" && ids.has(query.queryKey[3]) });
       }
     },
   });
@@ -842,7 +535,8 @@ export function useCreateComment(issueId: string) {
       /** Running turns this comment goes into instead of a follow-up run. */
       steerTaskIds?: string[];
     }) => api.createComment(issueId, content, type, parentId, attachmentIds, suppressAgentIds, steerTaskIds),
-    onSuccess: (comment) => {
+    onSuccess: (comment, variables) => {
+      if (variables.attachmentIds?.length) invalidateCockpitArtifactSourceAttachments(qc, wsId, issueId);
       if (comment.issue_revision) {
         onIssueAuxiliaryRevision(qc, wsId, issueId, comment.issue_revision);
       } else {

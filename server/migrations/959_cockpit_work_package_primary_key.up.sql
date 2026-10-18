@@ -1,0 +1,1 @@
+ALTER TABLE cockpit_meeting_work_package ADD CONSTRAINT cockpit_work_package_pkey_idx PRIMARY KEY USING INDEX cockpit_work_package_pkey_idx;

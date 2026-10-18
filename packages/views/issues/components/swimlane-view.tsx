@@ -1,5 +1,6 @@
 "use client";
 
+
 import {
   issueStatusCategory,
   statusColumnKeys,
@@ -727,6 +728,8 @@ function SwimLaneViewImpl({
   visibleStatuses = BUILT_IN_STATUS_ORDER,
   hiddenStatuses = [],
   onMoveIssue,
+  canMoveIssue,
+  onMoveBlocked,
   childProgressMap = EMPTY_PROGRESS_MAP,
   projectMap,
   moduleMap,
@@ -752,6 +755,8 @@ function SwimLaneViewImpl({
     updates: SwimLaneMoveUpdates,
     onSettled?: () => void,
   ) => void;
+  canMoveIssue?: (id: string, updates: Partial<UpdateIssueRequest>) => boolean;
+  onMoveBlocked?: (id: string, updates: Partial<UpdateIssueRequest>) => void;
   childProgressMap?: Map<string, ChildProgress>;
   projectMap?: Map<string, Project>;
   moduleMap?: Map<string, Module>;
@@ -1217,6 +1222,8 @@ function SwimLaneViewImpl({
         const activeCell = findCellIn(prev, cellSet, activeId);
         const overCell = findCellIn(prev, cellSet, overId);
         if (!activeCell || !overCell) return prev;
+        const target = laneByKey.get(overCell.laneKey), current = issueMapRef.current.get(activeId);
+        if (target && current && canMoveIssue && !canMoveIssue(activeId, { ...target.moveUpdates, ...(current.status !== overCell.status ? { status: overCell.status } : {}) })) return prev;
         if (issueMapRef.current.get(activeId)?.status !== overCell.status && entryOf(overCell.status)?.archived_at) return prev;
         if (
           activeCell.laneKey === overCell.laneKey &&
@@ -1292,7 +1299,7 @@ function SwimLaneViewImpl({
         };
       });
     },
-    [cellSet, laneByKey, entryOf],
+    [cellSet, laneByKey, entryOf, canMoveIssue],
   );
 
   const handleDragEnd = useCallback(
@@ -1356,6 +1363,12 @@ function SwimLaneViewImpl({
       if (!activeCell || !overCell) {
         reset();
         return;
+      }
+
+      const observedTarget = laneByKey.get(overCell.laneKey), observedIssue = issueMapRef.current.get(activeId);
+      if (observedTarget && observedIssue && canMoveIssue) {
+        const candidate = { ...observedTarget.moveUpdates, ...(observedIssue.status !== overCell.status ? { status: overCell.status } : {}) };
+        if (!canMoveIssue(activeId, candidate)) { reset(); onMoveBlocked?.(activeId, candidate); return; }
       }
 
       // The "Other parents" lane is display-only. Refuse any drop where
@@ -1473,7 +1486,7 @@ function SwimLaneViewImpl({
         },
       );
     },
-    [cells, cellSet, laneByKey, laneGroups, onMoveIssue, openModal, swimlaneGrouping, viewStoreApi, entryOf],
+    [cells, cellSet, laneByKey, laneGroups, onMoveIssue, openModal, swimlaneGrouping, viewStoreApi, entryOf, canMoveIssue, onMoveBlocked],
   );
 
   // Grid template: one column per status, fixed width COLUMN_WIDTH, gap COLUMN_GAP.

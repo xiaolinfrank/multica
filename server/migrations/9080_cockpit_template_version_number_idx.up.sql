@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY cockpit_template_version_number_idx ON cockpit_meeting_template_version (workspace_id,template_id,number);

@@ -3,15 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { configStore } from "@multica/core/config";
 import enLayout from "../locales/en/layout.json";
-import { isDesktopShell } from "../platform/local-directory";
 import { HelpLauncher } from "./help-launcher";
-
-// The download entry is gated on the desktop-shell probe, which reads a
-// preload-injected bridge that jsdom never has. Mock it so both platforms are
-// reachable from the same suite.
-vi.mock("../platform/local-directory", () => ({
-  isDesktopShell: vi.fn(() => false),
-}));
 
 // The UI language the mocked i18n instance reports; drives locale-aware links.
 const i18nState = vi.hoisted(() => ({ language: "en" }));
@@ -78,7 +70,6 @@ vi.mock("@multica/ui/components/ui/dropdown-menu", async () => {
 });
 
 beforeEach(() => {
-  vi.mocked(isDesktopShell).mockReturnValue(false);
   i18nState.language = "en";
 });
 
@@ -98,13 +89,10 @@ describe("HelpLauncher", () => {
     expect(screen.getByText("Server version 1.2.3")).toBeInTheDocument();
   });
 
-  // MUL-6462: after web onboarding the desktop download CTA was unreachable —
-  // no entry anywhere in the app, so users had to remember the URL or detour
-  // through the marketing site. The Help menu is the persistent home for it.
-  it("links to the download page on web", () => {
+  it("does not offer an upstream desktop installer as a BayClaw download", () => {
     render(<HelpLauncher />);
-    const link = screen.getByRole("link", { name: /Desktop app/ });
-    expect(link).toHaveAttribute("href", "https://multica.ai/download");
+    expect(screen.queryByRole("link", { name: /desktop/i })).not.toBeInTheDocument();
+    expect(document.querySelector('a[href="https://multica.ai/download"]')).toBeNull();
   });
 
   it.each([
@@ -114,19 +102,17 @@ describe("HelpLauncher", () => {
   ])("links Docs to the %s docs", (language, href) => {
     i18nState.language = language;
     render(<HelpLauncher />);
-    expect(screen.getByRole("link", { name: /Docs/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Multica upstream docs/i })).toHaveAttribute(
       "href",
       href,
     );
   });
 
-  // AppSidebar is shared: apps/desktop renders the same component tree. Without
-  // this gate the desktop app would offer to download the desktop app.
-  it("hides the download entry inside the desktop shell", () => {
-    vi.mocked(isDesktopShell).mockReturnValue(true);
+  it("identifies the linked changes as upstream references", () => {
     render(<HelpLauncher />);
-    expect(screen.queryByText("Desktop app")).not.toBeInTheDocument();
-    // The rest of the menu is unaffected by the gate.
-    expect(screen.getByText("Docs")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Multica upstream changes" })).toHaveAttribute(
+      "href",
+      "https://multica.ai/changelog",
+    );
   });
 });

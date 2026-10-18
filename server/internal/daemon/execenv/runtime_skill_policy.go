@@ -78,6 +78,7 @@ func prepareClaudeSkillSettings(envRoot string, disabled []RuntimeSkillRefForEnv
 		return "", nil
 	}
 	payload := map[string]any{
+		"env":            map[string]string{"ENABLE_TOOL_SEARCH": "false"},
 		"skillOverrides": overrides,
 		"permissions": map[string]any{
 			"deny": deny,

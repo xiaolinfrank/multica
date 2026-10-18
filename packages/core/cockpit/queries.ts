@@ -1,10 +1,13 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { invalidateIssueOperationBasis } from "../issues/operation-basis";
+import { invalidateCockpitArtifactIssueFacts } from "./artifact-queries";
 import type {
   CockpitBoard,
   CockpitIssueLink,
   CockpitMeeting,
   CockpitMeetingIssueLink,
+  CockpitMeetingWorkflowSummary,
   CockpitMeetingNodeLink,
   CockpitMilestone,
   CockpitNode,
@@ -16,6 +19,8 @@ import type {
 // moved — splitting it would mean six keys that always invalidate together.
 export const cockpitKeys = {
   all: (wsId: string) => ["cockpit", wsId] as const,
+  surfaces: (wsId: string) => [...cockpitKeys.all(wsId), "surfaces"] as const,
+  dashboard: (wsId: string) => [...cockpitKeys.all(wsId), "work-overview"] as const,
   board: (wsId: string) => [...cockpitKeys.all(wsId), "board"] as const,
   changes: (wsId: string) => [...cockpitKeys.all(wsId), "changes"] as const,
   snapshots: (wsId: string) => [...cockpitKeys.all(wsId), "snapshots"] as const,
@@ -26,7 +31,55 @@ export const cockpitKeys = {
     [...cockpitKeys.all(wsId), "meeting-scan", projectId, moduleId, nodeId] as const,
   nextCode: (wsId: string, parentId: string) =>
     [...cockpitKeys.all(wsId), "next-code", parentId] as const,
+  workflows: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-workflow"] as const,
+  workflow: (wsId: string, meetingId: string) => [...cockpitKeys.workflows(wsId), meetingId] as const,
+  workflowHistories: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-history"] as const,
+  workflowHistory: (wsId: string, meetingId: string) => [...cockpitKeys.workflowHistories(wsId), meetingId] as const,
+  tasks: (wsId: string) => [...cockpitKeys.all(wsId), "node-tasks"] as const,
+  nodeTasks: (wsId: string, nodeId: string) => [...cockpitKeys.tasks(wsId), nodeId] as const,
+  actions: (wsId: string) => [...cockpitKeys.all(wsId), "meeting-actions"] as const,
+  meetingActions: (wsId: string, meetingId: string) => [...cockpitKeys.actions(wsId), meetingId] as const,
+  meetingActionPages: (wsId: string, meetingId: string) => [...cockpitKeys.meetingActions(wsId, meetingId), "pages"] as const,
+  meetingAction: (wsId: string, meetingId: string, actionId: string) => [...cockpitKeys.meetingActions(wsId, meetingId), "detail", actionId] as const,
+  primaryNodes: (wsId: string) => [...cockpitKeys.all(wsId), "primary-nodes"] as const,
+  primaryNode: (wsId: string, issueId: string) => [...cockpitKeys.primaryNodes(wsId), issueId] as const,
+  issueActions: (wsId: string) => [...cockpitKeys.all(wsId), "issue-action-sources"] as const,
+  issueActionSources: (wsId: string, issueId: string) => [...cockpitKeys.issueActions(wsId), issueId] as const,
+  actionIssueSearch: (wsId: string, q: string, offset: number) => [...cockpitKeys.all(wsId), "action-issue-search", q, offset] as const,
 };
+
+export function cockpitMeetingWorkflowOptions(wsId: string, meetingId: string) {
+  return queryOptions({
+    queryKey: cockpitKeys.workflow(wsId, meetingId),
+    queryFn: ({ signal }) => api.getCockpitMeetingWorkflowSummary(wsId, meetingId, signal),
+    enabled: Boolean(wsId && meetingId),
+  });
+}
+
+/** Issue status/assignee changes affect the read model, but never its formal review decision. */
+export function invalidateCockpitWorkflowsForIssue(client: QueryClient, wsId: string, issueId: string) {
+  invalidateCockpitTaskFlow(client, wsId);
+  invalidateCockpitArtifactIssueFacts(client, wsId, issueId);
+  // An old review task may be outside the loaded page; only observed history queries will refetch.
+  void client.invalidateQueries({ queryKey: cockpitKeys.workflowHistories(wsId) });
+  for (const [queryKey, workflow] of client.getQueriesData<CockpitMeetingWorkflowSummary | null>({ queryKey: cockpitKeys.workflows(wsId) })) {
+    if (workflow?.minutes_issue?.id === issueId || workflow?.current_version?.review_issue.id === issueId
+      || workflow?.published_version?.review_issue.id === issueId) {
+      void client.invalidateQueries({ queryKey, exact: true });
+    }
+  }
+}
+
+/** Invalidating inactive pages marks them stale; only currently observed scopes refetch. */
+export function invalidateCockpitTaskFlow(client: QueryClient, wsId: string) {
+  invalidateIssueOperationBasis(client, wsId);
+  void client.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitKeys.dashboard(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitKeys.actions(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitKeys.primaryNodes(wsId) });
+  void client.invalidateQueries({ queryKey: cockpitKeys.issueActions(wsId) });
+}
 
 export function cockpitBoardOptions(wsId: string) {
   return queryOptions({
@@ -106,7 +159,7 @@ export function cockpitMeetingDestinationOptions(
       params.moduleId ?? "",
       params.nodeId ?? "",
     ),
-    queryFn: () => api.getCockpitMeetingDestination(params),
+    queryFn: () => api.getCockpitMeetingDestination(params, wsId),
     enabled: Boolean(wsId),
   });
 }
@@ -119,15 +172,11 @@ export function cockpitMeetingDestinationOptions(
 export function cockpitMeetingScanOptions(
   wsId: string,
   params: { projectId?: string; moduleId?: string; nodeId?: string | null } = {},
+  sessionId?: string,
 ) {
   return queryOptions({
-    queryKey: cockpitKeys.meetingScan(
-      wsId,
-      params.projectId ?? "",
-      params.moduleId ?? "",
-      params.nodeId ?? "",
-    ),
-    queryFn: () => api.scanCockpitMeetingFolders(params),
+    queryKey: [...cockpitKeys.meetingScan(wsId, params.projectId ?? "", params.moduleId ?? "", params.nodeId ?? ""), ...(sessionId ? ["import-session", sessionId] : [])],
+    queryFn: () => api.scanCockpitMeetingFolders(params, wsId),
     enabled: Boolean(wsId),
     // The folder changes behind the platform's back, so a scan is only ever
     // as good as the moment it ran.

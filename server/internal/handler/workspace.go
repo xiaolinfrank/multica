@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/service"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -210,7 +211,7 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	// workspace owners — may create additional workspaces. The frontend
 	// hides every "Create workspace" affordance via /api/config, but the
 	// 403 here is the only authoritative check.
-	if h.cfg.DisableWorkspaceCreation {
+	if h.cfg.DisableWorkspaceCreation || singleOwnerMode() {
 		writeError(w, http.StatusForbidden, "workspace creation is disabled for this instance")
 		return
 	}
@@ -1179,6 +1180,10 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		failWorkspaceDelete(w, r, workspaceID, "lock workspace", err)
 		return
 	}
+	if err := lockCockpitBindings(r.Context(), qtx, requester.WorkspaceID); err != nil {
+		failWorkspaceDelete(w, r, workspaceID, "lock cockpit workflows", err)
+		return
+	}
 	// Take a best-effort snapshot for post-commit daemon invalidation. Runtime
 	// registration does not participate in the workspace delete lock protocol,
 	// so PR1 retains the heartbeat lookup as the correctness fallback for a
@@ -1316,6 +1321,54 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 				_, err := qtx.DeleteIssueSourceContextsForWorkspace(ctx, requester.WorkspaceID)
 				return err
 			},
+		},
+		{
+			name: "delete fixed inputs and retain sanitized object cleanup intents",
+			run:  func() error { return service.DeleteCockpitInputsForWorkspace(ctx, qtx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete artifact and acceptance facts and retain object cleanup",
+			run:  func() error { return qtx.DeleteCockpitArtifactsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "cockpit meeting preparation",
+			run:  func() error { return qtx.DeleteCockpitMeetingPreparationByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete meeting directory preparation history",
+			run:  func() error { return qtx.DeleteCockpitDirectoryByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete meeting lifecycle facts",
+			run:  func() error { return qtx.DeleteCockpitLifecycleByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete cockpit creation intents",
+			run:  func() error { return qtx.DeleteCockpitCreationIntentsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete meeting actions",
+			run:  func() error { return qtx.DeleteCockpitMeetingActionsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete primary issue ownership",
+			run:  func() error { return qtx.DeleteCockpitIssuePrimaryByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete meeting minutes exports",
+			run:  func() error { return qtx.DeleteCockpitMinutesExportsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete meeting reviewer handoffs",
+			run:  func() error { return qtx.DeleteCockpitReviewerHandoffsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete meeting minutes versions",
+			run:  func() error { return qtx.DeleteCockpitMinutesVersionsByWorkspace(ctx, requester.WorkspaceID) },
+		},
+		{
+			name: "delete meeting minutes links",
+			run:  func() error { return qtx.DeleteCockpitMinutesLinksByWorkspace(ctx, requester.WorkspaceID) },
 		},
 		{
 			name: "delete issue roots",

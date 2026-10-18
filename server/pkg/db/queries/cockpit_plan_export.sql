@@ -1,0 +1,31 @@
+-- name: GetCockpitPlanExportLinks :one
+-- Export is explicit and bounded independently from on-screen previews.
+WITH RECURSIVE args AS (
+ SELECT sqlc.arg('workspace_id')::uuid AS ws,sqlc.narg('project_id')::uuid AS project,sqlc.narg('module_id')::uuid AS module
+), tree AS (
+ SELECT n.id,n.project_id AS project,n.module_id AS module,ARRAY[n.id] AS path,TRUE AS valid
+ FROM cockpit_node n,args x WHERE n.workspace_id=x.ws AND n.parent_id IS NULL
+ UNION ALL
+ SELECT n.id,COALESCE(n.project_id,t.project),COALESCE(n.module_id,t.module),t.path||n.id,
+ t.valid AND (n.project_id IS NULL OR t.project IS NULL OR n.project_id=t.project)
+ AND (n.module_id IS NULL OR (t.module IS NULL AND n.project_id IS NOT NULL))
+ FROM cockpit_node n JOIN tree t ON n.parent_id=t.id CROSS JOIN args x WHERE n.workspace_id=x.ws AND NOT n.id=ANY(t.path)
+), scoped AS MATERIALIZED (
+ SELECT n.id FROM cockpit_node n CROSS JOIN args x LEFT JOIN tree t ON t.id=n.id
+ WHERE n.workspace_id=x.ws AND (x.project IS NULL OR t.valid AND t.project=x.project
+ AND EXISTS(SELECT 1 FROM project p WHERE p.workspace_id=x.ws AND p.id=t.project))
+ AND (x.module IS NULL OR t.valid AND t.module=x.module
+ AND EXISTS(SELECT 1 FROM module m WHERE m.workspace_id=x.ws AND m.id=t.module AND m.project_id=t.project))
+), links AS (
+ SELECT p.node_id,p.issue_id FROM cockpit_issue_primary p JOIN scoped n ON n.id=p.node_id CROSS JOIN args x
+ WHERE p.workspace_id=x.ws AND p.issue_deleted_at IS NULL
+ UNION
+ SELECT l.node_id,l.issue_id FROM cockpit_node_issue l JOIN scoped n ON n.id=l.node_id CROSS JOIN args x WHERE l.workspace_id=x.ws
+), facts AS MATERIALIZED (
+ SELECT l.node_id,i.id AS issue_id,w.issue_prefix||'-'||i.number::text AS issue_identifier
+ FROM links l CROSS JOIN args x JOIN issue i ON i.id=l.issue_id AND i.workspace_id=x.ws JOIN workspace w ON w.id=x.ws
+), bounded AS (
+ SELECT node_id,issue_identifier,issue_id FROM facts ORDER BY node_id,issue_id LIMIT 250001
+)
+SELECT jsonb_build_object('issue_links',CASE WHEN (SELECT count(*) FROM facts)<=250000 THEN COALESCE((SELECT jsonb_agg(jsonb_build_object('node_id',b.node_id,'issue_identifier',b.issue_identifier) ORDER BY b.node_id,b.issue_id) FROM bounded b),'[]'::jsonb) ELSE '[]'::jsonb END,
+ 'issue_link_total',(SELECT count(*) FROM facts),'generated_at',CURRENT_TIMESTAMP)::jsonb AS payload;

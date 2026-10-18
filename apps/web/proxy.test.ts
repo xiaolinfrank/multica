@@ -50,6 +50,15 @@ function withoutRuntimeUpstreams(run: () => void) {
   }
 }
 
+describe("workspace entry preference", () => {
+  const session = { multica_logged_in: "1", last_workspace_slug: "acme" };
+  it("uses a supported cookie only for root entry and preserves issue deep links", () => {
+    expect(redirectLocation("/", { ...session, multica_workspace_start: "my-issues" })).toBe("https://app.multica.test/acme/my-issues");
+    expect(redirectLocation("/", { ...session, multica_workspace_start: "https://outside.example" })).toBe("https://app.multica.test/acme/cockpit");
+    expect(redirectLocation("/acme/issues/ABC-123?tab=activity", { ...session, multica_workspace_start: "cockpit" })).toBeNull();
+  });
+});
+
 describe("proxy legacy workspace route redirects", () => {
   const sessionCookies = {
     multica_logged_in: "1",
@@ -115,7 +124,7 @@ describe("proxy legacy workspace route redirects", () => {
 
   it("redirects app-host root URLs to the last workspace", () => {
     expect(redirectLocation("/", sessionCookies)).toBe(
-      "https://app.multica.test/acme/issues",
+      "https://app.multica.test/acme/cockpit",
     );
   });
 
@@ -274,7 +283,7 @@ describe("proxy root and locale handling", () => {
 
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe(
-      "https://app.multica.test/acme/issues",
+      "https://app.multica.test/acme/cockpit",
     );
   });
 

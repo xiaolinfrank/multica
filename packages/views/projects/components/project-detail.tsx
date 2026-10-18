@@ -18,6 +18,9 @@ import { pinListOptions } from "@multica/core/pins";
 import { useCreatePin, useDeletePin } from "@multica/core/pins";
 import { memberListOptions, agentListOptions } from "@multica/core/workspace/queries";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
+import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
+import { useCockpitCommandContext } from "../../cockpit/components/use-cockpit-command-context";
 import { openCreateIssueWithPreference, useIssuesScope } from "@multica/core/issues/stores";
 import { useRecentContextStore } from "@multica/core/chat";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -68,7 +71,6 @@ import {
 } from "../../layout/animated-right-sidebar";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -207,6 +209,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const descEditorRef = useRef<ContentEditorRef>(null);
   const isMobile = useIsMobile();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const deleteBasis = useQuery({ ...containerOperationBasisOptions(wsId, "project", projectId), enabled: deleteDialogOpen });
+  const canDeleteProject = !deleteBasis.isError && containerOperationAllowed(deleteBasis.data, "delete");
+  const deleteLock = useRef(false); const [deleteError, setDeleteError] = useState("");
+  const captureDelete = useCockpitCommandContext(JSON.stringify([wsId, projectId, deleteDialogOpen]));
   const [modulesManageOpen, setModulesManageOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(true);
@@ -279,15 +285,17 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     [project, updateProject],
   );
 
-  const handleDelete = useCallback(() => {
-    if (!project) return;
+  const handleDelete = () => {
+    if (!project || !canDeleteProject || deleteLock.current) return;
+    const isCurrent = captureDelete(); deleteLock.current = true; setDeleteError("");
     deleteProject.mutate(project.id, {
       onSuccess: () => {
-        toast.success(t(($) => $.detail.toast_project_deleted));
-        router.push(wsPaths.projects());
+        if (isCurrent()) { setDeleteDialogOpen(false); toast.success(t(($) => $.detail.toast_project_deleted)); router.push(wsPaths.projects()); }
       },
+      onError: (cause) => { if (isCurrent()) { setDeleteError(cause instanceof Error ? cause.message : String(cause)); void deleteBasis.refetch(); } },
+      onSettled: () => { deleteLock.current = false; },
     });
-  }, [project, deleteProject, router, wsPaths, t]);
+  };
 
   if (isLoading) {
     return (
@@ -758,7 +766,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
       {/* Delete confirmation */}
       {isWorkspaceAdmin && (
-        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => { if (!deleteLock.current) { setDeleteDialogOpen(open); if (open) setDeleteError(""); } }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>{t(($) => $.delete_dialog.title)}</AlertDialogTitle>
@@ -766,11 +774,13 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 {t(($) => $.delete_dialog.description)}
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <ContainerOperationRestriction basis={deleteBasis.isError ? undefined : deleteBasis.data} operation="delete" pending={deleteBasis.isPending} error={deleteBasis.isError} retry={() => void deleteBasis.refetch()} />
+            {deleteError && <p role="alert" className="text-caption text-destructive">{deleteError}</p>}
             <AlertDialogFooter>
-              <AlertDialogCancel>{t(($) => $.delete_dialog.cancel)}</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} className="bg-destructive text-white hover:bg-destructive/90">
+              <AlertDialogCancel disabled={deleteProject.isPending}>{t(($) => $.delete_dialog.cancel)}</AlertDialogCancel>
+              <Button type="button" variant="destructive" disabled={deleteProject.isPending || !canDeleteProject} onClick={handleDelete}>
                 {t(($) => $.delete_dialog.confirm)}
-              </AlertDialogAction>
+              </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

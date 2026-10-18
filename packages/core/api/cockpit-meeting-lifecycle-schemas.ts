@@ -1,0 +1,81 @@
+import { CockpitDirectoryCommandReceiptSchema } from "./cockpit-meeting-directory-schemas";
+import { z } from "zod";
+import { CockpitOccurrenceSchema, CockpitMeetingArchiveSchema, cockpitOccurrenceStates as occurrenceStates } from "./cockpit-meeting-common-schemas";
+import { CockpitPreparationCommandReceiptSchema } from "./cockpit-meeting-preparation-schemas";
+
+const id = z.string().min(1);
+const revision = z.number().int().positive();
+const count = z.number().int().nonnegative();
+const time = z.string().datetime({ offset: true });
+const nullableTime = time.nullable();
+const hash = z.string().regex(/^[a-f0-9]{64}$/);
+const capability = z.boolean().catch(false).default(false);
+export const CockpitMaterialsSchema = z.object({
+  workflow_revision: revision, ready: z.boolean(), confirmed_at: nullableTime,
+  confirmed_by: id.nullable(), released: z.boolean(),
+});
+
+export const CockpitMeetingLifecycleHeaderSchema = z.object({
+  workspace_id: id, meeting_id: id, lifecycle_revision: revision,
+  generated_at: time, occurrence: CockpitOccurrenceSchema, materials: CockpitMaterialsSchema.nullable(),
+  workflow_enabled: z.boolean(),
+  can_schedule: capability, can_end: capability,
+  can_correct_times: capability, can_confirm_materials: capability,
+  can_reopen: capability, can_unschedule: capability,
+  blocked_reasons: z.array(z.object({ action: z.string(), code: z.string() })).default([]),
+  archive: CockpitMeetingArchiveSchema.optional(),
+}).refine((value) => value.workflow_enabled === (value.materials !== null), "Materials confirmation requires the same meeting work package")
+  .transform((value) => occurrenceStates.has(value.occurrence.state) ? value : {
+    ...value, can_schedule: false, can_end: false, can_correct_times: false,
+    can_reopen: false, can_unschedule: false,
+  });
+
+export const CockpitLifecycleActionSchema = z.enum(["schedule", "end", "correct_times", "reopen", "unschedule", "materials", "reinstate", "archive", "unarchive"]);
+export const CockpitLifecycleReceiptSchema = z.object({
+  revision, issue_id: id.nullable(), request_hash: hash, reason: z.string(), previous_occurrence: CockpitOccurrenceSchema.nullable(),
+  occurrence: CockpitOccurrenceSchema.nullable(), materials: CockpitMaterialsSchema.nullable(),
+  archive: CockpitMeetingArchiveSchema.nullable().optional(), previous_archive: CockpitMeetingArchiveSchema.nullable().optional(),
+  preparation: CockpitPreparationCommandReceiptSchema.nullable().optional(), directory: CockpitDirectoryCommandReceiptSchema.nullable().optional(),
+});
+export const CockpitLifecycleCommandResultSchema = z.object({
+  workspace_id: id, meeting_id: id, command_key: z.string().uuid(), action: CockpitLifecycleActionSchema,
+  replayed: z.boolean(), receipt: CockpitLifecycleReceiptSchema, current: CockpitMeetingLifecycleHeaderSchema,
+}).refine((result) => {
+  const { receipt, current, action } = result;
+  if (current.workspace_id !== result.workspace_id || current.meeting_id !== result.meeting_id) return false;
+  if (["schedule", "end", "correct_times"].includes(action)) return receipt.occurrence !== null
+    && (action !== "correct_times" || Boolean(receipt.reason.trim() && receipt.previous_occurrence));
+  // Every reverse transition carries a reason and the withdrawn before-fact.
+  if (["reopen", "unschedule"].includes(action)) return receipt.occurrence !== null
+    && Boolean(receipt.reason.trim() && receipt.previous_occurrence);
+  if (action === "archive" || action === "unarchive") return Boolean(receipt.archive && receipt.previous_archive && receipt.reason.trim())
+    && (action === "archive" ? receipt.archive?.archived_at !== null : receipt.archive?.archived_at === null);
+  if (action === "reinstate") return receipt.occurrence?.state === "scheduled" && receipt.previous_occurrence?.state === "cancelled" && Boolean(receipt.reason.trim());
+  if (action === "materials") return receipt.materials !== null;
+  return true;
+}, "The command receipt must identify its exact result independently of current metadata");
+
+export const CockpitLifecycleCommandPageSchema = z.object({
+  workspace_id: id, meeting_id: id, page_size: z.number().int().min(1).max(100),
+  items: z.array(z.object({ command_key: z.string().uuid(), action: z.string(), actor_id: id, actor_type: z.string().default("member"), actor_name: z.string(),
+    created_at: time, revision, issue_id: id.nullable(), operation_id: id.nullable().optional(), effect_id: id.nullable().optional(), directory_operation_id: id.nullable().optional(), directory_step_id: id.nullable().optional() })).max(100),
+  total: count, next_cursor: id.nullable(),
+}).refine((page) => page.items.length <= page.page_size && page.items.length <= page.total
+  && new Set(page.items.map((item) => item.command_key)).size === page.items.length, "Command metadata page repeats or exceeds its items");
+
+export const CockpitLifecycleCommandDetailSchema = z.object({
+  workspace_id: id, meeting_id: id, command_key: z.string().uuid(), action: z.string(), actor_id: id, actor_type: z.string().default("member"), actor_name: z.string(),
+  created_at: time, revision, issue_id: id.nullable(), operation_id: id.nullable().optional(), effect_id: id.nullable().optional(), directory_operation_id: id.nullable().optional(), directory_step_id: id.nullable().optional(), receipt: CockpitLifecycleReceiptSchema,
+}).refine((value) => value.receipt.revision === value.revision
+  && value.receipt.issue_id === value.issue_id
+  && (!value.receipt.directory || !value.receipt.preparation && value.operation_id == null && value.effect_id == null
+    && value.receipt.directory.directory_operation_id === value.directory_operation_id
+    && value.receipt.directory.request_hash === value.receipt.request_hash
+    && value.receipt.directory.principal.actor_type === value.actor_type
+    && value.receipt.directory.principal.actor_id === value.actor_id
+    && (!value.directory_step_id || value.receipt.directory.directory_step_ids.includes(value.directory_step_id)))
+  && (!value.receipt.preparation || value.directory_operation_id == null && value.directory_step_id == null)
+  && (!value.receipt.preparation || value.receipt.preparation.operation_id === value.operation_id && value.receipt.preparation.effect_id === (value.effect_id ?? null))
+  && (!value.receipt.preparation || value.receipt.preparation.request_hash === value.receipt.request_hash
+    && (!["cancel", "preparation_dispose"].includes(value.action) || value.receipt.preparation.kind === "cancel_preparation")),
+"Historical command metadata and receipt must identify the same result");

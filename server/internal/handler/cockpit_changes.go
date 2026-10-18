@@ -2,7 +2,10 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -59,6 +62,26 @@ type CockpitPendingChangeResponse struct {
 	DecidedAt      *string `json:"decided_at"`
 	CreatedAt      string  `json:"created_at"`
 	UpdatedAt      string  `json:"updated_at"`
+	// The agent task that filed the proposal, stamped from the server-trusted
+	// X-Task-ID header. Empty when a person filed by hand (or the task row is
+	// gone), in which case SourceIssue is nil too.
+	SourceTaskID string `json:"source_task_id"`
+	// The issue the source task runs on, resolved server-side so the queue
+	// can link a reviewer straight to the requesting task's context.
+	SourceIssue *CockpitChangeSourceIssue `json:"source_issue,omitempty"`
+	// The human note recorded at decision time (a rejection reason fed back
+	// to the proposer) or the system reason when node deletion, import or
+	// restore withdraws still-pending rows. Empty when nothing was recorded.
+	DecisionNote string `json:"decision_note"`
+}
+
+// CockpitChangeSourceIssue is the task a proposal came from, as the queue
+// shows it: the issue reference people quote ("BIO-314") plus enough title
+// to recognise the task without opening it.
+type CockpitChangeSourceIssue struct {
+	ID    string `json:"id"`
+	Ref   string `json:"ref"`
+	Title string `json:"title"`
 }
 
 // CockpitChangeRequest is one proposal. Values arrive as text and are
@@ -103,8 +126,9 @@ type CockpitChangeApplyResponse struct {
 
 // pendingRowToResponse maps the list query's flat row (sqlc inlines `c.*`
 // rather than embedding the model, and the LEFT JOIN makes the node columns
-// nullable) onto the wire shape it shares with the single-row paths.
-func pendingRowToResponse(row db.ListCockpitPendingChangesRow) CockpitPendingChangeResponse {
+// nullable) onto the wire shape it shares with the single-row paths. The
+// issue prefix composes the human-readable reference reviewers quote.
+func pendingRowToResponse(row db.ListCockpitPendingChangesRow, prefix string) CockpitPendingChangeResponse {
 	resp := pendingChangeToResponse(db.CockpitPendingChange{
 		ID:             row.ID,
 		WorkspaceID:    row.WorkspaceID,
@@ -123,8 +147,41 @@ func pendingRowToResponse(row db.ListCockpitPendingChangesRow) CockpitPendingCha
 		DecidedAt:      row.DecidedAt,
 		CreatedAt:      row.CreatedAt,
 		UpdatedAt:      row.UpdatedAt,
+		SourceTaskID:   row.SourceTaskID,
+		DecisionNote:   row.DecisionNote,
 	}, row.NodeCode.String, row.NodeName.String)
+	if row.SourceIssueID.Valid {
+		resp.SourceIssue = &CockpitChangeSourceIssue{
+			ID:    uuidToString(row.SourceIssueID),
+			Ref:   issueRefWithPrefix(prefix, row.SourceIssueNumber.Int32),
+			Title: row.SourceIssueTitle.String,
+		}
+	}
 	return resp
+}
+
+func issueRefWithPrefix(prefix string, number int32) string {
+	return fmt.Sprintf("%s-%d", prefix, number)
+}
+
+// cockpitChangeSourceIssue resolves the issue a proposal's source task runs
+// on, for the single-row paths (preview, create response). Rows written
+// before attribution existed, or by hand, simply have no source and return
+// nil; a deleted task or issue degrades to nil the same way — the queue row
+// outlives its origin and renders without the chip.
+func (h *Handler) cockpitChangeSourceIssue(ctx context.Context, sourceTaskID pgtype.UUID, prefix string) *CockpitChangeSourceIssue {
+	if !sourceTaskID.Valid {
+		return nil
+	}
+	task, err := h.Queries.GetAgentTask(ctx, sourceTaskID)
+	if err != nil {
+		return nil
+	}
+	issue, err := h.Queries.GetIssue(ctx, task.IssueID)
+	if err != nil {
+		return nil
+	}
+	return &CockpitChangeSourceIssue{ID: uuidToString(issue.ID), Ref: issueRefWithPrefix(prefix, issue.Number), Title: issue.Title}
 }
 
 func pendingChangeToResponse(c db.CockpitPendingChange, nodeCode, nodeName string) CockpitPendingChangeResponse {
@@ -152,6 +209,8 @@ func pendingChangeToResponse(c db.CockpitPendingChange, nodeCode, nodeName strin
 		DecidedAt:      decidedAt,
 		CreatedAt:      timestampToString(c.CreatedAt),
 		UpdatedAt:      timestampToString(c.UpdatedAt),
+		SourceTaskID:   uuidToString(c.SourceTaskID),
+		DecisionNote:   c.DecisionNote,
 	}
 }
 
@@ -283,8 +342,13 @@ func cockpitNormalizeChangeValue(field string, raw string) (string, bool) {
 		if field == "progress" && (v < 0 || v > 100) {
 			return "", false
 		}
-		if field == "budget_amount" && math.Abs(v) >= 1e14 {
-			return "", false // NUMERIC(14,4): fourteen digits before the point.
+		if field == "budget_amount" {
+			// NUMERIC(14,4) has ten integer digits. A reviewed proposal must
+			// not be silently rounded into a different persisted amount.
+			rounded, _ := strconv.ParseFloat(strconv.FormatFloat(v, 'f', 4, 64), 64)
+			if math.Abs(v) >= 1e10 || rounded != v {
+				return "", false
+			}
 		}
 		return strconv.FormatFloat(v, 'f', -1, 64), true
 	}
@@ -297,11 +361,8 @@ func cockpitNormalizeChangeValue(field string, raw string) (string, bool) {
 // checks rather than trusting its own history.
 func cockpitChangeWriteParams(field, value string, params *db.UpdateCockpitNodeParams) bool {
 	setText := func(dst *pgtype.Text) {
-		if value == "" {
-			*dst = pgtype.Text{}
-		} else {
-			*dst = pgtype.Text{String: value, Valid: true}
-		}
+		// Empty is an explicit clear; NULL means omitted in the update query.
+		*dst = pgtype.Text{String: value, Valid: true}
 	}
 	setDate := func(dst *pgtype.Date, clear *bool) bool {
 		if value == "" {
@@ -360,7 +421,11 @@ func cockpitChangeWriteParams(field, value string, params *db.UpdateCockpitNodeP
 			params.ClearBudgetAmount = true
 			return true
 		}
-		v, err := strconv.ParseFloat(value, 64)
+		normalized, ok := cockpitNormalizeChangeValue("budget_amount", value)
+		if !ok {
+			return false
+		}
+		v, err := strconv.ParseFloat(normalized, 64)
 		if err != nil {
 			return false
 		}
@@ -414,6 +479,12 @@ func (h *Handler) ingestCockpitChange(
 	cc cockpitContext,
 	req CockpitChangeRequest,
 	actorType, actorLabel string,
+	sourceTaskID pgtype.UUID,
+	// requireReason is set for the task-credential path: an agent filing a
+	// proposal must say what is inconsistent and why the update is
+	// necessary — an unexplained diff is exactly what this queue exists to
+	// prevent. Humans stay optional.
+	requireReason bool,
 ) (db.CockpitPendingChange, string, string, error) {
 	field := strings.TrimSpace(req.Field)
 	if _, ok := cockpitChangeFields[field]; !ok {
@@ -437,7 +508,9 @@ func (h *Handler) ingestCockpitChange(
 
 	// A proposal that states the present is noise for a reviewer, and an
 	// ingest that re-sends the same observation (agents re-running a report)
-	// must be a no-op, not a queue refill.
+	// must be a no-op, not a queue refill. The no_change judgement comes
+	// first on purpose: a redundant observation is not a proposal, and it
+	// must not be failed for missing one.
 	current := cockpitNodeFieldValue(node, field)
 	if value == current {
 		return db.CockpitPendingChange{}, "skipped", "no_change", nil
@@ -446,6 +519,12 @@ func (h *Handler) ingestCockpitChange(
 	reason := ""
 	if req.Reason != nil {
 		reason = strings.TrimSpace(*req.Reason)
+	}
+	if len(reason) > 2000 {
+		return db.CockpitPendingChange{}, "rejected", "invalid_reason", nil
+	}
+	if requireReason && reason == "" {
+		return db.CockpitPendingChange{}, "rejected", "reason_required", nil
 	}
 	params := db.CreateCockpitPendingChangeParams{
 		WorkspaceID:    cc.workspaceID,
@@ -458,6 +537,7 @@ func (h *Handler) ingestCockpitChange(
 		Reason:         reason,
 		CreatedByType:  actorType,
 		CreatedByLabel: actorLabel,
+		SourceTaskID:   sourceTaskID,
 	}
 
 	// One open proposal per (node, field): a re-ingest replaces it, latest
@@ -472,10 +552,11 @@ func (h *Handler) ingestCockpitChange(
 			return open, "skipped", "duplicate", nil
 		}
 		updated, err := qtx.UpdateCockpitPendingChangeProposal(ctx, db.UpdateCockpitPendingChangeProposalParams{
-			ID:       open.ID,
-			OldValue: current,
-			NewValue: value,
-			Reason:   reason,
+			ID:           open.ID,
+			OldValue:     current,
+			NewValue:     value,
+			Reason:       reason,
+			SourceTaskID: sourceTaskID,
 		})
 		if err != nil {
 			return db.CockpitPendingChange{}, "", "", err
@@ -503,10 +584,11 @@ func (h *Handler) ingestCockpitChange(
 			return open, "skipped", "duplicate", nil
 		}
 		updated, err := qtx.UpdateCockpitPendingChangeProposal(ctx, db.UpdateCockpitPendingChangeProposalParams{
-			ID:       open.ID,
-			OldValue: current,
-			NewValue: value,
-			Reason:   reason,
+			ID:           open.ID,
+			OldValue:     current,
+			NewValue:     value,
+			Reason:       reason,
+			SourceTaskID: sourceTaskID,
 		})
 		if err != nil {
 			return db.CockpitPendingChange{}, "", "", err
@@ -545,8 +627,9 @@ func (h *Handler) ListCockpitChanges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]CockpitPendingChangeResponse, 0, len(rows))
+	prefix := h.getIssuePrefix(r.Context(), cc.workspaceID)
 	for _, row := range rows {
-		out = append(out, pendingRowToResponse(row))
+		out = append(out, pendingRowToResponse(row, prefix))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -570,10 +653,25 @@ func (h *Handler) CreateCockpitChange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	actorType, actorLabel := h.cockpitActor(r, cc)
-	change, status, reason, err := h.ingestCockpitChange(r.Context(), h.Queries, cc, req, actorType, actorLabel)
+	tx, err := h.TxStarter.Begin(r.Context())
+	if err != nil {
+		writeError(w, 500, "failed to file cockpit change")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	qtx := h.Queries.WithTx(tx)
+	if err = lockCockpitChangeWrites(r.Context(), qtx, cc); err != nil {
+		writeError(w, 500, "failed to lock cockpit changes")
+		return
+	}
+	change, status, reason, err := h.ingestCockpitChange(r.Context(), qtx, cc, req, actorType, actorLabel, h.commentSourceTaskID(r), r.Header.Get("X-Actor-Source") == "task_token")
 	if err != nil {
 		slog.Warn("ingestCockpitChange failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to file cockpit change")
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		writeError(w, 500, "failed to file cockpit change")
 		return
 	}
 	switch status {
@@ -583,6 +681,10 @@ func (h *Handler) CreateCockpitChange(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "cockpit node not found")
 		case "invalid_value":
 			writeError(w, http.StatusBadRequest, "invalid new_value for field "+req.Field)
+		case "reason_required":
+			writeError(w, http.StatusBadRequest, "agent proposals require a reason: what is inconsistent, and why the update is necessary")
+		case "invalid_reason":
+			writeError(w, http.StatusBadRequest, "reason exceeds the 2000 character limit")
 		default:
 			writeError(w, http.StatusBadRequest, "unknown or non-proposable field "+req.Field)
 		}
@@ -636,11 +738,17 @@ func (h *Handler) IngestCockpitChanges(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	qtx := h.Queries.WithTx(tx)
+	if err = lockCockpitChangeWrites(r.Context(), qtx, cc); err != nil {
+		writeError(w, 500, "failed to lock cockpit changes")
+		return
+	}
 
 	results := make([]CockpitIngestItem, 0, len(req.Changes))
 	queued := false
+	sourceTaskID := h.commentSourceTaskID(r)
+	requireReason := r.Header.Get("X-Actor-Source") == "task_token"
 	for _, item := range req.Changes {
-		change, status, reason, err := h.ingestCockpitChange(r.Context(), qtx, cc, item, actorType, actorLabel)
+		change, status, reason, err := h.ingestCockpitChange(r.Context(), qtx, cc, item, actorType, actorLabel, sourceTaskID, requireReason)
 		if err != nil {
 			slog.Warn("ingestCockpitChange failed", append(logger.RequestAttrs(r), "error", err)...)
 			writeError(w, http.StatusInternalServerError, "failed to file cockpit changes")
@@ -681,6 +789,10 @@ func (h *Handler) IngestCockpitChanges(w http.ResponseWriter, r *http.Request) {
 // is the truth of what it overwrote (old_value), so the history reads what
 // actually happened even then.
 func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "reviewed plan changes require a human actor")
+		return
+	}
 	cc, ok := h.requireCockpit(w, r)
 	if !ok {
 		return
@@ -740,6 +852,39 @@ func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(ctx)
 	qtx := h.Queries.WithTx(tx)
+	if err = lockCockpitChangeWrites(ctx, qtx, cc); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock plan for review")
+		return
+	}
+	change, err = qtx.LockCockpitChangeForReview(ctx, db.LockCockpitChangeForReviewParams{WorkspaceID: cc.workspaceID, ID: id})
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && change.Status != "pending" {
+		writeError(w, http.StatusConflict, "this change has already been decided")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read current proposal")
+		return
+	}
+	node, err = qtx.LockCockpitChangeNode(ctx, db.LockCockpitChangeNodeParams{WorkspaceID: cc.workspaceID, ID: change.NodeID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusConflict, "the node this change targets no longer exists")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read current plan field")
+		return
+	}
+	if token := r.Header.Get("If-Match"); token != "" {
+		reviewContext, e := cockpitChangeReviewContext(ctx, qtx, node)
+		if e != nil && !errors.Is(e, errCockpitChangeContextInvalid) {
+			writeError(w, http.StatusInternalServerError, "failed to read plan context")
+			return
+		}
+		if e != nil || token != cockpitChangeReviewToken(change, node, reviewContext) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "the proposal, plan field or project context changed; review the current values before applying", "code": "review_changed"})
+			return
+		}
+	}
 
 	// What the column says right now — the value apply will overwrite and the
 	// history will record, which is not necessarily what the proposal queued.
@@ -769,6 +914,7 @@ func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
 		OldValue:       current,
 		DecidedByType:  actorType,
 		DecidedByLabel: actorLabel,
+		DecisionNote:   "",
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -789,6 +935,9 @@ func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
 	nodeResp := cockpitNodeToResponse(updated)
 	h.publishCockpit(r, cc, "node", "updated", nodeResp)
 	h.publishCockpit(r, cc, "changes", "applied", pendingChangeToResponse(decided, node.Code, node.Name))
+	// Close the loop with the task that asked (best-effort; see
+	// IssueService.NoteCockpitChangeDecision).
+	h.IssueService.NoteCockpitChangeDecision(ctx, decided)
 	writeJSON(w, http.StatusOK, CockpitChangeApplyResponse{
 		Change: pendingChangeToResponse(decided, node.Code, node.Name),
 		Node:   nodeResp,
@@ -799,7 +948,7 @@ func (h *Handler) ApplyCockpitChange(w http.ResponseWriter, r *http.Request) {
 // Reject (a reviewer said no) and withdraw (the proposer took it back) are
 // the same write with a different word — the queue treats both as "open no
 // more", and neither ever edits a field.
-func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, status string) {
+func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, status, note string) {
 	cc, ok := h.requireCockpit(w, r)
 	if !ok {
 		return
@@ -836,6 +985,7 @@ func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, st
 		OldValue:       change.OldValue,
 		DecidedByType:  actorType,
 		DecidedByLabel: actorLabel,
+		DecisionNote:   note,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -855,13 +1005,64 @@ func (h *Handler) decideCockpitChange(w http.ResponseWriter, r *http.Request, st
 		resp.NodeCode, resp.NodeName = node.Code, node.Name
 	}
 	h.publishCockpit(r, cc, "changes", status, resp)
+	if status == "applied" || status == "rejected" {
+		// Close the loop with the task that asked: a decision no one reads
+		// is the same silence as no decision. Best-effort — the decision
+		// stands whether or not the note lands.
+		h.IssueService.NoteCockpitChangeDecision(ctx, decided)
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// CockpitChangeDecisionNoteRequest is the optional human note recorded with a
+// rejection and handed back to the proposer. Absent or empty bodies stay
+// valid: a one-click rejection is a complete decision.
+type CockpitChangeDecisionNoteRequest struct {
+	Note string `json:"note"`
+}
+
 func (h *Handler) RejectCockpitChange(w http.ResponseWriter, r *http.Request) {
-	h.decideCockpitChange(w, r, "rejected")
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "plan change decisions require a human actor")
+		return
+	}
+	note := ""
+	if r.Body != nil {
+		// The note is optional: an empty body is a complete one-click
+		// rejection, not a malformed one.
+		var req CockpitChangeDecisionNoteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		note = strings.TrimSpace(req.Note)
+	}
+	if len(note) > 500 {
+		writeError(w, http.StatusBadRequest, "note exceeds the 500 character limit")
+		return
+	}
+	h.decideCockpitChange(w, r, "rejected", note)
 }
 
 func (h *Handler) WithdrawCockpitChange(w http.ResponseWriter, r *http.Request) {
-	h.decideCockpitChange(w, r, "withdrawn")
+	// An agent may take back only what its own task filed; a stray or
+	// compromised worker must not be able to vacuum someone else's queue.
+	// Humans keep the existing freedom to withdraw any open proposal.
+	if isMachineCredentialActor(r) {
+		task, ok := h.taskFromRequestHeader(r)
+		cc, ccOK := h.requireCockpitReference(w, r)
+		if !ccOK {
+			return
+		}
+		id, idOK := parseUUIDOrBadRequest(w, chi.URLParam(r, "changeId"), "change id")
+		if !ok || !idOK {
+			return
+		}
+		change, err := h.Queries.GetCockpitPendingChange(r.Context(), db.GetCockpitPendingChangeParams{ID: id, WorkspaceID: cc.workspaceID})
+		if err != nil || !change.SourceTaskID.Valid || change.SourceTaskID != task.ID {
+			writeError(w, http.StatusForbidden, "agents may only withdraw proposals their own task filed")
+			return
+		}
+	}
+	h.decideCockpitChange(w, r, "withdrawn", "")
 }

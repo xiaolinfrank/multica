@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY cockpit_reviewer_handoff_from_issue_idx ON cockpit_reviewer_handoff (from_review_issue_id) WHERE from_review_issue_id IS NOT NULL;

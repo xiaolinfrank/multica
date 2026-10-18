@@ -1,0 +1,354 @@
+{
+  "phase": "F — Work overview and live pending work",
+  "generated_at": "2026-10-09T17:57:45.914461+00:00",
+  "runtime_host": "fosun_agent_3@10.35.182.2 (fosun-agent-3deMac-mini.local)",
+  "source_worktree": "/Users/fosun_main_agent/var/multica-cockpit-native",
+  "base_commit": "ce933e063",
+  "execution_boundary": {
+    "runtime_tests": "agent 3 only",
+    "coordinator": "source edits, Go compile-only, static TypeScript and diff checks",
+    "database": "multica_test schema988",
+    "redis": "127.0.0.1:16379",
+    "nas_export_roots": [],
+    "real_nas_used": false,
+    "real_agent_cli_used": false,
+    "deployed_to_existing_app_or_production": false
+  },
+  "go": {
+    "final_overview_service": {
+      "passed_parents": 5,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-overview-evidence/logs/overview-service-gated.log"
+    },
+    "http": {
+      "passed_parents": 1,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-overview-evidence/logs/overview-handler-release-race.log"
+    },
+    "cli": {
+      "passed_parents": 3,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-overview-evidence/logs/overview-cli-final-race.log"
+    },
+    "builtin_and_nas_sort_increment": {
+      "passed_parents": 4,
+      "skipped_parents": 0,
+      "log": "/tmp/multica-agent3-overview-evidence/logs/overview-service-fixture-retry.log"
+    },
+    "unique_final_parent_coverage": 12,
+    "notes": [
+      "Service5+HTTP1+CLI3+builtin3 passed; nas-sort in fixture retry duplicates one of service5.",
+      "Two initial service fixture errors (composite meeting-node key, explicit NAS export UUID) corrected; no skip accepted.",
+      "All Go execution wrapped by agent CLI guard."
+    ],
+    "artifacts": {
+      "api_sha256": "af17d30845a74b4348c0afd4496465249d3ac1ff1ecbdef1bf56474a676d3202",
+      "service_sha256": "40d53359e96dc182c55aeef4b7c98e6dd50ad7f02501fc113c6f132d21910d90",
+      "handler_sha256": "c9dd26361e2f71912a99dbde1901112c68350935cce34842274b14f4de27778d",
+      "cli_sha256": "d28ba872367cdfe662072515b7c23f4bdbfcf8494a37afb51ea4014b920c84bf"
+    }
+  },
+  "frontend": {
+    "final_next_production_build": "passed on agent3",
+    "coordinator_e2e_tsc": "passed; static only",
+    "core_broad": {
+      "files": 24,
+      "tests": 318,
+      "initial_passed": 310,
+      "initial_failed": 8,
+      "final_changed_cache_suites": {
+        "files": 2,
+        "passed": 25
+      },
+      "unresolved_baseline": {
+        "count": 3,
+        "file": "cockpit/directory.test.ts",
+        "reason": "Existing hard-coded Chinese collation order differs from agent3 default en-US locale. Product/tests unchanged by this phase.",
+        "explicit_zh_CN_retry_passed": 10
+      },
+      "final_distinct_passed_under_default_locale": 315
+    },
+    "views_broad": {
+      "files": 27,
+      "tests": 245,
+      "initial_passed": 243,
+      "initial_failed": 2,
+      "corrected_test_fixture_files": 2,
+      "final_targeted_passed": 35,
+      "final_distinct_passed": 245
+    },
+    "locale_parity": {
+      "files": 1,
+      "passed": 203
+    },
+    "distinct_total": {
+      "files": 52,
+      "tests": 766,
+      "feature_and_other_passing_assertions": 763,
+      "known_default_locale_baseline_failures": 3
+    },
+    "interpretation": "Coverage combines the broad run and narrower corrected reruns; this is not a claim that one full default-locale run passed.",
+    "fixes": [
+      "Exact workflow/WebSocket invalidation tests now include dashboard keys while retaining scope assertions.",
+      "Old interaction test explicitly uses non-leaf grouping for retained legacy reference creation.",
+      "Week view fixture uses today instead of today+2 crossing the week."
+    ],
+    "overlap_note": "The new views run had 218 passes: overview8 + scope3 + entry4 are already within views245; locale parity203 is added once. Core navigation10/API13/model7/store8 narrow runs are already within core318. Targeted cache25 and old views35 reruns replace prior results, not added counts.",
+    "warnings": "Some pre-existing React act warnings remain in old interaction tests; targeted results passed.",
+    "coordinator_static": {
+      "root_typecheck": "10 tasks passed",
+      "root_lint": "7 tasks passed; 0 errors; existing warnings retained",
+      "final_core_views_typecheck": "passed after final fixture and cache-expectation updates",
+      "targeted_lint": "passed for new and corrected component/core test files",
+      "go_vet": "service, handler, CLI and server passed; final CLI rechecked",
+      "sqlc": "generated after final section-gated query change",
+      "execution": "static or compile-only; no coordinator test services or tests executed"
+    }
+  },
+  "browser": {
+    "passed_scenarios": 6,
+    "original_five_log": "/tmp/multica-agent3-overview-evidence/logs/overview-e2e-final.log",
+    "final_overview_log": "/tmp/multica-agent3-overview-evidence/logs/overview-e2e-gated.log",
+    "scenarios": [
+      "foundation bindings/purposes/destinations",
+      "meeting action pagination/reuse/idempotent confirmation",
+      "minutes readiness/human review/publication",
+      "departed reviewer handoff",
+      "125-Issue L3 workbench",
+      "live Work overview"
+    ],
+    "overview_facts": {
+      "workspace_id": "05d1c7aa-b6d0-4f55-b3f2-fb5dfd95d4dc",
+      "alpha_id": "73f583ed-bf3f-4905-b081-cc3cecb3ddd5",
+      "beta_id": "af3e12a4-c7ea-4067-a235-b6b0afd040dc",
+      "empty_project_id": "042f8180-4315-465f-9eed-9703f569cb82",
+      "old_review_meeting_id": "85c1eb36-253c-4a2a-a65b-cf4fbeb87d35",
+      "old_action_id": "01a121ce-a52f-7bdb-af0e-55cb198ff3de",
+      "as_of": "2026-10-10",
+      "summary": {
+        "primary_issues": {
+          "total": 126,
+          "active": 116,
+          "unstarted": 90,
+          "started": 25,
+          "done": 5,
+          "closed": 5,
+          "unknown": 1,
+          "overdue": 116,
+          "blocked": 25,
+          "unassigned": 0
+        },
+        "my_primary_issues": {
+          "total": 96,
+          "active": 91,
+          "unstarted": 90,
+          "started": 0,
+          "done": 5,
+          "closed": 0,
+          "unknown": 1,
+          "overdue": 91,
+          "blocked": 0,
+          "unassigned": 0
+        },
+        "execution_nodes": {
+          "total": 2,
+          "with_active_issues": 2
+        },
+        "attention": {
+          "team_total": 120,
+          "mine_total": 92,
+          "team_by_kind": {
+            "action": 1,
+            "issue": 116,
+            "nas": 0,
+            "workflow": 3
+          },
+          "mine_by_kind": {
+            "action": 0,
+            "issue": 91,
+            "nas": 0,
+            "workflow": 1
+          }
+        }
+      },
+      "board_reads_before_source_navigation": 0
+    },
+    "assertions": [
+      "126 primary Issues;116 active;120 team next actions;92 mine;colleague26",
+      "All120 duties across5 pages with no duplicates",
+      "Preview8 cursor stays8;full25 begins without preview cursor",
+      "27 projects search at20/offset20;Alpha72team61mine/Beta48team31mine/empty0",
+      "2024 pending formal reviews remain despite review Issue done/reassigned;superseded draft remains",
+      "No full board request before source navigation",
+      "Actual action/review/Issue/recent-meeting sources and return context",
+      "Full queue page2 retained;dashboard scroll restored at850px height",
+      "Business overview still reachable",
+      "System dark theme screenshot;1100px and320px no horizontal overflow;four320px scope controls reachable",
+      "No fixture agent task dispatch"
+    ],
+    "narrow_metrics": {
+      "viewport": 320,
+      "outerScrollWidth": 320,
+      "cockpitLeft": 0,
+      "cockpitWidth": 320,
+      "cockpitClientWidth": 320,
+      "cockpitScrollWidth": 320
+    },
+    "iteration_notes": [
+      "Initial source-dialog assertion used wrong copy; corrected to actual old-source guidance.",
+      "Destination assertions now wait for route + workbench control before Back; homepage headings cannot prove navigation.",
+      "Final shorter preview keeps recent section above fold at1150px;scroll test uses850px to require real scrolling."
+    ],
+    "final_overview_duration_seconds": 7.9,
+    "original_five_and_first_final_overview_total_seconds": 29.3,
+    "timing_note": "Original five passed in the six-scenario final-layout batch; that batch had one scroll-test precondition failure after the preview shrank. Latest SQL-gated overview passed independently in7.9s."
+  },
+  "query_plan": {
+    "dataset": "126 primary Issues,120 attention rows;isolated test workspace;READ ONLY repeatable-read EXPLAIN ANALYZE BUFFERS JSON",
+    "before": {
+      "planning_ms": 10.442,
+      "execution_ms": 3.054,
+      "ctes": {
+        "CTE execution": {
+          "Actual Loops": 1,
+          "Actual Rows": 2,
+          "Actual Total Time": 0.085
+        },
+        "CTE primary_facts": {
+          "Actual Loops": 1,
+          "Actual Rows": 126,
+          "Actual Total Time": 0.397
+        },
+        "CTE attention": {
+          "Actual Loops": 1,
+          "Actual Rows": 120,
+          "Actual Total Time": 1.004
+        },
+        "CTE recent": {
+          "Actual Loops": 1,
+          "Actual Rows": 1,
+          "Actual Total Time": 0.008
+        }
+      },
+      "raw_plan": "/tmp/multica-agent3-overview-evidence/e2e-first/cockpit-work-overview-driv-e3a15-l-duties-and-business-views-chromium/attention-explain.json"
+    },
+    "after": {
+      "planning_ms": 10.176,
+      "execution_ms": 2.774,
+      "ctes": {
+        "CTE execution": {
+          "Actual Loops": 0,
+          "Actual Rows": 0,
+          "Actual Total Time": 0
+        },
+        "CTE primary_facts": {
+          "Actual Loops": 1,
+          "Actual Rows": 126,
+          "Actual Total Time": 0.404
+        },
+        "CTE attention": {
+          "Actual Loops": 1,
+          "Actual Rows": 120,
+          "Actual Total Time": 0.899
+        },
+        "CTE recent": {
+          "Actual Loops": 0,
+          "Actual Rows": 0,
+          "Actual Total Time": 0
+        }
+      },
+      "raw_plan": "/tmp/multica-agent3-overview-evidence/e2e-gated/cockpit-work-overview-driv-e3a15-l-duties-and-business-views-chromium/attention-explain.json"
+    },
+    "result": "Unused execution and recent CTE loops reduced from1 to0;primary/attention facts remain evaluated.",
+    "limit": "One small fixture measurement, not a large-production latency or complexity guarantee."
+  },
+  "cleanup": {
+    "database": {
+      "host": "fosun-agent-3deMac-mini.local",
+      "counts": {
+        "database": "multica_test",
+        "workspaces": "0",
+        "issues": "0",
+        "meetings": "0",
+        "actions": "0",
+        "primary_nodes": "0",
+        "queued_agent_tasks": "0",
+        "nas_exports": "0"
+      },
+      "migration": [
+        {
+          "version": "988_cockpit_action_issue_index"
+        }
+      ],
+      "original_app": {
+        "status": "ok",
+        "pid": 30604,
+        "commit": "unknown",
+        "started_at": "2026-10-08T04:39:41Z"
+      },
+      "original_web_status": 200,
+      "runtime_profile_mode": "600"
+    },
+    "processes": {
+      "stopped_owned_processes": [
+        {
+          "name": "api",
+          "pid": 14081
+        },
+        {
+          "name": "web",
+          "pid": 13265
+        }
+      ],
+      "test_ports_closed": [
+        18880,
+        13800
+      ],
+      "original_pids": [
+        "30604",
+        "30607"
+      ]
+    },
+    "redis": "PONG",
+    "retained": "Only isolated build artifacts and evidence; no review workspace or running temp instance."
+  },
+  "screenshots": [
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/work-overview-320.png",
+      "sha256": "a6a127eff872c863ff502d441393aae9ba977f7c18b1bece0f5a40d0e3e47dec"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/work-overview-business-access.png",
+      "sha256": "029926c56432123163569cecc9e96e133e8f36da3ec36c5c79984a5de6dd79d7"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/work-overview-dark.png",
+      "sha256": "d2dc251fa4fbacdecb3efbcdba3fca696ca9036acab7107a7f79218f1b05ad47"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/work-overview-live-home.png",
+      "sha256": "3cbbfcf45b0ed8ca1d2a1d46b7016246d397e6de4e0dad6d82d8e3e3dea03aa5"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/work-overview-narrow.png",
+      "sha256": "2c22291bbb13bd94dec43e2f16c66f4ee21c7b09025234b887bfce3e5f32b622"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/work-overview-team-home.png",
+      "sha256": "fea4ad090b56eabce7a4d1a049a64edfe9098ff372365b4aaaf5caf17310e5a4"
+    },
+    {
+      "path": "/Users/fosun_main_agent/var/multica-cockpit-native/docs/design/cockpit-native-2026-10-09/implementation/work-overview-team-queue.png",
+      "sha256": "c2c4ae93e91a0f63a743f85bc95d072bf119e40d30b5bfb965f16436be5859f6"
+    }
+  ],
+  "not_run": [
+    "No real NAS/SMB or NAS export E2E this phase.",
+    "No actual agent CLI/runtime dispatch.",
+    "No migration needed;schema remains988.",
+    "No full backend suite repeat;targeted overview/builtin/HTTP/CLI cover changes.",
+    "No local runtime/unit/integration/browser execution."
+  ],
+  "report_location": "docs/design/cockpit-native-2026-10-09/implementation/agent3-work-overview-validation.json",
+  "sensitive_data": "No database/Redis credentials, auth tokens, production configuration, or real business data are included. Fixture UUIDs and screenshots are synthetic test data."
+}

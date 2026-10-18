@@ -1,13 +1,19 @@
 "use client";
 
+import { invalidateCockpitDirectoryProjections } from "./meeting-directory-queries";
+
+import type { CockpitNodeCreate } from "../types/cockpit";
+
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { cockpitReadKeys } from "./read-queries";
 import { issueKeys } from "../issues/queries";
+import { CockpitUnconfirmedWriteError } from "./errors";
 import type {
   CockpitBoard,
   CockpitDirectoryEntry,
   CockpitMeetingImportItem,
-  CockpitMeetingPatch,
+  CockpitMeetingPatch, CockpitMeetingCreate,
   CockpitMeetingProvision,
   CockpitMilestonePatch,
   CockpitNodePatch,
@@ -54,6 +60,7 @@ import {
 export function useCreateCockpitSnapshot(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (label: string) => api.createCockpitSnapshot(label),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
@@ -64,6 +71,7 @@ export function useCreateCockpitSnapshot(wsId: string) {
 export function useRestoreCockpitSnapshot(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (snapshotId: string) => api.restoreCockpitSnapshot(snapshotId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
@@ -75,6 +83,7 @@ export function useRestoreCockpitSnapshot(wsId: string) {
 export function useDeleteCockpitSnapshot(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (snapshotId: string) => api.deleteCockpitSnapshot(snapshotId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cockpitKeys.snapshots(wsId) });
@@ -96,6 +105,7 @@ export function useDeleteCockpitSnapshot(wsId: string) {
 export function useCreateCockpitChange(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (body: { node: string; field: string; new_value: string; reason?: string }) =>
       api.createCockpitChange(body),
     onSuccess: () => {
@@ -109,6 +119,7 @@ export function useCreateCockpitChange(wsId: string) {
 export function useApplyCockpitChange(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (id: string) => api.applyCockpitChange(id),
     onSuccess: ({ node }) => {
       patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
@@ -120,7 +131,8 @@ export function useApplyCockpitChange(wsId: string) {
 export function useRejectCockpitChange(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.rejectCockpitChange(id),
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
+    mutationFn: ({ id, note }: { id: string; note?: string }) => api.rejectCockpitChange(id, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cockpitKeys.changes(wsId) });
     },
@@ -130,6 +142,7 @@ export function useRejectCockpitChange(wsId: string) {
 export function useWithdrawCockpitChange(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (id: string) => api.withdrawCockpitChange(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: cockpitKeys.changes(wsId) });
@@ -150,6 +163,7 @@ function useCockpitRowMutation<TVariables, TResult>(
 ) {
   const queryClient = useQueryClient();
   return useMutation<TResult, Error, TVariables, { previous: CockpitBoard | undefined }>({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn,
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey: cockpitKeys.board(wsId) });
@@ -171,6 +185,7 @@ function useCockpitRowMutation<TVariables, TResult>(
 export function useUpdateCockpit(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation<Awaited<ReturnType<typeof api.updateCockpit>>, Error, CockpitPatch, { previous: CockpitBoard | undefined }>({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (patch: CockpitPatch) => api.updateCockpit(patch),
     onMutate: async (patch: CockpitPatch) => {
       await queryClient.cancelQueries({ queryKey: cockpitKeys.board(wsId) });
@@ -195,8 +210,10 @@ export function useUpdateCockpit(wsId: string) {
 export function useCreateCockpitNode(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CockpitNodePatch & { code: string }) => api.createCockpitNode(body),
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
+    mutationFn: (body: CockpitNodeCreate) => api.createCockpitNode(body, wsId),
     onSuccess: (node) => {
+      if (node.replayed) { void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) }); return; }
       patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
     },
   });
@@ -214,9 +231,31 @@ export function useUpdateCockpitNode(wsId: string) {
   );
 }
 
+/** Binding can fail on ancestry or uniqueness constraints; show only the server's accepted mapping. */
+export function useSetCockpitNodeBinding(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, project_id, module_id }: { id: string; project_id: string | null; module_id: string | null }) => {
+      const node = await api.updateCockpitNode(id, { project_id, module_id });
+      if (node.id !== id || (node.project_id ?? null) !== project_id || (node.module_id ?? null) !== module_id) {
+        throw new CockpitUnconfirmedWriteError();
+      }
+      return node;
+    },
+    onSuccess: (node) => {
+      if (node.id) patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    },
+  });
+}
+
 export function useDeleteCockpitNode(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (id: string) => api.deleteCockpitNode(id),
     onSuccess: (_result, id) => {
       patchCockpitBoard(queryClient, wsId, (board) => removeCockpitNode(board, id));
@@ -227,6 +266,7 @@ export function useDeleteCockpitNode(wsId: string) {
 export function useSetCockpitNodeIssues(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: ({
       nodeId,
       issueIds,
@@ -240,6 +280,7 @@ export function useSetCockpitNodeIssues(wsId: string) {
       patchCockpitBoard(queryClient, wsId, (board) =>
         replaceCockpitNodeLinks(board, result.node_id, result.links),
       );
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, result.node_id) });
     },
   });
 }
@@ -247,10 +288,12 @@ export function useSetCockpitNodeIssues(wsId: string) {
 export function useDeleteCockpitNodeIssue(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: ({ nodeId, issueId }: { nodeId: string; issueId: string }) =>
       api.deleteCockpitNodeIssue(nodeId, issueId),
     onSuccess: (_result, { nodeId, issueId }) => {
       patchCockpitBoard(queryClient, wsId, (board) => removeCockpitNodeLink(board, nodeId, issueId));
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, nodeId) });
     },
   });
 }
@@ -258,6 +301,7 @@ export function useDeleteCockpitNodeIssue(wsId: string) {
 export function useCreateCockpitPayment(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: ({ nodeId, body }: { nodeId: string; body: CockpitPaymentPatch }) =>
       api.createCockpitPayment(nodeId, body),
     onSuccess: (payment) => {
@@ -282,6 +326,7 @@ export function useUpdateCockpitPayment(wsId: string) {
 export function useDeleteCockpitPayment(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (id: string) => api.deleteCockpitPayment(id),
     onSuccess: (_result, id) => {
       patchCockpitBoard(queryClient, wsId, (board) => removeCockpitPayment(board, id));
@@ -292,6 +337,7 @@ export function useDeleteCockpitPayment(wsId: string) {
 export function useCreateCockpitMilestone(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (body: CockpitMilestonePatch) => api.createCockpitMilestone(body),
     onSuccess: (milestone) => {
       patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitMilestone(board, milestone));
@@ -315,6 +361,7 @@ export function useUpdateCockpitMilestone(wsId: string) {
 export function useDeleteCockpitMilestone(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (id: string) => api.deleteCockpitMilestone(id),
     onSuccess: (_result, id) => {
       patchCockpitBoard(queryClient, wsId, (board) => removeCockpitMilestone(board, id));
@@ -325,9 +372,14 @@ export function useDeleteCockpitMilestone(wsId: string) {
 export function useCreateCockpitMeeting(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CockpitMeetingPatch) => api.createCockpitMeeting(body),
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
+    mutationFn: (body: CockpitMeetingCreate) => api.createCockpitMeeting(body, wsId),
     onSuccess: (meeting) => {
-      patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitMeeting(board, meeting));
+      if (meeting.replayed) { void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) }); return; }
+      patchCockpitBoard(queryClient, wsId, (board) => {
+        const updated = upsertCockpitMeeting(board, meeting);
+        return meeting.node_link ? { ...updated, meeting_nodes: [...updated.meeting_nodes.filter((link) => link.meeting_id !== meeting.id || link.node_id !== meeting.node_link?.node_id), meeting.node_link] } : updated;
+      });
     },
   });
 }
@@ -342,6 +394,7 @@ export function useCreateCockpitMeeting(wsId: string) {
 export function useUpsertCockpitDirectory(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (entries: CockpitDirectoryEntry[]) => api.upsertCockpitDirectory(entries),
     onSuccess: (directory) => {
       queryClient.setQueryData(cockpitKeys.directory(wsId), directory);
@@ -352,6 +405,7 @@ export function useUpsertCockpitDirectory(wsId: string) {
 export function useDeleteCockpitDirectoryEntry(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (entry: { party: string; name: string }) => api.deleteCockpitDirectoryEntry(entry),
     onSuccess: (directory) => {
       queryClient.setQueryData(cockpitKeys.directory(wsId), directory);
@@ -359,11 +413,50 @@ export function useDeleteCockpitDirectoryEntry(wsId: string) {
   });
 }
 
+/** Material editors keep their own drafts until a confirmed response; never publish an optimistic acknowledgement. */
+export function useSaveCockpitMeetingMaterials(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Pick<CockpitMeetingPatch, "note" | "nas_dir"> }) => {
+      const fields = { ...(patch.note !== undefined ? { note: patch.note } : {}), ...(patch.nas_dir !== undefined ? { nas_dir: patch.nas_dir } : {}) };
+      if (fields.note === undefined && fields.nas_dir === undefined) throw new CockpitUnconfirmedWriteError();
+      const meeting = await api.updateCockpitMeeting(id, fields);
+      if (meeting.id !== id || (fields.note !== undefined && meeting.note !== fields.note)
+        || (fields.nas_dir !== undefined && meeting.nas_dir !== fields.nas_dir)) throw new CockpitUnconfirmedWriteError();
+      return meeting;
+    },
+    onSuccess: (meeting, { id, patch }) => {
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
+      // A parallel field edit or deletion must survive this response's older, otherwise unrelated fields.
+      patchCockpitBoard(queryClient, wsId, (board) => ({ ...board, meetings: board.meetings.map((current) => current.id === id
+        ? { ...current, ...(patch.note !== undefined ? { note: meeting.note } : {}), ...(patch.nas_dir !== undefined ? { nas_dir: meeting.nas_dir } : {}) }
+        : current) }));
+    },
+    onSettled: async (_meeting, _error, { id, patch }) => {
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      // A later response to an earlier same-field save must converge on current server state.
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId), exact: true });
+      if (patch.nas_dir !== undefined) {
+        void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, id), exact: true });
+        await invalidateCockpitDirectoryProjections(queryClient, wsId, id);
+      }
+    },
+  });
+}
+
 export function useUpdateCockpitMeeting(wsId: string) {
+  const queryClient = useQueryClient();
   return useCockpitRowMutation(
     wsId,
-    ({ id, patch }: { id: string; patch: CockpitMeetingPatch }) =>
-      api.updateCockpitMeeting(id, patch),
+    async ({ id, patch }: { id: string; patch: CockpitMeetingPatch }) => {
+      try { return await api.updateCockpitMeeting(id, patch); }
+      finally {
+        if (patch.nas_dir !== undefined) {
+          void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, id), exact: true });
+          await invalidateCockpitDirectoryProjections(queryClient, wsId, id);
+        }
+      }
+    },
     ({ id, patch }, board) => ({
       ...board,
       meetings: board.meetings.map((m) => (m.id === id ? { ...m, ...patch } : m)),
@@ -375,6 +468,7 @@ export function useUpdateCockpitMeeting(wsId: string) {
 export function useDeleteCockpitMeeting(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: (id: string) => api.deleteCockpitMeeting(id),
     onSuccess: (_result, id) => {
       patchCockpitBoard(queryClient, wsId, (board) => removeCockpitMeeting(board, id));
@@ -394,12 +488,14 @@ export function useDeleteCockpitMeeting(wsId: string) {
 export function useProvisionCockpitMeeting(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: ({ id, body }: { id: string; body: CockpitMeetingProvision }) =>
-      api.provisionCockpitMeeting(id, body),
+      api.provisionCockpitMeeting(id, body, wsId),
     onSuccess: (result) => {
       patchCockpitBoard(queryClient, wsId, (board) =>
         replaceCockpitMeetingIssues(upsertCockpitMeeting(board, result.meeting), result.meeting.id, result.issues),
       );
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.workflow(wsId, result.meeting.id), exact: true });
       // The board is not the only cache that moved: an issue was filed into a
       // project whose lists are cached elsewhere.
       if (result.task) {
@@ -420,37 +516,28 @@ export function useProvisionCockpitMeeting(wsId: string) {
 export function useImportCockpitMeetingFolders(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => {
+      // Import returns only this command's effects. Another client can append
+      // links before the receipt arrives; never replace its relationship set.
+      for (const queryKey of [cockpitReadKeys.all(wsId), cockpitKeys.board(wsId), issueKeys.all(wsId), [...cockpitKeys.all(wsId), "meeting-scan"]]) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    },
     mutationFn: (body: {
       items: CockpitMeetingImportItem[];
+      expected_base_dir?: string;
       project_id?: string;
       module_id?: string;
       node_id?: string;
       create_task?: boolean;
-    }) => api.importCockpitMeetingFolders(body),
-    onSuccess: (result) => {
-      patchCockpitBoard(queryClient, wsId, (board) => {
-        let next = board;
-        for (const meeting of result.meetings) {
-          next = upsertCockpitMeeting(next, meeting);
-        }
-        for (const meeting of result.meetings) {
-          const links = result.issues.filter((link) => link.meeting_id === meeting.id);
-          if (links.length > 0) next = replaceCockpitMeetingIssues(next, meeting.id, links);
-        }
-        return next;
-      });
-      if (result.issues.length > 0) {
-        queryClient.invalidateQueries({ queryKey: issueKeys.all(wsId) });
-      }
-      // The folders that were just imported are no longer unrecorded.
-      queryClient.invalidateQueries({ queryKey: [...cockpitKeys.all(wsId), "meeting-scan"] });
-    },
+    }) => api.importCockpitMeetingFolders(body, wsId),
   });
 }
 
 export function useSetCockpitMeetingIssues(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: ({
       meetingId,
       issueIds,
@@ -468,9 +555,36 @@ export function useSetCockpitMeetingIssues(wsId: string) {
   });
 }
 
+export function useSetCockpitMeetingIssueRoles(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ meetingId, issueId, roles }: { meetingId: string; issueId: string; roles: string[] }) => {
+      const result = await api.setCockpitMeetingIssueRoles(meetingId, issueId, roles);
+      const link = result.links.find((entry) => entry.meeting_id === meetingId && entry.issue_id === issueId);
+      const expected = new Set(roles);
+      if (!link || link.roles.length !== expected.size || link.roles.some((role) => !expected.has(role))) {
+        throw new CockpitUnconfirmedWriteError();
+      }
+      return result;
+    },
+    onSuccess: (result, { meetingId }) => {
+      if (result.links.length > 0) {
+        patchCockpitBoard(queryClient, wsId, (board) =>
+          replaceCockpitMeetingIssues(board, meetingId, result.links),
+        );
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    },
+  });
+}
+
 export function useDeleteCockpitMeetingIssue(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: ({ meetingId, issueId }: { meetingId: string; issueId: string }) =>
       api.deleteCockpitMeetingIssue(meetingId, issueId),
     onSuccess: (_result, { meetingId, issueId }) => {
@@ -484,6 +598,7 @@ export function useDeleteCockpitMeetingIssue(wsId: string) {
 export function useSetCockpitMeetingNodes(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: ({
       meetingId,
       nodeIds,
@@ -504,6 +619,7 @@ export function useSetCockpitMeetingNodes(wsId: string) {
 export function useDeleteCockpitMeetingNode(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
     mutationFn: ({ meetingId, nodeId }: { meetingId: string; nodeId: string }) =>
       api.deleteCockpitMeetingNode(meetingId, nodeId),
     onSuccess: (_result, { meetingId, nodeId }) => {

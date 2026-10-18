@@ -1,0 +1,1 @@
+ALTER TABLE cockpit_meeting_work_package DROP CONSTRAINT IF EXISTS cockpit_work_package_pkey_idx;

@@ -37,13 +37,16 @@ import (
 )
 
 type TaskService struct {
-	Queries   *db.Queries
-	TxStarter TxStarter
-	Hub       *realtime.Hub
-	Bus       *events.Bus
-	Analytics analytics.Client
-	Metrics   *obsmetrics.BusinessMetrics
-	Wakeup    TaskWakeupNotifier
+	// Transaction-bound enqueues publish only after the owning command commits.
+	enqueueInTransaction bool
+	enqueueOverlay       *runtimeMCPOverlayData
+	Queries              *db.Queries
+	TxStarter            TxStarter
+	Hub                  *realtime.Hub
+	Bus                  *events.Bus
+	Analytics            analytics.Client
+	Metrics              *obsmetrics.BusinessMetrics
+	Wakeup               TaskWakeupNotifier
 	// Entitlements supplies Cloud's workspace-scoped issue-count instruction.
 	// Nil keeps self-hosted and isolated test services unlimited.
 	Entitlements entitlement.Provider
@@ -367,6 +370,9 @@ type runtimeMCPOverlayData struct {
 // Enqueue paths call this BEFORE inserting the queued row so the daemon cannot
 // claim a task during the network round-trip to Composio and miss the overlay.
 func (s *TaskService) buildRuntimeMCPOverlay(ctx context.Context, originatorUserID pgtype.UUID, agent db.Agent) runtimeMCPOverlayData {
+	if s != nil && s.enqueueOverlay != nil {
+		return *s.enqueueOverlay
+	}
 	if s == nil || s.Composio == nil {
 		return runtimeMCPOverlayData{}
 	}
@@ -1345,6 +1351,9 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 		task, err = s.Queries.CreateAgentTask(ctx, createParams)
 	}
 	if err != nil {
+		if isCockpitExecutionGateFailure(err) {
+			return db.AgentTaskQueue{}, ErrCockpitWorkflowExecutionBlocked
+		}
 		// A concurrent enqueue for the same (issue, agent) won the race and the
 		// unique index rejected this insert. That is benign — a sibling run
 		// already covers this target — so log it at debug and return a typed
@@ -1359,6 +1368,9 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 		return db.AgentTaskQueue{}, fmt.Errorf("create task: %w", err)
 	}
 
+	if s.enqueueInTransaction {
+		return task, nil
+	}
 	slog.Info("task enqueued",
 		"task_id", util.UUIDToString(task.ID),
 		"issue_id", util.UUIDToString(issue.ID),
@@ -1374,8 +1386,7 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 	// queued broadcast afterwards risks the dispatch event reaching clients
 	// before the queued one (rare but unsafe-by-construction). Publishing
 	// in the desired observe-order makes correctness independent of timing.
-	s.broadcastTaskEvent(ctx, protocol.EventTaskQueued, task)
-	s.NotifyTaskEnqueued(ctx, task)
+	s.FinalizeTaskEnqueued(ctx, task)
 	return task, nil
 }
 
@@ -1487,6 +1498,9 @@ func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, iss
 		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
 	})
 	if err != nil {
+		if isCockpitExecutionGateFailure(err) {
+			return db.AgentTaskQueue{}, ErrCockpitWorkflowExecutionBlocked
+		}
 		// A concurrent enqueue for the same (issue, agent) won the race and the
 		// unique index rejected this insert. That is benign — a sibling run
 		// already covers this target — so log it at debug and return a typed
@@ -1500,10 +1514,12 @@ func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, iss
 		return db.AgentTaskQueue{}, fmt.Errorf("create task: %w", err)
 	}
 
+	if s.enqueueInTransaction {
+		return task, nil
+	}
 	slog.Info("mention task enqueued", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(agentID), "is_leader_task", isLeader)
 	// See EnqueueTaskForIssue for ordering rationale.
-	s.broadcastTaskEvent(ctx, protocol.EventTaskQueued, task)
-	s.NotifyTaskEnqueued(ctx, task)
+	s.FinalizeTaskEnqueued(ctx, task)
 	return task, nil
 }
 
@@ -2629,34 +2645,45 @@ func (s *TaskService) OpenMikaOnboardingChat(ctx context.Context, session db.Cha
 // status and broadcasts task:cancelled, matching CancelTask and RerunIssue.
 func (s *TaskService) CancelTasksForIssue(ctx context.Context, issueID pgtype.UUID) error {
 	var cancelled []db.AgentTaskQueue
-	// The cancel and its settlement commit together: a settlement that failed
-	// after the cancel committed could never be repaired, because the outbox
-	// scan excludes a comment whose covering task is terminal and already holds
-	// the receipt. It would neither replay nor settle — it would sit in the
-	// partial index forever.
 	if err := s.runInTx(ctx, func(qtx *db.Queries) error {
 		var err error
-		cancelled, err = qtx.CancelAgentTasksByIssue(ctx, issueID)
-		if err != nil {
-			return err
-		}
-		return SettleTerminalTaskState(ctx, qtx, cancelled...)
+		cancelled, err = s.CancelIssueTasksInTx(ctx, qtx, issueID)
+		return err
 	}); err != nil {
 		return err
 	}
-	for _, t := range cancelled {
-		s.captureTaskCancelled(ctx, t)
-		s.broadcastTaskEvent(ctx, protocol.EventTaskCancelled, t)
+	s.FinalizeIssueTaskCancellations(ctx, "", cancelled)
+	return nil
+}
+
+// CancelIssueTasksInTx lets issue deletion commit its ownership check, task
+// cancellation and terminal settlement together. It emits no external effects.
+func (s *TaskService) CancelIssueTasksInTx(ctx context.Context, qtx *db.Queries, issueID pgtype.UUID) ([]db.AgentTaskQueue, error) {
+	cancelled, err := qtx.CancelAgentTasksByIssue(ctx, issueID)
+	if err != nil {
+		return nil, err
 	}
-	// Reconcile once per distinct agent instead of once per cancelled row:
-	// cancelling an issue often stops several tasks owned by the same agent,
-	// and each reconcile is a DB write plus a status broadcast. Matches
-	// CancelTasksForAgent's single-reconcile shape (D#3319).
+	if err := SettleTerminalTaskState(ctx, qtx, cancelled...); err != nil {
+		return nil, err
+	}
+	return cancelled, nil
+}
+
+// FinalizeIssueTaskCancellations runs only after commit. A known workspace must
+// be supplied when deletion has removed the issue used to resolve event scope.
+func (s *TaskService) FinalizeIssueTaskCancellations(ctx context.Context, workspaceID string, cancelled []db.AgentTaskQueue) {
+	for _, task := range cancelled {
+		s.captureTaskCancelled(ctx, task)
+		if workspaceID == "" {
+			s.broadcastTaskEvent(ctx, protocol.EventTaskCancelled, task)
+		} else {
+			s.publishTaskEvent(protocol.EventTaskCancelled, workspaceID, task)
+		}
+	}
 	for _, agentID := range distinctAgentIDs(cancelled) {
 		s.ReconcileAgentStatus(ctx, agentID)
 	}
 	s.notifyTasksFinished(cancelled)
-	return nil
 }
 
 // distinctAgentIDs returns each agent id appearing in the cancelled rows once,
@@ -2808,6 +2835,9 @@ type TaskCancellationActor struct {
 // CancelTaskOptions carries what the caller knows about the client that asked
 // for the cancellation.
 type CancelTaskOptions struct {
+	// CockpitPreparation commits a fixed preparation effect with the canonical
+	// cancellation. Only the meeting service can construct this typed context.
+	CockpitPreparation *cockpitPreparationTaskCancel
 	// ClientSupportsDraftRestore is true when the caller can recover a prompt
 	// through the durable draft-restore path (#5219). Only such a client may be
 	// handed a deferred outcome; for anyone else the empty-transcript judgment
@@ -2888,6 +2918,9 @@ func (s *TaskService) CancelTaskWithReason(ctx context.Context, taskID pgtype.UU
 // CancelTaskWithResult cancels a single task and returns any chat-specific
 // cleanup result needed by user-facing callers.
 func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UUID, opts CancelTaskOptions) (*CancelTaskResult, error) {
+	if opts.CockpitPreparation != nil && (opts.QueuedOnly || !opts.UserInitiated || s.TxStarter == nil) {
+		return nil, errors.New("preparation cancellation requires an explicit user command and a transaction, not a queued-chat edit")
+	}
 	// Both fields are persisted onto the cancelled row's TEXT columns below, and
 	// at least one caller interpolates an externally-supplied path into
 	// ErrorMessage. A NUL in either rolls the cancellation back and leaves the
@@ -2909,6 +2942,7 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 	var (
 		task                 db.AgentTaskQueue
 		cancelledChatMessage *CancelledChatMessageResult
+		preparationObserved  bool
 		err                  error
 	)
 	if opts.QueuedOnly {
@@ -2941,6 +2975,19 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 		// other connection while the pointer still names the previous turn's
 		// session, and a queued follow-up can resume that older session.
 		err = s.runInTx(ctx, func(qtx *db.Queries) error {
+			if opts.CockpitPreparation != nil {
+				observed, err := opts.CockpitPreparation.Before(ctx, qtx, taskID)
+				if err != nil {
+					return err
+				}
+				if observed != nil {
+					if observed.ID != taskID {
+						return errors.New("preparation receipt does not identify the requested task")
+					}
+					task, preparationObserved = *observed, true
+					return nil
+				}
+			}
 			if err := lockChatSessionForTaskWrite(ctx, qtx, taskID); err != nil {
 				return err
 			}
@@ -2964,6 +3011,20 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 			} else {
 				cancelled, err = qtx.CancelAgentTask(ctx, taskID)
 			}
+			if errors.Is(err, pgx.ErrNoRows) && opts.CockpitPreparation != nil {
+				observed, readErr := qtx.GetAgentTask(ctx, taskID)
+				if readErr != nil {
+					return readErr
+				}
+				if observed.Status != "completed" && observed.Status != "failed" && observed.Status != "cancelled" {
+					return errors.New("preparation cancellation did not confirm a terminal task")
+				}
+				if err := opts.CockpitPreparation.After(ctx, qtx, observed, false); err != nil {
+					return err
+				}
+				task, preparationObserved = observed, true
+				return nil
+			}
 			if err != nil {
 				return err
 			}
@@ -2973,16 +3034,21 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 			if err := SettleTerminalTaskState(ctx, qtx, cancelled); err != nil {
 				return err
 			}
-			if !cancelled.ChatSessionID.Valid {
-				return nil
+			if cancelled.ChatSessionID.Valid {
+				if err := qtx.AdvanceCancelledChatSessionPointer(ctx, cancelled.ID); err != nil {
+					return err
+				}
 			}
-			return qtx.AdvanceCancelledChatSessionPointer(ctx, cancelled.ID)
+			if opts.CockpitPreparation != nil {
+				return opts.CockpitPreparation.After(ctx, qtx, cancelled, true)
+			}
+			return nil
 		})
 	}
 	if errors.Is(err, ErrTaskNoLongerQueued) {
 		return nil, err
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) && opts.CockpitPreparation == nil {
 		existing, err := s.Queries.GetAgentTask(ctx, taskID)
 		if err != nil {
 			return nil, fmt.Errorf("cancel task: %w", err)
@@ -2991,6 +3057,9 @@ func (s *TaskService) CancelTaskWithResult(ctx context.Context, taskID pgtype.UU
 	}
 	if err != nil {
 		return nil, fmt.Errorf("cancel task: %w", err)
+	}
+	if preparationObserved {
+		return &CancelTaskResult{Task: task}, nil
 	}
 
 	slog.Info("task cancelled", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(task.IssueID))
@@ -3557,10 +3626,11 @@ func (s *TaskService) claimTask(ctx context.Context, agentID, runtimeID pgtype.U
 		t0 = time.Now()
 		reclaimCheckAfter = t0.Add(claimResponseRecoveryWindow + ReclaimCheckHintSafetyMargin)
 		task, err := qtx.ClaimAgentTask(ctx, db.ClaimAgentTaskParams{
-			AgentID:          agentID,
-			RuntimeID:        claimRuntimeID,
-			PrepareLeaseSecs: prepareLeaseDuration.Seconds(),
-			RuntimeStaleSecs: RuntimeClaimFreshnessSeconds,
+			SupportsFixedInputManifests: inputClaimSupportsManifest(ctx),
+			AgentID:                     agentID,
+			RuntimeID:                   claimRuntimeID,
+			PrepareLeaseSecs:            prepareLeaseDuration.Seconds(),
+			RuntimeStaleSecs:            RuntimeClaimFreshnessSeconds,
 		})
 		claimAgentMs = time.Since(t0).Milliseconds()
 		if err != nil {
@@ -3675,10 +3745,11 @@ func (s *TaskService) ClaimTaskForRuntime(ctx context.Context, runtimeID pgtype.
 	if due := s.ReclaimCheck.DueRuntimeIDs(ctx, []string{runtimeKey}, checkStarted); len(due) > 0 {
 		reclaimCheckAfter := time.Now().Add(claimResponseRecoveryWindow + ReclaimCheckHintSafetyMargin)
 		stale, err := s.Queries.ReclaimStaleDispatchedTaskForRuntime(ctx, db.ReclaimStaleDispatchedTaskForRuntimeParams{
-			RuntimeID:         runtimeID,
-			ClaimRecoverySecs: claimResponseRecoveryWindow.Seconds(),
-			PrepareLeaseSecs:  prepareLeaseDuration.Seconds(),
-			RuntimeStaleSecs:  RuntimeClaimFreshnessSeconds,
+			SupportsFixedInputManifests: inputClaimSupportsManifest(ctx),
+			RuntimeID:                   runtimeID,
+			ClaimRecoverySecs:           claimResponseRecoveryWindow.Seconds(),
+			PrepareLeaseSecs:            prepareLeaseDuration.Seconds(),
+			RuntimeStaleSecs:            RuntimeClaimFreshnessSeconds,
 		})
 		if err == nil {
 			s.ReclaimCheck.MarkChecked(
@@ -3993,11 +4064,12 @@ func (s *TaskService) ClaimTasksForRuntimes(ctx context.Context, runtimeIDs []pg
 	if len(dueKeys) > 0 {
 		reclaimCheckAfter = time.Now().Add(claimResponseRecoveryWindow + ReclaimCheckHintSafetyMargin)
 		reclaimed, err = s.Queries.ReclaimStaleDispatchedTasksForRuntimes(ctx, db.ReclaimStaleDispatchedTasksForRuntimesParams{
-			RuntimeIds:        uniqueIDs,
-			ClaimRecoverySecs: claimResponseRecoveryWindow.Seconds(),
-			PrepareLeaseSecs:  prepareLeaseDuration.Seconds(),
-			RuntimeStaleSecs:  RuntimeClaimFreshnessSeconds,
-			MaxTasks:          int32(maxTasks),
+			SupportsFixedInputManifests: inputClaimSupportsManifest(ctx),
+			RuntimeIds:                  uniqueIDs,
+			ClaimRecoverySecs:           claimResponseRecoveryWindow.Seconds(),
+			PrepareLeaseSecs:            prepareLeaseDuration.Seconds(),
+			RuntimeStaleSecs:            RuntimeClaimFreshnessSeconds,
+			MaxTasks:                    int32(maxTasks),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("reclaim stale dispatched tasks: %w", err)
@@ -4199,6 +4271,16 @@ func (s *TaskService) maybeLogClaimSlow(agentID pgtype.UUID, outcome string, sta
 // StartTask transitions a dispatched task to running.
 // Issue status is NOT changed here — the agent manages it via the CLI.
 func (s *TaskService) StartTask(ctx context.Context, taskID pgtype.UUID, supplementSupport ...bool) (*db.AgentTaskQueue, error) {
+	current, err := s.Queries.GetAgentTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if current.InputManifestVersionID.Valid {
+		return nil, inputError("input_preparation_required", "A recorded input manifest requires an exact runtime start claim.")
+	}
+	if err := GuardCockpitIssueExecution(ctx, s.Queries, current.IssueID); err != nil {
+		return nil, err
+	}
 	enableTaskSupplement := len(supplementSupport) > 0 && supplementSupport[0]
 	task, err := s.Queries.StartAgentTaskWithSupplement(ctx, db.StartAgentTaskWithSupplementParams{
 		TaskID:               taskID,
@@ -4224,9 +4306,15 @@ func (s *TaskService) StartTaskForClaim(ctx context.Context, claim db.LockAgentT
 	}
 	defer tx.Rollback(ctx)
 	qtx := s.Queries.WithTx(tx)
-	task, err := qtx.LockAgentTaskStartClaim(ctx, claim)
+	task, err := lockTaskInputStartPrincipal(ctx, qtx, claim)
 	if err != nil {
 		return nil, fmt.Errorf("lock task start claim: %w", err)
+	}
+	if err := guardTaskInputPreparation(ctx, qtx, task); err != nil {
+		return nil, err
+	}
+	if err := GuardCockpitIssueExecution(ctx, qtx, task.IssueID); err != nil {
+		return nil, err
 	}
 	replay := task.Status == "running"
 	if !replay {
@@ -5644,7 +5732,7 @@ var ErrRerunInvokeNotAllowed = errors.New("rerun: operator not allowed to invoke
 // caller who can see the issue but cannot invoke its private agent cannot use
 // rerun as a back door — and a blocked rerun mutates nothing. Pass nil only
 // from trusted internal callers (tests, backfill) that have already gated.
-func (s *TaskService) RerunIssue(ctx context.Context, issueID pgtype.UUID, sourceTaskID pgtype.UUID, triggerCommentID pgtype.UUID, actorUserID pgtype.UUID, canInvoke func(agent db.Agent) bool) (*db.AgentTaskQueue, error) {
+func (s *TaskService) RerunIssue(ctx context.Context, issueID pgtype.UUID, sourceTaskID pgtype.UUID, triggerCommentID pgtype.UUID, actorUserID pgtype.UUID, canInvoke func(agent db.Agent) bool, expectedManifest ...pgtype.UUID) (*db.AgentTaskQueue, error) {
 	issue, err := s.Queries.GetIssue(ctx, issueID)
 	if err != nil {
 		return nil, fmt.Errorf("load issue: %w", err)
@@ -5757,79 +5845,95 @@ func (s *TaskService) RerunIssue(ctx context.Context, issueID pgtype.UUID, sourc
 		}
 	}
 
-	// Clear only the tasks that have not begun executing. Those are the rows the
-	// fresh enqueue would collide with under
-	// idx_one_pending_task_per_issue_agent_v2, and replacing them costs no work
-	// while keeping the new run attributed to the rerunning member (MUL-4302 §5)
-	// rather than inheriting whoever created the pending row.
-	//
-	// A running / waiting_local_directory task is deliberately left alone: an
-	// agent is executing in it. Neither status appears in that unique index, so
-	// the enqueue below inserts a queued row BEHIND the active one, and
-	// ClaimAgentTask's per-(issue, agent) serialization holds it there until the
-	// active run reaches a terminal state. Rerun used to cancel these too, so
-	// asking an agent for another pass silently killed the pass it was still
-	// working on; interrupting an in-flight run is what CancelTask /
-	// `multica issue cancel-task` is for.
-	clearPendingSlot := func() int {
-		var cancelled []db.AgentTaskQueue
-		// Atomic with the cancel: a pending coordinator task can already hold a
-		// recovery receipt, and nothing downstream could repair a settlement
-		// that failed after this committed.
-		cerr := s.runInTx(ctx, func(qtx *db.Queries) error {
-			var err error
-			cancelled, err = qtx.CancelPendingTasksByIssueAndAgentInThread(ctx, db.CancelPendingTasksByIssueAndAgentInThreadParams{
-				ThreadCommentID: triggerCommentID,
-				IssueID:         issueID,
-				AgentID:         agentID,
-			})
-			if err != nil {
-				return err
-			}
-			return SettleTerminalTaskState(ctx, qtx, cancelled...)
-		})
-		if cerr != nil {
-			slog.Warn("rerun: cancel pending tasks failed",
-				"issue_id", util.UUIDToString(issueID),
-				"agent_id", util.UUIDToString(agentID),
-				"error", cerr,
-			)
-		}
-		for _, t := range cancelled {
-			s.captureTaskCancelled(ctx, t)
-			s.ReconcileAgentStatus(ctx, t.AgentID)
-			s.broadcastTaskEvent(ctx, protocol.EventTaskCancelled, t)
-		}
-		return len(cancelled)
+	if len(expectedManifest) > 1 || sourceTaskID.Valid && len(expectedManifest) != 0 {
+		return nil, inputError("invalid_input", "A source Run retry keeps its original inputs; a new Run may instead confirm the current manifest.")
 	}
-	cancelledCount := clearPendingSlot()
-
-	// A manual rerun is a NEW direct_human trigger attributed to the rerunning
-	// member, not the original run's human (MUL-4302 §5); actorUserID carries them.
-	// sourceTaskID is the rerun lineage: it rides the CreateAgentTask insert
-	// (rerun_of_task_id) so the queued event / daemon claim never sees a NULL
-	// lineage, and it stays distinct from system-retry's retry_of_task_id (§5).
-	task, err := s.enqueueRerunTask(ctx, issue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, actorUserID, sourceTaskID, rerunOrigin)
-	if pendingSlotTakenErr(err) {
-		// The clear above and this enqueue are separate commits, so a system
-		// retry created by a concurrent FailTask can take the pending slot in
-		// between. CreateRetryTask yields the slot when it is already occupied,
-		// but it cannot yield to a row that does not exist yet, so a retry
-		// committing inside this window gets there first. Clear once more and
-		// retry: the deliberate human action is the one that should hold the
-		// slot. Bounded to a single extra attempt — a second collision would mean
-		// something is enqueueing in a loop, which is worth surfacing rather than
-		// spinning on.
-		slog.Info("issue rerun: pending slot taken concurrently, reclaiming",
-			"issue_id", util.UUIDToString(issueID),
-			"agent_id", util.UUIDToString(agentID),
-		)
-		cancelledCount += clearPendingSlot()
-		task, err = s.enqueueRerunTask(ctx, issue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, actorUserID, sourceTaskID, rerunOrigin)
+	if len(expectedManifest) != 0 && !actorUserID.Valid {
+		return nil, inputError("permission_revoked", "Explicit new input selection requires a human authorization.")
+	}
+	if s.TxStarter == nil {
+		return nil, fmt.Errorf("rerun requires canonical transactions")
+	}
+	// Build optional remote credentials before acquiring the Issue/manifest
+	// locks. Enqueue uses this exact prepared overlay without network I/O.
+	targetAgent, err := s.Queries.GetAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	attributeSource := attribution.SourceDelegation
+	if issue.AssigneeType.String == "agent" && issue.AssigneeID == agentID {
+		attributeSource = attribution.SourceCommentSource
+	}
+	attr := s.attributionForIssueTask(ctx, issue, triggerCommentID, attributeSource, actorUserID)
+	attr, err = s.applyAttributionFallback(ctx, attr, targetAgent)
+	if err != nil {
+		return nil, err
+	}
+	overlay := s.buildRuntimeMCPOverlay(ctx, attr.UserID, targetAgent)
+	var task db.AgentTaskQueue
+	var cancelled []db.AgentTaskQueue
+	// The deliberate rerun may contend with an automatic retry. Each bounded
+	// attempt rolls cancellation back if enqueue loses its slot; it never
+	// commits a cancellation without the newly authorized Run.
+	for attempt := 0; attempt < 2; attempt++ {
+		cancelled = nil
+		err = s.runInTx(ctx, func(qtx *db.Queries) error {
+			if _, e := qtx.LockWorkspaceForChatSessionCreate(ctx, issue.WorkspaceID); e != nil {
+				return e
+			}
+			if _, e := qtx.LockCockpitInputManifestIssue(ctx, db.LockCockpitInputManifestIssueParams{WorkspaceID: issue.WorkspaceID, ID: issueID}); e != nil {
+				return inputConvertError(e)
+			}
+			if e := qtx.LockCockpitInputManifestSelection(ctx, db.LockCockpitInputManifestSelectionParams{WorkspaceID: util.UUIDToString(issue.WorkspaceID), IssueID: util.UUIDToString(issueID)}); e != nil {
+				return e
+			}
+			currentIssue, e := qtx.GetIssue(ctx, issueID)
+			if e != nil {
+				return e
+			}
+			if !sourceTaskID.Valid && (currentIssue.AssigneeID != issue.AssigneeID || currentIssue.AssigneeType != issue.AssigneeType) {
+				return inputError("revision_conflict", "The Issue executor changed before this Run was authorized.")
+			}
+			if len(expectedManifest) != 0 {
+				head, e := qtx.ReadLockedCockpitRunInputManifest(ctx, db.ReadLockedCockpitRunInputManifestParams{WorkspaceID: issue.WorkspaceID, IssueID: issueID})
+				if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+					return e
+				}
+				selected := pgtype.UUID{}
+				if e == nil {
+					selected = head.CurrentVersionID
+				}
+				if selected != expectedManifest[0] {
+					return inputError("input_manifest_changed", "The input manifest changed. Review the current selection before authorizing a new Run.")
+				}
+			}
+			cancelled, e = qtx.CancelPendingTasksByIssueAndAgentInThread(ctx, db.CancelPendingTasksByIssueAndAgentInThreadParams{ThreadCommentID: triggerCommentID, IssueID: issueID, AgentID: agentID})
+			if e != nil {
+				return e
+			}
+			if e = SettleTerminalTaskState(ctx, qtx, cancelled...); e != nil {
+				return e
+			}
+			native := &TaskService{Queries: qtx, enqueueInTransaction: true, enqueueOverlay: &overlay,
+				FeatureFlags: s.FeatureFlags, Entitlements: s.Entitlements, Composio: s.Composio, Metrics: s.Metrics, Analytics: s.Analytics}
+			task, e = native.enqueueRerunTask(ctx, currentIssue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, actorUserID, sourceTaskID, rerunOrigin)
+			return e
+		})
+		if !pendingSlotTakenErr(err) {
+			break
+		}
 	}
 	if err != nil {
 		return nil, err
 	}
+	for _, old := range cancelled {
+		s.captureTaskCancelled(ctx, old)
+		s.ReconcileAgentStatus(ctx, old.AgentID)
+		s.broadcastTaskEvent(ctx, protocol.EventTaskCancelled, old)
+	}
+	s.FinalizeTaskEnqueued(ctx, task)
+	cancelledCount := len(cancelled)
+
 	slog.Info("issue rerun enqueued",
 		"task_id", util.UUIDToString(task.ID),
 		"issue_id", util.UUIDToString(issueID),
@@ -7157,6 +7261,13 @@ func priorityToInt(p string) int32 {
 func (s *TaskService) NotifyTaskEnqueued(ctx context.Context, task db.AgentTaskQueue) {
 	s.captureTaskQueued(ctx, task)
 	s.notifyTaskAvailable(task)
+}
+
+// FinalizeTaskEnqueued preserves the ordinary post-insert ordering for callers
+// that own a surrounding transaction: broadcast, metrics, then daemon wakeup.
+func (s *TaskService) FinalizeTaskEnqueued(ctx context.Context, task db.AgentTaskQueue) {
+	s.broadcastTaskEvent(ctx, protocol.EventTaskQueued, task)
+	s.NotifyTaskEnqueued(ctx, task)
 }
 
 // NotifyTaskFinished invalidates a runtime's empty-claim verdict and emits a

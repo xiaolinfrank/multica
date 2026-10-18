@@ -1,0 +1,99 @@
+{
+  "recorded_at": "2026-10-10T18:27:24.014806+00:00",
+  "host": "fosun-agent-3deMac-mini.local",
+  "environment": "isolated ~/var/multica-dev-test; multica_test schema9064; Redis16379",
+  "scope": "Artifact verified reader, signed downloads, anonymous namespace protection and provider privacy gate. Component/integration records below are targeted; final browser and scale acceptance are separate.",
+  "resident_unchanged": {
+    "backend_commit": "7b670e5b75cf43caa3278a54e6971350704a26ef",
+    "backend_pid": 33181,
+    "frontend_commit": "e4c8845a847b84dc800da65ef7b7a3e405d90843",
+    "frontend_pid": 41313,
+    "schema": 994
+  },
+  "runtime_checks": {
+    "storage": {
+      "unique_parents": 50,
+      "result": "pass",
+      "logs": [
+        "artifact-private-storage.log",
+        "artifact-private-storage-final.log"
+      ],
+      "note": "Final narrow rerun adds case-insensitive namespace alias to the same parent; not additional parents."
+    },
+    "capture": {
+      "unique_parents": 11,
+      "result": "pass",
+      "log": "artifact-private-capture.log"
+    },
+    "download_capability": {
+      "unique_parents": 3,
+      "result": "pass",
+      "log": "artifact-capability.log"
+    },
+    "request_timeout": {
+      "unique_parents": 5,
+      "result": "pass",
+      "log": "artifact-timeout.log"
+    },
+    "file_http": {
+      "unique_parents": 6,
+      "result": "pass",
+      "logs": [
+        "artifact-private-handler.log",
+        "artifact-private-handler-retry.log"
+      ],
+      "initial_failure": "New test expected503 but existing feature-disabled helper correctly returned403/private_storage_required; corrected expectation, product response unchanged."
+    },
+    "artifact_http_other": {
+      "unique_parents": 5,
+      "result": "pass",
+      "logs": [
+        "artifact-handler-second.log",
+        "artifact-handler-positive.log"
+      ],
+      "initial_fixture_failures": [
+        "Missing explicit node code",
+        "Fixture-created Issue did not advance workspace issue_counter; synchronized fixture counter without relaxing production uniqueness."
+      ]
+    },
+    "frontend": {
+      "artifact_cases": 21,
+      "formal_issue_cases": 4,
+      "locale_cases": 203,
+      "result": "pass",
+      "logs": [
+        "artifact-views-first.log",
+        "artifact-views-retry.log",
+        "artifact-private-views.log",
+        "artifact-file-picker-views.log",
+        "artifact-formal-issue-views.log"
+      ],
+      "note": "17 unique artifact cases validated across initial and three targeted instrument-only corrections, plus four new private-provider/file-picker cases. Locale suite overlaps earlier runs."
+    }
+  },
+  "contracts": [
+    "Downloaded bytes are spooled once and verified before HTTP headers/body; range requests use the same verified spool.",
+    "Capabilities expire after60seconds, bind actor/workspace/artifact/version/hash, and recheck current membership and immutable descriptor after I/O.",
+    "Anonymous LocalStorage ServeFile denies artifact namespace, normalized/encoded/case aliases, directory listings and symlink paths. Authorized GetReader remains usable; ordinary regular attachment reads retain behavior.",
+    "S3 and unknown providers fail closed for artifact file capture/download because the current configuration cannot confirm private object access; text artifacts remain a domain capability.",
+    "Download-link is metadata-only and does not assert current storage availability."
+  ],
+  "limitations": [
+    "No real NAS or Agent was used for these checks.",
+    "No cloud bucket/CDN policy was changed or remotely probed.",
+    "Domain header/private submission recovery tests and full assembled API/browser acceptance are tracked separately.",
+    "The app cannot secure an operator-created separate static web server that exposes its local upload directory."
+  ],
+  "source_sha256": {
+    "server/internal/artifactcapture/capture.go": "195146632e9c531c4918b03f537798a06575162bdd44087118796e7a63068a1c",
+    "server/internal/artifactcapture/verified_reader.go": "155312160425c0836e658149331970f62b78c30ff54a0bdf411e3fe6aa4c7192",
+    "server/internal/artifactdownload/capability.go": "d8145babf69314d60658eba94e8d39e69d2be5cab1fe0fa9cd672b986cfa549b",
+    "server/internal/storage/local.go": "570f622ad3a6be9a9991128627a6a1a87d5304da4fce8b4212104333ba554fe5",
+    "server/internal/storage/local_public.go": "78d53d02d8e3c1fd9e8647bfe91987b33fbb8411646497036351a8c96d593285",
+    "server/internal/storage/private_artifacts.go": "b962c2bb7c5a66d0746319c5df96bd747b04e17d9e6cde1d031aac621c9f44db",
+    "server/internal/handler/cockpit_artifact_files.go": "b981b247af15cce2d3bfad32d93c68eac6eb7884bf62cba5a9b246f6ed4a6f07",
+    "server/internal/middleware/request_timeout.go": "e9ddda5bb0cec5ad0f7ed04512c65195377004c08f7a0cf4165785b0b758c58b"
+  },
+  "remote_log_directory": "/Users/fosun_agent_3/var/multica-dev-test/logs",
+  "rollback_boundary": "After any private artifact file is created, restoring an API without the new anonymous namespace protection can expose retained files through /uploads. Preserve the storage protection and artifact database guards during application rollback; otherwise stop file service and use an explicitly reviewed backup recovery or forward fix. The current resident release has no new artifact records and was not changed by this validation."
+}

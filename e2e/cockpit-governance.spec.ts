@@ -1,0 +1,61 @@
+import { expect, test } from "@playwright/test";
+import { TestApiClient } from "./fixtures";
+
+test.use({ viewport: { width: 1600, height: 1100 }, locale: "en-US", timezoneId: "Asia/Shanghai", trace: "retain-on-failure" });
+
+test("pages real proposals and requires a fresh review after the current value changes", async ({ page }, testInfo) => {
+  test.setTimeout(150_000);
+  const api = new TestApiClient(); const run = `${Date.now().toString(36)}-${process.pid}`;
+  await api.login(`e2e-governance-${run}@multica.ai`, "Governance fixture reviewer");
+  let ownsWorkspace = false;
+  try {
+    const workspace = await api.createWorkspace(`Governance ${run}`, `e2e-governance-${run}`); ownsWorkspace = true;
+    await api.markUserOnboarded(); await api.updateCockpitBoard({ title: "Human review and plan governance" });
+    const project = await api.createProject("Governed programme"), module = await api.createModule(project.id, "Delivery evidence");
+    const root = await api.createCockpitNode({ code: "GOV-P", name: project.title, project_id: project.id });
+    const branch = await api.createCockpitNode({ code: "GOV-M", name: module.title, parent_id: root.id, module_id: module.id });
+    const nodes = [];
+    for (let index = 0; index < 31; index++) nodes.push(await api.createCockpitNode({ code: `GOV-${index}`, name: `Governed execution ${String(index).padStart(2, "0")}`, parent_id: branch.id }));
+    await api.seedCockpitProposals(nodes.map((node) => ({ node: node.id, field: "progress", new_value: "80", reason: "Fixed human review fixture" })));
+    const token = api.getToken(); if (!token) throw new Error("Fixture token missing");
+    await page.addInitScript((value) => { localStorage.setItem("multica_token", value); localStorage.setItem("multica:chat:isOpen", "false"); document.cookie = "multica-locale=en; path=/"; }, token);
+    const reads: string[] = [];
+    page.on("request", (request) => { if (request.method() === "GET") reads.push(new URL(request.url()).pathname); });
+    const firstResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/cockpit/changes/page" && !new URL(response.url()).searchParams.get("cursor"));
+    await page.goto(`/${workspace.slug}/cockpit?tab=governance&project=${project.id}&module=${module.id}`, { waitUntil: "domcontentloaded" });
+    const first = await (await firstResponse).json(); expect(first.items).toHaveLength(25); expect(first.total).toBe(31);
+    const governance = page.getByRole("region", { name: "Governance", exact: true });
+    await expect(governance).toBeVisible();
+    const secondResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/cockpit/changes/page" && new URL(response.url()).searchParams.get("cursor") === first.next_cursor);
+    await governance.getByRole("button", { name: "Next page", exact: true }).click();
+    const second = await (await secondResponse).json(); expect(second.items).toHaveLength(6); expect(second.total).toBe(31);
+    expect(new Set([...first.items, ...second.items].map((row: { id: string }) => row.id)).size).toBe(31);
+    await page.screenshot({ path: testInfo.outputPath("governance-proposals-second-page.png") });
+    const target = nodes[0]!;
+    await governance.getByRole("textbox", { name: "Search change proposals", exact: true }).fill(target.name);
+    const row = governance.getByRole("listitem").filter({ hasText: target.name });
+    await expect(row).toHaveCount(1);
+    await row.getByRole("button", { name: "Review change", exact: true }).click();
+    const review = page.getByRole("dialog", { name: "Review proposed changes", exact: true });
+    await expect(review.getByText("Current value", { exact: true })).toBeVisible();
+    await expect(review.getByRole("button", { name: "Apply reviewed changes", exact: true })).toBeEnabled();
+    await api.patchOwnedCockpitNode(target.id, { progress: 40 });
+    const rejected = page.waitForResponse((response) => response.request().method() === "POST" && /\/changes\/[^/]+\/apply$/.test(new URL(response.url()).pathname));
+    await review.getByRole("button", { name: "Apply reviewed changes", exact: true }).click();
+    expect((await rejected).status()).toBe(409);
+    await expect(review.getByText("The proposal or current value changed again. Review a new preview before continuing.", { exact: true })).toBeVisible();
+    expect((await api.getOwnedCockpitNode(target.id)).progress).toBe(40);
+    await review.getByRole("button", { name: "Review remaining changes again", exact: true }).click();
+    await expect(review.getByText("40", { exact: true })).toBeVisible();
+    await expect(review.getByRole("button", { name: "Apply reviewed changes", exact: true })).toBeDisabled();
+    await review.getByRole("checkbox", { name: "I confirm replacing the changed current values shown above.", exact: true }).check();
+    await page.screenshot({ path: testInfo.outputPath("governance-reviewed-current-value.png") });
+    const accepted = page.waitForResponse((response) => response.request().method() === "POST" && /\/changes\/[^/]+\/apply$/.test(new URL(response.url()).pathname));
+    await review.getByRole("button", { name: "Apply reviewed changes", exact: true }).click();
+    const acknowledgement = await accepted; expect(acknowledgement.ok()).toBe(true);
+    expect(await acknowledgement.json()).toMatchObject({ change: { old_value: "40", new_value: "80", status: "applied" } });
+    await expect(review).toHaveCount(0); expect((await api.getOwnedCockpitNode(target.id)).progress).toBe(80);
+    expect(reads.filter((path) => path === "/api/cockpit" || path === "/api/cockpit/changes")).toEqual([]);
+    expect(await api.getWorkspaceAgentRunCount()).toBe(0);
+  } finally { if (ownsWorkspace) await api.cleanupCreatedWorkspace(); }
+});

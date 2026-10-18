@@ -127,12 +127,18 @@ func (q *Queries) ListIssueGraphDependencies(ctx context.Context, workspaceID pg
 }
 
 const listIssueGraphExecNodeIssues = `-- name: ListIssueGraphExecNodeIssues :many
+WITH links AS (
+ SELECT node_id,issue_id FROM cockpit_node_issue WHERE workspace_id=$1
+ UNION
+ SELECT node_id,issue_id FROM cockpit_issue_primary WHERE workspace_id=$1 AND node_id IS NOT NULL
+)
 SELECT ni.node_id, ni.issue_id
-FROM cockpit_node_issue ni
-JOIN cockpit_node n ON n.id = ni.node_id
-JOIN cockpit_node p2 ON p2.id = n.parent_id
-JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
-WHERE ni.workspace_id = $1
+FROM links ni
+JOIN cockpit_node n ON n.id = ni.node_id AND n.workspace_id=$1
+LEFT JOIN cockpit_node p2 ON p2.id = n.parent_id AND p2.workspace_id=n.workspace_id
+LEFT JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.workspace_id=n.workspace_id
+WHERE (p1.id IS NOT NULL AND p1.parent_id IS NULL)
+ OR EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=n.workspace_id AND p.node_id=n.id)
 `
 
 type ListIssueGraphExecNodeIssuesRow struct {
@@ -165,10 +171,12 @@ func (q *Queries) ListIssueGraphExecNodeIssues(ctx context.Context, workspaceID 
 const listIssueGraphExecNodeMeetings = `-- name: ListIssueGraphExecNodeMeetings :many
 SELECT mn.meeting_id, mn.node_id
 FROM cockpit_meeting_node mn
-JOIN cockpit_node n ON n.id = mn.node_id
-JOIN cockpit_node p2 ON p2.id = n.parent_id
-JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
+JOIN cockpit_node n ON n.id = mn.node_id AND n.workspace_id=mn.workspace_id
+LEFT JOIN cockpit_node p2 ON p2.id = n.parent_id AND p2.workspace_id=n.workspace_id
+LEFT JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.workspace_id=n.workspace_id
 WHERE mn.workspace_id = $1
+ AND ((p1.id IS NOT NULL AND p1.parent_id IS NULL)
+  OR EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=n.workspace_id AND p.node_id=n.id))
 `
 
 type ListIssueGraphExecNodeMeetingsRow struct {
@@ -176,7 +184,7 @@ type ListIssueGraphExecNodeMeetingsRow struct {
 	NodeID    pgtype.UUID `json:"node_id"`
 }
 
-// Meeting↔L3-node links (the meeting's agenda rows on the gantt), rendered as
+// Meeting↔L3-node links, rendered as
 // meeting-kind edges from the meeting to the execution node.
 func (q *Queries) ListIssueGraphExecNodeMeetings(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphExecNodeMeetingsRow, error) {
 	rows, err := q.db.Query(ctx, listIssueGraphExecNodeMeetings, workspaceID)
@@ -201,9 +209,11 @@ func (q *Queries) ListIssueGraphExecNodeMeetings(ctx context.Context, workspaceI
 const listIssueGraphExecNodes = `-- name: ListIssueGraphExecNodes :many
 SELECT n.id, n.code, n.name, n.status, n.progress, n.start_date, n.end_date, n.owner
 FROM cockpit_node n
-JOIN cockpit_node p2 ON p2.id = n.parent_id
-JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.parent_id IS NULL
+LEFT JOIN cockpit_node p2 ON p2.id = n.parent_id AND p2.workspace_id=n.workspace_id
+LEFT JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.workspace_id=n.workspace_id
 WHERE n.workspace_id = $1
+ AND ((p1.id IS NOT NULL AND p1.parent_id IS NULL)
+  OR EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=n.workspace_id AND p.node_id=n.id))
 ORDER BY n.position ASC, n.code ASC
 `
 
@@ -218,10 +228,8 @@ type ListIssueGraphExecNodesRow struct {
 	Owner     string      `json:"owner"`
 }
 
-// Level-3 cockpit nodes (the execution gantt's leaf rows) join the graph as
-// execution nodes. Depth is resolved through the parent chain rather than a
-// column: an L3 row's grandparent is a root L1 row (parent_id IS NULL), which
-// excludes L1/L2 rows above and any deeper L4 rows below.
+// Retain the existing depth-three projection and include explicitly owned
+// execution leaves even when display grouping adds another tree level.
 func (q *Queries) ListIssueGraphExecNodes(ctx context.Context, workspaceID pgtype.UUID) ([]ListIssueGraphExecNodesRow, error) {
 	rows, err := q.db.Query(ctx, listIssueGraphExecNodes, workspaceID)
 	if err != nil {
@@ -255,6 +263,10 @@ const listIssueGraphMeetingIssues = `-- name: ListIssueGraphMeetingIssues :many
 SELECT cmi.meeting_id, cmi.issue_id, cmi.role
 FROM cockpit_meeting_issue cmi
 WHERE cmi.workspace_id = $1
+UNION
+SELECT a.meeting_id,a.issue_id,'action'::text AS role
+FROM cockpit_meeting_action a
+WHERE a.workspace_id=$1 AND a.status='accepted' AND a.issue_id IS NOT NULL
 `
 
 type ListIssueGraphMeetingIssuesRow struct {

@@ -15,27 +15,20 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { CockpitNode, CockpitPendingChange } from "@multica/core/types";
+import type { CockpitPendingChange } from "@multica/core/types";
 import {
-  buildCockpitTree,
-  buildCockpitDisplayCodes,
-  buildCockpitSummaryTree,
-  flattenCockpitTree,
-  cockpitMissingFields,
-  cockpitChangesOptions,
-  useApplyCockpitChange,
+  cockpitChangePageOptions, cockpitNodeIndexOptions, buildCockpitDisplayCodesFromIndex, cockpitNodeDetailOptions, cockpitScopeViewKey,
+  useCockpitScopeViewStore, EMPTY_COCKPIT_GOVERNANCE_CONTEXT,
+  useCockpitChangeDraftStore, EMPTY_COCKPIT_CHANGE_DRAFT, setCockpitChangeDraft, acknowledgeCockpitChangeDraft, type CockpitScope,
   useCreateCockpitChange,
   useRejectCockpitChange,
   useWithdrawCockpitChange,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
-import {
-  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
-  AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogCancel, AlertDialogAction,
-} from "@multica/ui/components/ui/alert-dialog";
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@multica/ui/components/ui/dialog";
 import { Input } from "@multica/ui/components/ui/input";
 import { Spinner } from "@multica/ui/components/ui/spinner";
+import { Textarea } from "@multica/ui/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -43,10 +36,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@multica/ui/components/ui/select";
-import { Check, ChevronDown, ChevronUp, Crosshair, Undo2, X } from "lucide-react";
+import { Eye, Crosshair, Undo2, X, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import { useWorkspacePaths } from "@multica/core/paths";
+import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { useTimeAgo } from "../../i18n/use-time-ago";
+import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
+import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
+import { CockpitChangeReview } from "./cockpit-change-review";
+import { CockpitPlanQuality } from "./cockpit-plan-quality";
+import { CockpitFlowError, CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
+import { SegmentedToggle } from "../../common/segmented-toggle";
 
 /** The proposable fields, in the order a reviewer scans them. Mirrors the
  * server's field table in cockpit_changes.go; tree-shape fields are absent
@@ -72,7 +73,6 @@ const CHANGE_FIELDS = [
   "source",
 ] as const;
 
-type ChangeField = (typeof CHANGE_FIELDS)[number];
 
 function fieldLabel(
   t: ReturnType<typeof useT<"cockpit">>["t"],
@@ -162,11 +162,11 @@ function ChangeRow({
   change,
   onOpenTask,
   onError,
-  batchBusy,
+  batchBusy, readOnly, onReview,
   beginDecision,
   endDecision,
 }: {
-  batchBusy: boolean;
+  batchBusy: boolean; readOnly?: boolean; onReview: (id: string) => void;
   beginDecision: () => boolean;
   endDecision: () => void;
   wsId: string;
@@ -176,10 +176,12 @@ function ChangeRow({
 }) {
   const { t } = useT("cockpit");
   const timeAgo = useTimeAgo();
-  const apply = useApplyCockpitChange(wsId);
   const reject = useRejectCockpitChange(wsId);
   const withdraw = useWithdrawCockpitChange(wsId);
-  const busy = batchBusy || apply.isPending || reject.isPending || withdraw.isPending;
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectNote, setRejectNote] = useState("");
+  const paths = useWorkspacePaths();
+  const busy = readOnly || !CHANGE_FIELDS.some((field) => field === change.field) || batchBusy || reject.isPending || withdraw.isPending;
 
   // Structural on purpose: the three decision hooks return different result
   // shapes, and the row only needs "run it and tell me".
@@ -192,9 +194,21 @@ function ChangeRow({
     },
     ok: string,
   ) => {
-    if (!beginDecision()) return;
+    if (busy || !beginDecision()) return;
     run.mutate(change.id, {
       onSuccess: () => { endDecision(); toast.success(ok); },
+      onError: (error) => { endDecision(); onError(error); },
+    });
+  };
+
+  // Rejection is a one-way door with a receipt attached, so it earns one
+  // confirmation step — and the optional reason travels to the task that
+  // filed the proposal.
+  const confirmReject = () => {
+    if (busy || !beginDecision()) return;
+    const note = rejectNote.trim();
+    reject.mutate({ id: change.id, note: note === "" ? undefined : note }, {
+      onSuccess: () => { endDecision(); setRejectOpen(false); setRejectNote(""); toast.success(t(($) => $.changes.reject_done)); },
       onError: (error) => { endDecision(); onError(error); },
     });
   };
@@ -216,14 +230,13 @@ function ChangeRow({
     );
 
   return (
-    <li className="rounded-lg border border-border bg-card p-3">
-      <div className="flex min-w-0 items-center gap-2 text-caption">
-        {code}
-        <span className="min-w-0 truncate font-medium">{change.node_name}</span>
-        <span aria-hidden className="text-faint-foreground">
-          ·
-        </span>
-        <span className="shrink-0">{fieldLabel(t, change.field)}</span>
+    <li className="cockpit-review-card min-w-0 rounded-xl border border-border bg-card p-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 text-caption">
+        <div className="cockpit-review-identity flex w-full min-w-0 items-start gap-2">
+          {code}
+          <h3 className="min-w-0 flex-1 break-words text-body font-semibold [overflow-wrap:anywhere]">{change.node_name}</h3>
+        </div>
+        <span className="max-w-full break-words [overflow-wrap:anywhere]">{fieldLabel(t, change.field)}</span>
         <span className="rounded-full border border-border px-1.5 py-0.5 text-micro">
           {t(($) => $.changes[changeType(change)])}
         </span>
@@ -234,28 +247,41 @@ function ChangeRow({
             ? t(($) => $.changes.source_agent)
             : t(($) => $.changes.source_manual)}
         </span>
-        <span className="ml-auto shrink-0 text-micro text-faint-foreground">
+        {change.source_issue && (
+          <AppLink
+            href={paths.issueDetail(change.source_issue.id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            title={`${change.source_issue.ref} ${change.source_issue.title}`}
+          >
+            {change.source_issue.ref}
+          </AppLink>
+        )}
+        <span className="ml-auto max-w-full break-words text-caption text-muted-foreground">
           {change.created_by_label || t(($) => $.changes.by_unknown)} ·{" "}
           {timeAgo(change.created_at)}
         </span>
       </div>
-      <div className="mt-1.5 flex min-w-0 flex-wrap items-baseline gap-x-2 text-body">
-        <span className="min-w-0 truncate text-muted-foreground line-through decoration-faint-foreground/70">
-          {valueLabel(t, change.old_value)}
-        </span>
-        <span aria-hidden className="text-faint-foreground">
-          →
-        </span>
-        <span className="min-w-0 truncate font-medium">{valueLabel(t, change.new_value)}</span>
-      </div>
+      <dl className="mt-3 grid min-w-0 gap-3 @min-[32rem]/governance:grid-cols-2">
+        <div className="min-w-0 rounded-lg border border-border bg-muted p-3">
+          <dt className="mb-1 text-caption text-muted-foreground">{t(($) => $.governance.proposed_from)}</dt>
+          <dd className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body text-muted-foreground [overflow-wrap:anywhere]">{valueLabel(t, change.old_value)}</dd>
+        </div>
+        <div className="min-w-0 rounded-lg border border-border bg-background p-3">
+          <dt className="mb-1 text-caption text-muted-foreground">{t(($) => $.governance.proposed_to)}</dt>
+          <dd className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-body font-semibold [overflow-wrap:anywhere]">{valueLabel(t, change.new_value)}</dd>
+        </div>
+      </dl>
       {change.reason !== "" && (
-        <p className="mt-1 text-caption text-muted-foreground">{change.reason}</p>
+        <p className="mt-3 line-clamp-2 break-words text-caption text-muted-foreground">{change.reason}</p>
       )}
-      <div className="mt-2 flex items-center justify-end gap-2">
+      {(change.old_value.length > 120 || change.new_value.length > 120 || change.reason.length > 200) && <details className="mt-2 text-caption"><summary className="cursor-pointer text-primary">{t(($) => $.governance.read_change)}</summary><div className="mt-2 max-h-80 space-y-3 overflow-auto rounded bg-muted p-3"><pre className="whitespace-pre-wrap break-words">{change.old_value}</pre><p>↓</p><pre className="whitespace-pre-wrap break-words">{change.new_value}</pre>{change.reason && <p className="whitespace-pre-wrap break-words">{change.reason}</p>}</div></details>}
+      {!CHANGE_FIELDS.some((field) => field === change.field) && <p className="mt-2 text-caption text-muted-foreground">{t(($) => $.governance.unsupported_field)}</p>}
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1 px-2 text-caption"
           disabled={busy}
           onClick={() => decide(withdraw, t(($) => $.changes.withdraw_done))}
         >
@@ -265,23 +291,53 @@ function ChangeRow({
         <Button
           variant="outline"
           size="sm"
-          className="h-7 gap-1 px-2 text-caption text-destructive hover:text-destructive"
+          className="text-destructive hover:text-destructive"
           disabled={busy}
-          onClick={() => decide(reject, t(($) => $.changes.reject_done))}
+          onClick={() => setRejectOpen(true)}
         >
           <X className="size-3.5" aria-hidden />
           {t(($) => $.changes.reject)}
         </Button>
         <Button
           size="sm"
-          className="h-7 gap-1 px-2.5 text-caption"
           disabled={busy}
-          onClick={() => decide(apply, t(($) => $.changes.apply_done))}
+          onClick={() => onReview(change.id)}
         >
-          {apply.isPending ? <Spinner className="size-3" /> : <Check className="size-3.5" aria-hidden />}
-          {t(($) => $.changes.apply)}
+          <Eye className="size-3.5" aria-hidden />
+          {t(($) => $.governance.review_single)}
         </Button>
       </div>
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t(($) => $.governance.reject_title, { name: change.node_name })}</DialogTitle>
+          </DialogHeader>
+          <p className="text-caption text-muted-foreground">
+            {fieldLabel(t, change.field)}: {valueLabel(t, change.old_value)} → {valueLabel(t, change.new_value)}
+          </p>
+          <Textarea
+            value={rejectNote}
+            onChange={(event) => setRejectNote(event.target.value)}
+            placeholder={t(($) => $.governance.reject_note_placeholder)}
+            maxLength={500}
+            rows={3}
+            disabled={reject.isPending}
+          />
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" disabled={reject.isPending} />}>{t(($) => $.binding.cancel)}</DialogClose>
+            <Button
+              type="button"
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              disabled={busy}
+              onClick={confirmReject}
+            >
+              {reject.isPending && <Spinner />}
+              {t(($) => $.changes.reject)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }
@@ -289,8 +345,14 @@ function ChangeRow({
 function DecidedRow({ change }: { change: CockpitPendingChange }) {
   const { t } = useT("cockpit");
   const timeAgo = useTimeAgo();
+  const paths = useWorkspacePaths();
+  // System withdrawals (node deleted, board replaced) carry no human name;
+  // rendering the raw "system" string would read like a missing translation.
+  const decider = change.decided_by_type === "system"
+    ? t(($) => $.changes.by_system)
+    : change.decided_by_label || t(($) => $.changes.by_unknown);
   return (
-    <li className="flex min-w-0 flex-wrap items-center gap-2 px-2 py-1.5 text-caption">
+    <li className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-caption">
       <span
         className={`shrink-0 rounded-full px-1.5 py-0.5 text-micro ${decidedBadgeClass(change.status)}`}
       >
@@ -299,13 +361,28 @@ function DecidedRow({ change }: { change: CockpitPendingChange }) {
       <span className="shrink-0 font-mono text-micro text-muted-foreground">
         {change.node_code || t(($) => $.changes.node_gone)}
       </span>
-      <span className="min-w-0 truncate">
+      <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
         {fieldLabel(t, change.field)}: {valueLabel(t, change.old_value)} →{" "}
         {valueLabel(t, change.new_value)}
       </span>
-      <span className="ml-auto shrink-0 text-micro text-faint-foreground">
-        {change.decided_by_label || t(($) => $.changes.by_unknown)} ·{" "}
-        {timeAgo(change.decided_at ?? change.updated_at)}
+      {change.source_issue && (
+        <AppLink
+          href={paths.issueDetail(change.source_issue.id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          title={change.source_issue.title}
+        >
+          {change.source_issue.ref}
+        </AppLink>
+      )}
+      {change.decision_note !== "" && (
+        <span className="w-full break-words text-caption text-muted-foreground [overflow-wrap:anywhere]">
+          {change.decision_note}
+        </span>
+      )}
+      <span className="ml-auto max-w-full break-words text-caption text-muted-foreground">
+        {decider} · {timeAgo(change.decided_at ?? change.updated_at)}
       </span>
     </li>
   );
@@ -314,25 +391,19 @@ function DecidedRow({ change }: { change: CockpitPendingChange }) {
 /** The human entry: file one proposal through the same funnel agents will
  * use. Values are text; the server canonicalises and judges them the same
  * way it judges every other source. */
-function FileChangeForm({
-  wsId,
-  nodes,
-  onError,
-}: {
-  wsId: string;
-  nodes: CockpitNode[];
-  onError: (error: unknown) => void;
-}) {
+function FileChangeForm({ wsId, scope, onError, readOnly }: { wsId: string; scope: CockpitScope; onError: (error: unknown) => void; readOnly?: boolean }) {
   const { t } = useT("cockpit");
-  const [nodeRef, setNodeRef] = useState("");
-  const [field, setField] = useState<ChangeField>("status");
-  const [value, setValue] = useState("");
-  const [reason, setReason] = useState("");
-  const file = useCreateCockpitChange(wsId);
-
-  const canSubmit = nodeRef !== "" && !file.isPending;
+  const key = cockpitScopeViewKey(wsId, scope);
+  const draft = useCockpitChangeDraftStore((state) => state.draft.byScope[key] ?? EMPTY_COCKPIT_CHANGE_DRAFT);
+  const { nodeId: nodeRef, field, value, reason } = draft;
+  const update = (patch: Partial<typeof draft>) => setCockpitChangeDraft(key, { ...draft, ...patch });
+  const selected = useQuery({ ...cockpitNodeDetailOptions(wsId, nodeRef, scope), enabled: Boolean(nodeRef) });
+  const file = useCreateCockpitChange(wsId); const [error, setError] = useState("");
+  const canSubmit = !readOnly && nodeRef !== "" && selected.data?.scope_match === true && !selected.isError && !selected.isFetching && !file.isPending && CHANGE_FIELDS.some((key) => key === field);
 
   const submit = () => {
+    setError("");
+    const observed = { ...draft };
     file.mutate(
       { node: nodeRef, field, new_value: value, reason: reason.trim() || undefined },
       {
@@ -341,60 +412,40 @@ function FileChangeForm({
           // ingest outcome whose id is null or empty.
           if ("id" in outcome && outcome.id !== null && outcome.id !== "") {
             toast.success(t(($) => $.changes.filed));
-            setValue("");
-            setReason("");
+            acknowledgeCockpitChangeDraft(key, observed);
             return;
           }
           // The skipped answer: the board already says this, or the queue
           // already proposes it. Nothing was filed, and the reader should
           // hear why in one line.
-          const skipped = outcome as { reason?: string };
-          toast.info(
-            skipped.reason === "duplicate"
-              ? t(($) => $.changes.skipped_duplicate)
-              : t(($) => $.changes.skipped_no_change),
-          );
+          const skipped = "reason" in outcome ? outcome.reason : undefined;
+          if (skipped === "duplicate" || skipped === "no_change") toast.info(skipped === "duplicate" ? t(($) => $.changes.skipped_duplicate) : t(($) => $.changes.skipped_no_change));
+          else setError(t(($) => $.workflow.unconfirmed));
         },
-        onError,
+        onError: (cause) => { setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed)); onError(cause); },
       },
     );
   };
 
   return (
     <form
-      className="rounded-lg border border-border bg-card p-3"
+      className="cockpit-proposal-form min-w-0 rounded-xl border border-border bg-card p-4"
       onSubmit={(event) => {
         event.preventDefault();
         if (canSubmit) submit();
       }}
     >
-      <p className="text-caption font-medium">{t(($) => $.changes.form_title)}</p>
+      <p className="text-title-sm font-semibold">{t(($) => $.changes.form_title)}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Select
-          items={nodes.map((node) => ({
-            value: node.id,
-            label: `${node.code} ${node.name}`,
-          }))}
-          value={nodeRef}
-          onValueChange={(v) => setNodeRef(v ?? "")}
-        >
-          <SelectTrigger className="h-8 w-64 text-caption" aria-label={t(($) => $.changes.form_node)}>
-            <SelectValue placeholder={t(($) => $.changes.form_node)} />
-          </SelectTrigger>
-          <SelectContent>
-            {nodes.map((node) => (
-              <SelectItem key={node.id} value={node.id}>
-                {node.code} {node.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CockpitNodeChoicePicker wsId={wsId} scope={scope} eligible={false} label={t(($) => $.changes.form_node)}
+          value={selected.data ? `${buildCockpitDisplayCodesFromIndex(selected.data.node_index).get(selected.data.node.id) ?? selected.data.node.code} ${selected.data.node.name}` : nodeRef} disabled={readOnly || file.isPending} onSelect={(node) => update({ nodeId: node.id })} />
         <Select
           items={CHANGE_FIELDS.map((key) => ({ value: key, label: fieldLabel(t, key) }))}
           value={field}
-          onValueChange={(v) => setField((v as ChangeField) ?? "status")}
+          disabled={readOnly || file.isPending}
+          onValueChange={(v) => { if (CHANGE_FIELDS.some((key) => key === v)) update({ field: v ?? "status" }); }}
         >
-          <SelectTrigger className="h-8 w-44 text-caption" aria-label={t(($) => $.changes.form_field)}>
+          <SelectTrigger className="w-44 max-w-full" aria-label={t(($) => $.changes.form_field)}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -407,263 +458,82 @@ function FileChangeForm({
         </Select>
         <Input
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          disabled={readOnly || file.isPending}
+          onChange={(e) => update({ value: e.target.value })}
           placeholder={t(($) => $.changes.form_value)}
           aria-label={t(($) => $.changes.form_value)}
-          className="h-8 w-52 text-caption"
+          className="w-52 max-w-full"
         />
+        {field === "budget_amount" && <p className="text-caption text-muted-foreground">{t(($) => $.governance.budget_precision)}</p>}
         <Input
           value={reason}
-          onChange={(e) => setReason(e.target.value)}
+          disabled={readOnly || file.isPending}
+          onChange={(e) => update({ reason: e.target.value })}
           placeholder={t(($) => $.changes.form_reason)}
           aria-label={t(($) => $.changes.form_reason)}
-          className="h-8 min-w-40 flex-1 text-caption"
+          className="min-w-0 flex-1 basis-48"
         />
-        <Button type="submit" size="sm" className="h-8 px-3 text-caption" disabled={!canSubmit}>
+        <Button type="submit" size="sm" disabled={!canSubmit}>
           {file.isPending ? <Spinner className="size-3.5" /> : null}
           {t(($) => $.changes.form_submit)}
         </Button>
       </div>
-      <p className="mt-2 text-micro text-faint-foreground">{t(($) => $.changes.form_hint)}</p>
+      {selected.isError && <CockpitFlowError onRetry={() => void selected.refetch()} />}{error && <p role="alert" className="mt-2 text-caption text-destructive">{error}</p>}
+      <p className="mt-3 text-caption text-muted-foreground">{t(($) => $.changes.form_hint)}</p>
     </form>
   );
 }
 
-export function CockpitChanges({
-  wsId,
-  nodes,
-  onOpenTask,
-}: {
-  wsId: string;
-  nodes: CockpitNode[];
-  onOpenTask: (nodeId: string) => void;
-}) {
+export function CockpitChanges({ wsId, scope, onOpenTask, readOnly }: { wsId: string; scope: CockpitScope; onOpenTask: (id: string) => void; readOnly?: boolean }) {
   const { t } = useT("cockpit");
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [batchBusy, setBatchBusy] = useState(false);
-  const batchLock = useRef(false);
-  const applyAll = useApplyCockpitChange(wsId);
-  const [showHistory, setShowHistory] = useState(false);
-  const { data: rawChanges = [] } = useQuery(cockpitChangesOptions(wsId));
-  const tree = useMemo(() => buildCockpitTree(nodes), [nodes]);
-  // The review rows name tasks the way the gantt does — a summary merge must
-  // not renumber a proposal's row out from under its reviewer.
-  const displayCodes = useMemo(
-    () => buildCockpitDisplayCodes(buildCockpitSummaryTree(tree)),
-    [tree],
-  );
-  const displayNodes = useMemo(() => nodes.map((node) => ({ ...node, code: displayCodes.get(node.id) ?? node.code })), [nodes, displayCodes]);
-  const changes = useMemo(() => rawChanges.map((change) => ({ ...change, node_code: displayCodes.get(change.node_id) ?? change.node_code })), [rawChanges, displayCodes]);
-  const rootById = useMemo(() => {
-    const roots = new Map<string, CockpitNode>();
-    for (const root of tree) for (const entry of flattenCockpitTree([root])) roots.set(entry.node.id, root.node);
-    return roots;
-  }, [tree]);
-  const review = useMemo(() => {
-    return tree.map((root) => {
-      const tasks = flattenCockpitTree([root])
-        .filter((entry) => entry.children.length === 0)
-        .map(({ node }) => ({
-          node,
-          missing: cockpitMissingFields(node),
-          suggested: (["collaborators", "vendor", "budget_category", "exec_status", "dependencies", "deliverable", "note", "current_progress"] as const)
-            .filter((field) => !node[field].trim()),
-        }));
-      return { root: root.node, tasks, missing: tasks.reduce((sum, task) => sum + task.missing.length, 0),
-        complete: tasks.filter((task) => task.missing.length === 0).length };
-    });
-  }, [tree]);
-  const missingTotal = review.reduce((sum, group) => sum + group.missing, 0);
-  const completeTotal = review.reduce((sum, group) => sum + group.complete, 0);
-  const taskTotal = review.reduce((sum, group) => sum + group.tasks.length, 0);
-
-  const pending = useMemo(
-    () => changes.filter((c) => c.status === "pending"),
-    [changes],
-  );
-  const decided = useMemo(
-    () => changes.filter((c) => c.status !== "pending"),
-    [changes],
-  );
-
-  const groups = useMemo(() => {
-    const grouped = new Map<string, { root: CockpitNode | undefined; tasks: Map<string, CockpitPendingChange[]> }>();
-    for (const change of pending) {
-      const root = rootById.get(change.node_id);
-      const key = root?.id ?? "";
-      let group = grouped.get(key);
-      if (!group) { group = { root, tasks: new Map() }; grouped.set(key, group); }
-      const task = group.tasks.get(change.node_id) ?? [];
-      task.push(change);
-      group.tasks.set(change.node_id, task);
-    }
-    return [...grouped.entries()];
-  }, [pending, rootById]);
-
-  const onError = (error: unknown) => {
-    toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
-  };
-
-  const beginDecision = () => {
-    if (batchLock.current) return false;
-    batchLock.current = true;
-    setBatchBusy(true);
-    return true;
-  };
+  const viewKey = cockpitScopeViewKey(wsId, scope);
+  const view = useCockpitScopeViewStore((state) => state.governance[viewKey] ?? EMPTY_COCKPIT_GOVERNANCE_CONTEXT);
+  const { query: text, status, cursors, qualityOpen: showQuality } = view;
+  const update = (patch: Partial<typeof view>) => useCockpitScopeViewStore.getState().updateGovernance(viewKey, patch);
+  const setText = (query: string) => update({ query }); const setStatus = (status: typeof view.status) => update({ status }); const setCursors = (cursors: string[]) => update({ cursors }); const setShowQuality = (qualityOpen: boolean) => update({ qualityOpen });
+  const [reviewIds, setReviewIds] = useState<string[] | null>(null), [batchBusy, setBatchBusy] = useState(false);
+  const batchLock = useRef(false); const q = useCockpitSearch(text); const searching = text.trim() !== q;
+  const query = useQuery({ ...cockpitChangePageOptions(wsId, scope, { status, q, cursor: cursors.at(-1) || undefined, page_size: 25 }), enabled: Boolean(wsId && !searching) });
+  const index = useQuery(cockpitNodeIndexOptions(wsId));
+  const codes = useMemo(() => buildCockpitDisplayCodesFromIndex(index.data?.items ?? []), [index.data]);
+  const page = query.data;
+  const rows = useMemo(() => (page?.items ?? []).map((change) => ({ ...change, node_code: codes.get(change.node_id) ?? change.node_code })), [page, codes]);
+  const listRef = useRef<HTMLUListElement>(null);
+  useCockpitScrollMemory(listRef, JSON.stringify([viewKey, "changes", cursors.at(-1)]), rows.length > 0, JSON.stringify([q, status]));
+  const pending = rows.filter((change) => change.status === "pending" && CHANGE_FIELDS.some((field) => field === change.field));
+  const onError = (cause: unknown) => toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
+  const beginDecision = () => { if (readOnly || batchLock.current) return false; batchLock.current = true; setBatchBusy(true); return true; };
   const endDecision = () => { batchLock.current = false; setBatchBusy(false); };
-  const acceptAll = async () => {
-    if (pending.length === 0 || !beginDecision()) return;
-    try {
-      // Sequential writes preserve proposal ordering for repeated edits of one field.
-      // Stop on failure: applied decisions stay settled, remaining proposals stay pending.
-      const oldestFirst = [...pending].sort((a, b) =>
-        Date.parse(a.created_at) - Date.parse(b.created_at) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      for (const change of oldestFirst) await applyAll.mutateAsync(change.id);
-      setConfirmOpen(false);
-      toast.success(t(($) => $.changes.apply_done));
-    } catch (error) {
-      onError(error);
-    } finally {
-      endDecision();
-    }
-  };
-
-  return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 overflow-y-auto p-4">
-      <FileChangeForm wsId={wsId} nodes={displayNodes} onError={onError} />
-
-      {taskTotal > 0 && (
-        <section className="rounded-lg border border-border bg-card p-3">
-          <h2 className="text-caption font-medium">
-            {t(($) => $.table.check)} · {t(($) => $.table.core_missing, { count: missingTotal })} · {t(($) => $.table.check_ok)} {completeTotal}/{taskTotal}
-          </h2>
-          <div className="mt-2 flex max-h-64 flex-col gap-2 overflow-y-auto">
-            {review.map((group) => (
-              <details key={group.root.id} open>
-                <summary className="cursor-pointer text-caption font-medium">
-                  {displayCodes.get(group.root.id) ?? group.root.code} {group.root.name} · {t(($) => $.table.core_missing, { count: group.missing })} · {t(($) => $.table.check_ok)} {group.complete}/{group.tasks.length}
-                </summary>
-                <ul className="mt-2 flex flex-col gap-2">
-                  {group.tasks.map(({ node, missing, suggested }) => {
-                    const suggestedLabels = [
-                      ...suggested.map((field) => fieldLabel(t, field)),
-                      ...(node.budget_amount == null ? [t(($) => $.node.budget)] : []),
-                    ];
-                    return (
-                      <li key={node.id} className="flex flex-wrap items-center gap-2 text-caption">
-                        <Button variant="ghost" size="sm" onClick={() => onOpenTask(node.id)}>
-                          {displayCodes.get(node.id) ?? node.code} {node.name}
-                        </Button>
-                        <span>{t(($) => $.node.owner)}: {node.owner.trim() || t(($) => $.common.unset)}</span>
-                        <span className="text-muted-foreground">
-                          {missing.length > 0 ? `${t(($) => $.table.core_missing, { count: missing.length })}: ${missing.map((field) => fieldLabel(t, field)).join(" / ")}` : t(($) => $.table.check_ok)}
-                        </span>
-                        {suggestedLabels.length > 0 && (
-                          <span className="text-muted-foreground">{t(($) => $.table.suggested_fields, { count: suggestedLabels.length })}: {suggestedLabels.join(" / ")}</span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </details>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2 text-caption">
-        <span className="rounded-full border border-border px-2 py-1 tabular-nums">{t(($) => $.changes.queue_title, { n: pending.length })}</span>
-        <span className="rounded-full border border-border px-2 py-1 tabular-nums">{t(($) => $.changes.status_applied)} {changes.filter((change) => change.status === "applied").length}</span>
-        <span className="rounded-full border border-border px-2 py-1 tabular-nums">{t(($) => $.changes.status_rejected)} {changes.filter((change) => change.status === "rejected").length}</span>
-        {(["type_add", "type_modify", "type_clear"] as const).map((type) => (
-          <span key={type} className="rounded-full border border-border px-2 py-1">
-            {t(($) => $.changes[type])} {pending.filter((change) => changeType(change) === type).length}
-          </span>
-        ))}
-        <AlertDialog open={confirmOpen} onOpenChange={(open) => { if (!batchLock.current) setConfirmOpen(open); }}>
-          <AlertDialogTrigger render={<Button size="sm" className="ml-auto" disabled={batchBusy || pending.length === 0} />}>
-            {t(($) => $.changes.apply_all)}
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t(($) => $.changes.confirm_apply_all)}</AlertDialogTitle>
-              <AlertDialogDescription>{t(($) => $.changes.queue_title, { n: pending.length })}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={batchBusy}>{t(($) => $.versions.cancel)}</AlertDialogCancel>
-              <AlertDialogAction disabled={batchBusy || pending.length === 0} aria-busy={batchBusy} onClick={() => void acceptAll()}>
-                {batchBusy ? <Spinner className="size-3.5" /> : <Check className="size-3.5" aria-hidden />}
-                {t(($) => $.changes.apply_all)}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-caption font-medium text-muted-foreground">
-          {t(($) => $.changes.queue_title, { n: pending.length })}
-        </h2>
-        {pending.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border p-6 text-center text-caption text-muted-foreground">
-            {t(($) => $.changes.queue_empty)}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {groups.map(([key, group]) => (
-              <details key={key} open className="rounded-lg border border-border bg-card p-3">
-                <summary className="cursor-pointer text-caption font-medium">
-                  {group.root ? `${displayCodes.get(group.root.id) ?? group.root.code} ${group.root.name}` : t(($) => $.changes.node_gone)}
-                </summary>
-                <div className="mt-2 flex flex-col gap-2">
-                  {[...group.tasks.entries()].map(([nodeId, taskChanges]) => (
-                    <details key={nodeId} open>
-                      <summary className="cursor-pointer text-caption text-muted-foreground">
-                        {taskChanges[0]?.node_code} {taskChanges[0]?.node_name} · {taskChanges.length}
-                      </summary>
-                      <ul className="mt-2 flex flex-col gap-2">
-                        {taskChanges.map((change) => (
-                          <ChangeRow key={change.id} wsId={wsId} change={change} batchBusy={batchBusy} beginDecision={beginDecision} endDecision={endDecision} onOpenTask={onOpenTask} onError={onError} />
-                        ))}
-                      </ul>
-                    </details>
-                  ))}
-                </div>
-              </details>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {decided.length > 0 && (
-        <section className="flex flex-col gap-1">
-          <button
-            type="button"
-            className="flex items-center gap-1 self-start text-caption text-muted-foreground hover:text-foreground"
-            onClick={() => setShowHistory((on) => !on)}
-            aria-expanded={showHistory}
-          >
-            {showHistory ? (
-              <ChevronUp className="size-3.5" aria-hidden />
-            ) : (
-              <ChevronDown className="size-3.5" aria-hidden />
-            )}
-            {t(($) => $.changes.history_title, { n: decided.length })}
-          </button>
-          {showHistory && (
-            <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card px-2 py-1">
-              {decided.map((change) => (
-                <DecidedRow key={change.id} change={change} />
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      <p className="flex items-center gap-1.5 text-micro text-faint-foreground">
-        <Crosshair className="size-3" aria-hidden />
-        {t(($) => $.changes.locate_hint)}
-      </p>
+  return <section className="cockpit-governance @container/governance mx-auto flex min-h-0 min-w-0 w-full max-w-[1480px] flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6" aria-label={t(($) => $.shell.governance)}>
+    <header className="cockpit-governance-heading">
+      <div className="flex min-w-0 items-center gap-4"><span className="cockpit-page-symbol" aria-hidden><ShieldCheck className="size-6" /></span><h2 className="text-display-sm font-semibold tracking-tight">{t(($) => $.shell.governance)}</h2></div>
+      {page && <div className="cockpit-governance-counts">
+        <Button type="button" variant="ghost" aria-pressed={status === "pending"} onClick={() => setStatus("pending")} className="cockpit-governance-count h-auto"><span className="text-display-sm font-semibold tabular-nums">{page.counts.pending}</span><span className="text-caption">{t(($) => $.governance.pending)}</span></Button>
+        <Button type="button" variant="ghost" aria-pressed={status === "decided"} onClick={() => setStatus("decided")} className="cockpit-governance-count h-auto"><span className="text-display-sm font-semibold tabular-nums">{page.counts.decided}</span><span className="text-caption">{t(($) => $.governance.decided)}</span></Button>
+      </div>}
+    </header>
+    <div className="cockpit-governance-layout"><div className="cockpit-review-queue flex min-w-0 flex-col gap-4">
+    <div className="flex min-w-0 flex-wrap items-center gap-3"><Input className="min-w-0 flex-1 basis-48 sm:max-w-80" name="cockpit-change-search" autoComplete="off" spellCheck={false} value={text} aria-label={t(($) => $.governance.search)} placeholder={t(($) => $.governance.search)} onChange={(event) => setText(event.target.value)} />
+      <div role="group" aria-label={t(($) => $.governance.status)} className="max-w-full overflow-x-auto"><SegmentedToggle value={status} options={(["pending", "decided", "all"] as const).map((value) => [value, value === "pending" ? t(($) => $.governance.pending) : value === "decided" ? t(($) => $.governance.decided) : t(($) => $.assignee_picker.all)] as const)} onChange={setStatus}
+        buttonClassName="min-h-8 whitespace-nowrap rounded-md px-3 py-1.5 text-caption focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
     </div>
-  );
+    {page && <p className="flex flex-wrap gap-x-4 gap-y-1 text-caption tabular-nums text-muted-foreground">{t(($) => $.governance.page_counts)}: {(["type_add", "type_modify", "type_clear"] as const).map((type) => <span key={type}>{t(($) => $.changes[type])} {pending.filter((change) => changeType(change) === type).length}</span>)}</p>}
+    {page ? <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching || searching || batchBusy}
+      onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
+      : cursors.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => setCursors(cursors.slice(0, -1))}>{t(($) => $.task_flow.previous)}</Button>}
+    {query.isError ? <CockpitFlowError onRetry={() => void query.refetch()} /> : query.isPending || searching ? <Spinner />
+      : page && <><Button type="button" className="self-end" size="sm" disabled={readOnly || batchBusy || query.isFetching || !pending.length} onClick={() => setReviewIds([...pending].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id)).map((change) => change.id))}>{t(($) => $.governance.review_page)}</Button>
+        {rows.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-caption text-muted-foreground">{q ? t(($) => $.task_flow.no_matches) : t(($) => $.changes.queue_empty)}</p>
+          : <ul ref={listRef} className="min-w-0 max-h-[60vh] space-y-3 overflow-y-auto overscroll-contain">{rows.map((change) => change.status === "pending"
+            ? <ChangeRow key={change.id} wsId={wsId} change={change} readOnly={readOnly} batchBusy={batchBusy || query.isFetching} beginDecision={beginDecision} endDecision={endDecision} onOpenTask={onOpenTask} onError={onError} onReview={(id) => setReviewIds([id])} />
+            : <DecidedRow key={change.id} change={change} />)}</ul>}
+      </>}
+    </div><aside className="cockpit-proposal-rail min-w-0 space-y-4">
+    <FileChangeForm wsId={wsId} scope={scope} readOnly={readOnly} onError={onError} />
+    <div><Button type="button" variant="outline" size="sm" aria-expanded={showQuality} onClick={() => setShowQuality(!showQuality)}>{t(($) => $.governance.quality)}</Button></div>
+    {showQuality && <CockpitPlanQuality wsId={wsId} scope={scope} onOpenTask={onOpenTask} />}
+    </aside></div>
+    {reviewIds && <CockpitChangeReview key={JSON.stringify([wsId, viewKey, reviewIds])} contextKey={viewKey} wsId={wsId} scope={scope} ids={reviewIds} readOnly={readOnly} canApplyField={(field) => CHANGE_FIELDS.some((key) => key === field)} fieldLabel={(field) => fieldLabel(t, field)} beginDecision={beginDecision} endDecision={endDecision} onClose={() => setReviewIds(null)} />}
+    <p className="flex items-center gap-1.5 text-caption text-muted-foreground"><Crosshair className="size-3" aria-hidden />{t(($) => $.changes.locate_hint)}</p>
+  </section>;
 }

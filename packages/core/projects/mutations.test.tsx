@@ -13,6 +13,8 @@ import {
   pruneIssueSurfaceViewStates,
 } from "../issues/stores/surface-view-store";
 import { issueKeys } from "../issues/queries";
+import { cockpitKeys } from "../cockpit/queries";
+import { projectKeys } from "./queries";
 import { useDeleteProject, useUpdateProject } from "./mutations";
 
 vi.mock("../hooks", () => ({
@@ -68,6 +70,26 @@ describe("useDeleteProject", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps the project and confirmation context while pending or rejected", async () => {
+    let reject!: (error: Error) => void;
+    deleteProject.mockReturnValue(new Promise<void>((_resolve, fail) => { reject = fail; }));
+    const project = { id: "p1", title: "Retained project" };
+    qc.setQueryData(projectKeys.list("ws-1"), { projects: [project], total: 1 });
+    qc.setQueryData(projectKeys.detail("ws-1", "p1"), project);
+    const store = getIssueSurfaceViewStore("project:p1");
+    store.getState().setViewMode("list");
+    const { result } = renderHook(() => useDeleteProject(), { wrapper: createWrapper(qc) });
+    let mutation!: Promise<unknown>;
+    await act(async () => { mutation = result.current.mutateAsync("p1").catch((error) => error); await Promise.resolve(); });
+    expect(qc.getQueryData(projectKeys.detail("ws-1", "p1"))).toEqual(project);
+    expect(qc.getQueryData(projectKeys.list("ws-1"))).toEqual({ projects: [project], total: 1 });
+    const newer = { ...project, title: "Newer shared title" };
+    qc.setQueryData(projectKeys.detail("ws-1", "p1"), newer);
+    await act(async () => { reject(new Error("retained formal history")); await mutation; });
+    expect(qc.getQueryData(projectKeys.detail("ws-1", "p1"))).toEqual(newer);
+    expect(store.getState().viewMode).toBe("list");
+  });
+
   it("clears the deleted project's issue surface view state", async () => {
     const store = getIssueSurfaceViewStore("project:p1");
     store.getState().setViewMode("list");
@@ -81,7 +103,7 @@ describe("useDeleteProject", () => {
       await result.current.mutateAsync("p1");
     });
 
-    expect(deleteProject).toHaveBeenCalledWith("p1");
+    expect(deleteProject).toHaveBeenCalledWith("ws-1", "p1");
     expect(store.getState().viewMode).toBe("table");
   });
 
@@ -91,6 +113,10 @@ describe("useDeleteProject", () => {
   it("invalidates the issue table windows", async () => {
     const tableKey = [...issueKeys.tableAll("ws-1"), "window"];
     qc.setQueryData(tableKey, { rows: [] });
+    const choices = [...cockpitKeys.surfaces("ws-1"), "scope-selectors", "nodes"];
+    const otherChoices = [...cockpitKeys.surfaces("ws-2"), "scope-selectors", "nodes"];
+    qc.setQueryData(choices, { items: [] });
+    qc.setQueryData(otherChoices, { items: [] });
 
     const { result } = renderHook(() => useDeleteProject(), {
       wrapper: createWrapper(qc),
@@ -101,6 +127,8 @@ describe("useDeleteProject", () => {
     });
 
     expect(qc.getQueryState(tableKey)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(choices)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(otherChoices)?.isInvalidated).toBe(false);
   });
 });
 

@@ -71,6 +71,7 @@ func perTurnContextBlocks(task Task, opts promptOpts) string {
 	b.WriteString(execenv.BuildOnBehalfOfBlock(task.InitiatorName, task.InitiatorEmail))
 	b.WriteString(execenv.BuildConnectedAppsBlock(task.ConnectedApps))
 	b.WriteString(buildJoinedWakeupsBlock(task.WakeupJoined))
+	b.WriteString(buildFixedInputManifestBlock(task))
 	return b.String()
 }
 

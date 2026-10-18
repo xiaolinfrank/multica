@@ -1,0 +1,115 @@
+{
+  "date": "2026-10-10",
+  "host": "fosun_agent_3 (10.35.182.2)",
+  "runtime_location": "agent 3 only; coordinator compile/static only",
+  "feature": "Explicit create_only fixed minutes NAS exports",
+  "database": {
+    "name": "multica_test",
+    "migrations_applied": [
+      "989_cockpit_minutes_create_only",
+      "990_cockpit_minutes_export_attempt_id_index",
+      "991_cockpit_minutes_export_attempt_scope_index"
+    ]
+  },
+  "real_nas": {
+    "mount": "/Volumes/人机协作空间",
+    "type": "smbfs",
+    "filesystem_parent_passes": 1,
+    "filesystem_subcases_passed": 7,
+    "worker_parent_passes": 1,
+    "skipped": 0,
+    "first_run": "2 protection cases passed; 4 success paths failed because SMB rejected fsync on read-only descriptor; retained as failure evidence",
+    "fix": "Synchronize existing files through O_WRONLY without CREATE/TRUNC/APPEND; verify device/inode before and after; no Write, rename or delete",
+    "formal_roots_removed": [
+      ".multica-validation-2593bcbd-38f7-4b84-8943-31146ac39ee3",
+      ".multica-validation-5b392e15-990d-4d5f-af40-c7d94b75caa2"
+    ],
+    "earlier_roots_removed": [
+      ".multica-validation-61f8d4ff-3098-4bb6-a41a-6f8c06d21436",
+      ".multica-validation-5e599583-3198-4b91-9503-af5d20fd753e"
+    ],
+    "limits": [
+      "atomic mode unchanged; no automatic fallback",
+      "files may be visible while incomplete; failed attempts retained",
+      "no explicit deny-delete ACL or power-loss test",
+      "point-in-time verification, no continuous external mutation monitoring"
+    ]
+  },
+  "artifact_sha256": {
+    "multica-real-create-only-fixed.test": "42596ff85b223040c8b954c99e8ad15552661e317130773ca2d1d0ad081aa183",
+    "multica-real-create-only-worker.test": "02d9f676604f9c19ebb38cbc607d2ecded82df015494bb9766aeb3256c9a3682",
+    "multica-create-only-fs-final.test": "6b1cd0458afc3e87233bec444253d28f19b568f562f49a69e3c01ea0dd70f903",
+    "multica-create-only-service.test": "b4f9f5def848a5c0dccd28479823779d68c77e481ab2f2f15f8082b08eda446a",
+    "multica-create-only-handler-final.test": "528b79e76f6e7169858c81e6b7b474f3c61a3b6eccb81d17ebecc7a3085d8e93",
+    "multica-create-only-cli.test": "f11b47ef353e56274adbbc9061c17a7df132a3fc7a9eaaf2646eca3d1285a02e"
+  },
+  "focused_checks": {
+    "create-only-fs-final": {
+      "parent_passes": 16,
+      "subcase_passes": 26,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/create-only-fs-final.log"
+    },
+    "create-only-service-first": {
+      "parent_passes": 19,
+      "subcase_passes": 7,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/create-only-service-first.log"
+    },
+    "create-only-http-first": {
+      "parent_passes": 6,
+      "subcase_passes": 0,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/create-only-http-first.log"
+    },
+    "create-only-cli-first": {
+      "parent_passes": 13,
+      "subcase_passes": 118,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/create-only-cli-first.log"
+    },
+    "create-only-builtin": {
+      "parent_passes": 3,
+      "subcase_passes": 12,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/create-only-builtin-final.log",
+      "note": "Latest embedded NAS and bounded append reference documentation."
+    },
+    "reference-append-first": {
+      "parent_passes": 5,
+      "subcase_passes": 0,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/reference-append-first.log"
+    },
+    "reference-ws-final": {
+      "case_passes": 23,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/reference-ws-final.log"
+    },
+    "create-only-ui-final": {
+      "case_passes": 17,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/create-only-ui-final.log"
+    },
+    "reference-legacy-final": {
+      "parent_passes": 7,
+      "subcase_passes": 0,
+      "skips": 0,
+      "log": "~/var/multica-dev-test/logs/reference-legacy-final.log"
+    }
+  },
+  "ui": {
+    "nas_component_tests": 17,
+    "locales_parity_tests": 203,
+    "browser_acceptance": "not yet run for this stage"
+  },
+  "environment": {
+    "resident_changed": false,
+    "resident_api_commit": "7cdb916624b0b29fd148342e6b9cd3faf5f944f7",
+    "resident_web_commit": "0010a68cf12f1775d24b1398bf3de6692592eb29",
+    "test_api_web_started": false,
+    "production_changed": false,
+    "real_agents_executed": false
+  },
+  "deduplication": "Individual focused suites overlap prior-stage coverage. Counts are not a sum of unique product behaviors."
+}

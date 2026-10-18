@@ -1,0 +1,181 @@
+import { expect, test, type Page } from "@playwright/test";
+import { TestApiClient } from "./fixtures";
+
+test.use({ viewport: { width: 1600, height: 1100 }, locale: "en-US", timezoneId: "Asia/Shanghai", trace: "retain-on-failure" });
+
+async function expectSeparatedNarrowHeader(page: Page) {
+  const title = await page.getByRole("button", { name: "项目驾驶舱", exact: true }).boundingBox();
+  const saved = await page.getByRole("button", { name: "已保存视图", exact: true }).boundingBox();
+  const report = await page.getByRole("link", { name: "项目汇报", exact: true }).boundingBox();
+  expect(title).not.toBeNull(); expect(saved).not.toBeNull(); expect(report).not.toBeNull();
+  if (!title || !saved || !report) throw new Error("Cockpit header controls are not visible");
+  expect(title.y + title.height).toBeLessThanOrEqual(Math.min(saved.y, report.y));
+  expect(saved.x + saved.width).toBeLessThanOrEqual(report.x);
+}
+
+async function followFormalReview(page: Page, expectedTarget: RegExp, region: string) {
+  const entry = page.getByRole("link", { name: /^Open formal review · / }).first();
+  await expect(entry).toHaveAttribute("href", expectedTarget);
+  const opened = page.waitForEvent("popup");
+  await entry.click();
+  const review = await opened;
+  try {
+    await expect(review.getByRole("region", { name: region, exact: true })).toBeVisible();
+    await page.goto(review.url(), { waitUntil: "domcontentloaded" });
+  } finally { await review.close(); }
+}
+
+test("reviews fixed artifact revisions, accepts exact L3 evidence and follows meeting and issue references", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const api = new TestApiClient(); const run = `${Date.now().toString(36)}-${process.pid}`;
+  const reviewerName = `Artifact reviewer ${run}`;
+  const auth = await api.login(`e2e-artifact-${run}@multica.ai`, reviewerName); let ownsWorkspace = false;
+  try {
+    const workspace = await api.createWorkspace(`Artifact acceptance ${run}`, `e2e-artifact-${run}`); ownsWorkspace = true; await api.markUserOnboarded();
+    const project = await api.createProject("Evidence delivery"), module = await api.createModule(project.id, "Interface module");
+    const programme = await api.createCockpitNode({ code: "ART-1", name: project.title, project_id: project.id });
+    const group = await api.createCockpitNode({ code: "ART-2", name: module.title, module_id: module.id, parent_id: programme.id });
+    const leaf = await api.createCockpitNode({ code: "ART-3", name: "Accept the interface evidence", parent_id: group.id });
+    const source = await api.createIssue(`Prepare interface report ${run}`, { project_id: project.id, module_id: module.id, status: "backlog", assignee_type: "member", assignee_id: auth.user.id });
+    const meeting = await api.createCockpitMeeting({ title: `Evidence review meeting ${run}`, meet_date: "2026-10-11" }); await api.appendCockpitMeetingNode(meeting.id, leaf.id);
+    const token = api.getToken(); if (!token) throw new Error("Fixture token missing");
+    await page.addInitScript((value) => { localStorage.setItem("multica_token", value); localStorage.setItem("multica:chat:isOpen", "false"); document.cookie = `multica-locale=${localStorage.getItem("e2e-artifact-locale") || "en"}; path=/`; }, token);
+    const base = `/${workspace.slug}/cockpit`, scope = `project=${project.id}&module=${module.id}`;
+    await page.goto(`${base}?node=${leaf.id}&node_view=artifacts&${scope}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Register artifact", exact: true }).click();
+    const registration = page.getByRole("dialog", { name: "Register artifact", exact: true });
+    await registration.getByRole("textbox", { name: "Search existing issues", exact: true }).fill(source.title);
+    await registration.getByRole("button", { name: new RegExp(source.title) }).click();
+    await registration.getByRole("textbox", { name: "Artifact title", exact: true }).fill("Interface acceptance report");
+    await registration.getByRole("button", { name: "Reviewer", exact: true }).click();
+    await page.getByRole("button", { name: reviewerName, exact: true }).click();
+    await registration.getByRole("button", { name: "Register artifact", exact: true }).click();
+    await expect(page).toHaveURL((url) => Boolean(url.searchParams.get("artifact")));
+    const artifactId = new URL(page.url()).searchParams.get("artifact"); if (!artifactId) throw new Error("Registration did not navigate to an artifact");
+    await expect(page.getByRole("heading", { name: "Interface acceptance report", exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Submit a new version", exact: true }).click();
+    const firstText = "# Interface report v1\n\nThe interface specification requires a corrected limit.";
+    await page.getByRole("textbox", { name: "Version text", exact: true }).fill(firstText);
+    await page.getByRole("button", { name: "Submit fixed version", exact: true }).click();
+    const reader = page.getByRole("region", { name: "Fixed version content", exact: true });
+    await expect(reader.getByRole("heading", { name: "Interface report v1", exact: true })).toBeVisible();
+    const first = await api.getCockpitArtifact(artifactId); const firstVersion = first.current_version;
+    if (!firstVersion?.review_issue) throw new Error("Fixed text did not create a human review issue");
+    expect(first.source_issue.id).toBe(source.id); expect(first.producer_issue.id).toBe(source.id); expect(firstVersion.producer_issue_id).toBe(source.id);
+    await expect(api.updateIssue(firstVersion.review_issue.id, { status: "done" })).rejects.toThrow(/^update issue failed: 409/);
+    expect((await api.getCockpitArtifact(artifactId)).current_version?.decision).toBe("pending");
+    await page.goto(`/${workspace.slug}/issues/${firstVersion.review_issue.id}`, { waitUntil: "domcontentloaded" });
+    await followFormalReview(page, new RegExp(`artifact_version=${firstVersion.id}`), "Fixed version content");
+    await expect(reader.getByRole("heading", { name: "Interface report v1", exact: true })).toBeVisible();
+    await reader.getByRole("combobox", { name: "Review decision", exact: true }).click();
+    await page.getByRole("option", { name: "Changes requested", exact: true }).click();
+    await reader.getByRole("textbox", { name: "Review feedback", exact: true }).fill("Correct the limit and resubmit a fixed revision.");
+    await reader.getByRole("button", { name: "Submit review", exact: true }).click();
+    await expect.poll(async () => (await api.getCockpitArtifact(artifactId)).current_version?.decision).toBe("changes_requested");
+
+    await page.getByRole("button", { name: "Submit a new version", exact: true }).click();
+    const secondText = "# Interface report v2\n\nThe corrected limit is confirmed by the integration check.";
+    await page.getByRole("textbox", { name: "Version text", exact: true }).fill(secondText);
+    await page.getByRole("button", { name: "Submit fixed version", exact: true }).click();
+    await expect(reader.getByRole("heading", { name: "Interface report v2", exact: true })).toBeVisible();
+    await reader.getByRole("textbox", { name: "Review feedback", exact: true }).fill("The corrected fixed version is accepted. " + "The record includes the tested boundary, its evidence and the reviewer’s final observation. ".repeat(12));
+    await reader.getByRole("button", { name: "Submit review", exact: true }).click();
+    await expect.poll(async () => (await api.getCockpitArtifact(artifactId)).approved_version?.version_number).toBe(2);
+    const approved = (await api.getCockpitArtifact(artifactId)).approved_version; if (!approved) throw new Error("Approval pin missing");
+    const original = await api.getCockpitArtifactVersion(artifactId, firstVersion.id);
+    expect(original.content).toBe(firstText); expect(original.version.decision).toBe("changes_requested"); expect(original.version.content_hash).not.toBe(approved.content_hash);
+    await page.screenshot({ path: testInfo.outputPath("artifact-fixed-revisions.png"), fullPage: true });
+
+    await page.goto(`${base}?node=${leaf.id}&node_view=acceptance&${scope}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Edit acceptance criteria", exact: true }).click();
+    const criteria = page.getByRole("dialog", { name: "Edit acceptance criteria", exact: true });
+    await criteria.getByRole("button", { name: "Add criterion", exact: true }).click();
+    await criteria.getByRole("textbox", { name: "Criterion title", exact: true }).fill("Corrected interface limit is verified");
+    await criteria.getByRole("button", { name: "Save criteria", exact: true }).click();
+    await expect(criteria).not.toBeVisible();
+    await page.getByRole("button", { name: "Request acceptance", exact: true }).click();
+    const request = page.getByRole("dialog", { name: "Request acceptance", exact: true });
+    await request.getByRole("button", { name: "Reviewer", exact: true }).click(); await page.getByRole("button", { name: reviewerName, exact: true }).click();
+    await request.getByRole("button", { name: "Choose evidence for Corrected interface limit is verified", exact: true }).click();
+    await page.getByRole("button", { name: /Interface acceptance report.*Version 2/ }).click();
+    await request.getByRole("button", { name: "Send acceptance request", exact: true }).click();
+    const packet = page.getByRole("region", { name: "Fixed acceptance packet", exact: true });
+    const evidenceLink = packet.getByRole("link", { name: "Read evidence version 2", exact: true });
+    await expect(evidenceLink).toHaveAttribute("href", new RegExp(`version=${approved.id}`));
+    await evidenceLink.click(); await expect(reader.getByRole("heading", { name: "Interface report v2", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Back to acceptance", exact: true }).click(); await expect(packet).toBeVisible();
+    const acceptance = await api.getCockpitAcceptance(leaf.id); if (!acceptance.current_request) throw new Error("Acceptance request missing");
+    await expect(api.updateIssue(acceptance.current_request.review_issue.id, { status: "done" })).rejects.toThrow(/^update issue failed: 409/);
+    expect((await api.getCockpitAcceptance(leaf.id)).current_request?.decision).toBe("pending");
+    await page.goto(`/${workspace.slug}/issues/${acceptance.current_request.review_issue.id}`, { waitUntil: "domcontentloaded" });
+    await followFormalReview(page, new RegExp(`acceptance=${acceptance.current_request.id}`), "Fixed acceptance packet");
+    await expect(packet).toBeVisible();
+    await packet.getByRole("textbox", { name: "Review feedback", exact: true }).fill("Fixed evidence meets the recorded criterion. " + "The acceptance applies to this exact definition and these approved versions, not future edits. ".repeat(12));
+    await packet.getByRole("button", { name: "Submit acceptance decision", exact: true }).click();
+    await expect.poll(async () => (await api.getCockpitAcceptance(leaf.id)).last_approved_request?.id).toBe(acceptance.current_request.id);
+    await page.screenshot({ path: testInfo.outputPath("l3-fixed-evidence-accepted.png"), fullPage: true });
+
+    await page.goto(`${base}?artifact=${artifactId}&${scope}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Fixed version references", exact: true }).click();
+    await page.getByRole("button", { name: "Meeting references", exact: true }).click();
+    await page.getByRole("button", { name: "Reference a version from a meeting", exact: true }).click();
+    const reference = page.getByRole("dialog", { name: "Reference a version from a meeting", exact: true });
+    await reference.getByRole("button", { name: "Choose fixed version", exact: true }).click(); await reference.getByRole("button", { name: "Version 2", exact: true }).click();
+    await reference.getByRole("button", { name: "Choose source meeting", exact: true }).click();
+    await page.getByRole("textbox", { name: "Search by number, name or parties", exact: true }).fill(meeting.title);
+    await page.getByRole("button", { name: new RegExp(meeting.title) }).click();
+    await reference.getByRole("checkbox", { name: "I confirm the selected fixed version and destination.", exact: true }).check();
+    await reference.getByRole("button", { name: "Create reference", exact: true }).click(); await expect(reference).not.toBeVisible();
+    await page.goto(`${base}?meeting=${meeting.id}&meeting_view=resources&${scope}`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Fixed artifact versions", exact: true }).click();
+    const fixed = page.getByRole("link", { name: "Interface acceptance report · Version 2 (new tab)", exact: true });
+    await expect(fixed).toHaveAttribute("href", new RegExp(`version=${approved.id}`));
+    const popup = page.waitForEvent("popup"); await fixed.click(); const fixedPage = await popup;
+    await expect(fixedPage.getByRole("heading", { name: "Interface report v2", exact: true })).toBeVisible(); await fixedPage.close();
+    await page.goto(`/${workspace.slug}/issues/${source.id}`, { waitUntil: "domcontentloaded" });
+    const context = page.getByRole("region", { name: "Artifacts & acceptance", exact: true });
+    await expect(context.getByText(/Original source/)).toBeVisible();
+    await expect(context.getByRole("link", { name: /Interface acceptance report/ }).first()).toHaveAttribute("href", new RegExp(`artifact=${artifactId}`));
+    const longTitle = "Interface acceptance report · " + "项目交付依据".repeat(18) + " " + "EvidenceReference".repeat(8);
+    await api.renameOwnedArtifactForLayout(artifactId, longTitle);
+    await page.setViewportSize({ width: 390, height: 844 }); await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    await page.evaluate(() => { localStorage.setItem("e2e-artifact-locale", "zh-Hans"); document.cookie = "multica-locale=zh-Hans; path=/"; });
+    await page.goto(`${base}?artifact=${artifactId}&artifact_version=${approved.id}&${scope}`, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    const title = page.getByRole("heading", { name: longTitle, exact: true });
+    await expect(title).toBeVisible();
+    await expect(page.getByRole("region", { name: "固定版本内容", exact: true })).toBeVisible();
+    await expectSeparatedNarrowHeader(page);
+    const titleSize = await title.evaluate((element) => ({ height: element.getBoundingClientRect().height, line: Number.parseFloat(getComputedStyle(element).lineHeight) }));
+    expect(titleSize.height).toBeLessThanOrEqual(titleSize.line * 3 + 1);
+    await page.getByRole("button", { name: "展开完整标题", exact: true }).click();
+    await expect(page.getByRole("button", { name: "收起标题", exact: true })).toHaveAttribute("aria-expanded", "true");
+    expect(await title.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(titleSize.height);
+    await page.getByRole("button", { name: "收起标题", exact: true }).click();
+    await expect(page.getByRole("button", { name: "展开完整标题", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await title.evaluate((element) => element.closest("section")?.scrollTo(0, 0));
+    const artifactWidth = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(artifactWidth.scroll).toBeLessThanOrEqual(artifactWidth.width + 1);
+    await page.screenshot({ path: testInfo.outputPath("artifact-390-zh-dark.png"), animations: "disabled" });
+    const narrowReader = page.getByRole("region", { name: "固定版本内容", exact: true });
+    await narrowReader.scrollIntoViewIfNeeded();
+    await expect(narrowReader.getByRole("link", { name: new RegExp(source.title) })).toHaveAttribute("href", `/${workspace.slug}/issues/${source.id}`);
+    expect(await narrowReader.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("artifact-reader-390-zh-dark.png"), animations: "disabled" });
+    await page.goto(`${base}?node=${leaf.id}&node_view=acceptance&acceptance=${acceptance.current_request.id}&${scope}`, { waitUntil: "domcontentloaded" });
+    const narrowPacket = page.getByRole("region", { name: "固定验收材料", exact: true }); await expect(narrowPacket).toBeVisible();
+    await expectSeparatedNarrowHeader(page);
+    await page.getByRole("tabpanel", { name: "验收", exact: true }).evaluate((element) => element.scrollTo(0, 0));
+    await expect(page.getByRole("button", { name: "任务名称", exact: true })).toHaveText(leaf.name);
+    await expect(page.getByRole("region", { name: "当前验收请求", exact: true }).getByText(/定义修订/)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("acceptance-top-390-zh-dark.png"), animations: "disabled" });
+    await narrowPacket.scrollIntoViewIfNeeded();
+    await expect(narrowPacket.getByRole("link", { name: "阅读证据版本 2", exact: true })).toHaveAttribute("href", new RegExp(`artifact_version=${approved.id}`));
+    const acceptanceWidth = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+    expect(acceptanceWidth.scroll).toBeLessThanOrEqual(acceptanceWidth.width + 1);
+    expect(await narrowPacket.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath("acceptance-390-zh-dark.png"), animations: "disabled" });
+    expect(await api.getWorkspaceAgentRunCount()).toBe(0);
+  } finally { if (ownsWorkspace) await api.cleanupCreatedWorkspace(); }
+});

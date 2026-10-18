@@ -1,0 +1,1 @@
+ALTER TABLE cockpit_reviewer_handoff ADD CONSTRAINT cockpit_reviewer_handoff_pkey_idx PRIMARY KEY USING INDEX cockpit_reviewer_handoff_pkey_idx;

@@ -1,0 +1,1 @@
+ALTER TABLE cockpit_minutes_version DROP CONSTRAINT IF EXISTS cockpit_minutes_version_pkey_idx;

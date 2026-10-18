@@ -1,5 +1,8 @@
 "use client";
 
+import { ChartNoAxesGantt } from "lucide-react";
+import { CockpitViewHeading } from "./cockpit-view-heading";
+
 // The execution gantt: the work-breakdown tree on the left, the timeline on
 // the right, and every field on both sides editable where it is shown.
 //
@@ -14,40 +17,42 @@
 // the direction rows: the money and the milestones are questions someone asks
 // about a branch, not about one task.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useReducedMotion } from "motion/react";
+import { useQueries } from "@tanstack/react-query";
+import { useWorkspaceId } from "@multica/core/hooks";
+import { useNavigation, AppLink } from "../../navigation";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   CockpitBoard,
-  CockpitIssueLink,
-  CockpitMeeting,
+  CockpitPlanTaskCount,
+  CockpitPlanMeetingMarkerGroup,
   CockpitNode,
   CockpitNodePatch,
   CockpitPayment,
 } from "@multica/core/types";
 import {
   COCKPIT_STATUS_LEGEND,
+  COCKPIT_SUMMARY_GROUPS,
   axisMonths,
-  buildCockpitDisplayCodes,
   buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitAggStatusColor,
   cockpitCoreNodes,
   cockpitEffectiveProgress,
   cockpitGoalProgress,
-  cockpitMeetingSpan,
   cockpitStatusColor,
   cockpitSubtreeAverage,
   computeCockpitAxis,
   computeCockpitRollups,
   daysBetween,
-  groupIssueLinksByNode,
   groupPaymentsByNode,
   groupSubtreePayments,
-  groupMeetingsByNode,
+  cockpitPlanMeetingWindowOptions, cockpitScope, cockpitSurfacePath, cockpitScopeViewKey,
   isCockpitExecNode,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
   isCockpitSummaryGroup,
-  subtreeIds,
   parseDay,
   type CockpitCoreNodeKind,
   type CockpitGoalProgress,
@@ -72,7 +77,9 @@ import {
 } from "lucide-react";
 import { useLocale, useT } from "../../i18n";
 import { EditableSuggest, EditableText, ProgressField } from "./cockpit-fields";
+import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { StatusChip } from "./cockpit-status";
+import { cockpitGanttLayout } from "./cockpit-layout";
 
 /** Timeline density. Month is the year-at-a-glance read; week zooms in. */
 export type CockpitZoom = "month" | "week";
@@ -97,7 +104,10 @@ const GOAL_ROOT_CODE = "L1-02";
 const CORE_GOAL_COLOR = "#7c3aed";
 
 export interface CockpitGanttProps {
-  board: CockpitBoard;
+  board: Pick<CockpitBoard, "cockpit" | "nodes" | "payments">;
+  displayCodes: ReadonlyMap<string, string>;
+  contextNodeIds: ReadonlySet<string>;
+  taskCounts: ReadonlyMap<string, CockpitPlanTaskCount>;
   today: string;
   zoom: CockpitZoom;
   query: string;
@@ -113,6 +123,7 @@ export interface CockpitGanttProps {
   ownerSuggestions: string[];
   /** Show budget and instalment badges on every row. */
   showFinance: boolean;
+  includeArchivedMeetings?: boolean;
   /** Whether the toolbar is open; a collapsed toolbar takes the legend with it. */
   toolbarOpen: boolean;
   /** Bumped by the toolbar to scroll the timeline back to the today line. */
@@ -123,6 +134,8 @@ export interface CockpitGanttProps {
    *  a marker that cannot be followed is decoration. */
   onOpenMeeting?: (meetingId: string) => void;
   readOnly?: boolean;
+  /** Full materialization is reserved for an explicitly bounded chart export. */
+  renderAllRows?: boolean;
 }
 
 /** Tasks active in a calendar week, including end-only deadlines. */
@@ -258,13 +271,13 @@ function BarTooltipBody({
   code,
   rollup,
   payments,
-  links,
+  taskCount,
 }: {
   node: CockpitNode;
   code: string;
   rollup: CockpitRollup | undefined;
   payments: CockpitPayment[];
-  links: CockpitIssueLink[];
+  taskCount: CockpitPlanTaskCount | undefined;
 }) {
   const { t } = useT("cockpit");
   const start = node.start_date ?? rollup?.start ?? null;
@@ -294,7 +307,7 @@ function BarTooltipBody({
       <TooltipRow label={t(($) => $.node.dependencies)} value={node.dependencies} />
       <TooltipRow
         label={t(($) => $.node.linked_issues)}
-        value={links.map((l) => l.issue_identifier).join(" ")}
+        value={taskCount ? t(($) => $.plan_views.task_counts, { primary: taskCount.primary_total, reference: taskCount.reference_total }) : ""}
       />
       <TooltipRow label={t(($) => $.node.vendor)} value={node.vendor} />
       <TooltipRow
@@ -422,74 +435,23 @@ function barCodePlacement(
  * a marker that moves as the reader expands the tree is a marker nobody can
  * point at twice.
  */
-function MeetingMarker({
-  date,
-  meetings,
-  left,
-  onOpenMeeting,
-}: {
-  date: string;
-  meetings: CockpitMeeting[];
-  left: number;
-  onOpenMeeting: (meetingId: string) => void;
+function MeetingMarker({ group, left, onOpenMeeting, registerHref }: {
+  group: CockpitPlanMeetingMarkerGroup; left: number; onOpenMeeting: (id: string) => void; registerHref: string;
 }) {
   const { t } = useT("cockpit");
-  const summary = t(($) => $.gantt.meetings_on, { date, count: meetings.length });
-  const marker = (
-    <button
-      type="button"
-      aria-label={summary}
-      className="absolute z-10 flex h-4 min-w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px] border-info bg-card px-1 text-micro leading-none font-bold text-info shadow-sm"
-      style={{ left, top: "12%" }}
-    >
-      <CalendarDays className="size-2.5" strokeWidth={2.5} aria-hidden />
-      {meetings.length > 1 && <span>{meetings.length}</span>}
-    </button>
-  );
-  return (
-    <Dialog>
-      <Tooltip>
-        <TooltipTrigger render={<DialogTrigger render={marker} />} />
-        <TooltipContent>
-          <div className="flex max-w-80 flex-col gap-0.5">
-            <span className="font-medium">{summary}</span>
-            {meetings.slice(0, 5).map((meeting) => (
-              <span key={meeting.id} className="text-caption">
-                {cockpitMeetingSpan(meeting)} {meeting.title}
-              </span>
-            ))}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{summary}</DialogTitle>
-        </DialogHeader>
-        <ul className="flex flex-col divide-y divide-border">
-          {meetings.map((meeting) => (
-            <li key={meeting.id}>
-              <DialogClose
-                render={
-                  <Button
-                    variant="link"
-                    className="h-auto w-full justify-start px-0 py-2 text-left"
-                    onClick={() => onOpenMeeting(meeting.id)}
-                  >
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate">{meeting.title}</span>
-                      <span className="text-caption text-muted-foreground">
-                        {[cockpitMeetingSpan(meeting), meeting.parties].filter(Boolean).join(" · ")}
-                      </span>
-                    </span>
-                  </Button>
-                }
-              />
-            </li>
-          ))}
-        </ul>
-      </DialogContent>
-    </Dialog>
-  );
+  const summary = t(($) => $.gantt.meetings_on, { date: group.date, count: group.total });
+  return <Dialog><Tooltip><TooltipTrigger render={<DialogTrigger render={<button type="button" aria-label={summary}
+    className="absolute z-10 flex h-4 min-w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[1.5px] border-info bg-card px-1 text-micro leading-none font-bold text-info shadow-sm" style={{ left, top: "12%" }} />} />}>
+    <CalendarDays className="size-2.5" strokeWidth={2.5} aria-hidden />{group.total > 1 && <span>{group.total}</span>}
+  </TooltipTrigger><TooltipContent>{summary}</TooltipContent></Tooltip>
+    <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{summary}</DialogTitle></DialogHeader>
+      <ul className="max-h-72 divide-y overflow-y-auto">{group.items.map((meeting) => <li key={meeting.id}>
+        <DialogClose render={<Button variant="link" className="h-auto w-full justify-start py-2 text-left" onClick={() => onOpenMeeting(meeting.id)} />}>
+          <span className="min-w-0"><span className="line-clamp-2 break-words" title={meeting.title}>{meeting.title}</span><span className="text-caption text-muted-foreground">{meeting.start_time}</span></span>
+        </DialogClose></li>)}</ul>
+      <DialogClose nativeButton={false} render={<AppLink href={registerHref} className="text-caption text-primary underline" />}>{t(($) => $.meeting_center.open_register)}</DialogClose>
+    </DialogContent>
+  </Dialog>;
 }
 
 function CoreMarker({
@@ -682,33 +644,53 @@ function GoalChip({
 
 export function CockpitGantt({
   board,
+  displayCodes,
+  contextNodeIds,
+  taskCounts,
   today,
   zoom,
   query,
   rootIds,
   collapsed,
   onToggleCollapse,
-  onSelect,
+  onSelect: onSelectNode,
   selectedId,
   onPatchNode,
   statusSuggestions,
   ownerSuggestions,
   showFinance,
+  includeArchivedMeetings = false,
   toolbarOpen,
   scrollToTodayNonce,
   focusTarget,
   onOpenMeeting,
   readOnly,
+  renderAllRows = false,
 }: CockpitGanttProps) {
   const { t } = useT("cockpit");
   const locale = useLocale();
+  const wsId = useWorkspaceId(); const navigation = useNavigation();
+  const scope = cockpitScope(navigation.searchParams);
+  const [viewport, setViewport] = useState({ left: 0, width: 0 });
+  const reduceMotion = useReducedMotion() === true;
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const selectedGroup = COCKPIT_SUMMARY_GROUPS.find((group) => group.id === selectedGroupId);
+  const onSelect = (id: string) => { if (isCockpitSummaryGroup(id)) setSelectedGroupId(id); else onSelectNode(id); };
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const lastTodayScroll = useRef({ nonce: 0, dayWidth: 0, axisStart: 0 });
+  useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, scope), "gantt"]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
 
   const baseTree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
   // The shipped shape: merged directions, their tasks flattened underneath.
-  const tree = useMemo(() => buildCockpitSummaryTree(baseTree), [baseTree]);
+  const tree = useMemo(() => {
+    const presentCodes = new Set(board.nodes.map((node) => node.code));
+    return buildCockpitSummaryTree(baseTree).map((root) => ({ ...root, children: root.children.filter((child) => {
+      const group = COCKPIT_SUMMARY_GROUPS.find((item) => item.id === child.node.id);
+      return !group || group.members.some((code) => presentCodes.has(code));
+    }) }));
+  }, [baseTree, board.nodes]);
   const scopedTree = useMemo(() => {
     if (rootIds.size === 0) return tree;
     const picked = tree.filter((entry) => rootIds.has(entry.node.id));
@@ -717,12 +699,20 @@ export function CockpitGantt({
 
   // Row codes are addresses, so they are built once over the whole tree: a
   // filtered or searched view must not renumber the rows under the reader.
-  const displayCodes = useMemo(() => buildCockpitDisplayCodes(tree), [tree]);
   const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
   const rows = useMemo(
     () => visibleRows(scopedTree, collapsed, query),
     [scopedTree, collapsed, query],
   );
+  const monthBandHeight = zoom === "week" ? 22 : 36;
+  const headerHeight = zoom === "week" ? 52 : 36;
+  const rowVirtualizer = useVirtualizer({ count: rows.length, getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT, overscan: 8, scrollMargin: headerHeight,
+    getItemKey: (index) => rows[index]!.node.id, initialRect: { width: 1100, height: 600 } });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const renderedRows = renderAllRows ? rows : virtualRows.map((row) => rows[row.index]!);
+  const topPadding = renderAllRows ? 0 : Math.max(0, (virtualRows[0]?.start ?? headerHeight) - headerHeight);
+  const bottomPadding = renderAllRows ? 0 : Math.max(0, rows.length * ROW_HEIGHT - topPadding - renderedRows.length * ROW_HEIGHT);
   const nodeById = useMemo(() => new Map(board.nodes.map((n) => [n.id, n])), [board.nodes]);
   // Whose module a row belongs to, and who answers for that module — the
   // owner a direction row inherits and the mainline the goal marker pins to.
@@ -738,7 +728,6 @@ export function CockpitGantt({
     return { byId, byCode };
   }, [tree]);
   const paymentsByNode = useMemo(() => groupPaymentsByNode(board.payments), [board.payments]);
-  const linksByNode = useMemo(() => groupIssueLinksByNode(board.issue_links), [board.issue_links]);
   // A direction row with no owner of its own answers through its mainline.
   const rootOwner = useMemo(() => {
     const map = new Map<string, string>();
@@ -857,69 +846,73 @@ export function CockpitGantt({
     return map;
   }, [rows, today, axisStartKey, goalDate, rootOf]);
 
-  /**
-   * The meetings that discussed each direction, merged by day and clamped onto
-   * the axis like every other marker. Built over the whole subtree so a
-   * meeting recorded against one L3 task still shows on the direction row the
-   * reader is actually looking at.
-   */
-  const meetingMarks = useMemo(() => {
-    const map = new Map<string, { date: string; meetings: CockpitMeeting[] }[]>();
-    if (!onOpenMeeting) return map;
-    const byNode = groupMeetingsByNode(board.meetings, board.meeting_nodes);
-    if (byNode.size === 0) return map;
-    for (const entry of rows) {
-      if (!carriesMarkers(entry)) continue;
-      const seen = new Set<string>();
-      const byDate = new Map<string, CockpitMeeting[]>();
-      for (const id of subtreeIds(entry)) {
-        for (const meeting of byNode.get(id) ?? []) {
-          if (!meeting.meet_date || seen.has(meeting.id)) continue;
-          seen.add(meeting.id);
-          const date = meeting.meet_date < axisStartKey ? axisStartKey : meeting.meet_date;
-          const bucket = byDate.get(date);
-          if (bucket) bucket.push(meeting);
-          else byDate.set(date, [meeting]);
-        }
-      }
-      if (byDate.size === 0) continue;
-      map.set(
-        entry.node.id,
-        [...byDate.entries()]
-          .map(([date, meetings]) => ({ date, meetings }))
-          .sort((a, b) => a.date.localeCompare(b.date)),
-      );
-    }
-    return map;
-  }, [rows, board.meetings, board.meeting_nodes, axisStartKey, onOpenMeeting]);
-
-  const treeWidth = showFinance ? 800 : 680;
+  const { treeWidth, compact } = cockpitGanttLayout(viewport.width, showFinance, renderAllRows);
+  const hasNodes = board.nodes.length > 0;
+  useLayoutEffect(() => {
+    const element = scrollRef.current; if (!element) return;
+    let frame = 0;
+    const measure = () => setViewport({ left: element.scrollLeft, width: element.clientWidth });
+    const read = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
+    element.addEventListener("scroll", read, { passive: true });
+    const observer = new ResizeObserver(read); observer.observe(element); measure();
+    return () => { cancelAnimationFrame(frame); element.removeEventListener("scroll", read); observer.disconnect(); };
+  }, [hasNodes]);
+  const markerRows = renderedRows.filter(carriesMarkers).slice(0, 100).map((entry) => {
+    const group = COCKPIT_SUMMARY_GROUPS.find((item) => item.id === entry.node.id);
+    return { row_key: entry.node.id, node_ids: group ? board.nodes.filter((node) => group.members.includes(node.code)).map((node) => node.id) : [entry.node.id] };
+  }).filter((row) => row.node_ids.length > 0);
+  const markerWindows = [];
+  const firstDay = Math.max(0, Math.floor(viewport.left / dayWidth));
+  const lastDay = Math.min(axis.days - 1, firstDay + Math.ceil(Math.max(1, viewport.width - treeWidth) / dayWidth));
+  for (let day = firstDay; day <= lastDay; day += 93) markerWindows.push({
+    date_from: new Date(axis.start.getTime() + day * MS_PER_DAY).toISOString().slice(0, 10),
+    date_to: new Date(axis.start.getTime() + Math.min(day + 92, lastDay) * MS_PER_DAY).toISOString().slice(0, 10),
+  });
+  const markerQueries = useQueries({ queries: markerWindows.map((window) => ({ ...cockpitPlanMeetingWindowOptions(wsId, scope, { rows: markerRows, archive: includeArchivedMeetings ? "all" : "active", ...window }), enabled: Boolean(viewport.width > 0 && onOpenMeeting && !renderAllRows && markerRows.length) })) });
+  const meetingMarks = new Map<string, CockpitPlanMeetingMarkerGroup[]>();
+  for (const query of markerQueries) for (const group of query.data ?? []) meetingMarks.set(group.row_key, [...(meetingMarks.get(group.row_key) ?? []), group]);
+  const markerError = markerQueries.some((query) => query.isError);
+  const markerRegisterHref = (rowKey: string, date: string) => {
+    const row = markerRows.find((item) => item.row_key === rowKey);
+    const path = cockpitSurfacePath(navigation.pathname, "meetings", scope);
+    const params = new URLSearchParams(path.split("?")[1] ?? "");
+    if (row?.node_ids.length === 1) params.set("meeting_node", row.node_ids[0]!);
+    else if (row?.node_ids.length) params.set("meeting_nodes", row.node_ids.join(","));
+    params.set("from", date); params.set("to", date); params.set("meeting_archive", includeArchivedMeetings ? "all" : "active");
+    return `${navigation.pathname}?${params.toString()}`;
+  };
 
   // Scrolling is a viewport action, not board state, so it is driven by a
   // nonce from the toolbar rather than by a value the render depends on.
   useEffect(() => {
-    if (scrollToTodayNonce === 0 || todayOffset === null) return;
+    if (scrollToTodayNonce === 0 || todayOffset === null || viewport.width === 0 || renderAllRows) return;
+    const axisStart = axis.start.getTime();
+    const previous = lastTodayScroll.current;
+    if (previous.nonce === scrollToTodayNonce && previous.dayWidth === dayWidth && previous.axisStart === axisStart) return;
     const el = scrollRef.current;
     if (!el) return;
+    lastTodayScroll.current = { nonce: scrollToTodayNonce, dayWidth, axisStart };
     // The tree pane is sticky and covers the left of the viewport, so the
     // today line is centred in what is left of it, not in the whole element.
     const centre = Math.max(todayOffset - (el.clientWidth - treeWidth) / 2, 0);
-    el.scrollTo({ left: centre, behavior: "smooth" });
-  }, [scrollToTodayNonce, todayOffset, treeWidth]);
+    el.scrollTo({ left: centre, behavior: reduceMotion ? "auto" : "smooth" });
+  }, [scrollToTodayNonce, todayOffset, treeWidth, reduceMotion, viewport.width, renderAllRows, axis.start, dayWidth]);
 
-  // A digest-card task click lands here: locate the row, scroll it into the
-  // middle and flash it, the way the prototype's grid did.
+  // Locate first by logical row index: the target may not be mounted yet.
   useEffect(() => {
     if (!focusTarget) return;
-    const el = scrollRef.current?.querySelector(
-      `[data-cockpit-node="${focusTarget.nodeId}"]`,
-    );
-    if (!el) return;
-    el.scrollIntoView({ block: "center", behavior: "smooth" });
-    el.classList.add("cockpit-flash");
-    const timer = window.setTimeout(() => el.classList.remove("cockpit-flash"), 2600);
-    return () => window.clearTimeout(timer);
-  }, [focusTarget]);
+    const index = rows.findIndex((entry) => entry.node.id === focusTarget.nodeId);
+    if (index < 0) return;
+    rowVirtualizer.scrollToIndex(index, { align: "center" });
+    const frame = requestAnimationFrame(() => {
+      const element = scrollRef.current?.querySelector(`[data-cockpit-node="${focusTarget.nodeId}"]`);
+      element?.classList.add("cockpit-flash");
+    });
+    const timer = window.setTimeout(() => {
+      scrollRef.current?.querySelector(`[data-cockpit-node="${focusTarget.nodeId}"]`)?.classList.remove("cockpit-flash");
+    }, 2600);
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(timer); };
+  }, [focusTarget, rows, rowVirtualizer]);
 
   if (board.nodes.length === 0) {
     return (
@@ -930,8 +923,6 @@ export function CockpitGantt({
   }
 
   const emptyLabel = t(($) => $.common.unset);
-  const monthBandHeight = zoom === "week" ? 22 : 36;
-  const headerHeight = zoom === "week" ? 52 : 36;
   const legendLabel = (key: CockpitStatusLegendKey) => t(($) => $.gantt.legend_status[key]);
 
   // A click anywhere on a branch row folds it, unless it landed on a control.
@@ -948,7 +939,8 @@ export function CockpitGantt({
   };
 
   return (
-    <div data-cockpit-gantt data-summary-width={zoom === "month" && rows.every((entry) => entry.children.length > 0) ? treeWidth + Math.max(0, daysBetween(axis.start, new Date(Date.UTC(Number(today.slice(0, 4)) + 1, 0, 1)))) * dayWidth : undefined} className="flex min-h-0 flex-1 flex-col">
+    <div data-cockpit-row-count={rows.length} data-cockpit-gantt data-summary-width={zoom === "month" && rows.every((entry) => entry.children.length > 0) ? treeWidth + Math.max(0, daysBetween(axis.start, new Date(Date.UTC(Number(today.slice(0, 4)) + 1, 0, 1)))) * dayWidth : undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <CockpitViewHeading title={t(($) => $.tabs.gantt)} icon={ChartNoAxesGantt} />
       {/* Legend and provenance: what the chart is showing and what its colours
           mean, collapsible for anyone who already knows — and folded away with
           the toolbar, which is where the shipped board keeps it. */}
@@ -1010,7 +1002,9 @@ export function CockpitGantt({
         </div>
       )}
 
-      <div ref={scrollRef} data-cockpit-scroll className="min-h-0 flex-1 overflow-auto">
+      {markerError && <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive"><span>{t(($) => $.meeting_center.marker_failed)}</span><Button type="button" variant="outline" size="sm" onClick={() => markerQueries.forEach((query) => { void query.refetch(); })}>{t(($) => $.binding.retry)}</Button></div>}
+      {renderAllRows && <p className="px-3 py-2 text-caption text-muted-foreground">{t(($) => $.meeting_center.export_markers)}</p>}
+      <div ref={scrollRef} data-cockpit-scroll className="min-h-0 min-w-0 flex-1 overflow-auto">
         <div className="flex min-w-max">
           {/* Tree pane. Sticky so the timeline scrolls under the names. */}
           <div
@@ -1018,18 +1012,21 @@ export function CockpitGantt({
             style={{ width: treeWidth }}
           >
             <div
-              className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background px-3 text-caption font-medium text-muted-foreground"
+              className="cockpit-time-axis sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background px-3 text-caption font-medium text-muted-foreground"
               style={{ height: headerHeight }}
             >
-              <span className="flex-1">{t(($) => $.gantt.column_task)}</span>
-              {showFinance && (
+              <span className="min-w-0 flex-1">{t(($) => $.gantt.column_task)}</span>
+              {!compact && showFinance && (
                 <span className="w-32 shrink-0 text-right">{t(($) => $.gantt.column_finance)}</span>
               )}
-              <span className="w-16 shrink-0 text-right">{t(($) => $.gantt.column_owner)}</span>
-              <span className="w-24 shrink-0 text-right">{t(($) => $.gantt.column_status)}</span>
-              <span className="w-28 shrink-0 text-right">{t(($) => $.gantt.column_progress)}</span>
+              {!compact && <>
+                <span className="w-16 shrink-0 text-right">{t(($) => $.gantt.column_owner)}</span>
+                <span className="w-24 shrink-0 text-right">{t(($) => $.gantt.column_status)}</span>
+                <span className="w-28 shrink-0 text-right">{t(($) => $.gantt.column_progress)}</span>
+              </>}
             </div>
-            {rows.map((entry) => {
+            <div aria-hidden style={{ height: topPadding }} />
+            {renderedRows.map((entry) => {
               const { node, depth, children } = entry;
               const rollup = rollups.get(node.id);
               const isBranch = children.length > 0;
@@ -1053,11 +1050,14 @@ export function CockpitGantt({
                 <div
                   key={node.id}
                   data-cockpit-node={node.id}
+                  data-context-only={contextNodeIds.has(node.id) || undefined}
+                  title={contextNodeIds.has(node.id) ? t(($) => $.plan_views.context_only) : isCockpitSummaryGroup(node.id) ? t(($) => $.plan_views.presentation_group) : undefined}
                   onMouseEnter={() => setHoveredId(node.id)}
                   onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                   onClick={toggleRow(entry)}
                   className={cn(
-                    "flex items-center gap-2 border-b border-border/50 px-3",
+                    "flex items-center gap-2 border-b border-border/50",
+                    compact ? "px-1" : "px-3",
                     isBranch && "cursor-pointer",
                     // The selected row must stay identifiable while hovered, so
                     // selection speaks through weight and a left rule, not only
@@ -1077,7 +1077,7 @@ export function CockpitGantt({
                 >
                   <div
                     className="flex min-w-0 flex-1 items-center gap-1"
-                    style={{ paddingLeft: depth * INDENT }}
+                    style={{ paddingLeft: compact ? Math.min(depth * 8, 16) : depth * INDENT }}
                   >
                     {isBranch ? (
                       <button
@@ -1099,6 +1099,7 @@ export function CockpitGantt({
                     ) : (
                       <span className="w-[1.125rem] shrink-0" />
                     )}
+                    <div className={cn("flex min-w-0 flex-1", compact ? "flex-col items-start [&:has(input)>button]:hidden" : "items-center gap-1")}>
                     {/* The row code is the address people quote in meetings.
                         It already says which level the row is on, so no
                         separate depth chip sits beside it. Only the mainline
@@ -1111,7 +1112,7 @@ export function CockpitGantt({
                             type="button"
                             onClick={() => onSelect(node.id)}
                             aria-label={t(($) => $.gantt.open_node, { code })}
-                            className="shrink-0 rounded-sm px-1 font-mono text-micro text-muted-foreground tabular-nums hover:bg-accent hover:text-foreground"
+                            className={cn("max-w-full shrink-0 truncate rounded-sm px-1 font-mono text-micro text-muted-foreground tabular-nums hover:bg-accent hover:text-foreground", compact && "leading-tight")}
                             style={isMainline && entry.color ? { color: entry.color } : undefined}
                           >
                             {code}
@@ -1127,9 +1128,11 @@ export function CockpitGantt({
                       onCommit={(name) => onPatchNode(node.id, { name })}
                       label={t(($) => $.node.name)}
                       placeholder={t(($) => $.node.name_placeholder)}
-                      disabled={readOnly}
-                      displayClassName={cn("flex-1", isBranch && "font-medium")}
+                      disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
+                      displayClassName={cn("min-w-0 truncate", compact ? "w-full text-caption leading-tight" : "flex-1", isBranch && "font-medium")}
                     />
+                    </div>
+                    {!compact && <>
                     {/* A branch that never got broken down looks identical to a
                         finished one at a glance. It should not. */}
                     {isBranch && rollup?.leafCount === 0 && (
@@ -1162,8 +1165,10 @@ export function CockpitGantt({
                         {t(($) => $.gantt.should_have_started)}
                       </span>
                     )}
+                    </>}
                   </div>
 
+                  {!compact && <>
                   {showFinance && (
                     <div className="flex w-32 shrink-0 items-center justify-end gap-1">
                       {budget > 0 && (
@@ -1218,7 +1223,7 @@ export function CockpitGantt({
                             suggestions={ownerSuggestions}
                             label={t(($) => $.node.owner)}
                             placeholder={emptyLabel}
-                            disabled={readOnly}
+                            disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
                             displayClassName="text-caption"
                             displayValue={shortOwner(inheritedOwner)}
                           />
@@ -1234,7 +1239,7 @@ export function CockpitGantt({
                         suggestions={ownerSuggestions}
                         label={t(($) => $.node.owner)}
                         placeholder={emptyLabel}
-                        disabled={readOnly}
+                        disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
                         displayClassName="text-caption"
                         displayValue={shortOwner(node.owner)}
                       />
@@ -1264,7 +1269,7 @@ export function CockpitGantt({
                         clearLabel={t(($) => $.node.status_unscheduled)}
                         label={t(($) => $.node.status)}
                         placeholder={emptyLabel}
-                        disabled={readOnly}
+                        disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
                         renderDisplay={(value) =>
                           value ? (
                             <StatusChip status={value} />
@@ -1310,19 +1315,21 @@ export function CockpitGantt({
                         value={node.progress}
                         onCommit={(progress) => onPatchNode(node.id, { progress })}
                         label={t(($) => $.node.progress)}
-                        disabled={readOnly}
+                        disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
                       />
                     )}
                   </div>
+                  </>}
                 </div>
               );
             })}
+            <div aria-hidden style={{ height: bottomPadding }} />
           </div>
 
           {/* Timeline pane. */}
           <div className="relative shrink-0" style={{ width: timelineWidth }}>
             <div
-              className="sticky top-0 z-10 border-b border-border bg-background"
+              className="cockpit-time-axis sticky top-0 z-10 border-b border-border bg-background"
               style={{ height: headerHeight }}
             >
               <div className="relative flex" style={{ height: monthBandHeight }}>
@@ -1396,7 +1403,7 @@ export function CockpitGantt({
                                     <div>{t(($) => $.node.progress)}: {cockpitEffectiveProgress(node)}%</div>
                                     <div>{t(($) => $.node.current_progress)}: {node.current_progress || emptyLabel}</div>
                                     <div>{t(($) => $.node.deliverable)}: {node.deliverable || emptyLabel}</div>
-                                    <div>{t(($) => $.node.linked_issues)}: {(linksByNode.get(node.id) ?? []).map((link) => `${link.issue_identifier} ${link.issue_title} (${link.issue_status})`).join(" · ") || emptyLabel}</div>
+                                    <div>{t(($) => $.node.linked_issues)}: {taskCounts.has(node.id) ? t(($) => $.plan_views.task_counts, { primary: taskCounts.get(node.id)!.primary_total, reference: taskCounts.get(node.id)!.reference_total }) : emptyLabel}</div>
                                   </td>
                                   <td className="whitespace-nowrap pr-2">{node.end_date ?? emptyLabel}</td>
                                   <td><StatusChip status={node.status} /></td>
@@ -1454,7 +1461,7 @@ export function CockpitGantt({
               )}
             </div>
 
-            <div className="relative">
+            <div className="relative" style={{ height: rows.length * ROW_HEIGHT }}>
               {/* One gridline layer for the whole chart rather than one per
                   row: a year at week density is ~50 lines, and drawing them
                   per row would be tens of thousands of nodes. */}
@@ -1513,7 +1520,8 @@ export function CockpitGantt({
                 </>
               )}
 
-              {rows.map((entry) => {
+              <div aria-hidden style={{ height: topPadding }} />
+              {renderedRows.map((entry) => {
                 const { node, children, depth } = entry;
                 const rollup = rollups.get(node.id);
                 const isBranch = children.length > 0;
@@ -1561,6 +1569,8 @@ export function CockpitGantt({
                   <div
                     key={node.id}
                     data-cockpit-node={node.id}
+                  data-context-only={contextNodeIds.has(node.id) || undefined}
+                  title={contextNodeIds.has(node.id) ? t(($) => $.plan_views.context_only) : isCockpitSummaryGroup(node.id) ? t(($) => $.plan_views.presentation_group) : undefined}
                     onMouseEnter={() => setHoveredId(node.id)}
                     onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                     onClick={toggleRow(entry)}
@@ -1580,7 +1590,8 @@ export function CockpitGantt({
                               onClick={() => onSelect(node.id)}
                               aria-label={t(($) => $.gantt.bar_label, { code })}
                               className={cn(
-                                "absolute -translate-y-1/2 overflow-hidden rounded-md shadow-[inset_0_1px_0_rgb(255_255_255/0.28),inset_0_-1px_0_rgb(0_0_0/0.08)] ring-offset-background transition-[filter] hover:brightness-[1.07] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                                "absolute -translate-y-1/2 overflow-hidden rounded-md ring-offset-background transition-[filter] motion-reduce:transition-none hover:brightness-[1.07] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                                !isBranch && "shadow-[inset_0_1px_0_rgb(255_255_255/0.28),inset_0_-1px_0_rgb(0_0_0/0.08)]",
                                 // A roll-up is hatched as well as coloured: it
                                 // reports the state of everything under it, not
                                 // a status anyone set on the row itself. The
@@ -1638,7 +1649,7 @@ export function CockpitGantt({
                             code={code}
                             rollup={rollup}
                             payments={paymentsByNode.get(node.id) ?? []}
-                            links={linksByNode.get(node.id) ?? []}
+                            taskCount={taskCounts.get(node.id)}
                           />
                         </TooltipContent>
                       </Tooltip>
@@ -1699,7 +1710,7 @@ export function CockpitGantt({
                             code={code}
                             rollup={rollup}
                             payments={paymentsByNode.get(node.id) ?? []}
-                            links={linksByNode.get(node.id) ?? []}
+                            taskCount={taskCounts.get(node.id)}
                           />
                         </TooltipContent>
                       </Tooltip>
@@ -1717,8 +1728,8 @@ export function CockpitGantt({
                       meetingDays.map((day) => (
                         <MeetingMarker
                           key={`${node.id}-meet-${day.date}`}
-                          date={day.date}
-                          meetings={day.meetings}
+                          group={day}
+                          registerHref={markerRegisterHref(node.id, day.date)}
                           left={markerX(day.date)}
                           onOpenMeeting={onOpenMeeting}
                         />
@@ -1753,6 +1764,15 @@ export function CockpitGantt({
           </div>
         </div>
       </div>
+      <Dialog open={Boolean(selectedGroup)} onOpenChange={(open) => { if (!open) setSelectedGroupId(null); }}>
+        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{selectedGroup?.name}</DialogTitle></DialogHeader>
+          <p className="text-caption text-muted-foreground">{t(($) => $.plan_views.presentation_group)}</p>
+          <ul className="max-h-80 space-y-2 overflow-y-auto">{selectedGroup && board.nodes.filter((node) => selectedGroup.members.includes(node.code)).map((node) => <li key={node.id}>
+            <DialogClose render={<Button type="button" variant="outline" className="h-auto min-h-10 w-full justify-start whitespace-normal text-left" onClick={() => onSelectNode(node.id)} />}>
+              <span className="mr-2 shrink-0 font-mono text-caption text-muted-foreground">{displayCodes.get(node.id) ?? node.code}</span><span className="line-clamp-2 min-w-0 break-words">{node.name}</span>
+            </DialogClose></li>)}</ul>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

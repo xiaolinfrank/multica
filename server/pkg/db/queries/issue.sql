@@ -321,23 +321,22 @@ RETURNING i.*;
 -- parent that moves takes its whole subtree with it.
 --
 -- The tree carries no foreign keys, so the workspace bound is re-applied at
--- every hop instead of being inherited from the root row, and the walk is
--- depth-capped like the handler's cycle check — a cycle written before that
--- guard existed must not spin here.
+-- every hop. UNION on stable IDs terminates even on malformed old cycles;
+-- no legitimate descendant is silently omitted by a depth limit.
+-- Callers hold the workspace hierarchy lock and commit this with the parent.
 --
 -- Rows already filed where they belong are excluded, so the returned set is
 -- exactly the rows that changed and is what the caller broadcasts.
 WITH RECURSIVE descendants AS (
-    SELECT i.id, 1 AS depth
+    SELECT i.id
     FROM issue AS i
     WHERE i.parent_issue_id = @parent_issue_id::uuid
       AND i.workspace_id = @workspace_id::uuid
-  UNION ALL
-    SELECT i.id, d.depth + 1
+  UNION
+    SELECT i.id
     FROM issue AS i
     JOIN descendants AS d ON i.parent_issue_id = d.id
     WHERE i.workspace_id = @workspace_id::uuid
-      AND d.depth < 10
 )
 UPDATE issue AS i SET
     project_id = sqlc.narg('project_id')::uuid,
@@ -349,7 +348,7 @@ WHERE i.id IN (SELECT id FROM descendants)
   AND i.workspace_id = @workspace_id::uuid
   AND (i.project_id IS DISTINCT FROM sqlc.narg('project_id')::uuid
     OR i.module_id IS DISTINCT FROM sqlc.narg('module_id')::uuid)
-RETURNING i.*;
+RETURNING i.id,i.workspace_id,i.project_id,i.module_id,i.revision,i.updated_at;
 
 -- name: UpdateIssueStatus :one
 -- Workspace_id in the WHERE clause is a SQL-layer tenant guard; see DeleteIssue.

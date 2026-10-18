@@ -563,6 +563,7 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		LLM: llmClient,
 		cfg: cfg,
 	}
+	h.IssueService.ConfigureCockpitArtifactStorage(store)
 	h.WebhookDeliveryWorker = NewWebhookDeliveryWorker(h)
 	// The default passthrough scheduler reports sweeper-race recoveries so the
 	// daemon:register refresh fires even without the production batched wiring.

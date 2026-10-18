@@ -22,7 +22,7 @@ import {
   UserMinus,
 } from "lucide-react";
 import type { Issue } from "@multica/core/types";
-import { resolveWorkdirCopyTarget } from "@multica/core/issues";
+import { issueOperationAllowed, issueStatusOperationAllowed, resolveWorkdirCopyTarget } from "@multica/core/issues";
 import { todayDateOnly, addDaysDateOnly } from "@multica/core/issues/date";
 import { api } from "@multica/core/api";
 import {
@@ -53,6 +53,7 @@ import { copyText } from "@multica/ui/lib/clipboard";
 import type { UseIssueActionsResult } from "./use-issue-actions";
 import { PluginHookMenuItems, PluginModalMenuItems } from "../../plugins";
 import { useT } from "../../i18n";
+import { IssueOperationRestriction, type IssueOperationObservation } from "../components/issue-operation-restriction";
 
 // Both Dropdown and Context menu wrappers expose an API-compatible surface
 // (variant, inset, onClick, etc.). We bundle the primitives we need into a
@@ -98,6 +99,7 @@ interface IssueActionsMenuItemsProps {
    *  to the list the user came from and only falls back to this path when
    *  there is no in-app history. List surfaces leave it unset and stay put. */
   onDeletedFallbackPath?: string;
+  observation: IssueOperationObservation;
 }
 
 export function IssueActionsMenuItems({
@@ -106,6 +108,7 @@ export function IssueActionsMenuItems({
   primitives: P,
   onOpenAssignee,
   onDeletedFallbackPath,
+  observation,
 }: IssueActionsMenuItemsProps) {
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
@@ -188,6 +191,7 @@ export function IssueActionsMenuItems({
           {t(($) => $.actions.status)}
         </P.SubTrigger>
         <P.SubContent>
+          <div className="max-w-72 px-2 py-2"><IssueOperationRestriction observation={observation} operation="status" /></div>
           {/* Catalog-driven, like the picker and the filter: every entry point
               that can change a status must offer the same set, or a custom
               status is unreachable from the board's right-click menu. One flat
@@ -195,6 +199,7 @@ export function IssueActionsMenuItems({
           {statusOptions.map((option) => (
             <P.Item
               key={option.key}
+              disabled={!issueStatusOperationAllowed(observation.basis, option.category)}
               onClick={() => updateField({ status: option.key })}
             >
               <StatusIcon
@@ -348,12 +353,12 @@ export function IssueActionsMenuItems({
             <Plus className="h-3.5 w-3.5" />
             {t(($) => $.actions.create_sub_issue)}
           </P.Item>
-          <P.Item onClick={openSetParent}>
+          <P.Item disabled={!issueOperationAllowed(observation.basis, "parent")} onClick={openSetParent}>
             <ArrowUp className="h-3.5 w-3.5" />
             {t(($) => $.actions.set_parent_issue)}
           </P.Item>
           {issue.parent_issue_id && (
-            <P.Item onClick={removeParent}>
+            <P.Item disabled={!issueOperationAllowed(observation.basis, "parent")} onClick={removeParent}>
               <Unlink className="h-3.5 w-3.5" />
               {t(($) => $.actions.remove_parent_issue)}
             </P.Item>
@@ -362,10 +367,11 @@ export function IssueActionsMenuItems({
             <ArrowDown className="h-3.5 w-3.5" />
             {t(($) => $.actions.add_sub_issue)}
           </P.Item>
-          <P.Item onClick={openMarkDuplicate}>
+          <P.Item disabled={!issueStatusOperationAllowed(observation.basis, "closed")} onClick={openMarkDuplicate}>
             <CircleEqual className="h-3.5 w-3.5" />
             {t(($) => $.actions.mark_duplicate)}
           </P.Item>
+          <div className="max-w-72 px-2 py-2"><IssueOperationRestriction observation={observation} operation="parent" /></div>
         </P.SubContent>
       </P.Sub>
 

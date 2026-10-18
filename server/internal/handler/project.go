@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/multica-ai/multica/server/internal/service"
 	"io"
 	"log/slog"
 	"net/http"
@@ -263,6 +264,10 @@ func (h *Handler) writeProjectWriteError(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
+	if singleOwnerMode() {
+		localProjectBindingMu.Lock()
+		defer localProjectBindingMu.Unlock()
+	}
 	var req CreateProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -379,6 +384,18 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if singleOwnerMode() {
+		path, _, err := localProjectDirectory(req.Title, collabPath)
+		if err != nil {
+			writeError(w, 400, err.Error())
+			return
+		}
+		collabPath = pgtype.Text{String: path, Valid: true}
+		if err := h.unusedLocalProjectPath(r.Context(), path, ""); err != nil {
+			writeError(w, 409, err.Error())
+			return
+		}
+	}
 	createParams := db.CreateProjectParams{
 		WorkspaceID: wsUUID,
 		Title:       req.Title,
@@ -482,6 +499,10 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	if singleOwnerMode() {
+		localProjectBindingMu.Lock()
+		defer localProjectBindingMu.Unlock()
+	}
 	id := chi.URLParam(r, "id")
 	workspaceID := h.resolveWorkspaceID(r)
 	idUUID, ok := parseUUIDOrBadRequest(w, id, "project id")
@@ -604,6 +625,22 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		if !valid {
 			return
 		}
+		if singleOwnerMode() {
+			if !collabPath.Valid {
+				writeError(w, 400, "choose a persistent local project directory")
+				return
+			}
+			if _, _, err := localProjectDirectory(prevProject.Title, collabPath); err != nil {
+				writeError(w, 400, err.Error())
+				return
+			}
+		}
+		if singleOwnerMode() {
+			if err := h.unusedLocalProjectPath(r.Context(), collabPath.String, id); err != nil {
+				writeError(w, 409, err.Error())
+				return
+			}
+		}
 		params.CollabPath = collabPath
 	}
 	project, err := h.Queries.UpdateProject(r.Context(), params)
@@ -648,6 +685,33 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	qtx := h.Queries.WithTx(tx)
+	if err := service.LockIssueHierarchyMutation(r.Context(), qtx, project.WorkspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock issue hierarchy")
+		return
+	}
+
+	if err := lockCockpitBindings(r.Context(), qtx, project.WorkspaceID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to lock cockpit bindings")
+		return
+	}
+	if retained, err := qtx.HasCockpitArtifactScope(r.Context(), db.HasCockpitArtifactScopeParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check fixed artifact scope")
+		return
+	} else if retained {
+		writeError(w, http.StatusConflict, "This project is retained by artifact or acceptance facts; preserve its plan structure and use the formal workflow")
+		return
+	}
+	if owned, err := qtx.HasCockpitPrimaryForProject(r.Context(), db.HasCockpitPrimaryForProjectParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to check L3 ownership")
+		return
+	} else if owned {
+		writeError(w, http.StatusConflict, "clear L3 primary ownership before deleting this project")
+		return
+	}
+	if err := qtx.ClearCockpitNodeProjectBindings(r.Context(), db.ClearCockpitNodeProjectBindingsParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
+		return
+	}
 
 	if _, err := qtx.LockProjectForDelete(r.Context(), db.LockProjectForDeleteParams{
 		ID:          project.ID,

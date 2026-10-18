@@ -43,6 +43,7 @@ export interface AuthState {
   verifyCode: (email: string, code: string) => Promise<User>;
   loginWithGoogle: (code: string, redirectUri: string) => Promise<User>;
   loginWithToken: (token: string) => Promise<User>;
+  loginWithLocalSession: (token: string) => Promise<User>;
   logout: () => void;
   sessionExpired: () => void;
   setUser: (user: User) => void;
@@ -93,6 +94,16 @@ export function createAuthStore(options: AuthStoreOptions) {
       }
       onLogin?.();
       identifyAnalytics(user.id, { email: user.email, name: user.name });
+      set({ user, isLoading: false, status: "authenticated", expired: false });
+      return user;
+    },
+
+    loginWithLocalSession: async (token: string) => {
+      if (!cookieAuth) return get().loginWithToken(token);
+      api.setToken(null);
+      const user = await api.getMe();
+      storage.removeItem("multica_token");
+      onLogin?.();
       set({ user, isLoading: false, status: "authenticated", expired: false });
       return user;
     },

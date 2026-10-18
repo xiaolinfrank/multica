@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS cockpit_artifact_meeting_reference_key_idx ON cockpit_artifact_meeting_reference (workspace_id, reference_key);

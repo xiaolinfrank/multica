@@ -23,6 +23,7 @@ import {
   FALLBACK_AUTOPILOT_RUN,
   CommentTriggerPreviewSchema,
   CockpitBoardSchema,
+  CockpitNodeSchema,
   CockpitMeetingSchema,
   CockpitMeetingDestinationSchema,
   CockpitMeetingIssueLinkSchema,
@@ -2502,6 +2503,40 @@ describe("Cockpit pending change schemas", () => {
     expect((parsed[0] as unknown as { future_field?: string }).future_field).toBe("keep me");
   });
 
+  it("fills attribution defaults for servers that predate them", () => {
+    const parsed = CockpitPendingChangeListSchema.parse([
+      { id: "c-old", field: "progress", new_value: "80" },
+      {
+        id: "c-new",
+        field: "end_date",
+        new_value: "2026-11-30",
+        source_task_id: "3d1f2a80-1111-4222-8333-944455556666",
+        source_issue: { id: "i1", ref: "TES-1", title: "会议纪要核对" },
+        decision_note: "系统撤回：节点已删除",
+      },
+    ]);
+    expect(parsed[0]?.source_task_id).toBe("");
+    expect(parsed[0]?.source_issue).toBeNull();
+    expect(parsed[0]?.decision_note).toBe("");
+    expect(parsed[1]?.source_issue?.ref).toBe("TES-1");
+    expect(parsed[1]?.decision_note).toBe("系统撤回：节点已删除");
+  });
+
+  it("normalises a null source_task_id the way old rows serialized it", () => {
+    const parsed = CockpitPendingChangeListSchema.parse([
+      { id: "c-null", field: "progress", new_value: "80", source_task_id: null },
+    ]);
+    expect(parsed[0]?.source_task_id).toBe("");
+  });
+
+  it("treats a malformed source_issue as drift, not absence", () => {
+    expect(
+      CockpitPendingChangeListSchema.safeParse([
+        { id: "c3", field: "progress", new_value: "80", source_issue: { ref: 42 } },
+      ]).success,
+    ).toBe(false);
+  });
+
   it("serves the empty queue when the response is malformed", () => {
     // Wrong-typed fields are drift, not absence: the schema rejects and the
     // fallback answers, so a desktop build on a newer backend renders an
@@ -2606,6 +2641,21 @@ describe("Cockpit snapshot schemas", () => {
 });
 
 describe("Cockpit meeting schemas", () => {
+  it("normalizes absent and malformed node bindings without deriving them from a code", () => {
+    expect(CockpitNodeSchema.parse({ id: "n", code: "01.01.01" })).toMatchObject({ project_id: null, module_id: null });
+    expect(CockpitNodeSchema.parse({ id: "n", project_id: 42, module_id: [] })).toMatchObject({ project_id: null, module_id: null });
+    expect(CockpitNodeSchema.parse({ id: "n", project_id: "p1", module_id: "m1" })).toMatchObject({ project_id: "p1", module_id: "m1" });
+  });
+
+  it("defaults legacy or malformed purposes without reclassifying provenance and preserves future purposes", () => {
+    const base = { meeting_id: "m1", issue_id: "i1", role: "task" };
+    expect(CockpitMeetingIssueLinkSchema.parse(base)).toMatchObject({ role: "task", roles: [] });
+    expect(CockpitMeetingIssueLinkSchema.parse({ ...base, roles: null }).roles).toEqual([]);
+    expect(CockpitMeetingIssueLinkSchema.parse({ ...base, roles: [false] }).roles).toEqual([]);
+    expect(CockpitMeetingIssueLinkSchema.parse({ ...base, roles: ["preparation", "review", "future-role"] }).roles)
+      .toEqual(["preparation", "review", "future-role"]);
+  });
+
   it("keeps a meeting an older backend under-populates, and its unknown future fields", () => {
     const parsed = CockpitMeetingSchema.parse({
       id: "m1",

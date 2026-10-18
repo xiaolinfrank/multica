@@ -17,3 +17,12 @@ describe("floating chat route suppression", () => {
     expect(isFloatingChatRouteSuppressed("/other/chat", "/acme/chat")).toBe(false);
   });
 });
+
+it("suppresses the overlay only on the cockpit's full-page chat surface", () => {
+  const cockpit = (search: string) => ({ pathname: "/acme/cockpit", search: new URLSearchParams(search) });
+  expect(isFloatingChatRouteSuppressed("/acme/cockpit", "/acme/chat", cockpit(""))).toBe(true);
+  expect(isFloatingChatRouteSuppressed("/acme/cockpit", "/acme/chat", cockpit("session=s1"))).toBe(true);
+  for (const search of ["tab=work", "tab=meetings", "meeting=m1", "tab=plan", "tab=artifacts"]) {
+    expect(isFloatingChatRouteSuppressed("/acme/cockpit", "/acme/chat", cockpit(search))).toBe(false);
+  }
+});

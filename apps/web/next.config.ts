@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { INPUT_AWARE_API_REWRITE } from "./config/input-upload-routing";
 import { config } from "dotenv";
 import { resolve } from "path";
 import {
@@ -85,7 +86,8 @@ const nextConfig: NextConfig = {
               destination: `${remoteApiUrl}/v1/:path*`,
             },
             {
-              source: "/api/:path*",
+              // Let the dedicated dynamic upload route stream large files.
+              source: INPUT_AWARE_API_REWRITE,
               destination: `${remoteApiUrl}/api/:path*`,
             },
             {

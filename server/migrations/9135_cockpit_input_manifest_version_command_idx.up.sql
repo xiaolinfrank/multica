@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_cockpit_input_manifest_version_command ON cockpit_issue_input_manifest_version (workspace_id,issue_id,command_key);

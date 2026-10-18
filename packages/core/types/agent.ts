@@ -301,6 +301,12 @@ export interface TaskCancellationActor {
 }
 
 export interface AgentTask {
+  input_manifest_version_id?: string | null;
+  input_preparation_state?: string;
+  input_preparation_hash?: string | null;
+  input_prepared_at?: string | null;
+  input_prepared_dispatched_at?: string | null;
+  input_preparation_error_code?: string;
   wakeup_id?: string;
   id: string;
   agent_id: string;
