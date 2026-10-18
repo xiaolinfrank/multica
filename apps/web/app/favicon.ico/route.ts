@@ -1,5 +1,5 @@
 /**
- * Legacy `/favicon.ico` requests point at the real SVG favicon.
+ * Legacy `/favicon.ico` requests point at the original PNG favicon.
  *
  * The `Location` is deliberately relative. `Response.redirect()` only accepts
  * an absolute URL, which forces resolving against `request.url` — and on a
@@ -34,6 +34,6 @@ export const dynamic = "force-dynamic";
 export function GET() {
   return new Response(null, {
     status: 308,
-    headers: { Location: "/favicon.svg" },
+    headers: { Location: "/brand/xingduo-mark-light.png" },
   });
 }

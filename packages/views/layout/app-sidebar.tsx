@@ -29,6 +29,7 @@ import { Layers,
   X,
 } from "lucide-react";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
+import { BayClawBrand } from "@multica/ui/components/common/bayclaw-brand";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/ui/tooltip";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@multica/ui/components/ui/collapsible";
@@ -669,6 +670,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
         {topSlot}
         {/* Workspace Switcher */}
         <SidebarHeader className={cn("py-3", headerClassName)} style={headerStyle}>
+          <div className="px-2 pb-2"><BayClawBrand /></div>
           <SidebarMenu>
             <SidebarMenuItem>
               <DropdownMenu>

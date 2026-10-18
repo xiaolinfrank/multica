@@ -9,6 +9,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Label } from "@multica/ui/components/ui/label";
 import { Card, CardHeader, CardTitle, CardContent } from "@multica/ui/components/ui/card";
+import { BayClawBrand } from "@multica/ui/components/common/bayclaw-brand";
 import { useT } from "../i18n";
 
 export function LocalAccountPage({ onSuccess, onTokenObtained, cliCallback }: {
@@ -62,7 +63,7 @@ export function LocalAccountPage({ onSuccess, onTokenObtained, cliCallback }: {
     } catch { setError(true); } finally { setBusy(false); }
   };
   return <div className="flex min-h-svh items-center justify-center p-6"><Card className="w-full max-w-md">
-    <CardHeader><CardTitle>{t(($) => session ? $.local_account.save_recovery : initialized === false ? adopting ? $.local_account.adopt : $.local_account.create : recovering ? $.local_account.recover : $.local_account.signin)}</CardTitle></CardHeader>
+    <CardHeader><div className="mb-3"><BayClawBrand className="text-title-lg" /></div><CardTitle>{t(($) => session ? $.local_account.save_recovery : initialized === false ? adopting ? $.local_account.adopt : $.local_account.create : recovering ? $.local_account.recover : $.local_account.signin)}</CardTitle></CardHeader>
     <CardContent className="space-y-4">
       {error && <p role="alert" className="text-destructive">{t(($) => $.local_account.failed)}</p>}
       {session ? <>
