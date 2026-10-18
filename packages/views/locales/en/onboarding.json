@@ -116,7 +116,7 @@
   "cli_install": {
     "copy_aria": "Copy",
     "intro": "You'll need an agent runtime on this computer (Claude Code, Codex, Cursor, …) for it to run your agent. Also works on servers and remote dev boxes.",
-    "step1_label": "Install the BayClaw CLI",
+    "step1_label": "Install the multica CLI",
     "platform_group": "Choose your platform",
     "platform_macos_linux": "macOS / Linux",
     "platform_windows": "Windows",
@@ -255,13 +255,13 @@
     "stage_stalled_prefix": "Nothing coming through yet. If you're not comfortable with the terminal, ",
     "stage_stalled_term": "Desktop",
     "stage_stalled_suffix": " is the smoother path — one click and this computer is connected. Close this dialog and pick Desktop, or hit Skip to continue.",
-    "cloud_ready_eyebrow": "Cloud workforce",
-    "cloud_ready_headline": "Your cloud computer is ready.",
-    "cloud_ready_lede": "BayClaw runs agents on the platform's shared servers — nothing to install. Pick a runtime to continue.",
-    "cloud_waiting_headline": "Setting up your cloud computer…",
-    "cloud_waiting_lede": "The platform team provisions a shared server runtime for every workspace. Yours isn't online yet.",
-    "cloud_waiting_hint": "Waiting for a shared runtime to come online — this page updates automatically.",
-    "cloud_waiting_footer": "You can skip and bind a runtime later in Settings."
+    "cloud_ready_eyebrow": "Execution runtimes",
+    "cloud_ready_headline": "Connected runtimes are available.",
+    "cloud_ready_lede": "Choose a runtime for this workspace. It may run on this Mac or an authorized remote device; check its status before continuing.",
+    "cloud_waiting_headline": "No connected runtime is available yet.",
+    "cloud_waiting_lede": "For a complete single-Mac installation, check the bundled worker first. Otherwise, connect an authorized runtime in Settings.",
+    "cloud_waiting_hint": "Waiting for an available workspace runtime. This page updates automatically.",
+    "cloud_waiting_footer": "You can skip and connect a runtime later in Settings."
   },
   "errors": {
     "skip_failed": "Failed to finish onboarding",

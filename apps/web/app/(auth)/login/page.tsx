@@ -24,6 +24,7 @@ import {
   CardContent,
 } from "@multica/ui/components/ui/card";
 import { Button } from "@multica/ui/components/ui/button";
+import { BayClawBrand } from "@multica/ui/components/common/bayclaw-brand";
 import { Loader2 } from "lucide-react";
 import { setLoggedInCookie } from "@/features/auth/auth-cookie";
 import { LoginPage, validateCliCallback } from "@multica/views/auth";
@@ -218,6 +219,7 @@ function LoginPageContent() {
 
   return (
     <LoginPage
+      logo={<BayClawBrand className="text-title-lg" />}
       onSuccess={handleSuccess}
       signInTitle={localDashboardEnabled ? t(($) => $.local_dashboard.signin_title) : undefined}
       starError={searchParams.get("star_error") === "unlinked" ? t(($) => $.errors.star_account_unlinked) : undefined}

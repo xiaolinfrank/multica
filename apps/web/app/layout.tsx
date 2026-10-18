@@ -86,25 +86,21 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.multica.ai"),
   title: {
     default: SITE_TITLE,
     template: TITLE_TEMPLATE,
   },
   description:
-    "BayClaw 是复星医药大湾区虚拟员工平台:把 AI 智能体作为数字员工纳入团队,在云端共享算力上分派任务、跟踪进度、沉淀技能。",
+    "由星舵个人分身统筹的项目与任务执行工作台。",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
-    shortcut: ["/favicon.svg"],
-    // iOS never reads the manifest's icons for the home screen; it needs its
-    // own opaque, full-bleed square and rounds the corners itself.
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+    icon: [
+      { url: "/brand/xingduo-mark-light.png", type: "image/png", sizes: "846x838", media: "(prefers-color-scheme: light)" },
+      { url: "/brand/xingduo-mark-dark.png", type: "image/png", sizes: "846x838", media: "(prefers-color-scheme: dark)" },
+    ],
+    shortcut: ["/brand/xingduo-mark-light.png"],
+    apple: [{ url: "/brand/xingduo-mark-light.png", type: "image/png", sizes: "846x838" }],
   },
-  // Home-screen behaviour: launch without browser chrome, and label the icon
-  // "Multica" rather than the long SEO <title>. `capable` renders the
-  // standardised `mobile-web-app-capable` tag — Next 16 no longer emits the
-  // deprecated apple-prefixed spelling, so iOS standalone rides on the
-  // manifest's `display` instead (honoured since iOS 16.4).
+  // Use original PNG dimensions; no maskable or opaque square derivative is claimed.
   appleWebApp: {
     capable: true,
     title: "BayClaw",
@@ -118,12 +114,9 @@ export const metadata: Metadata = {
     siteName: "BayClaw",
     locale: "zh_CN",
   },
-  alternates: {
-    canonical: "/",
-  },
   robots: {
-    index: true,
-    follow: true,
+    index: false,
+    follow: false,
   },
 };
 

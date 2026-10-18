@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { GET } from "./route";
 
 describe("GET /favicon.ico", () => {
-  it("redirects to the SVG favicon", () => {
+  it("redirects to the original PNG favicon", () => {
     const response = GET();
 
     expect(response.status).toBe(308);
-    expect(response.headers.get("location")).toBe("/favicon.svg");
+    expect(response.headers.get("location")).toBe("/brand/xingduo-mark-light.png");
   });
 
   it("keeps the location relative so it survives a reverse proxy", () => {

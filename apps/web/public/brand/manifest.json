@@ -1,0 +1,35 @@
+{
+  "brand": "BayClaw",
+  "family": "星舵 HelixHelm",
+  "source": "2026-09 approved Xingduo logo; recovered 2026-10-18",
+  "role": "由星舵个人分身统筹的项目与任务执行工作台",
+  "assets": [
+    {
+      "file": "xingduo-mark-light.png",
+      "source": "brand/logo/mark_flat.png",
+      "recoveredSource": "helixhelm-release/assets/brand/xingduo-mark-light.png",
+      "sha256": "59a0b9d6ccc461a78ae20b5989cb86fcd59115a940526ab8dad79f6a3f48df05",
+      "bytes": 224520,
+      "width": 846,
+      "height": 838,
+      "transformation": "none; original PNG bytes copied"
+    },
+    {
+      "file": "xingduo-mark-dark.png",
+      "source": "brand/logo/mark_flat_on_dark.png",
+      "recoveredSource": "helixhelm-release/assets/brand/xingduo-mark-dark.png",
+      "sha256": "ceda8bcffbdd3a4a6f1599dec629a772a5a073a405e866935cc8c3a9e00d6955",
+      "bytes": 41766,
+      "width": 846,
+      "height": 838,
+      "transformation": "none; original PNG bytes copied"
+    }
+  ],
+  "sharedUi": "packages/ui/components/common/bayclaw-logo-data.ts embeds the same PNG bytes for framework-independent web/desktop use",
+  "pwaWrapper": {
+    "file": "xingduo-app-icon.svg",
+    "viewBox": "0 0 846 846",
+    "embeddedAsset": "xingduo-mark-light.png",
+    "transformation": "SVG wrapper only; original PNG bytes and aspect ratio preserved; no maskable claim"
+  }
+}

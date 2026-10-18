@@ -189,7 +189,7 @@
   "connect": {
     "title": "컴퓨터 추가",
     "description": "추가하려는 컴퓨터에서 아래 두 명령을 실행하세요. 데몬이 온라인이 되는 순간 감지합니다.",
-    "step1_label": "BayClaw CLI 설치",
+    "step1_label": "multica CLI 설치",
     "platform_group": "플랫폼 선택",
     "platform_macos_linux": "macOS / Linux",
     "platform_windows": "Windows",
@@ -257,7 +257,7 @@
     "read_only": "읽기 전용",
     "read_only_title": "런타임 소유자와 워크스페이스 관리자만 CLI를 업데이트할 수 있습니다.",
     "local_build": "로컬 빌드",
-    "local_build_title": "이 런타임은 릴리스 버전이 아닌 버전을 보고하므로 Multica가 업그레이드 가능 여부를 판단할 수 없습니다. 머신에서 직접 업데이트하세요.",
+    "local_build_title": "이 런타임은 릴리스 버전이 아닌 버전을 보고하므로 BayClaw가 업그레이드 가능 여부를 판단할 수 없습니다. 머신에서 직접 업데이트하세요.",
     "latest": "최신",
     "available": "사용 가능",
     "action": "업데이트",

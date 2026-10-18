@@ -30,8 +30,8 @@
   "help": {
     "trigger": "Aide",
     "download_desktop": "Application de bureau",
-    "docs": "Documentation",
-    "changelog": "Journal des modifications",
+    "docs": "Documentation technique amont Multica",
+    "changelog": "Modifications amont Multica",
     "discord": "Discord",
     "feedback": "Faire un retour",
     "server_version": "Version du serveur {{version}}"

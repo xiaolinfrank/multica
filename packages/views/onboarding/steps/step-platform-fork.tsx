@@ -17,20 +17,9 @@ import { useRuntimePicker } from "../components/use-runtime-picker";
 import { useT } from "../../i18n";
 
 /**
- * Step 3 on **web**. BayClaw is a server-centric deployment: agents run on
- * shared runtimes operated by the platform team, so there is nothing for
- * the user to install. This screen lists the workspace's shared (public)
- * runtimes live and lets the user pick one to continue.
- *
- * If no shared runtime is online yet (a fresh workspace whose runner has
- * not been provisioned), the screen shows a waiting state and the user can
- * skip and bind a runtime later.
- *
- * Rendered inside <StepShell>, so this component owns only the column body
- * (a StepHeading, the shared-runtime list or waiting state, and a StepFooter
- * with Skip / Continue). Back is owned by the shell's rail. Unlike the CLI
- * path, no model picker is offered — a shared runtime runs on the model the
- * platform team configured for it.
+ * Web onboarding lists the workspace's public runtimes. Their execution
+ * location depends on the deployment: this Mac or an authorized remote node.
+ * This step selects an existing runtime; installation remains in Settings.
  */
 export function StepPlatformFork({
   wsId,
@@ -41,9 +30,8 @@ export function StepPlatformFork({
 }) {
   const { t } = useT("onboarding");
 
-  // Shared runtimes are registered by the platform's server-side runner
-  // account, so they are not owned by the onboarding user — list the
-  // whole workspace and keep only the publicly usable ones.
+  // List the whole workspace and keep the existing public-visibility gate;
+  // the runtime's deployment location does not change this access rule.
   const picker = useRuntimePicker(wsId, "all");
   const sharedRuntimes = picker.runtimes.filter(
     (rt) => rt.visibility === "public",

@@ -76,7 +76,7 @@ function resetPicker(patch: Partial<typeof mocks.pickerState> = {}) {
   mocks.pickerState.setSelectedId = vi.fn();
 }
 
-describe("StepPlatformFork (cloud-direct)", () => {
+describe("StepPlatformFork (workspace runtimes)", () => {
   beforeEach(() => {
     resetPicker();
     vi.restoreAllMocks();
@@ -86,14 +86,16 @@ describe("StepPlatformFork (cloud-direct)", () => {
     configStore.getState().setDefaultIssueAssigneeNode("");
   });
 
-  it("with no shared runtime: shows the waiting state, no install guidance", () => {
+  it("with no shared runtime: shows deployment-neutral recovery guidance", () => {
     renderFork();
     expect(
-      screen.getByText(/setting up your cloud computer/i),
+      screen.getByText(/no connected runtime is available yet/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/waiting for a shared runtime to come online/i),
+      screen.getByText(/waiting for an available workspace runtime/i),
     ).toBeInTheDocument();
+    expect(screen.getByText(/check the bundled worker first/i)).toBeInTheDocument();
+    expect(screen.queryByText(/platform team|cloud computer|shared servers/i)).not.toBeInTheDocument();
     // The old install paths must be gone entirely.
     expect(screen.queryByText(/use this computer/i)).not.toBeInTheDocument();
     expect(
@@ -126,17 +128,17 @@ describe("StepPlatformFork (cloud-direct)", () => {
     const { onNext } = renderFork();
 
     expect(
-      screen.getByText(/your cloud computer is ready/i),
+      screen.getByText(/connected runtimes are available/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/1 computer connected/i)).toBeInTheDocument();
+    expect(screen.getByText(/this Mac or an authorized remote device/i)).toBeInTheDocument();
     expect(screen.getByText(/selected: claude code/i)).toBeInTheDocument();
 
     const connect = screen.getByRole("button", { name: /start exploring/i });
     expect(connect).toBeEnabled();
     await user.click(connect);
     expect(onNext).toHaveBeenCalledTimes(1);
-    // Cloud-direct carries no model — the shared runtime runs on the model
-    // the platform team configured for it.
+    // Selection preserves the runtime and its existing model configuration.
     expect(onNext).toHaveBeenCalledWith(rt);
   });
 
@@ -155,7 +157,7 @@ describe("StepPlatformFork (cloud-direct)", () => {
     renderFork();
     // Only private runtimes exist → behaves like the empty state.
     expect(
-      screen.getByText(/setting up your cloud computer/i),
+      screen.getByText(/no connected runtime is available yet/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/someone's laptop/i)).not.toBeInTheDocument();
     expect(
