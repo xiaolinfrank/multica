@@ -107,18 +107,19 @@ func validateProjectStatus(status string) error {
 	return fmt.Errorf("invalid status %q; valid values: %s", status, strings.Join(validProjectStatuses, ", "))
 }
 
-// collabPathCreateHelp and collabPathUpdateHelp describe 人机协作空间路径, the
-// shared-storage directory where people and agents exchange deliverables. The
-// server accepts any absolute path — POSIX, UNC, or a Windows drive — without
-// stating it, because the share is mounted on the daemon host that runs the
-// task, not on the server.
+// collabPathHelp describes 人机协作空间路径, the project's absolute delivery
+// root. Deployment policy determines which paths are accepted; the standard
+// single-owner macOS deployment requires a persistent internal-disk directory.
 //
-// Only a project carries one. A module's deliverables go in a folder named
-// after the module inside its project's directory, so `multica module` has no
-// path flag: the location is derived, never stored a second time.
-const collabPathCreateHelp = "Collaboration space: absolute path to the shared-storage directory where people and agents exchange deliverables (e.g. /Volumes/人机协作空间/项目); each module's work goes in a folder named after it inside this directory"
+// Only a project carries an absolute root. A module stores a stable relative
+// directory_name; display-name edits do not change that binding or move files.
+// Deliverables belong in a task/result child directory under the module, or
+// directly under the project when the task has no module.
+const collabPathHelp = "Collaboration space: absolute project delivery root, subject to deployment path policy (single-owner macOS requires internal-disk storage); use <root>/<module directory_name>/<task-or-result>/, or <root>/<task-or-result>/ without a module; module display-name changes preserve the stable directory binding"
 
-const collabPathUpdateHelp = collabPathCreateHelp + "; pass an empty string to clear it"
+const collabPathCreateHelp = collabPathHelp + "; in single-owner macOS deployments, omission creates a project directory under the configured internal-disk projects home"
+
+const collabPathUpdateHelp = collabPathHelp + "; changing the binding does not move existing files; an empty string clears it only where deployment policy allows (single-owner deployments forbid clearing)"
 
 func init() {
 	projectCmd.AddCommand(projectListCmd)
