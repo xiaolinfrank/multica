@@ -1,6 +1,6 @@
 ---
 name: multica-cockpit
-description: "Use when reading or editing the workspace's project cockpit — the project cockpit chat, scoped execution plans, dates, owners, progress, payment records, meetings, linked issues, fixed minutes, human review and persistent collaboration copies."
+description: "Use when reading or editing the workspace's project cockpit — the project cockpit chat, scoped execution plans, dates, owners, progress, payment records, meetings, linked issues, fixed minutes, human review and persistent collaboration copies. The user-facing tabs are 项目总览 / 执行甘特图 / 财务支出 / 待确认 / 会议管理 (`?tab=work|gantt|finance|changes|meetings`); the 执行甘特图 renders the scoped execution plan (board nodes, milestones, payments), so requests to keep it current load this skill."
 user-invocable: false
 allowed-tools: Bash(multica *)
 ---
@@ -16,7 +16,7 @@ multica cockpit plan --project-id <project-uuid> --output json
 multica cockpit node get <stored-code-or-uuid> --output json
 ```
 
-The cockpit is one shared board per workspace; writes broadcast to open clients. Its home is a chat with the built-in Mika (`system_key=mika`, even when renamed); the existing overview, execution plan, meeting register, artifacts and governance remain separate tabs.
+The cockpit is one shared board per workspace; writes broadcast to open clients. Its home is a chat with the built-in Mika (`system_key=mika`, even when renamed); the existing work overview, execution gantt, meeting register, finance and changes (governance) remain separate tabs.
 A new cockpit chat retains its initial project/module scope in its first visible message (`*` means all); scope is context, not authorization — changing it starts a new compose, not a silent retargeting of an existing conversation.
 
 Load this skill for cockpit requests. Read first, explain the target and expected change, then use the commands below.
@@ -90,6 +90,41 @@ multica cockpit node create --code L3-02-11 --parent 02.03 \
 
 `multica cockpit node delete <code>` removes a leaf. A node with children is
 refused — reparent or delete the children first.
+
+## Keeping the board current
+
+The board is the programme's memory of dates, owners and progress; keeping it
+current is part of the job, not an extra. Four moments obligate a check:
+
+- **After verified delivery.** When a linked issue's delivery is verified (or a
+  task you ran completes), re-read the bound node. If progress/status/dates no
+  longer match the evidence, file a `change propose`; if they do match, say so
+  briefly — a checked plan left unmentioned reads as unchecked. Still never
+  assume an automatic roll-up.
+- **After project/module creation or rename.** Offer to mirror it on the board.
+  First read the scoped plan: if a row already binds that project or module
+  (duplicate bindings return 409), point at it instead of adding one; otherwise
+  propose a `node create` with `--project-id`/`--module-id`, `--code` from
+  `node next-code` (never invented), parented where the tree expects it, and the
+  row named after the title unless the user chose otherwise. Create only after
+  the user agrees, or immediately when their request already asked for it.
+- **After a meeting ends or its minutes land.** Compare `meeting list` with the
+  archive folders the board's meeting directory holds (`GET
+  /api/cockpit/meetings/scan` reports them and what their names give up).
+  Propose the missing register rows: either `meeting add` after confirmation,
+  or hand the user the folder list so they can run the import (`POST
+  /api/cockpit/meetings/import`) from the cockpit itself — the import is an
+  HTTP endpoint, not a CLI subcommand, and `multica cockpit import` replaces
+  the whole board: never use it for this.
+- **When an overview read looks stale.** Say so against the facts you just
+  verified and offer one dated replacement card (board-level `cockpit update
+  --summary-overall|next|support`, see versions.md) — on confirmation only, and
+  not through the change queue, which carries node fields alone.
+
+Each item is propose-then-act: `change propose` for node fields, `node create`
+or a summary card only after the user agrees (or when they already asked for
+that exact write), and no meeting linkage without confirmation. Nothing here
+authorizes a direct `node update`.
 
 ## Linking issues
 
