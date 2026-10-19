@@ -1128,20 +1128,6 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Invalidate membership cache for all workspace members before deletion.
-	// After CASCADE deletes the member rows, cache entries become harmless
-	// orphans (downstream lookups for the deleted workspace will fail), but
-	// proactive invalidation prevents any stale-access window up to TTL.
-	var affectedUserIDs []string
-	if members, err := h.Queries.ListMembers(r.Context(), requester.WorkspaceID); err == nil {
-		affectedUserIDs = make([]string, 0, len(members))
-		for _, m := range members {
-			userID := uuidToString(m.UserID)
-			h.MembershipCache.Invalidate(r.Context(), userID, workspaceID)
-			affectedUserIDs = append(affectedUserIDs, userID)
-		}
-	}
-
 	// The teardown runs in one transaction so the chat_session row locks below
 	// are still held when DeleteWorkspace sweeps chat_draft_restore. Without
 	// them, FinalizeDeferredCancelledChat could commit a restore for one of
@@ -1151,7 +1137,8 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 	// lock before inserting, so it either blocks until the session is gone and
 	// skips the insert, or commits first and the sweep sees its row.
 	//
-	// The workspace row is locked first, because the session locks only cover
+	// After the account-binding advisory lock, the workspace row is locked
+	// before sessions, because the session locks only cover
 	// sessions that already exist: a CreateChatSession committing inside the
 	// delete window would otherwise slip in a session nobody locked, and its
 	// restore would outlive the cascade the same way. Holding the workspace row
@@ -1177,9 +1164,40 @@ func (h *Handler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SetupLocalAccount holds the exclusive form of this transaction lock.
+	// Acquire it before the workspace row lock so adoption and deletion cannot
+	// race into a dangling singleton binding or deadlock in opposite lock order.
+	if _, err := tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock_shared(70344792103)"); err != nil {
+		failWorkspaceDelete(w, r, workspaceID, "lock single owner binding", err)
+		return
+	}
 	if _, err := qtx.LockWorkspaceForDelete(r.Context(), requester.WorkspaceID); err != nil {
 		failWorkspaceDelete(w, r, workspaceID, "lock workspace", err)
 		return
+	}
+	// The persisted binding is authoritative even when the deployment's mode
+	// switch is absent. Never delete the workspace that local login recovers.
+	var singleOwnerWorkspace bool
+	if err := tx.QueryRow(r.Context(), "SELECT EXISTS (SELECT 1 FROM single_owner_account WHERE workspace_id=$1)", requester.WorkspaceID).Scan(&singleOwnerWorkspace); err != nil {
+		failWorkspaceDelete(w, r, workspaceID, "check single owner binding", err)
+		return
+	}
+	if singleOwnerWorkspace {
+		writeErrorCode(w, http.StatusConflict, "single_owner_workspace_protected", "the local owner's workspace cannot be deleted")
+		return
+	}
+
+	// Invalidate membership cache only after the account guard permits teardown.
+	// Downstream lookups for a deleted workspace fail, but proactive invalidation
+	// also prevents any stale-access window up to the cache TTL.
+	var affectedUserIDs []string
+	if members, err := qtx.ListMembers(r.Context(), requester.WorkspaceID); err == nil {
+		affectedUserIDs = make([]string, 0, len(members))
+		for _, m := range members {
+			userID := uuidToString(m.UserID)
+			h.MembershipCache.Invalidate(r.Context(), userID, workspaceID)
+			affectedUserIDs = append(affectedUserIDs, userID)
+		}
 	}
 	if err := lockCockpitBindings(r.Context(), qtx, requester.WorkspaceID); err != nil {
 		failWorkspaceDelete(w, r, workspaceID, "lock cockpit workflows", err)

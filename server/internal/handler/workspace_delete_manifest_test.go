@@ -9,10 +9,11 @@ import (
 type workspaceDeleteAction string
 
 const (
-	workspaceDelete       workspaceDeleteAction = "delete"
-	workspaceDeleteDetach workspaceDeleteAction = "detach"
-	workspaceDeleteKeep   workspaceDeleteAction = "keep"
-	workspaceDeleteSettle workspaceDeleteAction = "settle"
+	workspaceDelete        workspaceDeleteAction = "delete"
+	workspaceDeleteDetach  workspaceDeleteAction = "detach"
+	workspaceDeleteKeep    workspaceDeleteAction = "keep"
+	workspaceDeleteSettle  workspaceDeleteAction = "settle"
+	workspaceDeleteProtect workspaceDeleteAction = "protect"
 )
 
 // workspaceDeletionManifest is the schema coverage contract for workspace
@@ -171,6 +172,7 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"search_index_change":                workspaceDelete,
 	"search_index_prune_mark":            workspaceDeleteKeep,
 	"seat_capacity_outbox":               workspaceDeleteSettle,
+	"single_owner_account":               workspaceDeleteProtect, // DeleteWorkspace rejects its bound workspace before teardown.
 	"skill":                              workspaceDelete,
 	"skill_file":                         workspaceDelete,
 	"skill_to_label":                     workspaceDelete,
@@ -272,7 +274,7 @@ WHERE table_schema = 'public'
 			if hasWorkspaceID {
 				t.Errorf("KEEP table %s gained workspace_id; classify its teardown behavior", table)
 			}
-		case workspaceDeleteDetach, workspaceDeleteSettle:
+		case workspaceDeleteDetach, workspaceDeleteSettle, workspaceDeleteProtect:
 			if !hasWorkspaceID {
 				t.Errorf("%s table %s lost workspace_id; update its teardown selector", action, table)
 			}
