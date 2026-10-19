@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/channelmedia"
 	"github.com/multica-ai/multica/server/internal/dispatch"
@@ -4486,6 +4487,19 @@ func (h *Handler) isAgentAssigneeReady(ctx context.Context, issue db.Issue) bool
 	return false
 }
 
+func writeIssueDeleteConflict(w http.ResponseWriter, err error) bool {
+	var pgerr *pgconn.PgError
+	if errors.As(err, &pgerr) && pgerr.Code == "23514" && pgerr.ConstraintName == "cockpit_artifact_integrity" {
+		writeErrorCode(w, http.StatusConflict, "formal_review_required", "Fixed artifacts or formal review retain this task; open its artifact or acceptance context and preserve the task's history")
+		return true
+	}
+	if errors.Is(err, service.ErrCockpitWorkflowConflict) {
+		writeError(w, http.StatusConflict, err.Error())
+		return true
+	}
+	return false
+}
+
 func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request) {
 	r = h.withWakeupActor(r)
 	id := chi.URLParam(r, "id")
@@ -4496,8 +4510,7 @@ func (h *Handler) DeleteIssue(w http.ResponseWriter, r *http.Request) {
 
 	deleteResult, err := h.deleteIssueAndCollectAttachmentURLs(r.Context(), issue, nil)
 	if err != nil {
-		if errors.Is(err, service.ErrCockpitWorkflowConflict) {
-			writeError(w, http.StatusConflict, err.Error())
+		if writeIssueDeleteConflict(w, err) {
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "failed to delete issue")
@@ -5266,8 +5279,7 @@ func (h *Handler) BatchDeleteIssues(w http.ResponseWriter, r *http.Request) {
 			writeErrorCode(w, http.StatusConflict, "revision_conflict", "an issue changed since it was read; reload before deleting")
 			return
 		}
-		if errors.Is(err, service.ErrCockpitWorkflowConflict) {
-			writeError(w, http.StatusConflict, err.Error())
+		if writeIssueDeleteConflict(w, err) {
 			return
 		}
 		slog.Warn("batch delete issues failed", "error", err)
