@@ -87,13 +87,13 @@
   "collab_path": {
     "label": "Collaboration space",
     "empty": "Not set",
-    "placeholder": "/Volumes/…",
+    "placeholder": "/Users/your-name/Projects/…",
     "copy_aria": "Copy path",
     "edit_aria": "Edit path",
     "toast_copied": "Path copied",
     "toast_copy_failed": "Couldn't copy the path",
-    "hint_project": "Shared directory where people and agents hand this project's deliverables to each other. Absolute path, as mounted on the machine the agent runs on.",
-    "error_not_absolute": "Enter an absolute path, such as /Volumes/share/project.",
+    "hint_project": "Persistent directory where people and agents exchange this project’s deliverables, separate from task workdirs. Use an absolute path accessible on the agent’s machine.",
+    "error_not_absolute": "Enter an absolute path, such as /Users/your-name/Projects/project.",
     "error_too_long": "Too long for a directory path.",
     "error_control_characters": "Contains characters a path can't hold."
   },

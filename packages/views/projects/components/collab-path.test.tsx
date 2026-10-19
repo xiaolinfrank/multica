@@ -112,7 +112,7 @@ describe("CollabPathProperty", () => {
     expect(input).toHaveValue("01高质量数据集");
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(
-      screen.getByText("Enter an absolute path, such as /Volumes/share/project."),
+      screen.getByText("Enter an absolute path, such as /Users/your-name/Projects/project."),
     ).toBeInTheDocument();
   });
 
@@ -177,7 +177,7 @@ describe("CollabPathInput", () => {
     const rejected = screen.getByRole("textbox", { name: "Collaboration space" });
     expect(rejected).toHaveAttribute("aria-invalid", "true");
     expect(rejected).toHaveAccessibleDescription(
-      "Enter an absolute path, such as /Volumes/share/project.",
+      "Enter an absolute path, such as /Users/your-name/Projects/project.",
     );
   });
 });

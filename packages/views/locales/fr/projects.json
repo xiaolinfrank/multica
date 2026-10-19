@@ -85,13 +85,13 @@
   "collab_path": {
     "label": "Espace de collaboration",
     "empty": "Non défini",
-    "placeholder": "/Volumes/…",
+    "placeholder": "/Users/your-name/Projects/…",
     "copy_aria": "Copier le chemin",
     "edit_aria": "Modifier le chemin",
     "toast_copied": "Chemin copié",
     "toast_copy_failed": "Impossible de copier le chemin",
-    "hint_project": "Répertoire partagé où les personnes et les agents se transmettent les livrables de ce projet. Chemin absolu, tel qu'il est monté sur la machine qui exécute l'agent.",
-    "error_not_absolute": "Saisissez un chemin absolu, par exemple /Volumes/partage/projet.",
+    "hint_project": "Répertoire persistant où les personnes et les agents échangent les livrables du projet, distinct des répertoires de travail temporaires. Utilisez un chemin absolu accessible sur la machine de l’agent.",
+    "error_not_absolute": "Saisissez un chemin absolu, par exemple /Users/your-name/Projects/project.",
     "error_too_long": "Trop long pour un chemin de répertoire.",
     "error_control_characters": "Contient des caractères qu'un chemin ne peut pas comporter."
   },
