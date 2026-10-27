@@ -107,15 +107,17 @@ describe("buildCockpitTree", () => {
     ]);
     const payments = [{ id: "payment", node_id: "task", label: "Verification", pay_date: "2026-10-10", amount: 10, position: 0 }];
     const rows = computeCockpitFinanceRows(tree, payments, new Set(["project"]));
-    expect(rows.map((row) => [row.node.id, row.rootCode, row.budget])).toEqual([["module", "P", 300], ["task", "P", 40]]);
+    // Per instalment now: only the task carries a listed instalment, so the
+    // module contributes no spend row of its own.
+    expect(rows.map((row) => [row.node.id, row.rootCode, row.budget])).toEqual([["task", "P", 40]]);
     expect(tree[0]?.node.budget_amount).toBe(900);
-    expect(rows[1]?.payments).toEqual(payments);
+    expect(rows[0]?.payment).toEqual(payments[0]);
     const context = new Set(["project"]);
     const snapshot = board({ nodes: [tree[0]!.node, tree[0]!.children[0]!.node, tree[0]!.children[0]!.children[0]!.node], payments: [
       ...payments, { id: "context-payment", node_id: "project", label: "Outside scope", pay_date: "2026-10-10", amount: 900, position: 0 },
     ] });
-    expect(computeCockpitFinance(snapshot, context)).toMatchObject({ budget: 340, planned: 340, paymentCount: 1, byModule: [{ code: "P", planned: 340 }] });
-    expect(computeCockpitMonths(snapshot, context)[0]).toMatchObject({ amount: 10, plannedSpend: 40, byModule: [{ code: "P", amount: 10 }] });
+    expect(computeCockpitFinance(snapshot, context)).toMatchObject({ budget: 40, planned: 10, paymentCount: 1, byModule: [{ code: "P", planned: 10, budget: 40 }] });
+    expect(computeCockpitMonths(snapshot, context)[0]).toMatchObject({ amount: 10, plannedSpend: 10, byModule: [{ code: "P", amount: 10 }] });
   });
   it("nests by parent_id and orders siblings by position then code", () => {
     const tree = buildCockpitTree([
@@ -248,53 +250,50 @@ describe("isCockpitNodeLate", () => {
 });
 
 describe("computeCockpitFinance", () => {
-  it("splits instalments by their node's execution status", () => {
-    const summary = computeCockpitFinance(
-      board({
-        nodes: [
-          node({ id: "paid", code: "P", budget_amount: 20, exec_status: "完全支付" }),
-          node({ id: "signed", code: "S", budget_amount: 30, exec_status: "合同已定" }),
-          node({ id: "planned", code: "N", budget_amount: 50, exec_status: "规划中" }),
-        ],
-        payments: [
-          { id: "1", node_id: "paid", label: "", pay_date: "2026-01-05", amount: 20, position: 0 },
-          { id: "2", node_id: "signed", label: "", pay_date: "2026-02-05", amount: 30, position: 0 },
-        ],
-      }),
-    );
+  it("totals every instalment and uses status only for the paid subset", () => {
+    const input = board({
+      nodes: [
+        node({ id: "paid", code: "P", budget_amount: 20, exec_status: "完全支付" }),
+        node({ id: "signed", code: "S", budget_amount: 30, exec_status: "合同已定" }),
+        node({ id: "planned", code: "N", budget_amount: 50, exec_status: "规划中" }),
+        node({ id: "budget-only", code: "B", budget_amount: 100, exec_status: "完全支付" }),
+      ],
+      payments: [
+        { id: "1", node_id: "paid", label: "", pay_date: "2026-01-05", amount: 20, position: 0 },
+        { id: "2", node_id: "signed", label: "", pay_date: "2026-02-05", amount: 30, position: 0 },
+      ],
+    });
 
-    expect(summary.budget).toBe(100);
-    expect(summary.planned).toBe(100);
-    // Only the fully-paid line counts as spent, at its own budget.
-    expect(summary.actual).toBe(20);
-    expect(summary.outstanding).toBe(80);
-    expect(summary.lineCount).toBe(3);
-    expect(summary.paidLineCount).toBe(1);
-    expect(summary.contracted).toBe(30);
-    expect(summary.paymentCount).toBe(2);
+    expect(computeCockpitFinance(input)).toMatchObject({
+      budget: 50, planned: 50, actual: 20, outstanding: 30,
+      lineCount: 2, paidLineCount: 1, contracted: 30, paymentCount: 2,
+    });
+    const changed = structuredClone(input);
+    changed.nodes[0]!.exec_status = "未支付";
+    changed.nodes[1]!.exec_status = "完全支付";
+    expect(computeCockpitFinance(changed)).toMatchObject({
+      budget: 50, planned: 50, actual: 30, outstanding: 20,
+      lineCount: 2, paidLineCount: 1, contracted: 0, paymentCount: 2,
+    });
   });
 
-  it("rolls the ledger up per module in code order", () => {
-    const summary = computeCockpitFinance(
-      board({
-        nodes: [
-          node({ id: "m2", code: "L1-02", name: "Platform" }),
-          node({ id: "m1", code: "L1-01", name: "Datasets" }),
-          node({ id: "a", code: "L3-01-01", parent_id: "m1", budget_amount: 10 }),
-          node({
-            id: "b",
-            code: "L3-02-01",
-            parent_id: "m2",
-            budget_amount: 40,
-            exec_status: "完全支付",
-          }),
-        ],
-      }),
-    );
-    expect(summary.byModule.map((m) => [m.code, m.lineCount, m.planned, m.actual])).toEqual([
-      ["L1-01", 1, 10, 0],
-      ["L1-02", 1, 40, 40],
-    ]);
+  it("keeps task budget distinct from repeated instalments in a module", () => {
+    const summary = computeCockpitFinance(board({
+      nodes: [
+        node({ id: "m", code: "L1-01", name: "Platform" }),
+        node({ id: "a", code: "L3-01-01", parent_id: "m", budget_amount: 40, exec_status: "完全支付" }),
+        node({ id: "b", code: "L3-01-02", parent_id: "m", budget_amount: 10 }),
+        node({ id: "budget-only", code: "L3-01-03", parent_id: "m", budget_amount: 100, exec_status: "完全支付" }),
+      ],
+      payments: [
+        { id: "1", node_id: "a", label: "one", pay_date: "2026-01-05", amount: 15, position: 0 },
+        { id: "2", node_id: "a", label: "two", pay_date: "2026-02-05", amount: 25, position: 1 },
+        { id: "3", node_id: "b", label: "one", pay_date: "2026-02-05", amount: 8, position: 0 },
+      ],
+    }));
+    expect(summary).toMatchObject({ budget: 50, planned: 48, actual: 40, outstanding: 8, lineCount: 3 });
+    expect(summary.byModule).toEqual([{ code: "L1-01", name: "Platform", color: "", lineCount: 3,
+      budget: 50, planned: 48, actual: 40, outstanding: 8 }]);
   });
 });
 
@@ -344,6 +343,7 @@ describe("computeCockpitMonths", () => {
     const jan = cells.find((c) => c.month === "2026-01")!;
     expect(jan.amount).toBe(15);
     expect(jan.paidAmount).toBe(10);
+    expect(jan).toMatchObject({ plannedSpend: 15, actualSpend: 10, projectedSpend: 5, actualCount: 1 });
     expect(jan.byModule).toEqual([
       { code: "L1-01", color: "#2563eb", amount: 10 },
       { code: "L1-02", color: "#0891b2", amount: 5 },
@@ -613,29 +613,32 @@ describe("computeCockpitFinanceRows", () => {
   ];
   const payments = [
     { id: "p1", node_id: "a", label: "首期", pay_date: "2026-03-01", amount: 60, position: 0 },
-    { id: "p2", node_id: "b", label: "全款", pay_date: "2026-02-01", amount: 40, position: 0 },
+    { id: "p2", node_id: "a", label: "尾款", pay_date: "2026-05-01", amount: 40, position: 1 },
+    { id: "p3", node_id: "b", label: "全款", pay_date: "2026-02-01", amount: 40, position: 0 },
   ];
 
-  it("lists only the rows that carry money, in board order", () => {
+  it("lists each instalment, including every payment on one task", () => {
     const rows = computeCockpitFinanceRows(buildCockpitTree(nodes), payments);
-    expect(rows.map((r) => r.node.code)).toEqual(["01.01", "01.02"]);
+    expect(rows.map((r) => [r.node.code, r.payment.id, r.amount])).toEqual([
+      ["01.01", "p1", 60], ["01.01", "p2", 40], ["01.02", "p3", 40],
+    ]);
     expect(rows.every((r) => r.rootCode === "L1-01" && r.rootColor === "#2563eb")).toBe(true);
   });
 
-  it("reports an actual date and amount only once the row reads as paid", () => {
+  it("uses status only to classify an instalment, not to filter or reprice it", () => {
     const rows = computeCockpitFinanceRows(buildCockpitTree(nodes), payments);
-    expect(rows[0]).toMatchObject({ plannedDate: "2026-03-01", actualDate: null, actualAmount: null });
-    expect(rows[1]).toMatchObject({ plannedDate: "2026-02-01", actualDate: "2026-02-01", actualAmount: 40 });
+    expect(rows.map((r) => r.paid)).toEqual([false, false, true]);
+    expect(rows[0]).toMatchObject({ amount: 60, budget: 100 });
+    expect(rows[2]).toMatchObject({ amount: 40, budget: 40 });
   });
 
-  it("keeps a row that has instalments but no budget figure", () => {
+  it("keeps a payment with no budget, and no payment date, as its own row", () => {
     const withPaymentOnly = [...nodes, node({ id: "d", code: "01.04", parent_id: "r" })];
     const rows = computeCockpitFinanceRows(buildCockpitTree(withPaymentOnly), [
       ...payments,
-      { id: "p3", node_id: "d", label: "首期", pay_date: "2026-05-01", amount: 8, position: 0 },
+      { id: "p4", node_id: "d", label: "待定", pay_date: null, amount: 8, position: 0 },
     ]);
-    expect(rows.map((r) => r.node.code)).toContain("01.04");
-    expect(rows.find((r) => r.node.code === "01.04")!.budget).toBe(0);
+    expect(rows.at(-1)).toMatchObject({ payment: { id: "p4", pay_date: null }, amount: 8, budget: 0, paid: false });
   });
 });
 
@@ -992,7 +995,7 @@ describe("week axis boundaries", () => {
 });
 
 describe("finance ledger totals", () => {
-  it("counts paid budgets once regardless of instalment totals, including lines without transfers", () => {
+  it("never invents a payment for a paid task without listed instalments", () => {
     const summary = computeCockpitFinance(board({
       nodes: [
         node({ id: "r", code: "R" }),
@@ -1008,9 +1011,10 @@ describe("finance ledger totals", () => {
         { id: "4", node_id: "transfer-only", label: "", pay_date: "2026-06-15", amount: 8, position: 0 },
       ],
     }));
-    expect(summary).toMatchObject({ budget: 90, planned: 90, actual: 60, outstanding: 30,
-      lineCount: 4, paidLineCount: 2, contracted: 10, paymentCount: 4 });
-    expect(summary.byModule).toEqual([{ code: "R", name: "R", color: "", lineCount: 4, planned: 90, actual: 60 }]);
+    expect(summary).toMatchObject({ budget: 70, planned: 28, actual: 18, outstanding: 10,
+      lineCount: 4, paidLineCount: 3, contracted: 10, paymentCount: 4 });
+    expect(summary.byModule).toEqual([{ code: "R", name: "R", color: "", lineCount: 4,
+      budget: 70, planned: 28, actual: 18, outstanding: 10 }]);
   });
 });
 

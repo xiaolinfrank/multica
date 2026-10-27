@@ -71,7 +71,9 @@ describe("complete scoped CSV export", () => {
     const source = {
       nodes: [node({ id: "ancestor", code: "project-old", name: "Outside scope", budget_amount: 900 }),
         node({ id: "module", code: "module-old", parent_id: "ancestor", name: "Scoped module", budget_amount: 40 })],
-      payments: [], issue_links: [{ node_id: "module", issue_identifier: "BIO-42" }],
+      // The ledger lists instalments: the scoped module needs one to appear.
+      payments: [{ id: "pay-1", node_id: "module", label: "首款", pay_date: "2026-01-10", amount: 40, position: 0 }],
+      issue_links: [{ node_id: "module", issue_identifier: "BIO-42" }],
     };
     const options = { displayCodes: new Map([["ancestor", "09"], ["module", "09.03"]]), contextNodeIds: new Set(["ancestor"]) };
     const tasks = cockpitTasksCsv(source, options);
@@ -208,6 +210,24 @@ describe("cockpitFinanceCsv", () => {
         ],
       }),
     );
-    expect(csv.split("\r\n")[1]).toContain("2026-02-01,,45,,");
+    expect(csv.split("\r\n")[1]).toContain("2026-02-01,,45,45,");
+  });
+});
+
+describe("instalment CSV rows", () => {
+  it("keeps separate dates and amounts for two instalments on one task", () => {
+    const csv = cockpitFinanceCsv(board({
+      nodes: [node({ id: "a", code: "01.01", budget_amount: 100, exec_status: "未支付" })],
+      payments: [
+        { id: "p1", node_id: "a", label: "首期", pay_date: "2026-01-10", amount: 30, position: 0 },
+        { id: "p2", node_id: "a", label: "尾款", pay_date: "2026-02-10", amount: 20, position: 1 },
+      ],
+    }));
+    const lines = csv.split("\r\n").filter(Boolean);
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toContain("首期,");
+    expect(lines[1]).toContain("2026-01-10,,100,30,");
+    expect(lines[2]).toContain("尾款,");
+    expect(lines[2]).toContain("2026-02-10,,100,20,");
   });
 });

@@ -776,25 +776,27 @@ export interface CockpitFinanceModule {
   code: string;
   name: string;
   color: string;
-  /** Spend lines rolling up to this module. */
+  /** Listed instalments rolling up to this module. */
   lineCount: number;
+  budget: number;
   planned: number;
   actual: number;
+  outstanding: number;
 }
 
 export interface CockpitFinanceSummary {
-  /** Approved budget: what the tasks that spend money are allowed to spend. */
+  /** Approved task budget, counted once per task. */
   budget: number;
-  /** Planned spend — the ledger's expected cost, summed. */
+  /** All listed instalments, irrespective of status. */
   planned: number;
-  /** Actual spend: the budget of every line that reads as fully paid. */
+  /** The instalments whose node's status reads as paid. */
   actual: number;
-  /** planned − actual, floored at zero: what is still expected to go out. */
+  /** The remaining instalments, including contracted and unclassified ones. */
   outstanding: number;
-  /** Spend lines, and how many of them have actually paid out. */
+  /** Every listed instalment; statuses never decide whether money appears. */
   lineCount: number;
   paidLineCount: number;
-  /** Sum of instalments on nodes with a signed contract but no payment yet. */
+  /** Sum of instalments whose node has a signed-contract status. */
   contracted: number;
   /** Instalment count, for "N payments" chips. */
   paymentCount: number;
@@ -805,11 +807,9 @@ export interface CockpitFinanceSummary {
 /**
  * The four figures at the head of the finance section, and the table under it.
  *
- * `budget` and `actual` are deliberately not derived from the instalments:
- * a task that is fully paid has spent its budget whether or not someone
- * itemised the transfers, and a task with instalments booked has not spent
- * anything until its execution status says so. Instalments answer *when* the
- * money moves, which is what the month strip and the timeline markers read.
+ * Every listed instalment is an expenditure row. The node's execution status
+ * colours and classifies that expenditure; it never decides whether the row
+ * exists or replaces its amount with the task's budget.
  */
 export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payments">, contextNodeIds?: ReadonlySet<string>): CockpitFinanceSummary {
   const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
@@ -818,17 +818,17 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
   const rootByCode = new Map(tree.map((root) => [root.node.code, root]));
 
   let budget = 0;
-  let planned = 0;
   let actual = 0;
+  let outstanding = 0;
   let paidLineCount = 0;
   const byModule = new Map<string, CockpitFinanceModule>();
 
   for (const row of rows) {
-    budget += row.budget;
-    planned += row.budget;
-    if (row.actualAmount != null && row.actualAmount > 0) {
-      actual += row.actualAmount;
+    if (row.paid) {
+      actual += row.amount;
       paidLineCount += 1;
+    } else {
+      outstanding += row.amount;
     }
     let module = byModule.get(row.rootCode);
     if (!module) {
@@ -838,14 +838,27 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
         name: root?.node.name ?? row.rootCode,
         color: row.rootColor,
         lineCount: 0,
+        budget: 0,
         planned: 0,
         actual: 0,
+        outstanding: 0,
       };
       byModule.set(row.rootCode, module);
     }
     module.lineCount += 1;
-    module.planned += row.budget;
-    module.actual += row.actualAmount ?? 0;
+    module.planned += row.amount;
+    if (row.paid) module.actual += row.amount;
+    else module.outstanding += row.amount;
+  }
+
+  // Budget is a property of the task, not of each instalment. Count it once
+  // per task so a five-part payment plan does not multiply the budget by five.
+  const seenBudgetNodes = new Set<string>();
+  for (const row of rows) {
+    if (!row.budget || seenBudgetNodes.has(row.node.id)) continue;
+    seenBudgetNodes.add(row.node.id);
+    budget += row.budget;
+    byModule.get(row.rootCode)!.budget += row.budget;
   }
 
   let contracted = 0;
@@ -861,9 +874,9 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
 
   return {
     budget,
-    planned,
+    planned: actual + outstanding,
     actual,
-    outstanding: Math.max(planned - actual, 0),
+    outstanding,
     lineCount: rows.length,
     paidLineCount,
     contracted,
@@ -890,13 +903,8 @@ export interface CockpitMonthCell {
   /** Instalments in this month on nodes whose execution status reads as paid. */
   paidAmount: number;
   /**
-   * The spend ledger's own view of this month, which is a different question
-   * from the instalments above: instalments say when money moves, these say
-   * what the month's spend lines are worth.
-   *
-   * `plannedSpend` is every line expected to land here. `actualSpend` is the
-   * part of it that has actually paid out, and `projectedSpend` the part that
-   * has not — together they make the second bar, drawn paid-then-projected.
+   * The same dated instalments, split into the execution-status totals the
+   * second track displays. A status changes that split, never the total.
    */
   plannedSpend: number;
   actualSpend: number;
@@ -958,16 +966,16 @@ export function computeCockpitMonths(board: Pick<CockpitBoard, "nodes" | "paymen
   tree.forEach(walk);
 
   for (const row of computeCockpitFinanceRows(tree, board.payments, contextNodeIds)) {
-    const plannedMonth = row.plannedDate?.slice(0, 7);
-    const actualMonth = row.actualDate?.slice(0, 7);
-    if (row.actualAmount != null && row.actualAmount > 0 && actualMonth) {
-      const cell = touch(actualMonth);
-      cell.actualSpend += row.actualAmount;
+    const month = row.payment.pay_date?.slice(0, 7);
+    if (!month) continue;
+    const cell = touch(month);
+    cell.plannedSpend += row.amount;
+    if (cockpitPaymentTone(row.node.exec_status) === "paid") {
+      cell.actualSpend += row.amount;
       cell.actualCount += 1;
-    } else if (plannedMonth) {
-      touch(plannedMonth).projectedSpend += row.budget;
+    } else {
+      cell.projectedSpend += row.amount;
     }
-    if (plannedMonth && row.budget > 0) touch(plannedMonth).plannedSpend += row.budget;
   }
 
   for (const payment of board.payments) {
@@ -977,7 +985,7 @@ export function computeCockpitMonths(board: Pick<CockpitBoard, "nodes" | "paymen
     const cell = touch(monthKey(date));
     cell.amount += payment.amount;
     const payer = nodeById.get(payment.node_id);
-    if (payer && PAID_STATUSES.has(payer.exec_status.trim())) cell.paidAmount += payment.amount;
+    if (payer && cockpitPaymentTone(payer.exec_status) === "paid") cell.paidAmount += payment.amount;
     const root = payment.node_id ? rootOf(payment.node_id) : undefined;
     if (root) {
       const code = root.code;
@@ -2217,20 +2225,17 @@ export function groupSubtreePayments(
  */
 export interface CockpitFinanceRow {
   node: CockpitNode;
-  /** Root branch this line rolls up to, for the module column. */
+  /** Root branch this payment rolls up to, for the module column. */
   rootCode: string;
   rootColor: string;
+  /** The task's budget remains a separate reference, never the payment total. */
   budget: number;
-  /** First instalment date — when the money is expected to move. */
-  plannedDate: string | null;
-  /** First instalment date once the node reads as paid; null while it has not. */
-  actualDate: string | null;
-  /** Budget once paid; null while it has not been. */
-  actualAmount: number | null;
-  payments: CockpitPayment[];
+  payment: CockpitPayment;
+  amount: number;
+  paid: boolean;
 }
 
-/** The spend ledger, in board order, for every node that carries money. */
+/** The spend ledger, one row per listed instalment, in board order. */
 export function computeCockpitFinanceRows(
   tree: CockpitTreeNode[],
   payments: CockpitPayment[],
@@ -2241,21 +2246,18 @@ export function computeCockpitFinanceRows(
 
   const walk = (entry: CockpitTreeNode, rootCode: string, rootColor: string) => {
     const own = paymentsByNode.get(entry.node.id) ?? [];
-    const budget = entry.node.budget_amount ?? 0;
-    if (!contextNodeIds?.has(entry.node.id) && (budget > 0 || own.length > 0)) {
-      const status = entry.node.exec_status.trim();
-      const paid = PAID_STATUSES.has(status) || PAID_STATUSES.has(status.toLowerCase());
-      const firstDate = own.find((p) => p.pay_date)?.pay_date ?? null;
-      rows.push({
-        node: entry.node,
-        rootCode,
-        rootColor,
-        budget,
-        plannedDate: firstDate,
-        actualDate: paid ? firstDate : null,
-        actualAmount: paid ? budget : null,
-        payments: own,
-      });
+    if (!contextNodeIds?.has(entry.node.id)) {
+      for (const payment of own) {
+        rows.push({
+          node: entry.node,
+          rootCode,
+          rootColor,
+          budget: entry.node.budget_amount ?? 0,
+          payment,
+          amount: payment.amount,
+          paid: cockpitPaymentTone(entry.node.exec_status) === "paid",
+        });
+      }
     }
     entry.children.forEach((child) => walk(child, rootCode, rootColor));
   };

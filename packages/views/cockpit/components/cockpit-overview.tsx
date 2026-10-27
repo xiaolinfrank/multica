@@ -721,8 +721,8 @@ export function CockpitOverview({
             <tr className="border-b border-border text-left text-micro text-muted-foreground">
               <th className="py-1 font-medium">{t(($) => $.table.module)}</th>
               <th className="py-1 text-right font-medium">{t(($) => $.finance.line_header)}</th>
-              <th className="py-1 text-right font-medium">{t(($) => $.table.planned_amount)}</th>
-              <th className="py-1 text-right font-medium">{t(($) => $.table.actual_amount)}</th>
+              <th className="py-1 text-right font-medium">{t(($) => $.finance.planned)}</th>
+              <th className="py-1 text-right font-medium">{t(($) => $.finance.actual)}</th>
             </tr>
           </thead>
           <tbody>

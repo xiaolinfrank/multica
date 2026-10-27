@@ -152,7 +152,7 @@ export function cockpitTasksCsv(board: CockpitCsvData, options: CockpitCsvOption
   return "﻿" + out.join("");
 }
 
-/** The spend ledger — one line per node that carries money. */
+/** The spend ledger — one line per listed instalment. */
 export function cockpitFinanceCsv(board: CockpitCsvData, options: CockpitCsvOptions = {}): string {
   const tree: CockpitTreeNode[] = buildCockpitTree(board.nodes);
   const linksByNode = groupCsvLinks(board.issue_links);
@@ -167,15 +167,16 @@ export function cockpitFinanceCsv(board: CockpitCsvData, options: CockpitCsvOpti
       "编号",
       "关联任务",
       "项目",
+      "分期",
       "对应合同",
-      "预计支出时间",
-      "实际支出时间",
-      "预计支出费用",
-      "实际支出费用",
+      "付款日期",
+      "实际付款日期",
+      "任务预算",
+      "分期金额",
       "承担方/供应商",
       "预算归口",
       "预算执行状态",
-      "分期付款",
+      "支付状态",
     ]),
   ];
   for (const row of computeCockpitFinanceRows(tree, board.payments, options.contextNodeIds)) {
@@ -185,15 +186,16 @@ export function cockpitFinanceCsv(board: CockpitCsvData, options: CockpitCsvOpti
         codeOf(row.node),
         linkedIssues(linksByNode, row.node),
         row.node.name,
+        row.payment.label,
         row.node.contract,
-        row.plannedDate ?? "",
-        row.actualDate ?? "",
+        row.payment.pay_date ?? "",
+        row.paid ? (row.payment.pay_date ?? "") : "",
         row.budget || "",
-        row.actualAmount ?? "",
+        row.amount,
         row.node.vendor || row.node.owner,
         row.node.budget_category,
         row.node.exec_status,
-        row.payments.map((p) => `${p.label} ${p.pay_date ?? "待定"}：${p.amount}`).join("；"),
+        row.paid ? "已支付" : "待支付",
       ]),
     );
   }

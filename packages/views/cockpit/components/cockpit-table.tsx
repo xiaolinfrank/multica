@@ -27,6 +27,8 @@ import {
   cockpitScope, cockpitScopeViewKey,
   buildCockpitTree,
   cockpitMissingFields,
+  cockpitPaymentTone,
+  cockpitPaymentToneColor,
   computeCockpitFinanceRows,
   flattenCockpitTree,
   groupPaymentsByNode,
@@ -259,8 +261,10 @@ export function CockpitTable({
   }
 
   if (mode === "finance") {
-    const totalBudget = financeRows.reduce((sum, row) => sum + row.budget, 0);
-    const totalActual = financeRows.reduce((sum, row) => sum + (row.actualAmount ?? 0), 0);
+    const totalBudget = [
+      ...new Map(financeRows.map((row) => [row.node.id, row.budget])).values(),
+    ].reduce((sum, budget) => sum + budget, 0);
+    const totalActual = financeRows.reduce((sum, row) => sum + row.amount, 0);
     return (
       <div ref={tableRef} className="cockpit-ledger flex min-h-0 min-w-0 flex-1 flex-col">
         <CockpitViewHeading title={t(($) => $.plan_views.finance)} icon={Wallet} description={t(($) => $.finance.actual_basis)}>
@@ -278,6 +282,7 @@ export function CockpitTable({
                 <Th>{t(($) => $.node.code)}</Th>
                 <Th>{t(($) => $.node.linked_issues)}</Th>
                 <Th>{t(($) => $.table.item)}</Th>
+                <Th>{t(($) => $.node.payments)}</Th>
                 <Th>{t(($) => $.node.contract)}</Th>
                 <Th>{t(($) => $.table.planned_date)}</Th>
                 <Th>{t(($) => $.table.actual_date)}</Th>
@@ -296,7 +301,7 @@ export function CockpitTable({
                 const node = row.node;
                 return (
                   <tr
-                    key={node.id}
+                    key={row.payment.id}
                     ref={rowVirtualizer.measureElement}
                     data-index={virtual.index}
                     aria-rowindex={virtual.index + 2}
@@ -338,6 +343,9 @@ export function CockpitTable({
                         displayClassName="line-clamp-2 text-caption"
                       />
                     </Td>
+                    <Td>
+                      <Derived value={row.payment.label} />
+                    </Td>
                     <Td className="max-w-64">
                       <EditableText
                         value={node.contract}
@@ -348,13 +356,12 @@ export function CockpitTable({
                         displayClassName="line-clamp-2 text-caption"
                       />
                     </Td>
-                    {/* Both dates come from the instalment plan, so they are
-                        shown, not typed: edit the instalments and these follow. */}
+                    {/* This instalment's date, not the task's first payment. */}
                     <Td>
-                      <Derived value={row.plannedDate ?? ""} />
+                      <Derived value={row.payment.pay_date ?? ""} />
                     </Td>
                     <Td>
-                      <Derived value={row.actualDate ?? ""} />
+                      <Derived value={row.paid ? (row.payment.pay_date ?? "") : ""} />
                     </Td>
                     <Td className="text-right">
                       <EditableNumber
@@ -368,7 +375,7 @@ export function CockpitTable({
                     </Td>
                     <Td className="text-right">
                       <Derived
-                        value={row.actualAmount == null ? "" : formatAmount(row.actualAmount)}
+                        value={formatAmount(row.amount)}
                       />
                     </Td>
                     <Td>
@@ -409,15 +416,16 @@ export function CockpitTable({
                         }
                       />
                     </Td>
-                    <Td className="max-w-80">
-                      <span className="text-caption text-muted-foreground">
-                        {row.payments.length === 0
-                          ? emptyLabel
-                          : row.payments
-                              .map(
-                                (p) => `${p.label} ${p.pay_date ?? "—"}：${formatAmount(p.amount)}`,
-                              )
-                              .join("；")}
+                    <Td>
+                      <span
+                        className="inline-flex whitespace-nowrap rounded-full border px-1.5 py-px text-micro font-medium"
+                        style={{
+                          color: cockpitPaymentToneColor(cockpitPaymentTone(node.exec_status)),
+                          borderColor: "color-mix(in srgb, currentColor 35%, transparent)",
+                          backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
+                        }}
+                      >
+                        {row.paid ? t(($) => $.finance.payment_paid) : t(($) => $.finance.payment_planned)}
                       </span>
                     </Td>
                   </tr>

@@ -374,6 +374,10 @@ Once a board has bound nodes, whole-board import and snapshot restore return 409
 - Amounts are tracked in 万元 and keep six decimal places server-side
   (0.000001 万 = 0.01 元, so 分 survives), travelling as plain JSON numbers,
   so a value read back may carry more precision than it was sent with.
+- The Finance tab is a projection of instalments, one row per payment. Every
+  listed payment contributes its own amount and date; execution status only
+  classifies it as paid or unpaid. A budget without instalments does not
+  create a spend row, and a task's budget is not used as its payment total.
 
 ## Versions
 
