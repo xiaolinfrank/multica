@@ -778,15 +778,12 @@ export interface CockpitFinanceModule {
   color: string;
   /** Listed instalments rolling up to this module. */
   lineCount: number;
-  budget: number;
   planned: number;
   actual: number;
   outstanding: number;
 }
 
 export interface CockpitFinanceSummary {
-  /** Approved task budget, counted once per task. */
-  budget: number;
   /** All listed instalments, irrespective of status. */
   planned: number;
   /** The instalments whose node's status reads as paid. */
@@ -817,7 +814,6 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
   const rows = computeCockpitFinanceRows(tree, board.payments, contextNodeIds);
   const rootByCode = new Map(tree.map((root) => [root.node.code, root]));
 
-  let budget = 0;
   let actual = 0;
   let outstanding = 0;
   let paidLineCount = 0;
@@ -838,7 +834,6 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
         name: root?.node.name ?? row.rootCode,
         color: row.rootColor,
         lineCount: 0,
-        budget: 0,
         planned: 0,
         actual: 0,
         outstanding: 0,
@@ -849,16 +844,6 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
     module.planned += row.amount;
     if (row.paid) module.actual += row.amount;
     else module.outstanding += row.amount;
-  }
-
-  // Budget is a property of the task, not of each instalment. Count it once
-  // per task so a five-part payment plan does not multiply the budget by five.
-  const seenBudgetNodes = new Set<string>();
-  for (const row of rows) {
-    if (!row.budget || seenBudgetNodes.has(row.node.id)) continue;
-    seenBudgetNodes.add(row.node.id);
-    budget += row.budget;
-    byModule.get(row.rootCode)!.budget += row.budget;
   }
 
   let contracted = 0;
@@ -873,7 +858,6 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
   }
 
   return {
-    budget,
     planned: actual + outstanding,
     actual,
     outstanding,

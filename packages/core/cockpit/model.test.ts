@@ -265,19 +265,19 @@ describe("computeCockpitFinance", () => {
     });
 
     expect(computeCockpitFinance(input)).toMatchObject({
-      budget: 50, planned: 50, actual: 20, outstanding: 30,
+      planned: 50, actual: 20, outstanding: 30,
       lineCount: 2, paidLineCount: 1, contracted: 30, paymentCount: 2,
     });
     const changed = structuredClone(input);
     changed.nodes[0]!.exec_status = "未支付";
     changed.nodes[1]!.exec_status = "完全支付";
     expect(computeCockpitFinance(changed)).toMatchObject({
-      budget: 50, planned: 50, actual: 30, outstanding: 20,
+      planned: 50, actual: 30, outstanding: 20,
       lineCount: 2, paidLineCount: 1, contracted: 0, paymentCount: 2,
     });
   });
 
-  it("keeps task budget distinct from repeated instalments in a module", () => {
+  it("uses only listed instalments, never task budgets, in module totals", () => {
     const summary = computeCockpitFinance(board({
       nodes: [
         node({ id: "m", code: "L1-01", name: "Platform" }),
@@ -291,9 +291,9 @@ describe("computeCockpitFinance", () => {
         { id: "3", node_id: "b", label: "one", pay_date: "2026-02-05", amount: 8, position: 0 },
       ],
     }));
-    expect(summary).toMatchObject({ budget: 50, planned: 48, actual: 40, outstanding: 8, lineCount: 3 });
+    expect(summary).toMatchObject({ planned: 48, actual: 40, outstanding: 8, lineCount: 3 });
     expect(summary.byModule).toEqual([{ code: "L1-01", name: "Platform", color: "", lineCount: 3,
-      budget: 50, planned: 48, actual: 40, outstanding: 8 }]);
+      planned: 48, actual: 40, outstanding: 8 }]);
   });
 });
 
@@ -1011,10 +1011,10 @@ describe("finance ledger totals", () => {
         { id: "4", node_id: "transfer-only", label: "", pay_date: "2026-06-15", amount: 8, position: 0 },
       ],
     }));
-    expect(summary).toMatchObject({ budget: 70, planned: 28, actual: 18, outstanding: 10,
+    expect(summary).toMatchObject({ planned: 28, actual: 18, outstanding: 10,
       lineCount: 4, paidLineCount: 3, contracted: 10, paymentCount: 4 });
     expect(summary.byModule).toEqual([{ code: "R", name: "R", color: "", lineCount: 4,
-      budget: 70, planned: 28, actual: 18, outstanding: 10 }]);
+      planned: 28, actual: 18, outstanding: 10 }]);
   });
 });
 

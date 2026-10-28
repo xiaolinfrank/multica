@@ -668,23 +668,16 @@ export function CockpitOverview({
 
       {/* Finance — last, and the longest section on the page. */}
       <Section title={t(($) => $.overview.finance)} hint={t(($) => $.overview.finance_hint)}>
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {[
-            // The budget is the figure the other three are measured against,
-            // so it carries the gold the board reserves for budget.
+            // The annual total uses the same instalment basis as its paid and
+            // unpaid subsets; task budgets are not a second financial total.
             {
               key: "budget",
-              label: t(($) => $.overview.fin_budget),
-              value: finance.budget,
+              label: t(($) => $.overview.fin_budget, { n: finance.lineCount }),
+              value: finance.planned,
               title: null as string | null,
               className: "text-budget",
-            },
-            {
-              key: "planned",
-              label: t(($) => $.overview.fin_planned, { n: finance.lineCount }),
-              value: finance.planned,
-              title: null,
-              className: "",
             },
             {
               key: "actual",
