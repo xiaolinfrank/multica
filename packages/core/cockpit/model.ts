@@ -783,6 +783,11 @@ export interface CockpitFinanceModule {
   outstanding: number;
 }
 
+export interface CockpitFinancePeriod {
+  startYear: number;
+  endYear: number;
+}
+
 export interface CockpitFinanceSummary {
   /** All listed instalments, irrespective of status. */
   planned: number;
@@ -808,10 +813,17 @@ export interface CockpitFinanceSummary {
  * colours and classifies that expenditure; it never decides whether the row
  * exists or replaces its amount with the task's budget.
  */
-export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payments">, contextNodeIds?: ReadonlySet<string>): CockpitFinanceSummary {
+export function computeCockpitFinance(
+  board: Pick<CockpitBoard, "nodes" | "payments">,
+  contextNodeIds?: ReadonlySet<string>,
+  period?: CockpitFinancePeriod,
+): CockpitFinanceSummary {
   const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
   const tree = buildCockpitTree(board.nodes);
-  const rows = computeCockpitFinanceRows(tree, board.payments, contextNodeIds);
+  const payments = board.payments.filter((payment) =>
+    cockpitPaymentInPeriod(payment.pay_date, period),
+  );
+  const rows = computeCockpitFinanceRows(tree, payments, contextNodeIds);
   const rootByCode = new Map(tree.map((root) => [root.node.code, root]));
 
   let actual = 0;
@@ -847,7 +859,7 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
   }
 
   let contracted = 0;
-  for (const payment of board.payments) {
+  for (const payment of payments) {
     if (contextNodeIds?.has(payment.node_id)) continue;
     const node = nodeById.get(payment.node_id);
     if (!node) continue;
@@ -864,9 +876,18 @@ export function computeCockpitFinance(board: Pick<CockpitBoard, "nodes" | "payme
     lineCount: rows.length,
     paidLineCount,
     contracted,
-    paymentCount: board.payments.filter((payment) => !contextNodeIds?.has(payment.node_id)).length,
+    paymentCount: payments.filter((payment) => !contextNodeIds?.has(payment.node_id)).length,
     byModule: [...byModule.values()].sort((a, b) => a.code.localeCompare(b.code)),
   };
+}
+
+function cockpitPaymentInPeriod(
+  payDate: string | null,
+  period?: CockpitFinancePeriod,
+): boolean {
+  if (!period) return true;
+  const year = Number(payDate?.slice(0, 4));
+  return Number.isInteger(year) && year >= period.startYear && year <= period.endYear;
 }
 
 export interface CockpitMonthModuleShare {
@@ -908,7 +929,14 @@ export interface CockpitMonthCell {
  * the span the board actually covers. Months with neither are still emitted so
  * the strip reads as a continuous timeline rather than a gapped one.
  */
-export function computeCockpitMonths(board: Pick<CockpitBoard, "nodes" | "payments" | "milestones">, contextNodeIds?: ReadonlySet<string>): CockpitMonthCell[] {
+export function computeCockpitMonths(
+  board: Pick<CockpitBoard, "nodes" | "payments" | "milestones">,
+  contextNodeIds?: ReadonlySet<string>,
+  period?: CockpitFinancePeriod,
+): CockpitMonthCell[] {
+  const payments = board.payments.filter((payment) =>
+    cockpitPaymentInPeriod(payment.pay_date, period),
+  );
   const cells = new Map<string, CockpitMonthCell>();
   const touch = (month: string): CockpitMonthCell => {
     let cell = cells.get(month);
@@ -949,7 +977,7 @@ export function computeCockpitMonths(board: Pick<CockpitBoard, "nodes" | "paymen
   const tree = buildCockpitTree(board.nodes);
   tree.forEach(walk);
 
-  for (const row of computeCockpitFinanceRows(tree, board.payments, contextNodeIds)) {
+  for (const row of computeCockpitFinanceRows(tree, payments, contextNodeIds)) {
     const month = row.payment.pay_date?.slice(0, 7);
     if (!month) continue;
     const cell = touch(month);
@@ -962,7 +990,7 @@ export function computeCockpitMonths(board: Pick<CockpitBoard, "nodes" | "paymen
     }
   }
 
-  for (const payment of board.payments) {
+  for (const payment of payments) {
     if (contextNodeIds?.has(payment.node_id)) continue;
     const date = parseDay(payment.pay_date);
     if (!date) continue;

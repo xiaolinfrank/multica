@@ -224,6 +224,7 @@
     "fin_budget": "2026 budget total · {{n}} instalments",
     "fin_actual": "Of which paid · {{n}} payments",
     "fin_outstanding": "Of which unpaid",
+    "fin_three_year": "Three-year budget (2026–2028) · {{n}} instalments",
     "fin_empty": "No spend records yet — add them on the Finance tab",
     "month_note": "Column top: the month's budgeted spend in 万, stacked by module colour",
     "month_progress": "Tasks due this month ({{pct}} done)",

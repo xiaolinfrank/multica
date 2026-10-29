@@ -224,6 +224,7 @@
     "fin_budget": "2026预算合计 · {{n}} 笔分期",
     "fin_actual": "其中已支付 · {{n}} 笔",
     "fin_outstanding": "其中待支付",
+    "fin_three_year": "三年总预算（2026–2028） · {{n}} 笔分期",
     "fin_empty": "暂无支出记录（请至「财务支出」表填写）",
     "month_note": "柱顶数字＝当月财务支出预算合计（万元，按板块分色堆叠）",
     "month_progress": "当月任务进度（完成率 {{pct}}）",

@@ -378,8 +378,9 @@ Once a board has bound nodes, whole-board import and snapshot restore return 409
   listed payment contributes its own amount and date; execution status only
   classifies it as paid or unpaid. A budget without instalments does not
   create a spend row, and a task's budget is not used as its payment total.
-  The Overview finance total and its paid/unpaid subsets use those same
-  instalments; task budgets never form a separate headline or module total.
+  The Overview's 2026 total, paid/unpaid subsets, module table and monthly
+  chart include only instalments dated in 2026. Its separate three-year total
+  includes 2026-2028. Task budgets never form a separate financial total.
 
 ## Versions
 

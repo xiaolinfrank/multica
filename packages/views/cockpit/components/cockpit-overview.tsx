@@ -118,6 +118,8 @@ const MODULE_BIG_COUNT = 2;
 /** The milestone the board's countdown hangs off, matched by name like the
  * prototype: the one the annual results are reported through. */
 const ANNUAL_REPORT_NAME = "年度成果汇报";
+const OVERVIEW_FINANCE_YEAR = { startYear: 2026, endYear: 2026 } as const;
+const OVERVIEW_FINANCE_THREE_YEARS = { startYear: 2026, endYear: 2028 } as const;
 
 /** The interaction props a module card's root element takes when the whole
  * card opens the module's slice of the execution gantt. Keyboard-reachable
@@ -406,8 +408,18 @@ export function CockpitOverview({
 
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
   const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
-  const finance = useMemo(() => computeCockpitFinance(board, contextNodeIds), [board, contextNodeIds]);
-  const months = useMemo(() => computeCockpitMonths(board, contextNodeIds), [board, contextNodeIds]);
+  const finance = useMemo(
+    () => computeCockpitFinance(board, contextNodeIds, OVERVIEW_FINANCE_YEAR),
+    [board, contextNodeIds],
+  );
+  const threeYearFinance = useMemo(
+    () => computeCockpitFinance(board, contextNodeIds, OVERVIEW_FINANCE_THREE_YEARS),
+    [board, contextNodeIds],
+  );
+  const months = useMemo(
+    () => computeCockpitMonths(board, contextNodeIds, OVERVIEW_FINANCE_YEAR),
+    [board, contextNodeIds],
+  );
   const digest = useMemo(() => computeCockpitDigest(board, today), [board, today]);
   const milestones = useMemo(() => sortCockpitMilestones(board.milestones), [board.milestones]);
   const nodeById = useMemo(() => new Map(board.nodes.map((n) => [n.id, n])), [board.nodes]);
@@ -668,10 +680,10 @@ export function CockpitOverview({
 
       {/* Finance — last, and the longest section on the page. */}
       <Section title={t(($) => $.overview.finance)} hint={t(($) => $.overview.finance_hint)}>
-        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
-            // The annual total uses the same instalment basis as its paid and
-            // unpaid subsets; task budgets are not a second financial total.
+            // Annual and three-year figures use listed instalments only;
+            // task budgets are not a second financial total.
             {
               key: "budget",
               label: t(($) => $.overview.fin_budget, { n: finance.lineCount }),
@@ -694,6 +706,13 @@ export function CockpitOverview({
               value: finance.outstanding,
               title: null,
               className: "",
+            },
+            {
+              key: "three-year",
+              label: t(($) => $.overview.fin_three_year, { n: threeYearFinance.lineCount }),
+              value: threeYearFinance.planned,
+              title: null,
+              className: "text-budget",
             },
           ].map((cell) => (
             <div

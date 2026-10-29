@@ -116,7 +116,9 @@ describe("buildCockpitTree", () => {
     const snapshot = board({ nodes: [tree[0]!.node, tree[0]!.children[0]!.node, tree[0]!.children[0]!.children[0]!.node], payments: [
       ...payments, { id: "context-payment", node_id: "project", label: "Outside scope", pay_date: "2026-10-10", amount: 900, position: 0 },
     ] });
-    expect(computeCockpitFinance(snapshot, context)).toMatchObject({ budget: 40, planned: 10, paymentCount: 1, byModule: [{ code: "P", planned: 10, budget: 40 }] });
+    // The summary carries instalment figures only (no separate budget total
+    // since f44f1a52b); the context root's 900 stays out of every figure.
+    expect(computeCockpitFinance(snapshot, context)).toMatchObject({ planned: 10, paymentCount: 1, byModule: [{ code: "P", planned: 10 }] });
     expect(computeCockpitMonths(snapshot, context)[0]).toMatchObject({ amount: 10, plannedSpend: 10, byModule: [{ code: "P", amount: 10 }] });
   });
   it("nests by parent_id and orders siblings by position then code", () => {
@@ -277,6 +279,34 @@ describe("computeCockpitFinance", () => {
     });
   });
 
+  it("limits annual and three-year rollups to the requested payment years", () => {
+    const input = board({
+      nodes: [
+        node({ id: "r", code: "R" }),
+        node({ id: "paid", code: "P", parent_id: "r", exec_status: "完全支付" }),
+        node({ id: "signed", code: "S", parent_id: "r", exec_status: "合同已定" }),
+      ],
+      payments: [
+        { id: "2025", node_id: "paid", label: "", pay_date: "2025-12-31", amount: 1, position: 0 },
+        { id: "2026-paid", node_id: "paid", label: "", pay_date: "2026-01-05", amount: 10, position: 0 },
+        { id: "2026-signed", node_id: "signed", label: "", pay_date: "2026-02-05", amount: 20, position: 0 },
+        { id: "2027", node_id: "paid", label: "", pay_date: "2027-01-05", amount: 100, position: 0 },
+        { id: "2028", node_id: "signed", label: "", pay_date: "2028-12-31", amount: 200, position: 0 },
+        { id: "2029", node_id: "paid", label: "", pay_date: "2029-01-01", amount: 1000, position: 0 },
+        { id: "undated", node_id: "paid", label: "", pay_date: null, amount: 10000, position: 0 },
+      ],
+    });
+    const annual = computeCockpitFinance(input, undefined, { startYear: 2026, endYear: 2026 });
+    expect(annual).toMatchObject({ planned: 30, actual: 10, outstanding: 20,
+      lineCount: 2, paidLineCount: 1, contracted: 20, paymentCount: 2 });
+    expect(annual.byModule).toEqual([{ code: "R", name: "R", color: "", lineCount: 2,
+      planned: 30, actual: 10, outstanding: 20 }]);
+    expect(computeCockpitFinance(input, undefined, { startYear: 2026, endYear: 2028 })).toMatchObject({
+      planned: 330, actual: 110, outstanding: 220,
+      lineCount: 4, paidLineCount: 2, contracted: 220, paymentCount: 4,
+    });
+  });
+
   it("uses only listed instalments, never task budgets, in module totals", () => {
     const summary = computeCockpitFinance(board({
       nodes: [
@@ -298,6 +328,19 @@ describe("computeCockpitFinance", () => {
 });
 
 describe("computeCockpitMonths", () => {
+  it("omits instalments outside the requested financial period", () => {
+    const cells = computeCockpitMonths(board({
+      nodes: [node({ id: "a", code: "A", end_date: "2026-06-20" })],
+      payments: [
+        { id: "annual", node_id: "a", label: "", pay_date: "2026-06-05", amount: 10, position: 0 },
+        { id: "later", node_id: "a", label: "", pay_date: "2027-06-05", amount: 100, position: 0 },
+        { id: "undated", node_id: "a", label: "", pay_date: null, amount: 1000, position: 0 },
+      ],
+    }), undefined, { startYear: 2026, endYear: 2026 });
+    expect(cells).toHaveLength(1);
+    expect(cells[0]).toMatchObject({ month: "2026-06", amount: 10, plannedSpend: 10 });
+  });
+
   it("buckets money and work by month and fills the gaps between them", () => {
     const cells = computeCockpitMonths(
       board({
