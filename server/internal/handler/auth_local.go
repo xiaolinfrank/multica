@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/multica-ai/multica/server/internal/auth"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
+	"github.com/multica-ai/multica/server/internal/workspacecontext"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -160,7 +161,7 @@ func (h *Handler) SetupLocalAccount(w http.ResponseWriter, r *http.Request) {
 	if n == 0 {
 		user, e = q.CreateUser(r.Context(), db.CreateUserParams{Name: v.DisplayName, Email: "owner+" + localSecret() + "@helixhelm.local"})
 		if e == nil {
-			ws, e = q.CreateWorkspace(r.Context(), db.CreateWorkspaceParams{Name: "我的工作空间", Slug: "personal", IssuePrefix: "HH"})
+			ws, e = q.CreateWorkspace(r.Context(), db.CreateWorkspaceParams{Name: "我的工作空间", Slug: "personal", IssuePrefix: "HH", Context: strToText(workspacecontext.ForCreate(nil))})
 		}
 		if e == nil {
 			_, e = q.CreateMember(r.Context(), db.CreateMemberParams{WorkspaceID: ws.ID, UserID: user.ID, Role: "owner"})

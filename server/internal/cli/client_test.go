@@ -281,6 +281,58 @@ func TestDownloadFile(t *testing.T) {
 	})
 }
 
+func TestUploadFileToIssueRequiresAttachmentID(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		response string
+		wantID   string
+	}{
+		{name: "persisted attachment", response: `{"id":"att-123","url":"https://storage.example.test/report.txt"}`, wantID: "att-123"},
+		{name: "empty id with storage url", response: `{"id":"","url":"https://storage.example.test/report.txt"}`},
+		{name: "missing id with storage url", response: `{"url":"https://storage.example.test/report.txt"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/upload-file" {
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+				file, _, err := r.FormFile("file")
+				if err != nil {
+					t.Errorf("missing file field: %v", err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				defer file.Close()
+				if got := r.FormValue("issue_id"); got != "issue-123" {
+					t.Errorf("expected issue_id issue-123, got %q", got)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				io.WriteString(w, tc.response)
+			}))
+			defer srv.Close()
+
+			client := NewAPIClient(srv.URL, "ws-1", "test-token")
+			attachment, err := client.UploadFileToIssue(context.Background(), []byte("report"), "report.txt", "issue-123")
+			if tc.wantID == "" {
+				if err == nil || !strings.Contains(err.Error(), "missing attachment id") {
+					t.Fatalf("expected missing attachment id error, got %v", err)
+				}
+				if attachment != nil {
+					t.Fatalf("invalid upload must not return an attachment: %+v", attachment)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if attachment == nil || attachment.ID != tc.wantID || attachment.URL != "https://storage.example.test/report.txt" {
+				t.Fatalf("unexpected attachment: %+v", attachment)
+			}
+		})
+	}
+}
+
 func TestUploadFileWithURL(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -299,8 +299,9 @@ provision. `meeting_node_id` is the archive sub-item — a node on this board's
 tree, one level below the module ("06.06.03 会议纪要与素材"): its folder holds
 the material and its `code` opens the meeting task's title. The folder chain
 below the project's collaboration space is created if it is missing, one level
-at a time; the collaboration space itself never is, because an unmounted share
-must fail rather than be rebuilt as local directories.
+at a time. This endpoint requires an existing root; a missing path does not imply an unmounted NAS.
+For local internal-disk storage, verify exact binding, ownership, permissions and containment before preparing the root, then retry; never substitute another root.
+The meeting directory is the task/result layer; its persistent copy does not replace Issue attachments or `## Output` rules.
 
 `GET .../meetings/scan` reads the archive folder and reports each sub-folder
 with the meeting already recording it (`meeting_id`, empty when none) and what
@@ -346,6 +347,29 @@ Once a board has bound nodes, whole-board import and snapshot restore return
 Edit existing nodes instead; snapshots can still be saved and inspected.
 Importing a binding document into a currently unbound board validates the
 resources and final tree before committing. There is no name-based migration.
+
+### Keeping names aligned (guidance, not a rule)
+
+Bindings are UUIDs and stay UUIDs; nothing migrates by name. As working
+practice, when a row exists to represent a bound project or module, keep its
+name aligned with the current title: default to the title on `node create`,
+and when a title changes, propose the matching rename (`change propose` on
+`name`) together with any other drift you are filing — the 治理 queue lets a
+human skip it when the divergence is intentional.
+
+Identify a representing row by its binding fields (`project_id`/`module_id`),
+never by name similarity: a same-named row without the binding is an unrelated
+grouping row.
+
+Not every row maps to a project or module: milestones, payments and ad-hoc
+grouping rows keep whatever name serves the programme, and a user may want a
+board row to differ from its project title on purpose. Alignment is the
+default posture, not a constraint the user must argue against; once they say
+a row should differ, follow them and stop proposing for that row. That
+decision outlives the conversation only where it is written down: before
+re-proposing a rename, check the node's change history for a rejected
+alignment; when the user wants a standing exemption, offer to record it in
+the node's `note` (with their agreement).
 
 ## Field semantics
 

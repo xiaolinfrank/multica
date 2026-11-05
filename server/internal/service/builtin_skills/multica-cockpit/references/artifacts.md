@@ -66,10 +66,24 @@ clocks are independent. Always read the object whose revision the command uses.
 A text payload is `{"kind":"text","content":"# Report\n...\n"}`. Text must be
 nonempty UTF-8, at most 128 KiB; its whitespace is part of the fixed version.
 A file payload is `{"kind":"attachment","attachment_id":"<uuid>"}`; choose a
-platform attachment belonging to the **current producer Issue**. A NAS path or a
-web URL is not an attachment ID. The optional minutes origin must identify a
+platform attachment belonging to the **current producer Issue**. A local collaboration path, NAS path or web URL is not an attachment ID.
+Archive the extra copy under `<project collab_path>/<module directory_name>/<task-or-result>/`
+(or `<project collab_path>/<task-or-result>/` without a module). Preserve stable
+module bindings after renames, never flatten output into root directories,
+and keep scratch/checkouts in workdir. The issue attachment remains the delivery
+channel: follow `## Output` and user authorization; if a large upload awaits
+confirmation, prepare the files and wait instead of uploading. Report paths only
+as plain text where `## Output` permits. The optional minutes origin must identify a
 published fixed version belonging to the specified meeting. Run identity is
 server-derived from trusted task credentials, never supplied by the caller.
+
+The standard single-owner deployment uses the Mac's internal disk. A missing
+path is not proof of an unmounted NAS: verify the exact configured binding,
+containment, ownership and writable local storage before creating a missing
+project root and its module/task children. If unconfigured, inaccessible or
+permission is denied, report the observed problem and keep files in workdir;
+do not claim persistent delivery or substitute a nearby path. An unresolved
+module binding requires owner action; never guess from its display title.
 
 An HTTP 202 receipt for a file confirms durable submission, not a verified copy
 or formal review. Check its capture state. Retry a failed capture with the same

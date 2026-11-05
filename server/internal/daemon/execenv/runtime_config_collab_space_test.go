@@ -17,11 +17,8 @@ import (
 // keeps every existing brief byte-identical (MUL-5377's prompt cache prefix)
 // for the overwhelming majority of tasks that never set one.
 //
-// Only the project stores a path. A module's directory sits inside the
-// project's, named after the module, so the brief tells the agent to find the
-// folder by name rather than handing it a second absolute path — one that could
-// drift out of sync with the folder it names, and that someone would have to
-// fill in correctly for every module. "No second absolute path in the section"
+// Only the project stores an absolute path. A module has a stable relative
+// binding inside that project, independent of its mutable display title. "No second absolute path in the section"
 // is therefore an assertion in its own right below, not an incidental detail.
 
 const (
@@ -30,7 +27,7 @@ const (
 
 	collabSpaceHeading   = "### Collaboration Space"
 	collabExceptionStart = "The one exception is this task's"
-	collabFolderStart    = "Your work belongs under the folder named after this task's module"
+	collabFolderStart    = "Use the bound module folder"
 	collabProjectLine    = "- Project directory: `"
 )
 
@@ -55,6 +52,8 @@ func collabModuleContext() TaskContextForEnv {
 	ctx := collabIssueContext()
 	ctx.ModuleID = "44444444-5555-6666-7777-888888888888"
 	ctx.ModuleTitle = collabModuleTitle
+	folder := collabModuleTitle
+	ctx.ModuleDirectory = &folder
 	ctx.ModuleDescription = "回顾性队列数据集的清洗与标注规范。"
 	return ctx
 }
@@ -139,6 +138,42 @@ func TestCollaborationSpaceUsesStableBindingAndRejectsTraversal(t *testing.T) {
 	if strings.Contains(out, "../escape/") || !strings.Contains(out, "binding is unresolved or unsafe") {
 		t.Fatal("unsafe module binding was rendered as a destination")
 	}
+	ctx.ModuleDirectory = nil
+	out = buildMetaSkillContent("claude", ctx)
+	if strings.Contains(out, "Use the bound module folder") || !strings.Contains(out, "binding is unresolved or unsafe") {
+		t.Fatal("unbound module guessed a folder from its display title")
+	}
+}
+
+func TestCollaborationSpaceRequiresTaskLayerAndAuthorizedDelivery(t *testing.T) {
+	for _, hasModule := range []bool{false, true} {
+		ctx := collabIssueContext()
+		if hasModule {
+			ctx = collabModuleContext()
+		}
+		ctx.ProjectCollabPath = "/Users/test/Library/Application Support/HelixHelm/projects/sample"
+		out := collabSection(t, buildMetaSkillContent("claude", ctx))
+		for _, want := range []string{
+			"must go in that task or deliverable subdirectory, never flat in the project or module root",
+			"issue files still need `--attachment <path>`",
+			"waiting for confirmation on large files when requested",
+			"where `## Output` permits them, never as clickable links",
+			"verify the exact configured binding is on this host's writable internal disk",
+			"A missing path does not imply an unmounted NAS",
+			"Never guess another path",
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("hasModule=%v: missing %q", hasModule, want)
+			}
+		}
+		want := "Use a task or deliverable subdirectory directly below the project directory; do not invent a module folder"
+		if hasModule {
+			want = "Use a task or deliverable subdirectory below the bound module folder"
+		}
+		if !strings.Contains(out, want) {
+			t.Errorf("hasModule=%v: missing explicit hierarchy %q", hasModule, want)
+		}
+	}
 }
 
 // Most tasks with a collaboration space have no module. The section still
@@ -169,10 +204,9 @@ func TestCollaborationSpaceWithoutModuleHasNoFolderLine(t *testing.T) {
 	}
 }
 
-// A module id with no title names no folder: a bare "/" folder is worse than
-// saying nothing, and the title is the only part of a module the folder can be
-// named after. The project directory still stands on its own.
-func TestCollaborationSpaceModuleWithoutTitleHasNoFolderLine(t *testing.T) {
+// A module with no directory binding must not acquire a guessed folder.
+// The project root remains visible so the owner can resolve the binding.
+func TestCollaborationSpaceModuleWithoutBindingHasNoFolderLine(t *testing.T) {
 	t.Parallel()
 
 	ctx := collabIssueContext()

@@ -79,8 +79,9 @@ multi-agent. Explicit chat session links remain chat links, while object targets
 retain precedence. Project selection supplies durable project context through the daemon.
 The work surface uses the same workspace/project/module scope; `?tab=work` (legacy `?tab=overview`) also opens
 this overview. `?view=operations` preserves
-the original business overview; `?tab=gantt|meetings|changes|finance` selects an
-existing area. `?node=<uuid>` opens L3 and `?meeting=<uuid>&action=<uuid>` opens an
+the original business overview; `?tab=gantt|finance|changes|meetings` selects an
+existing area — 执行甘特图 (the execution plan board), 财务支出, 待确认 (governance)
+and 会议管理 (the meeting register) respectively. `?node=<uuid>` opens L3 and `?meeting=<uuid>&action=<uuid>` opens an
 action in its meeting. A meeting target takes precedence over a conflicting node.
 
 The new overview omits full issue/minutes bodies and legacy relationship arrays.

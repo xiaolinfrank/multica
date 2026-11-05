@@ -72,6 +72,14 @@ Preparation Issue completion does not automatically confirm materials, release
 minutes, approve a record, or create action Issues. Existing explicit submission,
 review and publication commands are documented in [history](history.md).
 
+After minutes land, the register is the agent's proposal duty: compare
+`meeting list` with the archive folders the board's meeting directory holds
+(`GET /api/cockpit/meetings/scan`) and propose the missing rows — `meeting add`
+after confirmation, or hand the user the folder list for `POST
+/api/cockpit/meetings/import` from the cockpit (an HTTP endpoint, not a CLI
+subcommand; never use the whole-board `cockpit import` for this). Confirmation
+is the human's; noticing is yours.
+
 Meeting-record editing through a dedicated Agent CLI will be developed later.
 Do not invent an unsupported command. Use the currently implemented minutes
 Issue workflow and report missing capabilities.

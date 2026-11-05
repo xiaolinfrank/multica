@@ -306,7 +306,7 @@ func runModuleUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(body) == 0 {
-		return fmt.Errorf("no fields to update; use flags like --title, --description, --position")
+		return fmt.Errorf("no fields to update; use flags like --title, --description, --position, --directory-name")
 	}
 
 	var result map[string]any
