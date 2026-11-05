@@ -270,7 +270,11 @@ function RichLink({ href, children }: { href?: string; children?: ReactNode }) {
     ? ownAttachmentDownloadId(href, appOrigin, attachmentPublicUrl)
     : undefined;
 
-  if (isMentionHref(href)) {
+  // TS 6.0 flow bug: the negated `href is string` predicate narrows the
+  // optional `href` binding to `never` afterwards. Binding the predicate to a
+  // local boolean keeps the later attachment branches typeable.
+  const mentionHref = isMentionHref(href);
+  if (mentionHref) {
     const match = href.match(/^mention:\/\/(member|agent|issue|project|all)\/(.+)$/);
     if (match?.[1] === "issue" && match[2]) {
       // A bare identifier (from the autolink preprocessor) is carried as the id
@@ -315,10 +319,11 @@ function RichLink({ href, children }: { href?: string; children?: ReactNode }) {
   // a plain persisted link (buildMarkdownURL) and belongs on the re-sign
   // download path below (WK-11 / MUL-7991) — wrapping it in a card here would
   // swallow its credential-bearing click.
-  if (href && href.startsWith("/") && !href.startsWith("//") && attachmentIdFromDownloadURL(href)) {
+  const hrefText = href as string | undefined;
+  if (hrefText && hrefText.startsWith("/") && !hrefText.startsWith("//") && attachmentIdFromDownloadURL(hrefText)) {
     return (
       <AttachmentRenderer
-        attachment={{ kind: "url", url: href, filename: childrenToLabel(children) ?? "" }}
+        attachment={{ kind: "url", url: hrefText, filename: childrenToLabel(children) ?? "" }}
       />
     );
   }

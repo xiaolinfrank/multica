@@ -696,7 +696,7 @@ describe("the meeting register", () => {
 describe("reading meetings back off the share", () => {
   it("offers only the folders no meeting records, with what it guessed editable", async () => {
     await openRegister();
-    fireEvent.click(await screen.findByRole("button", { name: "Read from the share" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Read from collaboration directory" }));
 
     const dialog = await screen.findByRole("dialog");
     await within(dialog).findByText("20260920 Unicom trusted connector");
@@ -1068,10 +1068,10 @@ describe("meeting toolbar secondary actions", () => {
     await within(register).findByRole("link", { name: "Open Working group weekly" });
     if (readOnly) {
       expect(within(register).queryByRole("button", { name: "New meeting" })).toBeNull();
-      expect(within(register).queryByRole("button", { name: "Read from the share" })).toBeNull();
+      expect(within(register).queryByRole("button", { name: "Read from collaboration directory" })).toBeNull();
     } else {
       fireEvent.click(within(register).getByRole("button", { name: "New meeting" }));
-      fireEvent.click(within(register).getByRole("button", { name: "Read from the share" }));
+      fireEvent.click(within(register).getByRole("button", { name: "Read from collaboration directory" }));
       expect(onCreate).toHaveBeenCalledOnce();
       expect(onScan).toHaveBeenCalledOnce();
     }

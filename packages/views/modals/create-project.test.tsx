@@ -318,7 +318,7 @@ describe("CreateProjectModal", () => {
 
     expect(mocks.createProject).not.toHaveBeenCalled();
     expect(
-      screen.getByText("Enter an absolute path, such as /Volumes/share/project."),
+      screen.getByText("Enter an absolute path, such as /Users/your-name/Projects/project."),
     ).toBeInTheDocument();
   });
 
