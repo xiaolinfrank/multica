@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bot } from "lucide-react";
+import { Bot, CircleDashed } from "@multica/ui/icons";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { isAgentRuntimeBound, pinAgentByName } from "@multica/core/agents";
 import { useConfigStore } from "@multica/core/config";
@@ -28,12 +28,14 @@ export function AgentPicker({
   onChange,
   trigger: customTrigger,
   triggerRender,
+  emptyOption,
   align = "start",
 }: {
   assignee: AssigneeSelection | null;
   onChange: (next: AssigneeSelection) => void;
   trigger?: React.ReactNode;
   triggerRender?: React.ReactElement;
+  emptyOption?: { label: string; onSelect: () => void };
   align?: "start" | "center" | "end";
 }) {
   const { t } = useT("autopilots");
@@ -94,6 +96,11 @@ export function AgentPicker({
                 />
                 <span className="truncate">{selectedName}</span>
               </>
+            ) : !assignee && emptyOption ? (
+              <>
+                <CircleDashed className="size-3 text-muted-foreground" />
+                <span>{emptyOption.label}</span>
+              </>
             ) : (
               <>
                 <Bot className="size-3" />
@@ -104,6 +111,19 @@ export function AgentPicker({
         )
       }
     >
+      {emptyOption && (
+        <PickerItem
+          emptyValue
+          selected={!assignee}
+          onClick={() => {
+            emptyOption.onSelect();
+            setOpen(false);
+          }}
+        >
+          <CircleDashed className="size-4 text-muted-foreground" />
+          <span>{emptyOption.label}</span>
+        </PickerItem>
+      )}
       {filteredAgents.length === 0 && filteredSquads.length === 0 ? (
         <PickerEmpty />
       ) : (

@@ -297,7 +297,7 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
     content: string;
   } | null>(null);
   const nextConversationStarterRequestIdRef = useRef(0);
-  const prefillConversationStarter = useCallback(
+  const sendConversationStarter = useCallback(
     (prompt: string) => {
       setConversationStarterRequest({
         id: ++nextConversationStarterRequestIdRef.current,
@@ -894,7 +894,7 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
     focusInputRequest,
     conversationStarterRequest,
     handleConversationStarterApplied,
-    prefillConversationStarter,
+    sendConversationStarter,
     // actions
     handleSend,
     handleStop,

@@ -67,8 +67,6 @@ func createNode(t *testing.T, wsID string, body map[string]any) CockpitNodeRespo
 	return node
 }
 
-
-
 func TestCockpitNodeCodesAreSpentOnceUsed(t *testing.T) {
 	wsID := cockpitFixture(t, "Cockpit spent codes")
 

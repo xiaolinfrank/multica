@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next";
 
 /**
- * Web app manifest — what makes the mobile web app installable and lets it run
- * in its own window instead of a browser tab.
+ * Installable web manifest. Start at /inbox so session-aware proxy routing
+ * opens the workspace or login; the marketing host's root would open the landing
+ * page even for a signed-in user.
  *
  * `start_url` is deliberately NOT "/". The official marketing hosts keep the
  * root path on the public site even for a signed-in session (see

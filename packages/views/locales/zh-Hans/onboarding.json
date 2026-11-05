@@ -263,6 +263,7 @@
   },
   "errors": {
     "skip_failed": "完成上手引导失败",
+    "guide_failed": "运行时引导任务没有创建成功，请重试。",
     "mika_setup_failed": "无法启动 Mika 工作区"
   },
   "mika_intro": {

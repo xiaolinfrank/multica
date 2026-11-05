@@ -78,6 +78,7 @@ function resetPicker(patch: Partial<typeof mocks.pickerState> = {}) {
 
 describe("StepPlatformFork (workspace runtimes)", () => {
   beforeEach(() => {
+    configStore.getState().setDaemonConfig({ daemonSetupTarget: "cloud" });
     resetPicker();
     vi.restoreAllMocks();
   });

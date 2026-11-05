@@ -208,9 +208,7 @@ func init() {
 	projectStatusCmd.Flags().String("output", "table", "Output format: table or json")
 }
 
-// ---------------------------------------------------------------------------
 // Project commands
-// ---------------------------------------------------------------------------
 
 func runProjectList(cmd *cobra.Command, _ []string) error {
 	client, err := newAPIClient(cmd)
@@ -544,9 +542,7 @@ func runProjectStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
 // Project resource commands
-// ---------------------------------------------------------------------------
 
 func runProjectResourceList(cmd *cobra.Command, args []string) error {
 	client, err := newAPIClient(cmd)
@@ -995,9 +991,7 @@ func summarizeResourceRef(raw any) string {
 	return ""
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 func formatLead(project map[string]any, actors actorDisplayLookup) string {
 	lType := strVal(project, "lead_type")

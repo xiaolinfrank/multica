@@ -115,7 +115,6 @@ func TestCockpitArtifactHTTPProducerReplayPreservesOrigin(t *testing.T) {
 	}
 }
 
-
 func TestCockpitArtifactHTTPAcceptanceKeepsFixedEvidenceAndHumanAuthority(t *testing.T) {
 	f := newArtifactHTTPFixture(t)
 	a := f.create(t)

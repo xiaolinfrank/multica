@@ -8,9 +8,12 @@ const id = "10000000-0000-4000-8000-000000000001";
 const path = `/api/cockpit/inputs/${id}/versions/${id}/transfers/${id}/bytes`;
 
 describe("dedicated input stream routing", () => {
-  it("excludes only complete byte destinations from the cloning proxy", () => {
+  it("excludes only stream byte destinations from the cloning proxy", () => {
+    // Cockpit transfers byte streams and the upload-file handler both stream
+    // request bodies, so neither may enter Proxy's body clone.
     for (const suffix of ["", "/", "?trace=1"]) expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: `https://web.test${path}${suffix}` })).toBe(false);
-    for (const candidate of [path.replace(/bytes$/, "finalize"), `${path}/unexpected`, "/api/cockpit/inputs", "/api/upload-file"]) {
+    for (const excluded of ["/api/upload-file", "/api/upload-file/"]) expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: `https://web.test${excluded}` })).toBe(false);
+    for (const candidate of [path.replace(/bytes$/, "finalize"), `${path}/unexpected`, "/api/cockpit/inputs", "/api/upload-files"]) {
       expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: `https://web.test${candidate}` })).toBe(true);
     }
   });

@@ -1,14 +1,17 @@
 "use client";
 
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { useRegisterCommandBarContext } from "../../search/register-context";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
-import { Boxes, Check, ChevronRight, Link2, MoreHorizontal, Network, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus, X as XIcon } from "lucide-react";
+import { Boxes } from "lucide-react";
+import { Check, ChevronRight, FileQuestion, Link2, Network, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus, X as XIcon } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { toast } from "sonner";
-import type { ProjectStatus, ProjectPriority } from "@multica/core/types";
+import type { Project, ProjectStatus, ProjectPriority } from "@multica/core/types";
 import { useAuthStore } from "@multica/core/auth";
+import { canDeleteProject } from "@multica/core/projects/deletion-permissions";
 import { projectDetailOptions } from "@multica/core/projects/queries";
 import { useModalStore } from "@multica/core/modals";
 import { moduleListOptions } from "@multica/core/modules/queries";
@@ -30,16 +33,19 @@ import { useConfigStore } from "@multica/core/config";
 import { PROJECT_STATUS_ORDER, PROJECT_STATUS_CONFIG, PROJECT_PRIORITY_ORDER } from "@multica/core/projects/config";
 import { getProjectIssueMetrics } from "./project-issue-metrics";
 import { ActorAvatar } from "../../common/actor-avatar";
-import { currentPath, useNavigation } from "../../navigation";
+import { AppLink, currentPath, useNavigation } from "../../navigation";
 import { TitleEditor, ContentEditor, type ContentEditorRef } from "../../editor";
 import { PriorityIcon } from "../../issues/components/priority-icon";
 import { ProjectResourcesSection } from "./project-resources-section";
 import { CollabPathProperty } from "./collab-path";
 import { ProjectStartDatePicker } from "./project-start-date-picker";
 import { ProjectDueDatePicker } from "./project-due-date-picker";
+import { ProjectWorkflowControl } from "../../workflows/project-workflow-row";
+import { ProjectWorkflowMenuHost } from "../../workflows/project-workflow-menu";
 import { IssueSurface } from "../../issues/surface/issue-surface";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
-import { Button } from "@multica/ui/components/ui/button";
+import { Button, buttonVariants } from "@multica/ui/components/ui/button";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@multica/ui/components/ui/resizable";
 import { Sheet, SheetContent } from "@multica/ui/components/ui/sheet";
 import { useIsMobile } from "@multica/ui/hooks/use-mobile";
@@ -61,7 +67,7 @@ import {
   TooltipContent,
 } from "@multica/ui/components/ui/tooltip";
 import { EmojiPicker } from "@multica/ui/components/common/emoji-picker";
-import { BreadcrumbHeader } from "../../layout/breadcrumb-header";
+import { IssueViewHeader } from "../../issue-views/view-header";
 import {
   AnimatedRightSidebar,
   getAnimatedRightSidebarInitialOpen,
@@ -69,6 +75,7 @@ import {
   useAnimatedRightSidebarState,
   useRightSidebarShortcut,
 } from "../../layout/animated-right-sidebar";
+import { CollectionPageState } from "../../layout/collection-page";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -89,7 +96,6 @@ const NO_MODULE_FILTER = "none";
 
 // ---------------------------------------------------------------------------
 // Property row — sidebar property display
-// ---------------------------------------------------------------------------
 
 function PropRow({
   label,
@@ -125,9 +131,17 @@ function PropRow({
   );
 }
 
-// ---------------------------------------------------------------------------
+// The project's workflow (MUL-7420).
+function ProjectWorkflowPropRow({ project }: { project: Project }) {
+  const { t } = useT("issues");
+  return (
+    <PropRow label={t(($) => $.workflows.project.label)}>
+      <ProjectWorkflowControl project={project} />
+    </PropRow>
+  );
+}
+
 // ProjectDetail
-// ---------------------------------------------------------------------------
 
 export function ProjectDetail({ projectId }: { projectId: string }) {
   const { t } = useT("projects");
@@ -138,6 +152,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const router = useNavigation();
   const userId = useAuthStore((s) => s.user?.id);
   const { data: project, isLoading } = useQuery(projectDetailOptions(wsId, projectId));
+  useRegisterCommandBarContext(
+    useMemo(() => (project ? { kind: "project", project } : null), [project]),
+  );
   const recordRecentContext = useRecentContextStore((s) => s.recordVisit);
   useEffect(() => {
     if (project) {
@@ -199,18 +216,18 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     enabled: !!userId,
   });
   const isPinned = pinnedItems.some((p) => p.item_type === "project" && p.item_id === projectId);
-  const isWorkspaceAdmin = useMemo(() => {
-    if (!userId) return false;
-    const me = members.find((m) => m.user_id === userId);
-    return me?.role === "owner" || me?.role === "admin";
-  }, [members, userId]);
+  const role = members.find((m) => m.user_id === userId)?.role ?? null;
+  // Fork-only surface: module folder management is an admin affordance, while
+  // deletion follows the stricter ownership rule below.
+  const isWorkspaceAdmin = role === "owner" || role === "admin";
+  const canDelete = !!project && canDeleteProject(project, userId ?? null, role, agents);
   const createPin = useCreatePin();
   const deletePinMut = useDeletePin();
   const descEditorRef = useRef<ContentEditorRef>(null);
   const isMobile = useIsMobile();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const deleteBasis = useQuery({ ...containerOperationBasisOptions(wsId, "project", projectId), enabled: deleteDialogOpen });
-  const canDeleteProject = !deleteBasis.isError && containerOperationAllowed(deleteBasis.data, "delete");
+  const deleteBasisAllows = !deleteBasis.isError && containerOperationAllowed(deleteBasis.data, "delete");
   const deleteLock = useRef(false); const [deleteError, setDeleteError] = useState("");
   const captureDelete = useCockpitCommandContext(JSON.stringify([wsId, projectId, deleteDialogOpen]));
   const [modulesManageOpen, setModulesManageOpen] = useState(false);
@@ -286,7 +303,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   );
 
   const handleDelete = () => {
-    if (!project || !canDeleteProject || deleteLock.current) return;
+    if (!project || !deleteBasisAllows || deleteLock.current) return;
     const isCurrent = captureDelete(); deleteLock.current = true; setDeleteError("");
     deleteProject.mutate(project.id, {
       onSuccess: () => {
@@ -309,7 +326,23 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   }
 
   if (!project) {
-    return <div className="flex items-center justify-center h-full text-muted-foreground">{t(($) => $.detail.not_found)}</div>;
+    return (
+      <div className="flex h-full flex-col">
+        <CollectionPageState
+          icon={FileQuestion}
+          title={t(($) => $.detail.not_found)}
+          description={t(($) => $.detail.not_found_description)}
+          actions={
+            <AppLink
+              href={wsPaths.projects()}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              {t(($) => $.detail.back_to_list)}
+            </AppLink>
+          }
+        />
+      </div>
+    );
   }
 
   const issueMetrics = getProjectIssueMetrics(project);
@@ -320,17 +353,19 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       {/* Icon + Title */}
       <div>
         <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen}>
-          <PopoverTrigger
-            render={
-              <button
-                type="button"
-                className="text-display-sm cursor-pointer rounded-lg p-1 -ml-1 hover:bg-accent/60 transition-colors"
-                title={t(($) => $.detail.icon_tooltip)}
-              >
-                {project.icon || "📁"}
-              </button>
-            }
-          />
+          <TooltipHint label={t(($) => $.detail.icon_tooltip)}>
+            <PopoverTrigger
+              render={
+                <button
+                  type="button"
+                  className="text-display-sm cursor-pointer rounded-lg p-1 -ml-1 hover:bg-accent/60 transition-colors"
+                  aria-label={t(($) => $.detail.icon_tooltip)}
+                >
+                  {project.icon || "📁"}
+                </button>
+              }
+            />
+          </TooltipHint>
           <PopoverContent align="start" className="w-auto p-0">
             <EmojiPicker
               onSelect={(emoji) => {
@@ -495,6 +530,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               onCommit={(next) => handleUpdateField({ collab_path: next })}
             />
           </PropRow>
+          <ProjectWorkflowPropRow project={project} />
         </div>}
       </div>
 
@@ -561,154 +597,6 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0" defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
       <ResizablePanel id="content" minSize="50%">
         <div ref={rightSidebarShortcutTargetRef} className="flex h-full flex-col">
-          <BreadcrumbHeader
-            segments={[{ href: wsPaths.projects(), label: t(($) => $.detail.breadcrumb_fallback) }]}
-            leaf={
-              <span className="flex min-w-0 items-center gap-1">
-                <span className="truncate font-medium text-foreground">{project.title}</span>
-                {activeModuleRecord && (
-                  <>
-                    <ChevronRight className="size-3 shrink-0 text-faint-foreground" />
-                    <span className="flex min-w-0 items-center gap-0.5 rounded-full bg-accent px-2 py-0.5 text-caption">
-                      <Boxes className="size-3 shrink-0" />
-                      <span className="max-w-[10rem] truncate">{activeModuleRecord.title}</span>
-                      <button
-                        type="button"
-                        aria-label={t(($) => $.module.clear_aria)}
-                        onClick={() => handleSelectModule(null)}
-                        className="shrink-0 text-muted-foreground hover:text-foreground"
-                      >
-                        <XIcon className="size-3" />
-                      </button>
-                    </span>
-                  </>
-                )}
-              </span>
-            }
-            actions={
-              <>
-              {/* Seeds the project the same way the `c` shortcut does on this
-                  route (global-shortcuts.tsx), and goes through the create-mode
-                  preference so agent/manual stays where the user left it. The
-                  active module rides along exactly like the surface create
-                  defaults below — activeModuleRecord is only set for a module
-                  that still exists in this project, so the "none" sentinel and
-                  dead ids seed nothing. */}
-              <Button
-                size="sm"
-                variant="outline"
-                className="px-2 sm:px-2.5"
-                aria-label={t(($) => $.detail.new_issue_button)}
-                onClick={() =>
-                  openCreateIssueWithPreference({
-                    project_id: projectId,
-                    ...(activeModuleRecord && {
-                      module_id: activeModuleRecord.id,
-                      // Numbered modules number the work inside them, so a
-                      // create while the strip is narrowed to one opens on
-                      // that module's own number.
-                      ...(moduleTitleNumberPrefix(activeModuleRecord.title)
-                        ? {
-                            title: moduleTitleNumberPrefix(
-                              activeModuleRecord.title,
-                            ),
-                          }
-                        : {}),
-                    }),
-                  })
-                }
-              >
-                <Plus className="h-3.5 w-3.5 sm:mr-1" />
-                <span className="hidden sm:inline">{t(($) => $.detail.new_issue_button)}</span>
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="px-2 sm:px-2.5"
-                aria-label={t(($) => $.module.create.title)}
-                onClick={() => useModalStore.getState().open("create-module", { projectId })}
-              >
-                <Boxes className="h-3.5 w-3.5 sm:mr-1" />
-                <span className="hidden sm:inline">{t(($) => $.module.create.title)}</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-muted-foreground"
-                title={t(($) => $.detail.graph_tooltip)}
-                onClick={() => router.push(wsPaths.projectGraph(projectId))}
-              >
-                <Network />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={cn("text-muted-foreground", isPinned && "text-foreground")}
-                title={isPinned ? t(($) => $.detail.unpin_tooltip) : t(($) => $.detail.pin_tooltip)}
-                onClick={() => {
-                  if (isPinned) {
-                    deletePinMut.mutate({ itemType: "project", itemId: projectId });
-                  } else {
-                    createPin.mutate({ item_type: "project", item_id: projectId });
-                  }
-                }}
-              >
-                {isPinned ? <PinOff /> : <Pin />}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button variant="ghost" size="icon-sm" className="text-muted-foreground">
-                      <MoreHorizontal />
-                    </Button>
-                  }
-                />
-                <DropdownMenuContent align="end" className="w-auto">
-                  <DropdownMenuItem onClick={() => {
-                    void copyText(router.getShareableUrl(currentPath(router))).then((ok) => {
-                      if (ok) toast.success(t(($) => $.detail.toast_link_copied));
-                    });
-                  }}>
-                    <Link2 className="h-3.5 w-3.5" />
-                    {t(($) => $.detail.copy_link)}
-                  </DropdownMenuItem>
-                  {isWorkspaceAdmin && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setModulesManageOpen(true)}>
-                        <Boxes className="h-3.5 w-3.5" />
-                        {t(($) => $.module.manage_title)}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => setDeleteDialogOpen(true)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        {t(($) => $.detail.delete_action)}
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant={sidebarOpen ? "secondary" : "ghost"}
-                      size="icon-sm"
-                      className={sidebarOpen ? "" : "text-muted-foreground"}
-                      onClick={handleToggleSidebar}
-                    >
-                      <PanelRight />
-                    </Button>
-                  }
-                />
-                <TooltipContent side="bottom">{t(($) => $.detail.sidebar_tooltip)}</TooltipContent>
-              </Tooltip>
-              </>
-            }
-          />
-
           <IssueSurface
             scope={issueScope}
             modes={["table", "board", "list", "swimlane", "gantt"]}
@@ -724,6 +612,151 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 : undefined
             }
             createDefaults={activeModuleRecord ? { module_id: activeModuleRecord.id } : undefined}
+            renderHeader={({ controller }) => (
+              <ProjectWorkflowMenuHost project={project}>
+                {(workflowSubmenu) => (
+                  <IssueViewHeader
+                    controller={controller}
+                    base={{ kind: "project", project }}
+                    baseMenu={
+                      <>
+                        <DropdownMenuItem onClick={() => {
+                          void copyText(router.getShareableUrl(currentPath(router))).then((ok) => {
+                            if (ok) toast.success(t(($) => $.detail.toast_link_copied));
+                          });
+                        }}>
+                          <Link2 className="h-3.5 w-3.5" />
+                          {t(($) => $.detail.copy_link)}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                          if (isPinned) {
+                            deletePinMut.mutate({ itemType: "project", itemId: projectId });
+                          } else {
+                            createPin.mutate({ item_type: "project", item_id: projectId });
+                          }
+                        }}>
+                          {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                          {isPinned ? t(($) => $.detail.unpin_tooltip) : t(($) => $.detail.pin_tooltip)}
+                        </DropdownMenuItem>
+                        {isWorkspaceAdmin && (
+                          <DropdownMenuItem onClick={() => setModulesManageOpen(true)}>
+                            <Boxes className="h-3.5 w-3.5" />
+                            {t(($) => $.module.manage_title)}
+                          </DropdownMenuItem>
+                        )}
+                        {workflowSubmenu && (
+                          <>
+                            <DropdownMenuSeparator />
+                            {workflowSubmenu}
+                          </>
+                        )}
+                        {canDelete && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setDeleteDialogOpen(true)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {t(($) => $.detail.delete_action)}
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </>
+                    }
+                    trailing={
+                      <>
+                        {/* The module scope chip used to live in the page
+                            breadcrumb; the shell header has no leaf slot, so it
+                            rides at the start of the trailing cluster instead —
+                            same job: show which folder narrows the surface, and
+                            clear back to "all". */}
+                        {activeModuleRecord && (
+                          <span className="flex min-w-0 items-center gap-0.5 rounded-full bg-accent px-2 py-0.5 text-caption">
+                            <Boxes className="size-3 shrink-0" />
+                            <span className="max-w-[10rem] truncate">{activeModuleRecord.title}</span>
+                            <button
+                              type="button"
+                              aria-label={t(($) => $.module.clear_aria)}
+                              onClick={() => handleSelectModule(null)}
+                              className="shrink-0 text-muted-foreground hover:text-foreground"
+                            >
+                              <XIcon className="size-3" />
+                            </button>
+                          </span>
+                        )}
+                        {/* Seeds the project the same way the `c` shortcut does on
+                            this route (global-shortcuts.tsx), and goes through
+                            the create-mode preference so agent/manual stays where
+                            the user left it. The active module rides along
+                            exactly like the surface create defaults above —
+                            activeModuleRecord is only set for a module that
+                            still exists in this project, so the "none" sentinel
+                            and dead ids seed nothing. */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="px-2 sm:px-2.5"
+                          aria-label={t(($) => $.detail.new_issue_button)}
+                          onClick={() =>
+                            openCreateIssueWithPreference({
+                              project_id: projectId,
+                              ...(activeModuleRecord && {
+                                module_id: activeModuleRecord.id,
+                                // Numbered modules number the work inside them,
+                                // so a create while the strip is narrowed to one
+                                // opens on that module's own number.
+                                ...(moduleTitleNumberPrefix(activeModuleRecord.title)
+                                  ? { title: moduleTitleNumberPrefix(activeModuleRecord.title) }
+                                  : {}),
+                              }),
+                            })
+                          }
+                        >
+                          <Plus className="h-3.5 w-3.5 sm:mr-1" />
+                          <span className="hidden sm:inline">{t(($) => $.detail.new_issue_button)}</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="px-2 sm:px-2.5"
+                          aria-label={t(($) => $.module.create.title)}
+                          onClick={() => useModalStore.getState().open("create-module", { projectId })}
+                        >
+                          <Boxes className="h-3.5 w-3.5 sm:mr-1" />
+                          <span className="hidden sm:inline">{t(($) => $.module.create.title)}</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground"
+                          title={t(($) => $.detail.graph_tooltip)}
+                          onClick={() => router.push(wsPaths.projectGraph(projectId))}
+                        >
+                          <Network />
+                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant={sidebarOpen ? "secondary" : "ghost"}
+                                size="icon-sm"
+                                className={sidebarOpen ? "" : "text-muted-foreground"}
+                                aria-label={t(($) => $.detail.sidebar_tooltip)}
+                                onClick={handleToggleSidebar}
+                              >
+                                <PanelRight />
+                              </Button>
+                            }
+                          />
+                          <TooltipContent side="bottom">{t(($) => $.detail.sidebar_tooltip)}</TooltipContent>
+                        </Tooltip>
+                      </>
+                    }
+                  />
+                )}
+              </ProjectWorkflowMenuHost>
+            )}
           />
           </div>
         </ResizablePanel>
@@ -765,7 +798,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       )}
 
       {/* Delete confirmation */}
-      {isWorkspaceAdmin && (
+      {canDelete && (
         <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => { if (!deleteLock.current) { setDeleteDialogOpen(open); if (open) setDeleteError(""); } }}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -778,7 +811,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             {deleteError && <p role="alert" className="text-caption text-destructive">{deleteError}</p>}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleteProject.isPending}>{t(($) => $.delete_dialog.cancel)}</AlertDialogCancel>
-              <Button type="button" variant="destructive" disabled={deleteProject.isPending || !canDeleteProject} onClick={handleDelete}>
+              <Button type="button" variant="destructive" disabled={deleteProject.isPending || !deleteBasisAllows} onClick={handleDelete}>
                 {t(($) => $.delete_dialog.confirm)}
               </Button>
             </AlertDialogFooter>

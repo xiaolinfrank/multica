@@ -628,6 +628,13 @@ describe("useBatchUpdateIssues — confirmed writes across filtered boards", () 
   function makeBucketed(): ListIssuesCache {
     return { byStatus: { unstarted: { issues: [makeIssue(1)], total: 1 }, started: { issues: [], total: 0 } } };
   }
+  function bucketIds(
+    key: readonly unknown[],
+    status: "unstarted" | "started",
+  ): string[] {
+    const c = qc.getQueryData<ListIssuesCache>(key);
+    return (c?.byStatus[status]?.issues ?? []).map((i) => i.id);
+  }
   const receipt = { workspace_id: WS_ID, requested_ids: ["issue-1"], transaction_mode: "per_item", transaction_outcome: "committed",
     updated: 1, results: [{ issue_id: "issue-1", outcome: "applied", revision: 3, changed: true }], unconfirmed_ids: [] };
   beforeEach(() => {
@@ -637,18 +644,22 @@ describe("useBatchUpdateIssues — confirmed writes across filtered boards", () 
   });
   afterEach(() => { qc.clear(); vi.restoreAllMocks(); });
 
-  it("keeps both boards unchanged while pending and refreshes them from the server after acknowledgement", async () => {
+  it("patches both boards optimistically while pending and does not blanket-refetch after acknowledgement", async () => {
     let resolve!: (value: typeof receipt) => void;
     batchUpdateIssues.mockReturnValue(new Promise((answer) => { resolve = answer; }));
     const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
     let promise!: Promise<unknown>;
     await act(async () => { promise = result.current.mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } }); await Promise.resolve(); });
+    // The membership-aware coordinator moves the card between buckets itself;
+    // the boards are never left waiting on a server read.
     for (const key of [wsKey, myKey]) {
-      expect(qc.getQueryData(key)).toEqual(makeBucketed());
       expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
+      expect(bucketIds(key, "unstarted")).toEqual([]);
+      expect(bucketIds(key, "started")).toEqual(["issue-1"]);
     }
     await act(async () => { resolve(receipt); await promise; });
-    for (const key of [wsKey, myKey]) expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+    // A fully applied batch keeps the optimistic patch — no full-board refetch.
+    for (const key of [wsKey, myKey]) expect(qc.getQueryState(key)?.isInvalidated).toBe(false);
     expect(batchUpdateIssues).toHaveBeenCalledWith(WS_ID, ["issue-1"], { status: "in_progress" }, { expected_revisions: undefined });
   });
 
@@ -663,28 +674,136 @@ describe("useBatchUpdateIssues — confirmed writes across filtered boards", () 
     expect(qc.getQueryState(issueKeys.detail(WS_ID, "issue-1"))?.isInvalidated).toBe(true);
   });
 
-  it("does not restore old snapshots over newer facts after partial or unknown failure", async () => {
-    let reject!: (error: Error) => void;
-    batchUpdateIssues.mockReturnValue(new Promise((_resolve, fail) => { reject = fail; }));
-    const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
-    let promise!: Promise<unknown>;
-    await act(async () => { promise = result.current.mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } }).catch((error) => error); await Promise.resolve(); });
-    const newer: ListIssuesCache = { byStatus: { started: { issues: [makeIssue(1, { status: "in_progress", title: "Already saved by another confirmed write" })], total: 1 } } };
-    qc.setQueryData(wsKey, newer); qc.setQueryData(myKey, newer);
-    await act(async () => { reject(new Error("response lost after partial commit")); await promise; });
+  it("does not optimistically replace description merge bases", async () => {
+    let resolve!: (r: { updated: number }) => void;
+    batchUpdateIssues.mockReturnValue(
+      new Promise<{ updated: number }>((r) => {
+        resolve = r;
+      }),
+    );
+    const detailKey = issueKeys.detail(WS_ID, "issue-1");
+    qc.setQueryData<Issue>(
+      detailKey,
+      makeIssue(1, { description: "base with marker" }),
+    );
+
+    const { result } = renderHook(() => useBatchUpdateIssues(), {
+      wrapper: createWrapper(qc),
+    });
+
+    act(() => {
+      result.current.mutate({
+        ids: ["issue-1"],
+        updates: {
+          description: "local edit",
+          description_base: "base with marker",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(batchUpdateIssues).toHaveBeenCalledWith(
+        WS_ID,
+        ["issue-1"],
+        {
+          description: "local edit",
+          description_base: "base with marker",
+        },
+        { expected_revisions: undefined },
+      );
+    });
+    expect(qc.getQueryData<Issue>(detailKey)?.description).toBe(
+      "base with marker",
+    );
+
+    await act(async () => {
+      resolve({ updated: 1 });
+    });
+  });
+
+  it("rolls back and refetches when the server skips some issues", async () => {
+    batchUpdateIssues.mockResolvedValue({ updated: 0 });
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+
+    const { result } = renderHook(() => useBatchUpdateIssues(), {
+      wrapper: createWrapper(qc),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } });
+    });
+
     for (const key of [wsKey, myKey]) {
-      expect(qc.getQueryData(key)).toEqual(newer);
-      expect(qc.getQueryState(key)?.isInvalidated).toBe(true);
+      expect(bucketIds(key, "unstarted")).toEqual(["issue-1"]);
+      expect(bucketIds(key, "started")).toEqual([]);
+    }
+    const invalidatedKeys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(invalidatedKeys).toContainEqual(issueKeys.list(WS_ID));
+    expect(invalidatedKeys).toContainEqual(issueKeys.detail(WS_ID, "issue-1"));
+  });
+
+  it("rolls both caches back when the request fails", async () => {
+    batchUpdateIssues.mockRejectedValue(new Error("boom"));
+
+    const { result } = renderHook(() => useBatchUpdateIssues(), {
+      wrapper: createWrapper(qc),
+    });
+
+    await act(async () => {
+      await result.current
+        .mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } })
+        .catch(() => {});
+    });
+
+    for (const key of [wsKey, myKey]) {
+      expect(bucketIds(key, "unstarted")).toEqual(["issue-1"]);
+      expect(bucketIds(key, "started")).toEqual([]);
     }
   });
 
-  it("refreshes a filtered project window after a batch move instead of inventing membership from a count", async () => {
-    const projectKey = issueKeys.myListSorted(WS_ID, "project:p1", { project_id: "p1" }, sort);
-    qc.setQueryData(projectKey, makeBucketed()); batchUpdateIssues.mockResolvedValue(receipt);
-    const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
-    await act(async () => { await result.current.mutateAsync({ ids: ["issue-1"], updates: { project_id: "project-9" } }); });
-    expect(qc.getQueryState(projectKey)?.isInvalidated).toBe(true);
-    expect(qc.getQueryState(myKey)?.isInvalidated).toBe(true);
+  it("does not invalidate the board list on settle (no refetch flicker)", async () => {
+    batchUpdateIssues.mockResolvedValue({ updated: 1 });
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+
+    const { result } = renderHook(() => useBatchUpdateIssues(), {
+      wrapper: createWrapper(qc),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ ids: ["issue-1"], updates: { status: "in_progress" } });
+    });
+
+    const invalidatedKeys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(invalidatedKeys).not.toContainEqual(issueKeys.list(WS_ID));
+  });
+
+  it("surgically removes moved issues from the old project's list (no blanket myAll refetch)", async () => {
+    // Mirrors useUpdateIssue: a batch project move drops the cards from the
+    // old project's loaded list via the membership-aware coordinator instead
+    // of refetching every filtered list (MUL-3669 / #4548).
+    const projectScope = "project:p1";
+    const projectFilter = { project_id: "p1" };
+    const projectKey = issueKeys.myListSorted(WS_ID, projectScope, projectFilter, sort);
+    qc.setQueryData<ListIssuesCache>(projectKey, makeBucketed());
+    batchUpdateIssues.mockResolvedValue({ updated: 1 });
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+
+    const { result } = renderHook(() => useBatchUpdateIssues(), {
+      wrapper: createWrapper(qc),
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        ids: ["issue-1"],
+        updates: { project_id: "project-9" },
+      });
+    });
+
+    expect(bucketIds(projectKey, "unstarted")).toEqual([]);
+    // The assignee-filtered list is untouched by a project move.
+    expect(bucketIds(myKey, "unstarted")).toEqual(["issue-1"]);
+    const invalidatedKeys = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
+    expect(invalidatedKeys).not.toContainEqual(issueKeys.myAll(WS_ID));
   });
 });
 

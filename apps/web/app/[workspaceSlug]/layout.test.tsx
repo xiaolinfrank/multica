@@ -50,6 +50,10 @@ vi.mock("@multica/core/paths", () => ({
     login: () => "/login",
     onboarding: () => "/onboarding",
   },
+  useWorkspaceStartStore: (
+    selector: (start: { page: string }) => unknown,
+  ) => selector({ page: "issues" }),
+  WORKSPACE_START_COOKIE: "multica_workspace_start",
 }));
 
 vi.mock("@multica/core/platform", () => ({
@@ -58,10 +62,6 @@ vi.mock("@multica/core/platform", () => ({
 
 vi.mock("@multica/views/workspace/no-access-page", () => ({
   NoAccessPage: () => <div data-testid="no-access" />,
-}));
-
-vi.mock("@multica/views/workspace/welcome-after-onboarding", () => ({
-  WelcomeAfterOnboarding: () => null,
 }));
 
 vi.mock("@multica/views/workspace/use-workspace-seen", () => ({

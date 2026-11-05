@@ -55,7 +55,11 @@ func TestAuthTaskTokenContextCarriesOnlyVerifiedBinding(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer mat_directory-test")
 	req.Header.Set("X-Task-Token-ID", uuidToString(id(9)))
 	req.Header.Set("X-Task-ID", uuidToString(id(8)))
-	req.Header.Set("X-Workspace-ID", uuidToString(id(7)))
+	// MUL-8138 (upstream): a workspace selector that disagrees with the
+	// token's bound workspace is rejected outright, so the spoofing probe
+	// repeats the bound workspace here. The identity assertions below still
+	// prove every field comes from the verified token, not the headers.
+	req.Header.Set("X-Workspace-ID", uuidToString(token.WorkspaceID))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != 200 {

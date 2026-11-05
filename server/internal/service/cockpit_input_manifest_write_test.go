@@ -249,18 +249,18 @@ func TestCockpitInputManifestCanonicalEnqueueRetryAndRerunKeepPins(t *testing.T)
 		t.Fatalf("canonical enqueue did not fix current manifest: %+v %v", current, err)
 	}
 	second := inputManifestSaveEmpty(t, s, q, 1)
-	if _, err = tasks.RerunIssue(ctx, q.IssueID, pgtype.UUID{}, pgtype.UUID{}, q.CredentialOwnerID, nil, first); inputErrorCode(err) != "input_manifest_changed" {
+	if _, err = tasks.RerunIssue(ctx, q.IssueID, pgtype.UUID{}, pgtype.UUID{}, q.CredentialOwnerID, false, nil, first); inputErrorCode(err) != "input_manifest_changed" {
 		t.Fatalf("stale explicit authorization accepted: %v", err)
 	}
 	unchanged, err := f.q.GetAgentTask(ctx, current.ID)
 	if err != nil || unchanged.Status != "queued" {
 		t.Fatalf("precondition rejection cancelled prior task: %+v %v", unchanged, err)
 	}
-	newRun, err := tasks.RerunIssue(ctx, q.IssueID, pgtype.UUID{}, pgtype.UUID{}, q.CredentialOwnerID, nil, second)
+	newRun, err := tasks.RerunIssue(ctx, q.IssueID, pgtype.UUID{}, pgtype.UUID{}, q.CredentialOwnerID, false, nil, second)
 	if err != nil || newRun.InputManifestVersionID != second {
 		t.Fatalf("new explicitly authorized Run: %+v %v", newRun, err)
 	}
-	inherited, err := tasks.RerunIssue(ctx, q.IssueID, legacy.ID, pgtype.UUID{}, q.CredentialOwnerID, nil)
+	inherited, err := tasks.RerunIssue(ctx, q.IssueID, legacy.ID, pgtype.UUID{}, q.CredentialOwnerID, false, nil)
 	if err != nil || inherited.InputManifestVersionID.Valid {
 		t.Fatalf("named historical Run lost its NULL pin: %+v %v", inherited, err)
 	}

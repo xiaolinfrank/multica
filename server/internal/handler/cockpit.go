@@ -1005,29 +1005,29 @@ func (h *Handler) UpdateCockpit(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 type CockpitNodeRequest struct {
-	ParentID        *string  `json:"parent_id"`
-	ProjectID       *string  `json:"project_id"`
-	ModuleID        *string  `json:"module_id"`
-	Code            *string  `json:"code"`
-	Name            *string  `json:"name"`
-	Position        *float64 `json:"position"`
-	Color           *string  `json:"color"`
-	Owner           *string  `json:"owner"`
-	Collaborators   *string  `json:"collaborators"`
-	StartDate       *string  `json:"start_date"`
-	EndDate         *string  `json:"end_date"`
-	Status          *string  `json:"status"`
-	Progress        *float64 `json:"progress"`
-	Deliverable     *string  `json:"deliverable"`
-	Dependencies    *string  `json:"dependencies"`
-	Note            *string  `json:"note"`
-	CurrentProgress *string  `json:"current_progress"`
-	Vendor          *string  `json:"vendor"`
-	BudgetCategory  *string  `json:"budget_category"`
+	ParentID        *string         `json:"parent_id"`
+	ProjectID       *string         `json:"project_id"`
+	ModuleID        *string         `json:"module_id"`
+	Code            *string         `json:"code"`
+	Name            *string         `json:"name"`
+	Position        *float64        `json:"position"`
+	Color           *string         `json:"color"`
+	Owner           *string         `json:"owner"`
+	Collaborators   *string         `json:"collaborators"`
+	StartDate       *string         `json:"start_date"`
+	EndDate         *string         `json:"end_date"`
+	Status          *string         `json:"status"`
+	Progress        *float64        `json:"progress"`
+	Deliverable     *string         `json:"deliverable"`
+	Dependencies    *string         `json:"dependencies"`
+	Note            *string         `json:"note"`
+	CurrentProgress *string         `json:"current_progress"`
+	Vendor          *string         `json:"vendor"`
+	BudgetCategory  *string         `json:"budget_category"`
 	BudgetAmount    *pgtype.Numeric `json:"budget_amount"`
-	ExecStatus      *string  `json:"exec_status"`
-	Contract        *string  `json:"contract"`
-	Source          *string  `json:"source"`
+	ExecStatus      *string         `json:"exec_status"`
+	Contract        *string         `json:"contract"`
+	Source          *string         `json:"source"`
 }
 
 // progressOrError validates the 0-100 range shared by create and update. A
@@ -1690,10 +1690,10 @@ func (h *Handler) DeleteCockpitNodeIssue(w http.ResponseWriter, r *http.Request)
 // ---------------------------------------------------------------------------
 
 type CockpitPaymentRequest struct {
-	Label    *string          `json:"label"`
-	PayDate  *string          `json:"pay_date"`
-	Amount   *pgtype.Numeric  `json:"amount"`
-	Position *float64         `json:"position"`
+	Label    *string         `json:"label"`
+	PayDate  *string         `json:"pay_date"`
+	Amount   *pgtype.Numeric `json:"amount"`
+	Position *float64        `json:"position"`
 }
 
 func (h *Handler) CreateCockpitPayment(w http.ResponseWriter, r *http.Request) {

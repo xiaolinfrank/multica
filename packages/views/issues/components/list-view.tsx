@@ -6,7 +6,7 @@ import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 
 import { memo, useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus } from "@multica/ui/icons";
 import { Accordion } from "@base-ui/react/accordion";
 import {
   DndContext,
@@ -52,7 +52,6 @@ import type {
 import { VirtuosoSeed, VIRTUOSO_SEED_COUNT } from "../../common/virtuoso-seed";
 import { DeferredTooltip } from "../../common/deferred-tooltip";
 import { useRestoredScrollRef } from "../../platform";
-import { HiddenColumnsPanel, HiddenColumnRow } from "./hidden-columns-panel";
 import { toast } from "sonner";
 
 // The seed must use the same CSS height as ListRow before scroll restoration
@@ -78,7 +77,6 @@ function buildListGroups(visibleStatuses: IssueStatus[]): BoardColumnGroup[] {
 function ListViewImpl({
   issues,
   visibleStatuses,
-  hiddenStatuses = [],
   childProgressMap = EMPTY_PROGRESS_MAP,
   projectMap,
   statusPagination,
@@ -438,20 +436,6 @@ function ListViewImpl({
           );
         })}
       </Accordion.Root>
-      {hiddenStatuses.length > 0 && (
-        <div className="mt-4 px-1 pb-4">
-          <HiddenColumnsPanel
-            hiddenStatuses={hiddenStatuses}
-            renderRow={(status) => (
-              <HiddenColumnRow
-                key={status}
-                status={status}
-                total={statusPagination[status]?.total}
-              />
-            )}
-          />
-        </div>
-      )}
     </>
   );
 
@@ -573,7 +557,9 @@ function StatusAccordionItem({
         issue={issue}
         childProgress={childProgressMap.get(issue.id)}
         project={
-          issue.project_id ? projectMap?.get(issue.project_id) : undefined
+          issue.project_id && issue.project_id !== projectId
+            ? projectMap?.get(issue.project_id)
+            : undefined
         }
         disableSorting={disableSorting}
       />
@@ -582,7 +568,9 @@ function StatusAccordionItem({
         issue={issue}
         childProgress={childProgressMap.get(issue.id)}
         project={
-          issue.project_id ? projectMap?.get(issue.project_id) : undefined
+          issue.project_id && issue.project_id !== projectId
+            ? projectMap?.get(issue.project_id)
+            : undefined
         }
       />
     );

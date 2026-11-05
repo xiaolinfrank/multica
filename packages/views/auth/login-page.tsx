@@ -27,9 +27,7 @@ import { api } from "@multica/core/api";
 import type { User } from "@multica/core/types";
 import { useT } from "../i18n";
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 interface GoogleAuthConfig {
   clientId: string;
@@ -70,9 +68,7 @@ interface LoginPageProps {
   extra?: ReactNode;
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 export function redirectToCliCallback(url: string, token: string, state: string) {
   const separator = url.includes("?") ? "&" : "?";
@@ -105,9 +101,7 @@ export function validateCliCallback(cliCallback: string): boolean {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Component
-// ---------------------------------------------------------------------------
 
 function EmailLoginPage({
   logo,
@@ -314,9 +308,7 @@ function EmailLoginPage({
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   };
 
-  // -------------------------------------------------------------------------
   // CLI confirm step
-  // -------------------------------------------------------------------------
 
   if (step === "cli_confirm" && existingUser) {
     return (
@@ -358,9 +350,7 @@ function EmailLoginPage({
     );
   }
 
-  // -------------------------------------------------------------------------
   // Code verification step
-  // -------------------------------------------------------------------------
 
   if (step === "code") {
     return (
@@ -430,9 +420,7 @@ function EmailLoginPage({
     );
   }
 
-  // -------------------------------------------------------------------------
   // Email step
-  // -------------------------------------------------------------------------
 
   if (onStarLogin && !showOtherLogin) {
     return (

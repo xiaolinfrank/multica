@@ -28,6 +28,11 @@ vi.mock("@multica/ui/lib/clipboard", () => ({
   copyText: mocks.copyText,
 }));
 
+vi.mock("../../workflows/project-workflow-menu", () => ({
+  ProjectWorkflowMenuHost: ({ children }: { children: (submenu: null) => React.ReactNode }) => children(null),
+}));
+vi.mock("../../workflows/project-workflow-row", () => ({ ProjectWorkflowControl: () => null }));
+
 vi.mock("@tanstack/react-query", async (original) => ({
   ...(await original<typeof import("@tanstack/react-query")>()),
   useQuery: (options: { queryKey?: readonly unknown[] }) => {
@@ -254,9 +259,16 @@ vi.mock("./project-due-date-picker", () => ({
 }));
 
 vi.mock("../../issues/surface/issue-surface", () => ({
-  IssueSurface: (props: Record<string, unknown>) => {
+  // Records the props this fork's module tests assert on, and renders the
+  // upstream header slot so header assertions still see the page chrome.
+  IssueSurface: ({
+    renderHeader,
+    ...props
+  }: {
+    renderHeader?: (ctx: { controller: unknown }) => React.ReactNode;
+  } & Record<string, unknown>) => {
     mocks.issueSurface.current = props;
-    return null;
+    return <>{renderHeader?.({ controller: {} })}</>;
   },
 }));
 
@@ -271,6 +283,21 @@ vi.mock("../../layout/breadcrumb-header", () => ({
     <header>
       {leaf}
       {actions}
+    </header>
+  ),
+}));
+
+vi.mock("../../issue-views/view-header", () => ({
+  IssueViewHeader: ({
+    baseMenu,
+    trailing,
+  }: {
+    baseMenu?: React.ReactNode;
+    trailing?: React.ReactNode;
+  }) => (
+    <header>
+      {baseMenu}
+      {trailing}
     </header>
   ),
 }));
@@ -387,7 +414,20 @@ describe("ProjectDetail project deletion", () => {
     expect(mocks.push).toHaveBeenCalledWith("/test-workspace/projects");
   });
 
-  it("does not offer project deletion to regular members", () => {
+  it("offers deletion to the project creator", () => {
+    mocks.role = "member";
+    PROJECT.creator_type = "member";
+    PROJECT.creator_id = "user-1";
+    try {
+      renderProjectDetail();
+      expect(screen.getByRole("button", { name: "Delete project" })).toBeInTheDocument();
+    } finally {
+      delete PROJECT.creator_type;
+      delete PROJECT.creator_id;
+    }
+  });
+
+  it("does not offer project deletion to regular members with an unknown creator", () => {
     mocks.role = "member";
 
     renderProjectDetail();

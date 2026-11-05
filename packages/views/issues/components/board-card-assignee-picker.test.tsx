@@ -11,6 +11,36 @@ import { BoardCardContent } from "./board-card";
 vi.mock("@tanstack/react-query", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-query")>()),
   useQuery: () => ({ data: [] }),
+  // The assignee control reads per-issue operation basis through useQueries,
+  // which otherwise needs a QueryClientProvider the test never mounts.
+  useQueries: () => [],
+}));
+
+// With useQueries stubbed the basis map would read empty and the picker would
+// render its read-only branch, so hand the control a permissive basis.
+vi.mock("@multica/core/issues", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/issues")>()),
+  useIssueOperationBasis: (_wsId: string, ids: readonly string[]) => ({
+    byIssue: new Map(ids.map((id) => [id, {
+      issue_id: id,
+      issue_revision: 1,
+      availability: "available",
+      status: { state: "allowed", reason_codes: [], allowed_categories: ["unstarted", "started", "done", "closed"] },
+      assignee: { state: "allowed", reason_codes: [] },
+      scope: { state: "allowed", reason_codes: [] },
+      parent: { state: "allowed", reason_codes: [] },
+      primary: { state: "allowed", reason_codes: [] },
+      delete: { state: "allowed", reason_codes: [] },
+      execution: { state: "allowed", reason_codes: [] },
+      targets: [],
+      targets_total: 0,
+    }])),
+    pendingIds: new Set<string>(),
+    errorIds: new Set<string>(),
+    isPending: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
 }));
 
 vi.mock("@multica/core/hooks", () => ({
@@ -113,7 +143,7 @@ const actions: IssueSurfaceActions = {
   createIssue: vi.fn(),
   updateIssue: vi.fn(),
   moveIssue: vi.fn(),
-  batchUpdate: vi.fn().mockResolvedValue(undefined),
+  batchUpdate: vi.fn().mockResolvedValue({ updated: 1 }),
   batchDelete: vi.fn().mockResolvedValue(undefined),
 };
 

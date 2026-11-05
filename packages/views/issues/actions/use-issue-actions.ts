@@ -36,6 +36,7 @@ export interface UseIssueActionsResult {
   exporting: boolean;
   copyCommentLink: (commentId: string) => Promise<void>;
   openCreateSubIssue: () => void;
+  openRename: () => void;
   openSetParent: () => void;
   removeParent: () => void;
   openAddChild: () => void;
@@ -76,6 +77,7 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
 
   const issueId = issue?.id ?? null;
   const issueIdentifier = issue?.identifier ?? null;
+  const issueTitle = issue?.title ?? "";
   const issueProjectId = issue?.project_id ?? null;
   const issueModuleId = issue?.module_id ?? null;
   const issueAssigneeType = issue?.assignee_type ?? null;
@@ -252,6 +254,19 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
     openModal("issue-set-parent", { issueId });
   }, [openModal, issueId, hasOperationBasis, basis]);
 
+  // Rename entry point for every surface that renders the actions menu. The
+  // issue detail page can also activate its inline title editor by clicking the
+  // title, but list, board, gantt and sub-issue rows have no such affordance —
+  // one shared modal keeps the write path identical everywhere.
+  const openRename = useCallback(() => {
+    if (!issueId) return;
+    openModal("issue-rename", {
+      issueId,
+      identifier: issueIdentifier,
+      title: issueTitle,
+    });
+  }, [openModal, issueId, issueIdentifier, issueTitle]);
+
   const openMarkDuplicate = useCallback(() => {
     if (!issueId) return;
     if (hasOperationBasis && !issueStatusOperationAllowed(basis, "closed")) return;
@@ -330,6 +345,7 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
     exporting,
     copyCommentLink,
     openCreateSubIssue,
+    openRename,
     openSetParent,
     removeParent,
     openAddChild,

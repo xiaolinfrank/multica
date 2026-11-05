@@ -20,9 +20,12 @@ describe("floating chat route suppression", () => {
 
 it("suppresses the overlay only on the cockpit's full-page chat surface", () => {
   const cockpit = (search: string) => ({ pathname: "/acme/cockpit", search: new URLSearchParams(search) });
-  expect(isFloatingChatRouteSuppressed("/acme/cockpit", "/acme/chat", cockpit(""))).toBe(true);
-  expect(isFloatingChatRouteSuppressed("/acme/cockpit", "/acme/chat", cockpit("session=s1"))).toBe(true);
-  for (const search of ["tab=work", "tab=meetings", "meeting=m1", "tab=plan", "tab=artifacts"]) {
+  // The cockpit home is the work overview (silver dashboard pass); only an
+  // explicit chat tab or a session/agent deep link opens the full-page chat.
+  for (const search of ["", "tab=work", "tab=meetings", "meeting=m1", "tab=plan", "tab=artifacts"]) {
     expect(isFloatingChatRouteSuppressed("/acme/cockpit", "/acme/chat", cockpit(search))).toBe(false);
+  }
+  for (const search of ["tab=chat", "session=s1", "agent=a1"]) {
+    expect(isFloatingChatRouteSuppressed("/acme/cockpit", "/acme/chat", cockpit(search))).toBe(true);
   }
 });

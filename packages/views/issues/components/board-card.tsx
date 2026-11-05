@@ -12,7 +12,8 @@ import { propertyListOptions } from "@multica/core/properties";
 import { CustomPropertyValueDisplay } from "./pickers/custom-property-picker";
 import { descriptionPreview } from "./description-preview";
 import { formatDateOnly, isPastDateOnly } from "@multica/core/issues/date";
-import { Boxes, CalendarClock, CalendarDays } from "lucide-react";
+import { Boxes } from "lucide-react";
+import { CalendarClock, CalendarDays } from "@multica/ui/icons";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { PropertyIcon } from "../../common/property-icon";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -146,6 +147,7 @@ export const BoardCardContent = memo(function BoardCardContent({
         <PriorityPicker
           priority={issue.priority}
           onUpdate={handleUpdate}
+          tooltip={priorityLabel}
           triggerRender={
             <button
               type="button"
@@ -221,7 +223,7 @@ export const BoardCardContent = memo(function BoardCardContent({
       </div>
 
       {/* Row 2: Title */}
-      <p className="mt-1 text-body font-medium leading-snug line-clamp-2">
+      <p className="mt-1 text-body font-medium leading-snug cjk:leading-normal line-clamp-2">
         {issue.title}
       </p>
 
@@ -291,6 +293,7 @@ export const BoardCardContent = memo(function BoardCardContent({
                     <StartDatePicker
                       startDate={issue.start_date}
                       onUpdate={handleUpdate}
+                      tooltip={t(($) => $.detail.prop_start_date)}
                       trigger={
                         <span className="flex items-center gap-1 text-caption text-muted-foreground">
                           <CalendarClock className="size-3" />
@@ -312,6 +315,7 @@ export const BoardCardContent = memo(function BoardCardContent({
                     <DueDatePicker
                       dueDate={issue.due_date}
                       onUpdate={handleUpdate}
+                      tooltip={t(($) => $.detail.prop_due_date)}
                       trigger={
                         <span
                           className={`flex items-center gap-1 text-caption ${

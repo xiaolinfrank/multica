@@ -1,12 +1,14 @@
 "use client";
 
+import { useRef } from "react";
 import {
   ArrowUpRight,
   BookOpen,
   CircleHelp,
   History,
+  Megaphone,
   MessageCircle,
-} from "lucide-react";
+} from "@multica/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,87 +18,111 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
+import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import { useModalStore } from "@multica/core/modals";
 import { useConfigStore } from "@multica/core/config";
 import { useT } from "../i18n";
 import { docsLocalePrefix } from "../common/docs-locale";
+import { RAIL_ICON_BUTTON_CLASS } from "./rail-styles";
+import { CHANGELOG_URL, DOCS_URL } from "./help-links";
+import { useWhatsNewMenuPanel, WhatsNewMenuPanel } from "../whats-new/whats-new-menu-panel";
 
-const DOCS_URL = "https://multica.ai/docs";
-const CHANGELOG_URL = "https://multica.ai/changelog";
-// These links are explicitly labelled as upstream technical references.
-// This fork does not distribute a desktop installer.
+// DOCS_URL / CHANGELOG_URL are explicitly labelled as upstream technical
+// references. This fork does not distribute a desktop installer, so the
+// "download the desktop app" entry upstream ships here stays out of the menu.
 
 export function HelpLauncher() {
   const { t, i18n } = useT("layout");
   const serverVersion = useConfigStore((state) => state.serverVersion);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const whatsNew = useWhatsNewMenuPanel();
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={t(($) => $.help.trigger)}
-        title={t(($) => $.help.trigger)}
-        className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors cursor-pointer hover:bg-accent hover:text-foreground data-popup-open:bg-accent data-popup-open:text-foreground"
-      >
-        <CircleHelp className="size-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        side="top"
-        sideOffset={8}
-        className="min-w-40 max-w-56"
-      >
-        <DropdownMenuItem
-          render={
-            <a
-              href={`${DOCS_URL}${docsLocalePrefix(i18n.language)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            />
-          }
+    <>
+      <DropdownMenu>
+        <TooltipHint label={t(($) => $.help.trigger)} side="right">
+          <DropdownMenuTrigger
+            ref={triggerRef}
+            aria-label={t(($) => $.help.trigger)}
+            className={RAIL_ICON_BUTTON_CLASS}
+          >
+            <CircleHelp />
+          </DropdownMenuTrigger>
+        </TooltipHint>
+        <DropdownMenuContent
+          align="end"
+          side="right"
+          sideOffset={8}
+          className="min-w-40 max-w-56"
         >
-          <BookOpen className="h-3.5 w-3.5" />
-          {t(($) => $.help.docs)}
-          <ArrowUpRight className="size-3 translate-y-px text-faint-foreground" />
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          render={
-            <a
-              href={CHANGELOG_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-            />
-          }
-        >
-          <History className="h-3.5 w-3.5" />
-          {t(($) => $.help.changelog)}
-          <ArrowUpRight className="size-3 translate-y-px text-faint-foreground" />
-        </DropdownMenuItem>
-        {/*
-          Discord help entry intentionally removed. Do NOT re-add it (and do not
-          restore the ./discord import or the help.discord i18n key) when merging
-          upstream changes — this product has no public Discord community.
-        */}
-        <DropdownMenuItem
-          onClick={() => useModalStore.getState().open("feedback")}
-        >
-          <MessageCircle className="h-3.5 w-3.5" />
-          {t(($) => $.help.feedback)}
-        </DropdownMenuItem>
-        {serverVersion && (
-          <>
-            <DropdownMenuSeparator />
-            {/* DropdownMenuLabel renders Base UI's Menu.GroupLabel, which reads
-                a Menu.Group context and throws if it has no Group ancestor. It
-                must always be wrapped in a DropdownMenuGroup — without it the
-                Help menu crashes the whole app on open (no error boundary sits
-                above the sidebar). */}
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="font-normal break-words">
-                {t(($) => $.help.server_version, { version: serverVersion })}
-              </DropdownMenuLabel>
-            </DropdownMenuGroup>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuItem
+            render={
+              <a
+                href={`${DOCS_URL}${docsLocalePrefix(i18n.language)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            }
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            {t(($) => $.help.docs)}
+            <ArrowUpRight className="size-3 translate-y-px text-faint-foreground" />
+          </DropdownMenuItem>
+          {whatsNew.available && (
+            <DropdownMenuItem onClick={whatsNew.show}>
+              <Megaphone className="h-3.5 w-3.5" />
+              {t(($) => $.whats_new.trigger)}
+              {whatsNew.newestUnread && (
+                <span
+                  data-slot="whats-new-tag"
+                  className="ml-auto text-caption font-medium text-brand tabular-nums"
+                >
+                  {`v${whatsNew.newestUnread}`}
+                </span>
+              )}
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            render={
+              <a
+                href={CHANGELOG_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            }
+          >
+            <History className="h-3.5 w-3.5" />
+            {t(($) => $.help.changelog)}
+            <ArrowUpRight className="size-3 translate-y-px text-faint-foreground" />
+          </DropdownMenuItem>
+          {/*
+            Discord help entry intentionally removed. Do NOT re-add it (and do not
+            restore the ./discord import or the help.discord i18n key) when merging
+            upstream changes — this product has no public Discord community.
+          */}
+          <DropdownMenuItem
+            onClick={() => useModalStore.getState().open("feedback")}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            {t(($) => $.help.feedback)}
+          </DropdownMenuItem>
+          {serverVersion && (
+            <>
+              <DropdownMenuSeparator />
+              {/* DropdownMenuLabel renders Base UI's Menu.GroupLabel, which reads
+                  a Menu.Group context and throws if it has no Group ancestor. It
+                  must always be wrapped in a DropdownMenuGroup — without it the
+                  Help menu crashes the whole app on open (no error boundary sits
+                  above the rail). */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="font-normal break-words">
+                  {t(($) => $.help.server_version, { version: serverVersion })}
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <WhatsNewMenuPanel panel={whatsNew} anchor={triggerRef} />
+    </>
   );
 }

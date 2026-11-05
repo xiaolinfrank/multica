@@ -204,8 +204,6 @@
     "status_all_online": "tous en ligne",
     "status_none_online": "aucun en ligne",
     "status_n_online": "{{count}} en ligne",
-    "online_label": "en ligne",
-    "offline_label": "hors ligne",
     "empty_headline": "Aucun runtime d'agent trouvé sur cet ordinateur pour l'instant.",
     "empty_lede_prefix": "Un runtime d'agent est un outil de codage IA auquel nous nous connectons — comme ",
     "empty_lede_suffix": ". Installez-en un et actualisez, ou choisissez une option ci-dessous.",
@@ -221,7 +219,9 @@
     "hint_selected": "Sélectionné : {{name}}",
     "hint_pick": "Choisissez un runtime d'agent ci-dessus pour commencer avec Mika.",
     "hint_waiting": "En attente du premier résultat…",
-    "continue": "Commencer avec Mika"
+    "continue": "Commencer avec Mika",
+    "online_label": "en ligne",
+    "offline_label": "hors ligne"
   },
   "step_platform": {
     "eyebrow": "Connecter un ordinateur",
@@ -262,6 +262,7 @@
   },
   "errors": {
     "skip_failed": "Échec de la finalisation de la prise en main",
+    "guide_failed": "Le guide de runtime n'a pas été créé. Veuillez réessayer.",
     "mika_setup_failed": "Impossible de démarrer votre espace de travail Mika"
   },
   "mika_intro": {

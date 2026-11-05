@@ -265,6 +265,7 @@
   },
   "errors": {
     "skip_failed": "Failed to finish onboarding",
+    "guide_failed": "The runtime guide didn't get created. Please try again.",
     "mika_setup_failed": "Couldn't start your Mika workspace"
   },
   "mika_intro": {

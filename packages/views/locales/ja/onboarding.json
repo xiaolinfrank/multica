@@ -263,6 +263,7 @@
   },
   "errors": {
     "skip_failed": "オンボーディングを完了できませんでした",
+    "guide_failed": "ランタイム案内のタスクを作成できませんでした。もう一度お試しください。",
     "mika_setup_failed": "Mika ワークスペースを開始できませんでした"
   },
   "mika_intro": {

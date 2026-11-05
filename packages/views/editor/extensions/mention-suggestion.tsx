@@ -36,7 +36,7 @@ import type {
   Squad,
   AttachmentSearchItem,
 } from "@multica/core/types";
-import { ListTodo, File } from "lucide-react";
+import { ListTodo, File } from "@multica/ui/icons";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { StatusIcon } from "../../issues/components/status-icon";
 import { ProjectIcon } from "../../projects/components/project-icon";
@@ -69,9 +69,7 @@ import {
 import { isTriggerArmedAt } from "./suggestion-trigger-arming";
 import { blockedReasonLabel } from "../../issues/blocked-trigger-copy";
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 export interface MentionItem {
   id: string;
@@ -109,9 +107,7 @@ export interface MentionListRef {
   onKeyDown: (props: { event: KeyboardEvent }) => boolean;
 }
 
-// ---------------------------------------------------------------------------
 // Group items by section
-// ---------------------------------------------------------------------------
 
 interface MentionGroup {
   label: string;
@@ -153,9 +149,7 @@ function groupItems(items: MentionItem[], query: string): MentionGroup[] {
   return groups;
 }
 
-// ---------------------------------------------------------------------------
 // MentionList — the popup rendered inside the editor
-// ---------------------------------------------------------------------------
 
 const MAX_ITEMS = 20;
 const SERVER_ISSUE_SEARCH_LIMIT = 20;
@@ -550,9 +544,7 @@ export const MentionList = forwardRef<MentionListRef, MentionListProps>(
   },
 );
 
-// ---------------------------------------------------------------------------
 // MentionRow — single item in the list
-// ---------------------------------------------------------------------------
 
 function MentionRow({
   item,
@@ -716,9 +708,7 @@ function MentionRow({
   );
 }
 
-// ---------------------------------------------------------------------------
 // Suggestion config factory
-// ---------------------------------------------------------------------------
 
 function issueToMention(
   i: Pick<Issue, "id" | "identifier" | "title" | "status"> & Partial<Pick<Issue, "status_category">>,

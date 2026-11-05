@@ -56,9 +56,11 @@ const devVerificationCodeEnv = "MULTICA_DEV_VERIFICATION_CODE"
 var supportedLanguages = map[string]struct{}{
 	"en":      {},
 	"zh-Hans": {},
+	"zh-Hant": {},
 	"ko":      {},
 	"ja":      {},
 	"fr":      {},
+	"es":      {},
 }
 
 type UserResponse struct {
@@ -71,7 +73,6 @@ type UserResponse struct {
 	Timezone                *string         `json:"timezone"`
 	OnboardedAt             *string         `json:"onboarded_at"`
 	OnboardingQuestionnaire json.RawMessage `json:"onboarding_questionnaire"`
-	StarterContentState     *string         `json:"starter_content_state"`
 	ProfileDescription      string          `json:"profile_description"`
 	// Free-form presence status shown above the user's figure in the Agent
 	// Office. Empty string = none set. Global to the user, not per workspace.
@@ -79,8 +80,11 @@ type UserResponse struct {
 	// Preset key behind the status ("" = free text). Drives the office floor
 	// zone the figure is seated in; also empty once the status has expired.
 	CustomStatusKey string `json:"custom_status_key"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
+	// Always serialized (null when unset): clients treat a missing key as
+	// "server cannot track What's new" and suppress the auto-opening card.
+	WhatsNewSeenVersion *string `json:"whats_new_seen_version"`
+	CreatedAt           string  `json:"created_at"`
+	UpdatedAt           string  `json:"updated_at"`
 }
 
 // MaxProfileDescriptionLen caps the user-supplied profile_description body.
@@ -142,10 +146,10 @@ func (h *Handler) userToResponse(u db.User) UserResponse {
 		Timezone:                textToPtr(u.Timezone),
 		OnboardedAt:             timestampToPtr(u.OnboardedAt),
 		OnboardingQuestionnaire: json.RawMessage(q),
-		StarterContentState:     textToPtr(u.StarterContentState),
 		ProfileDescription:      u.ProfileDescription,
 		CustomStatus:            status,
 		CustomStatusKey:         statusKey,
+		WhatsNewSeenVersion:     textToPtr(u.WhatsNewSeenVersion),
 		CreatedAt:               timestampToString(u.CreatedAt),
 		UpdatedAt:               timestampToString(u.UpdatedAt),
 	}
@@ -892,7 +896,15 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 // IssueCliToken returns a fresh JWT for the authenticated user.
 // This allows cookie-authenticated browser sessions to obtain a bearer token
 // that can be handed off to the CLI via the cli_callback redirect.
+//
+// Machine credentials (mat_ task tokens, mcn_ cloud-node PATs) are refused
+// here as well as at the router (MUL-8154), so a route refactor cannot turn
+// a scoped agent credential into a long-lived session.
 func (h *Handler) IssueCliToken(w http.ResponseWriter, r *http.Request) {
+	if isMachineCredentialActor(r) {
+		writeError(w, http.StatusForbidden, "this endpoint is only available to human actors")
+		return
+	}
 	userID, ok := requireUserID(w, r)
 	if !ok {
 		return

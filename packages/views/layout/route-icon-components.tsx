@@ -4,6 +4,7 @@ import {
   CircleUser,
   ListTodo,
   FolderKanban,
+  Layers,
   Zap,
   Bot,
   Building2,
@@ -16,7 +17,7 @@ import {
   FolderGit2,
   BookOpenText,
   Settings,
-  Images,
+  Image as Images,
   Gauge,
   File,
   FileText,
@@ -26,8 +27,8 @@ import {
   FileAudio,
   FileVideo,
   FileQuestion,
-  type LucideIcon,
-} from "lucide-react";
+  type IconComponent,
+} from "@multica/ui/icons";
 import { resolveRouteIconName, type RouteIconName } from "@multica/core/paths";
 
 /**
@@ -37,12 +38,13 @@ import { resolveRouteIconName, type RouteIconName } from "@multica/core/paths";
  * Every {@link RouteIconName} must have an entry — the `Record` type makes a
  * missing key a compile error.
  */
-export const ROUTE_ICON_COMPONENTS: Record<RouteIconName, LucideIcon> = {
+export const ROUTE_ICON_COMPONENTS: Record<RouteIconName, IconComponent> = {
   Inbox,
   MessageSquare,
   CircleUser,
   ListTodo,
   FolderKanban,
+  Layers,
   Zap,
   Bot,
   Building2,
@@ -79,6 +81,6 @@ export const ROUTE_ICON_COMPONENTS: Record<RouteIconName, LucideIcon> = {
  * The sidebar nav and the desktop tab bar both call this, which is what keeps
  * a route's icon identical in both places.
  */
-export function routeIconForPath(path: string): LucideIcon {
+export function routeIconForPath(path: string): IconComponent {
   return ROUTE_ICON_COMPONENTS[resolveRouteIconName(path)];
 }

@@ -171,17 +171,19 @@ describe("cockpit chat home suppression", () => {
     h.navigation.pathname = "/acme/cockpit";
     render(<GlobalShortcuts />);
 
-    // A no-op keeps the keypress for the page — the chord is not swallowed.
+    // The cockpit home is the work overview: the chord toggles the overlay.
     h.navigation.searchParams = new URLSearchParams();
-    expect(pressToggleChat()).toBe(false);
-    expect(h.chat.toggle).not.toHaveBeenCalled();
-
-    h.navigation.searchParams = new URLSearchParams("tab=work");
     expect(pressToggleChat()).toBe(true);
     expect(h.chat.toggle).toHaveBeenCalledTimes(1);
 
+    h.navigation.searchParams = new URLSearchParams("tab=work");
+    expect(pressToggleChat()).toBe(true);
+    expect(h.chat.toggle).toHaveBeenCalledTimes(2);
+
+    // A session deep link opens the full-page chat — the chord is a no-op the
+    // page keeps, and the overlay must not flip on top of the full surface.
     h.navigation.searchParams = new URLSearchParams("session=s1");
     expect(pressToggleChat()).toBe(false);
-    expect(h.chat.toggle).toHaveBeenCalledTimes(1);
+    expect(h.chat.toggle).toHaveBeenCalledTimes(2);
   });
 });

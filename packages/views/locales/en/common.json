@@ -146,5 +146,12 @@
     "toast_copy_failed": "Couldn't copy the path",
     "toast_not_found": "This machine can't reach that path. The shared volume is probably not mounted — the path is on your clipboard.",
     "toast_failed": "Couldn't open that path"
-  }
+  },
+  "daemon_setup": {
+    "loading": "Loading connection settings...",
+    "error": "Couldn't load connection settings. Check your connection; retrying automatically.",
+    "unknown": "This server hasn't confirmed its connection settings. Ask your administrator to update the server.",
+    "incomplete": "Connection settings are incomplete. Ask your administrator to configure this server's public URLs."
+  },
+  "more_actions": "More actions"
 }

@@ -76,6 +76,8 @@ interface RunConfirmData {
   expectedRevisions?: Record<string, number>;
   issueLabels?: Array<Pick<Issue, "id" | "identifier" | "title">>;
   onBatchResult?: (receipt: IssueBatchReceipt | null, submittedIds: string[]) => void;
+  /** Runs after every write applies; never on dismiss, failure, or a partial batch. */
+  onApplied?: () => void;
 }
 
 /**
@@ -87,7 +89,8 @@ interface RunConfirmData {
  *
  * Completion is silent: the assignee/status change and any run it starts
  * surface through the issue's normal updates, so the confirm adds no result
- * toast. Whether a run starts stays the server's existing decision at write
+ * toast; only a batch the server applied partially warns with the real count.
+ * Whether a run starts stays the server's existing decision at write
  * time. Dismissing the dialog (X / Esc / click-outside) cancels without any
  * write. Shared by single assign (1 id), batch assign (N ids), and the
  * single-issue promotion out of backlog.
@@ -196,9 +199,24 @@ export function RunConfirmModal({
         if (!current()) return;
         setOutcome({ identity, ids: submittedIds, receipt });
         if (typeof d.onBatchResult === "function") d.onBatchResult(receipt, submittedIds);
-        if (!issueBatchComplete(receipt)) return;
+        // A partial batch stays open on the outcome summary (the applied writes
+        // are real, the rest stay selected for a retry) and never calls
+        // onApplied — the caller must not treat it as a completed handoff. The
+        // count warning below is upstream's signal for the same event.
+        if (!issueBatchComplete(receipt)) {
+          toast.warning(
+            tIssues(($) => $.batch.update_partial, {
+              updated: receipt.updated ?? issueBatchAppliedIds(receipt).length,
+              count: submittedIds.length,
+            }),
+          );
+          return;
+        }
       }
-      if (current()) onClose();
+      if (current()) {
+        d.onApplied?.();
+        onClose();
+      }
     } catch (err) {
       if (!current()) return;
       if (issueIds.length > 1) {

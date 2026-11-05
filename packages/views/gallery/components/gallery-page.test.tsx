@@ -35,11 +35,12 @@ const work = GALLERY_WORKS.find((entry) => {
 })!;
 
 describe("GalleryPage", () => {
-  it("renders the page chrome with the catalogue count", () => {
+  it("renders the page chrome", () => {
     renderPage();
 
     expect(screen.getByRole("heading", { name: enGallery.page.title })).toBeInTheDocument();
-    expect(screen.getByText(String(GALLERY_WORKS.length))).toBeInTheDocument();
+    // Upstream 1.0 dropped the header count badge ("the header never carries
+    // a count"), so the catalogue size is no longer asserted from the chrome.
   });
 
   it("renders every catalogued work with its tagline and screen entry points", () => {

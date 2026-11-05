@@ -12,6 +12,16 @@ import { BatchActionToolbar } from "./batch-action-toolbar";
 
 const session = vi.hoisted(() => ({ wsId: "ws-1" }));
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => session.wsId }));
+// The toolbar resolves deletion rights through useCurrentMember → the auth
+// store; seed a logged-in owner so the delete path is simply allowed.
+vi.mock("@multica/core/auth", () => {
+  const state = { user: { id: "human" } };
+  const useAuthStore = Object.assign(
+    (selector?: (s: typeof state) => unknown) => (selector ? selector(state) : state),
+    { getState: () => state },
+  );
+  return { useAuthStore };
+});
 vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/${session.wsId}/issues/${id}`, cockpit: () => `/${session.wsId}/cockpit` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
 vi.mock("@multica/core/api", async (original) => ({ ...await original<typeof import("@multica/core/api")>(), api: { getIssueOperationBasis: vi.fn(), listIssueStatuses: vi.fn(), batchUpdateIssues: vi.fn(), batchDeleteIssues: vi.fn() } }));

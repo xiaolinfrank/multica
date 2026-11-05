@@ -103,6 +103,7 @@ vi.mock("../i18n", () => ({
         status: { todo: "Todo" },
         revision: { conflict: "Revision changed" },
         operation_basis: { dismiss: "Close", batch_counts: "{{allowed}} allowed, {{blocked}} blocked of {{total}}", open_record: "Open issue", new_tab: "(new tab)" },
+        batch: { update_partial: "updated {{updated}} of {{count}}" },
       };
       return sel(labels).replace(/\{\{(\w+)\}\}/g, (_m, k) => String(vars?.[k] ?? ""));
     },
@@ -131,7 +132,7 @@ vi.mock("@multica/ui/components/ui/spinner", () => ({
 }));
 // vi.hoisted: vi.mock factories run before module-level consts initialize.
 // Only error is used now — completion is silent (no result toast).
-const mockToast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
+const mockToast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), warning: vi.fn() }));
 vi.mock("sonner", () => ({ toast: mockToast }));
 
 beforeEach(() => {
@@ -141,6 +142,7 @@ beforeEach(() => {
   policyState.read.mockClear(); policyState.refetch.mockReset().mockResolvedValue([]); policyState.summary.mockClear();
   mockToast.error.mockClear();
   mockToast.success.mockClear();
+  mockToast.warning.mockClear();
   // The real shortcut store drives both the submit chord and the keycap hint,
   // and jsdom's platform follows the host OS — pin it so the chord is ⌘+Enter
   // everywhere, not Ctrl+Enter on a Linux CI runner.
@@ -351,6 +353,68 @@ describe("RunConfirmModal", () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(mockToast.success).not.toHaveBeenCalled();
   });
+
+  it("runs onApplied only after the write succeeds (MUL-8179)", async () => {
+    const onApplied = vi.fn();
+    mockBatch.mockRejectedValueOnce(new Error("boom"));
+    const failed = render(
+      <RunConfirmModal
+        onClose={vi.fn()}
+        data={{ ...single, issueIds: ["i1", "i2"], onApplied }}
+      />,
+    );
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith("boom"));
+    expect(onApplied).not.toHaveBeenCalled();
+    // The fork parks a failed batch on its outcome summary instead of
+    // offering an in-dialog retry, so the second write comes from a fresh
+    // dialog — onApplied still fires only from the successful write.
+    failed.unmount();
+
+    render(
+      <RunConfirmModal
+        onClose={vi.fn()}
+        data={{ ...single, issueIds: ["i1", "i2"], onApplied }}
+      />,
+    );
+    fireEvent.click(confirmButton());
+    await waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1));
+  });
+
+  for (const updated of [0, 1]) {
+    for (const button of ["Confirm assignment", "Don't start yet"]) {
+      it(`a partial batch (${updated}/2, "${button}") warns, keeps the dialog open and skips onApplied`, async () => {
+        const onApplied = vi.fn();
+        const onClose = vi.fn();
+        mockBatch.mockResolvedValueOnce(
+          receipt(["i1", "i2"], {
+            transaction_outcome: "partial",
+            updated,
+            results: ["i1", "i2"].map((id, index) =>
+              index < updated
+                ? { issue_id: id, outcome: "applied" as const, revision: 2, changed: true }
+                : { issue_id: id, outcome: "rejected" as const, code: "formal_review_required" },
+            ),
+          }),
+        );
+        render(
+          <RunConfirmModal
+            onClose={onClose}
+            data={{ ...single, issueIds: ["i1", "i2"], onApplied }}
+          />,
+        );
+        fireEvent.click(screen.getByRole("button", { name: button }));
+        await waitFor(() =>
+          expect(mockToast.warning).toHaveBeenCalledWith(`updated ${updated} of 2`),
+        );
+        expect(onApplied).not.toHaveBeenCalled();
+        // The fork keeps the partial receipt on screen so the unapplied rows
+        // stay selected for a retry, so the dialog must not close here.
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByRole("region", { name: "Batch result" })).toHaveTextContent("partial");
+      });
+    }
+  }
 });
 
 

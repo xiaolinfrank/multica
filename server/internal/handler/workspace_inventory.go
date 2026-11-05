@@ -195,7 +195,6 @@ type AgentWorkspacesResponse struct {
 	TotalRepoCheckoutBytes int64            `json:"total_repo_checkout_bytes"`
 }
 
-
 // filterAgentWorkspaceTasks narrows an inventory snapshot to one issue when the
 // caller passed issue_id; an empty filter returns the snapshot untouched.
 func filterAgentWorkspaceTasks(tasks []daemonTask, issueID string) []daemonTask {

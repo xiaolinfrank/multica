@@ -30,32 +30,32 @@ type CockpitWorkflowHistoryCounts struct {
 }
 
 type CockpitWorkflowSummaryResponse struct {
-	Representation       string                         `json:"representation"`
-	WorkspaceID          string                         `json:"workspace_id"`
-	Enabled              bool                           `json:"enabled"`
-	MeetingID            string                         `json:"meeting_id"`
-	Revision             int64                          `json:"revision"`
-	EndedAt              *string                        `json:"ended_at"`
-	MaterialsReady       bool                           `json:"materials_ready"`
-	ReleasedAt           *string                        `json:"released_at"`
-	ReleaseTaskID        *string                        `json:"release_task_id"`
-	ReviewerID           *string                        `json:"reviewer_id"`
-	MinutesIssue         *CockpitWorkflowIssueResponse  `json:"minutes_issue"`
+	Representation       string                          `json:"representation"`
+	WorkspaceID          string                          `json:"workspace_id"`
+	Enabled              bool                            `json:"enabled"`
+	MeetingID            string                          `json:"meeting_id"`
+	Revision             int64                           `json:"revision"`
+	EndedAt              *string                         `json:"ended_at"`
+	MaterialsReady       bool                            `json:"materials_ready"`
+	ReleasedAt           *string                         `json:"released_at"`
+	ReleaseTaskID        *string                         `json:"release_task_id"`
+	ReviewerID           *string                         `json:"reviewer_id"`
+	MinutesIssue         *CockpitWorkflowIssueResponse   `json:"minutes_issue"`
 	MinutesIssues        []CockpitMinutesBindingResponse `json:"minutes_issues"`
-	CurrentVersionID     *string                        `json:"current_version_id"`
-	PublishedVersionID   *string                        `json:"published_version_id"`
-	CurrentVersion       *CockpitMinutesVersionMetadata `json:"current_version"`
-	PublishedVersion     *CockpitMinutesVersionMetadata `json:"published_version"`
-	HistoryCounts        CockpitWorkflowHistoryCounts   `json:"history_counts"`
-	CanManage            bool                           `json:"can_manage"`
-	CanSubmit            bool                           `json:"can_submit"`
-	CanReview            bool                           `json:"can_review"`
-	CanPublish           bool                           `json:"can_publish"`
-	CanReassignReviewer  bool                           `json:"can_reassign_reviewer"`
-	NASDestination       *cockpitnas.Directory          `json:"nas_destination"`
-	NASUnavailableReason string                         `json:"nas_unavailable_reason"`
-	CanExportNAS         bool                           `json:"can_export_nas"`
-	PublishedNASExport   *CockpitNASHistoryItem         `json:"published_nas_export"`
+	CurrentVersionID     *string                         `json:"current_version_id"`
+	PublishedVersionID   *string                         `json:"published_version_id"`
+	CurrentVersion       *CockpitMinutesVersionMetadata  `json:"current_version"`
+	PublishedVersion     *CockpitMinutesVersionMetadata  `json:"published_version"`
+	HistoryCounts        CockpitWorkflowHistoryCounts    `json:"history_counts"`
+	CanManage            bool                            `json:"can_manage"`
+	CanSubmit            bool                            `json:"can_submit"`
+	CanReview            bool                            `json:"can_review"`
+	CanPublish           bool                            `json:"can_publish"`
+	CanReassignReviewer  bool                            `json:"can_reassign_reviewer"`
+	NASDestination       *cockpitnas.Directory           `json:"nas_destination"`
+	NASUnavailableReason string                          `json:"nas_unavailable_reason"`
+	CanExportNAS         bool                            `json:"can_export_nas"`
+	PublishedNASExport   *CockpitNASHistoryItem          `json:"published_nas_export"`
 }
 
 type CockpitWorkflowHistoryScope struct {

@@ -87,7 +87,9 @@ const bannedPatterns = [
   },
   {
     label: "Tailwind default size",
-    regex: new RegExp(String.raw`\btext-(?:${replacedDefaults.join("|")})\b`, "g"),
+    // The lookbehind keeps `--shimmer-text-base` (a CSS custom property that
+    // happens to end in the substring) from counting as a class call site.
+    regex: new RegExp(String.raw`(?<![-\w])text-(?:${replacedDefaults.join("|")})\b`, "g"),
     hint: "use the role-named equivalent: sm -> body, base -> title-sm, 2xl -> display-sm",
     appliesTo: () => true,
   },
@@ -115,8 +117,16 @@ const bannedPatterns = [
  * `base.css` pins editable text to 16px on coarse pointers because iOS Safari
  * zooms the page when a focused input is below 16px. That is a platform
  * workaround, not typography, and no scale step can express it.
+ *
+ * The cockpit orbit readout and metric tiles are instrument display
+ * typography: their sizes are calibrated multiples of the display step, not
+ * prose, and no scale step can express them either.
  */
-const rawCssExemptions = [/font-size:\s*16px\s*!important/];
+const rawCssExemptions = [
+  /font-size:\s*16px\s*!important/,
+  /font-size:\s*calc\(var\(--text-display\) \* 1\.65\)/,
+  /font-size:\s*calc\(var\(--text-display\) \* 1\.3\)/,
+];
 
 /**
  * Tailwind scans this file like any other source, so a banned class written out

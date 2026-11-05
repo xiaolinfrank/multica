@@ -263,7 +263,7 @@ export function CockpitWorkOverview({ wsId, today, scope }: CockpitWorkOverviewP
                 onPrevious={() => setPage(queueSection, signature, queueCursors.slice(0, -1))} onNext={() => { if (attention?.next_cursor) setPage(queueSection, signature, [...queueCursors, attention.next_cursor]); }} />
                 {attentionLoading ? <OverviewLoading /> : attentionError || !attention ? <OverviewError onRetry={() => { if (bundledQueue) void overview.refetch(); else void attentionQuery.refetch(); }} />
                   : attention.items.length > 0 ? <div className={cn("overflow-y-auto overscroll-contain", full ? "max-h-[62vh]" : "max-h-64")}><AttentionRows scope={scope} items={attention.items} human={data.actor.is_human} /></div>
-                    : <div className="space-y-3 py-8 text-center"><Inbox className="mx-auto size-7 text-muted-foreground/60" aria-hidden /><h3 className="text-body font-medium">{t(($) => $.work_overview.queue_empty)}</h3>
+                    : <div className="space-y-3 py-8 text-center"><Inbox className="mx-auto size-7 text-faint-foreground" aria-hidden /><h3 className="text-body font-medium">{t(($) => $.work_overview.queue_empty)}</h3>
                       {view.audience === "mine" && data.summary.attention.team_total > 0 && <Button type="button" variant="outline" size="sm" onClick={() => update({ audience: "team", kind: "" })}>{t(($) => $.work_overview.open_team, { count: data.summary.attention.team_total })}</Button>}</div>}
                 <p className="border-t border-border/70 pt-3 text-micro text-muted-foreground">{t(($) => $.work_overview.queue_basis)}</p>
               </div>

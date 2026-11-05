@@ -191,7 +191,6 @@ describe("Board grouped by module", () => {
             <BoardView
               issues={ISSUES}
               visibleStatuses={["todo"]}
-              hiddenStatuses={[]}
               onMoveIssue={() => {}}
               moduleMap={
                 new Map([

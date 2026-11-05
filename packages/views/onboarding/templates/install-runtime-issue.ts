@@ -1,6 +1,9 @@
 /**
  * Skip-path issue: inspect the connected runtime before configuring another device.
  * Persisted onboarding copy is deployment-neutral: a runtime may be local or remote.
+ *
+ * Written to a new issue (assigned to the user themselves) by OnboardingFlow
+ * when the user takes the Skip exit on Step 3, which then opens it.
  */
 
 /**
@@ -71,7 +74,6 @@ BayClaw는 Xingduo 개인 분신이 조율하는 프로젝트 및 작업 실행 
 2. 단일 사용자 Mac 릴리스에는 이 인스턴스의 CLI와 worker가 포함되어 있습니다. 다시 설치하기 전에 상태를 확인하세요.
 3. 적절한 runtime이 없다면 먼저 인스턴스 서비스와 권한을 점검합니다. 다른 장치나 아직 제공되지 않은 runtime을 연결할 때만 기존 연결 절차에 따라 CLI와 daemon을 구성합니다.
 4. 적절한 runtime이 online이면 agent를 만들 때 연결합니다. 모델과 도구에는 이 인스턴스 사용자의 별도 권한이 필요합니다.
-
 ## runtime을 사용할 수 없을 때 프로젝트 관리하기
 
 1. 현재 작업을 위한 project를 만듭니다.

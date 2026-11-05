@@ -378,7 +378,6 @@ func (h *Handler) ListCockpitIssueArtifactContexts(w http.ResponseWriter, r *htt
 	}
 }
 
-
 func cockpitArtifactNewIssue(w http.ResponseWriter, p service.CockpitArtifactRead, req *cockpitArtifactNewIssueRequest) (*service.IssueCreateParams, bool) {
 	if req == nil {
 		return nil, true

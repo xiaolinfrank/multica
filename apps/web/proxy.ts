@@ -119,8 +119,10 @@ export const config = {
   // request time instead of being baked into next.config.js at build time.
   matcher: [
     "/v1/:path*",
-    // File streams have a dedicated route and must not enter body cloning.
-    "/api/((?!cockpit/inputs/[^/]+/versions/[^/]+/transfers/[^/]+/bytes/?$).*)",
+    // Uploads stream through an App Router handler, and file streams have a
+    // dedicated route; neither must enter Proxy's body clone.
+    "/api",
+    "/api/((?!upload-file(?:/|$)|cockpit/inputs/[^/]+/versions/[^/]+/transfers/[^/]+/bytes/?$).*)",
     "/auth/:path*",
     "/uploads/:path*",
     "/docs/:path*",

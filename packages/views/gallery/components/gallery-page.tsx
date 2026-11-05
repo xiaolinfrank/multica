@@ -39,8 +39,6 @@ export function GalleryPage() {
       <CollectionPageHeader
         icon={Images}
         title={t(($) => $.page.title)}
-        count={works.length}
-        description={t(($) => $.page.description)}
       />
 
       {works.length === 0 ? (

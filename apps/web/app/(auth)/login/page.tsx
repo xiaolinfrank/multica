@@ -26,6 +26,7 @@ import {
 import { Button } from "@multica/ui/components/ui/button";
 import { BayClawBrand } from "@multica/ui/components/common/bayclaw-brand";
 import { Loader2 } from "lucide-react";
+import { CliCallbackError } from "@/features/auth/cli-callback-error";
 import { setLoggedInCookie } from "@/features/auth/auth-cookie";
 import { LoginPage, validateCliCallback } from "@multica/views/auth";
 import { useT } from "@multica/views/i18n";
@@ -69,8 +70,9 @@ function LoginPageContent() {
 
   const cliCallbackRaw = searchParams.get("cli_callback");
   const cliState = searchParams.get("cli_state") || "";
+  const invalidCliCallback = cliCallbackRaw !== null && !validateCliCallback(cliCallbackRaw);
   const platform = searchParams.get("platform");
-  const isDesktopHandoff = platform === "desktop" && !cliCallbackRaw;
+  const isDesktopHandoff = platform === "desktop" && cliCallbackRaw === null;
   // `next` carries a protected URL the user was originally headed to
   // (e.g. /invite/{id}). With URL-driven workspaces there is no legacy
   // "/issues" default — if `next` is absent we decide after login based on
@@ -96,7 +98,7 @@ function LoginPageContent() {
       settledLoggedOutRef.current = true;
       return;
     }
-    if (cliCallbackRaw) return;
+    if (cliCallbackRaw !== null) return;
     if (isDesktopHandoff) {
       // Desktop opened the browser for login but the web session is already
       // authenticated — mint a bearer token from the cookie session and hand
@@ -166,6 +168,8 @@ function LoginPageContent() {
   ]
     .filter(Boolean)
     .join(",") || undefined;
+
+  if (invalidCliCallback) return <CliCallbackError />;
 
   // While the desktop handoff is in progress (or has produced a token/error),
   // render a dedicated screen instead of flashing the login form or redirecting

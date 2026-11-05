@@ -770,7 +770,9 @@ describe("the people at a meeting", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Attendees: Find workspace member" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Search workspace members" }), { target: { value: "Wang Gong" } });
-    fireEvent.click(await screen.findByRole("button", { name: "Wang Gong" }));
+    // The picker debounces the member search by 250ms; the default 1s
+    // findByRole timeout can lose that race on a loaded runner, so wait it out.
+    fireEvent.click(await screen.findByRole("button", { name: "Wang Gong" }, { timeout: 5_000 }));
     await waitFor(() => expect(api.updateCockpitMeeting).toHaveBeenCalledWith("meet-1", { attendees: "Wang Gong" }));
     fireEvent.click(await screen.findByRole("button", { name: "Attendees" }));
     const box = screen.getByRole("textbox", { name: "Attendees" });

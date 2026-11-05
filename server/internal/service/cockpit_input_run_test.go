@@ -103,12 +103,12 @@ func TestCockpitInputRunExplicitNullPreconditionDoesNotCancelPendingTask(t *test
 	ctx := context.Background()
 	_, _ = inputManifestTaskAgent(t, f, q.CockpitInputRead, q.IssueID)
 	tasks := NewTaskService(f.q, f.Pool, nil, s.Bus)
-	first, err := tasks.RerunIssue(ctx, q.IssueID, pgtype.UUID{}, pgtype.UUID{}, q.CredentialOwnerID, nil, pgtype.UUID{})
+	first, err := tasks.RerunIssue(ctx, q.IssueID, pgtype.UUID{}, pgtype.UUID{}, q.CredentialOwnerID, false, nil, pgtype.UUID{})
 	if err != nil || first.InputManifestVersionID.Valid {
 		t.Fatalf("explicit no-manifest authorization: %+v %v", first, err)
 	}
 	inputManifestSaveEmpty(t, s, q, 0)
-	if _, err = tasks.RerunIssue(ctx, q.IssueID, pgtype.UUID{}, pgtype.UUID{}, q.CredentialOwnerID, nil, pgtype.UUID{}); inputErrorCode(err) != "input_manifest_changed" {
+	if _, err = tasks.RerunIssue(ctx, q.IssueID, pgtype.UUID{}, pgtype.UUID{}, q.CredentialOwnerID, false, nil, pgtype.UUID{}); inputErrorCode(err) != "input_manifest_changed" {
 		t.Fatalf("explicit null confused with omitted: %v", err)
 	}
 	prior, err := f.q.GetAgentTask(ctx, first.ID)

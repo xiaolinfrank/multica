@@ -1184,7 +1184,7 @@ func (q *Queries) LockCockpitInputReference(ctx context.Context, arg LockCockpit
 }
 
 const lockCockpitInputRuntimeAuthority = `-- name: LockCockpitInputRuntimeAuthority :one
-SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id, custom_name FROM agent_runtime WHERE id=$1 FOR SHARE
+SELECT id, workspace_id, daemon_id, name, runtime_mode, provider, status, device_info, metadata, last_seen_at, created_at, updated_at, owner_id, legacy_daemon_id, visibility, profile_id, custom_name, shared_with, max_concurrent_tasks FROM agent_runtime WHERE id=$1 FOR SHARE
 `
 
 func (q *Queries) LockCockpitInputRuntimeAuthority(ctx context.Context, id pgtype.UUID) (AgentRuntime, error) {
@@ -1208,6 +1208,8 @@ func (q *Queries) LockCockpitInputRuntimeAuthority(ctx context.Context, id pgtyp
 		&i.Visibility,
 		&i.ProfileID,
 		&i.CustomName,
+		&i.SharedWith,
+		&i.MaxConcurrentTasks,
 	)
 	return i, err
 }
