@@ -3,6 +3,40 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enGallery from "../../locales/en/gallery.json";
 import { GALLERY_WORKS } from "./gallery-catalog";
+
+// The generic distribution ships an empty catalogue; these tests exercise the
+// page machinery, so a two-work fixture stands in for the committed content.
+
+vi.mock("./gallery-catalog", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./gallery-catalog")>();
+  // Declared inside the factory: vi.mock is hoisted above every const.
+  const fixtureWorks: import("./gallery-catalog").GalleryWork[] = [] = [
+  {
+    id: "multi",
+    name: "Multi-screen work",
+    summary: "Fixture",
+    tagline: "Multi tagline",
+    highlights: ["Fixture highlight"],
+    screens: [
+      { id: "a", name: "Screen A", summary: "Fixture A", credentials: { account: "alice", password: "pw-a" } },
+      { id: "b", name: "Screen B", summary: "Fixture B", credentials: { account: "bob", password: "pw-b" } },
+      { id: "c", name: "Screen C", summary: "Fixture C" },
+    ],
+    diagrams: [
+      { id: "d1", file: "p1.jpg", title: "Plate one", shortTitle: "One", caption: "Cap one", description: "A longer description than the caption." },
+    ],
+  },
+  {
+    id: "single",
+    name: "Single-screen work",
+    summary: "Fixture",
+    tagline: "Single tagline",
+    highlights: [],
+    screens: [{ id: "s", name: "Screen S", summary: "Fixture S" }],
+  },
+];
+  return { ...actual, GALLERY_WORKS: fixtureWorks };
+});
 import { GalleryPage } from "./gallery-page";
 
 // The src-per-platform matrix is pinned in gallery-asset-src.test.ts (node

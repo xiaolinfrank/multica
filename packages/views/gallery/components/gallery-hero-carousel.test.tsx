@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enGallery from "../../locales/en/gallery.json";
-import { GALLERY_WORKS, type GalleryWork } from "./gallery-catalog";
+import { type GalleryWork } from "./gallery-catalog";
 import { GalleryHeroCarousel } from "./gallery-hero-carousel";
 
 // The index matrix is pinned in gallery-hero-steps.test.ts (node suite). This
@@ -13,7 +13,21 @@ import { GalleryHeroCarousel } from "./gallery-hero-carousel";
 // runs on the web branch — the branch the src assertions below expect.
 vi.mock("../../platform/local-directory", () => ({ isDesktopShell: () => false }));
 
-const work: GalleryWork = GALLERY_WORKS.find((entry) => (entry.diagrams?.length ?? 0) > 1)!;
+// The generic distribution ships an empty catalogue, so the carousel is
+// exercised against a local fixture instead of GALLERY_WORKS.
+const work: GalleryWork = {
+  id: "fixture",
+  name: "Fixture work",
+  summary: "Fixture",
+  tagline: "Fixture tagline",
+  highlights: [],
+  screens: [{ id: "s", name: "s", summary: "s" }],
+  diagrams: [
+    { id: "d1", file: "p1.jpg", title: "Plate one", shortTitle: "One", caption: "Cap one", description: "Longer than the caption." },
+    { id: "d2", file: "p2.jpg", title: "Plate two", shortTitle: "Two", caption: "Cap two", description: "Longer than the caption." },
+    { id: "d3", file: "p3.jpg", title: "Plate three", shortTitle: "Three", caption: "Cap three", description: "Longer than the caption." },
+  ],
+};
 const diagrams = work.diagrams!;
 
 function renderCarousel() {
