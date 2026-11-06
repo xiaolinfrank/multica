@@ -1,7 +1,6 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 import { ArrowUpRight } from "@multica/ui/icons";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
-import { MulticaWordmark } from "@multica/ui/components/common/multica-wordmark";
 
 // GitHub mark — inlined SVG (lucide-react dropped the Github icon for brand
 // trademark reasons). Path matches apps/web/features/landing/components/
@@ -34,8 +33,8 @@ export const baseOptions: BaseLayoutProps = {
   nav: {
     title: (
       <span className="inline-flex items-center gap-2 font-semibold text-base">
-        <MulticaWordmark className="h-[15px]" />
-        Docs
+        <MulticaIcon className="size-4 shrink-0" noSpin />
+        BayClaw Docs
       </span>
     ),
   },
