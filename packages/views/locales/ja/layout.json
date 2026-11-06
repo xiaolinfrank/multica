@@ -148,7 +148,8 @@
       "view_remove": "サイドバーから削除",
       "view_rename": "名前を変更",
       "view_duplicate": "複製",
-      "view_delete": "ビューを削除"
+      "view_delete": "ビューを削除",
+      "bayclaw": "ワークベンチ"
     },
     "team": {
       "new_agent": "新規エージェント",

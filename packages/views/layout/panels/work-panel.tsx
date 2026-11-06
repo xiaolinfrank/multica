@@ -12,10 +12,11 @@ import { useSidebarKeptStore } from "@multica/core/issues/stores/sidebar-kept-st
 import { useSidebarTreeStore } from "@multica/core/issues/stores/sidebar-tree-store";
 import { projectListOptions } from "@multica/core/projects/queries";
 import type { Project } from "@multica/core/types";
+import { Gauge, Image as Images, Network } from "@multica/ui/icons";
 import { useNavigation } from "../../navigation";
 import { IssueContextMenuProvider } from "../../issues/actions";
 import { useT } from "../../i18n";
-import { PanelBody, PanelHeader, isPathWithin } from "../panel-nav";
+import { PanelBody, PanelHeader, PanelLink, PanelList, PanelSection, isPathWithin } from "../panel-nav";
 import { PinnedSection, usePanelPins } from "./pinned-section";
 import { useKeptActiveItem } from "./sidebar-tree";
 import { ProjectsSection, useIssueIdInTree } from "./work-tree";
@@ -132,6 +133,31 @@ export function WorkPanel() {
           through the React tree, and must not reach rememberClickedIssue. */}
       <IssueContextMenuProvider variant="sidebar">
         <PanelBody onClickCapture={rememberClickedIssue}>
+          {/* BayClaw work surfaces: cockpit is the work entry point, graph and
+              gallery are its satellites (fleet lives in Team · resources, mirroring
+              the pre-merge sidebar's group semantics). */}
+          <PanelSection label={t(($) => $.panels.work.bayclaw)}>
+            <PanelList>
+              <PanelLink
+                href={p.cockpit()}
+                icon={<Gauge />}
+                label={t(($) => $.nav.cockpit)}
+                active={isPathWithin(pathname, p.cockpit())}
+              />
+              <PanelLink
+                href={p.graph()}
+                icon={<Network />}
+                label={t(($) => $.nav.graph)}
+                active={isPathWithin(pathname, p.graph())}
+              />
+              <PanelLink
+                href={p.gallery()}
+                icon={<Images />}
+                label={t(($) => $.nav.gallery)}
+                active={isPathWithin(pathname, p.gallery())}
+              />
+            </PanelList>
+          </PanelSection>
           {wsId && (
             <ViewsSection
               wsId={wsId}

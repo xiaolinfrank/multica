@@ -138,7 +138,8 @@
       "view_remove": "Quitar de la barra lateral",
       "view_rename": "Renombrar",
       "view_duplicate": "Duplicar",
-      "view_delete": "Eliminar vista"
+      "view_delete": "Eliminar vista",
+      "bayclaw": "BayClaw"
     },
     "team": {
       "new_agent": "Nuevo agente",

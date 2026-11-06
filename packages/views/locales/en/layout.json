@@ -149,7 +149,8 @@
       "view_remove": "Remove from sidebar",
       "view_rename": "Rename",
       "view_duplicate": "Duplicate",
-      "view_delete": "Delete view"
+      "view_delete": "Delete view",
+      "bayclaw": "BayClaw"
     },
     "team": {
       "new_agent": "New agent",

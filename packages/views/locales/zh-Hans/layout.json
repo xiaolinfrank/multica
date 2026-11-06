@@ -148,7 +148,8 @@
       "view_remove": "从侧栏移除",
       "view_rename": "重命名",
       "view_duplicate": "创建副本",
-      "view_delete": "删除视图"
+      "view_delete": "删除视图",
+      "bayclaw": "工作台"
     },
     "team": {
       "new_agent": "新建智能体",

@@ -137,7 +137,8 @@
       "view_remove": "從側欄移除",
       "view_rename": "重新命名",
       "view_duplicate": "建立副本",
-      "view_delete": "刪除檢視"
+      "view_delete": "刪除檢視",
+      "bayclaw": "工作台"
     },
     "team": {
       "new_agent": "新建 AI 代理",

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, BookOpenText, Bot, Monitor, Plus, User, UserPlus, Users } from "@multica/ui/icons";
+import { BarChart3, BookOpenText, Bot, Building2, Monitor, Plus, Server, User, UserPlus, Users } from "@multica/ui/icons";
 import { cn } from "@multica/ui/lib/utils";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
 import { IconButton } from "@multica/ui/components/common/icon-button";
@@ -205,6 +205,13 @@ export function TeamPanel() {
 
         <PanelSection label={t(($) => $.nav.agents)}>
           <PanelList>
+            {/* BayClaw office: the team's shared floor, ahead of the roster. */}
+            <PanelLink
+              href={p.office()}
+              icon={<Building2 />}
+              label={t(($) => $.nav.office)}
+              active={isPathWithin(pathname, p.office())}
+            />
             <PanelLink
               href={p.agents()}
               icon={<Bot />}
@@ -292,6 +299,13 @@ export function TeamPanel() {
                   </span>
                 ) : undefined
               }
+            />
+            {/* BayClaw fleet: agent compute pool, alongside skills/runtimes. */}
+            <PanelLink
+              href={p.fleet()}
+              icon={<Server />}
+              label={t(($) => $.nav.fleet)}
+              active={isPathWithin(pathname, p.fleet())}
             />
             <PanelLink
               href={p.usage()}
