@@ -131,14 +131,20 @@ type Config struct {
 	// and runtimes registered by them are forced to "public" visibility
 	// so every workspace member can bind agents to them.
 	SharedRunnerEmails []string
-	// DefaultWorkspaceSeedTemplate, when non-empty, names an embedded seed
-	// template (internal/seed/templates/<key>.json) that is materialized into a
+	// DefaultWorkspaceSeedTemplate, when non-empty, names a seed template
+	// (<DefaultWorkspaceSeedDir>/<name>.json) that is materialized into a
 	// workspace the first time it brings a runtime online: a curated roster of
 	// agents and squads, each agent bound to that runtime. Empty (the default)
-	// disables seeding entirely so the generic product ships no opinionated team.
-	// Set via DEFAULT_WORKSPACE_SEED_TEMPLATE (e.g. "biomedical-intel" for the
-	// BayClaw deployment).
+	// disables seeding entirely so the generic product ships no opinionated team
+	// — presets are deployment assets, not product defaults.
+	// Set via DEFAULT_WORKSPACE_SEED_TEMPLATE; the name is resolved as
+	// "<name>.json" in DefaultWorkspaceSeedDir, then in the templates directory
+	// embedded in the binary.
 	DefaultWorkspaceSeedTemplate string
+	// DefaultWorkspaceSeedDir is the directory a seed template name resolves
+	// against. Set via WORKSPACE_SEED_DIR; defaults to "presets" relative to the
+	// server's working directory.
+	DefaultWorkspaceSeedDir string
 	// EnsureClusterGenericAgent, when true (the default), auto-provisions a
 	// workspace-visible generic agent ("通用智能体（主）" on the API host,
 	// "通用智能体 N" on numbered fleet nodes) for every built-in Claude

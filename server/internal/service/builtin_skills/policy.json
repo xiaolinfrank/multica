@@ -3,6 +3,11 @@
   "skills": [
     {"name": "multica-platform", "roles": ["owner", "worker", "mika"], "activation": "on-demand"},
     {"name": "multica-cockpit", "roles": ["owner", "worker", "mika"], "activation": "on-demand"},
-    {"name": "multica-onboarding", "roles": ["mika"], "activation": "product-mika-kickoff-only"}
+    {"name": "multica-onboarding", "roles": ["mika"], "activation": "product-mika-kickoff-only"},
+    {"name": "multica-find-skill", "roles": ["owner", "worker", "mika"], "activation": "on-demand"},
+    {"name": "multica-office", "roles": ["owner", "worker", "mika"], "activation": "on-demand"},
+    {"name": "multica-brainstorming", "roles": ["owner", "worker", "mika"], "activation": "on-demand"},
+    {"name": "multica-finance", "roles": ["owner", "worker", "mika"], "activation": "on-demand"},
+    {"name": "multica-research", "roles": ["owner", "worker", "mika"], "activation": "on-demand"}
   ]
 }

@@ -1,7 +1,7 @@
 {
   "preset": "bayclaw-biopharma",
   "title": "BayClaw 生物医药情报套件",
-  "description": "复星医药大湾区虚拟员工平台预制套件:6 个生物医药智能体(文献/临床/靶点/法规/生信/主管)、21 个技能(检索+办公产出+临床法规深度+生信分析+容器沙箱)、ToolUniverse MCP、以及 R/Python 生信容器镜像。",
+  "description": "复星医药大湾区虚拟员工平台预制套件:6 个生物医药智能体(文献/临床/靶点/法规/生信/主管)、22 个技能(检索+办公产出+临床法规深度+生信分析+容器沙箱)、ToolUniverse MCP、以及 R/Python 生信容器镜像。",
   "container_images": [
     {
       "tag": "bayclaw/bioinformatics:r",

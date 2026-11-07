@@ -1,8 +1,9 @@
-// Package seed provides the default workspace bootstrap: a curated team of
-// biomedical-intelligence agents and squads that is created automatically the
-// first time a workspace brings a runtime online. The agent portraits are
-// embedded here so the avatars are self-contained in the binary and resolve to
-// a stable URL regardless of the storage backend (S3 / local / none).
+// Package seed materializes an optional deployment-provided workspace bundle
+// (agents, squads, their skills) the first time a workspace brings a runtime
+// online, and owns the default agent portraits. The portraits are embedded so
+// that a preset can reference them without depending on the storage backend
+// (S3 / local / none); presets themselves are deployment assets and ship in no
+// binary — see templates/README.md.
 package seed
 
 import (

@@ -39,11 +39,14 @@ func preferSeedRuntime(currentProvider string, currentValid bool, candidateOnlin
 	return currentProvider != seedPreferredProvider && candidateProvider == seedPreferredProvider
 }
 
-// seedDefaultWorkspaceTeam imports the embedded preset (skills + agents + MCP +
-// avatars + squads) into a freshly-bootstrapped workspace, binding every agent
-// to runtimeID. It is meant to run in its own goroutine off DaemonRegister, so
-// it builds a fresh background context — the request's is cancelled the moment
-// register returns.
+// seedDefaultWorkspaceTeam imports the deployment's seed template (skills +
+// agents + MCP + avatars + squads) into a freshly-bootstrapped workspace,
+// binding every agent to runtimeID. The template is named by
+// DefaultWorkspaceSeedTemplate and resolved by DefaultWorkspaceSeedDir; the
+// generic product ships none, so this is a no-op unless an operator opted in.
+// It is meant to run in its own goroutine off DaemonRegister, so it builds a
+// fresh background context — the request's is cancelled the moment register
+// returns.
 //
 // Best-effort and idempotent: skills/agents are reused by name (so a partial
 // run tops up rather than duplicating), and squads — which nothing else creates
@@ -61,9 +64,13 @@ func (h *Handler) seedDefaultWorkspaceTeam(wsID, runtimeID pgtype.UUID, runtimeM
 	ctx, cancel := context.WithTimeout(context.Background(), seedOverallTimeout)
 	defer cancel()
 
-	preset, err := seed.LoadPreset()
+	preset, err := seed.LoadPreset(h.cfg.DefaultWorkspaceSeedTemplate, h.cfg.DefaultWorkspaceSeedDir)
 	if err != nil {
-		slog.Error("seed: load preset failed", "error", err)
+		slog.Error("seed: load template failed",
+			"template", h.cfg.DefaultWorkspaceSeedTemplate,
+			"dir", h.cfg.DefaultWorkspaceSeedDir,
+			"available", seed.AvailableTemplates(h.cfg.DefaultWorkspaceSeedDir),
+			"error", err)
 		return
 	}
 

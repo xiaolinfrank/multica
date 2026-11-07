@@ -448,6 +448,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		MaxPreviewSizeBytes:            attachmentpreview.ConfiguredMaxSizeBytes(os.Getenv("MULTICA_MAX_PREVIEW_SIZE")),
 		SharedRunnerEmails:             splitAndTrim(os.Getenv("SHARED_RUNNER_EMAILS")),
 		DefaultWorkspaceSeedTemplate:   strings.TrimSpace(os.Getenv("DEFAULT_WORKSPACE_SEED_TEMPLATE")),
+		DefaultWorkspaceSeedDir:        seedDir(os.Getenv("WORKSPACE_SEED_DIR")),
 		EnsureClusterGenericAgent:      envBool("ENSURE_CLUSTER_GENERIC_AGENT", true),
 		DefaultIssueAssigneeNode:       strings.TrimSpace(os.Getenv("DEFAULT_ISSUE_ASSIGNEE_NODE")),
 		AttachmentFrameAncestors:       origins,
@@ -3091,6 +3092,17 @@ func optionalUUID(s string) pgtype.UUID {
 		return pgtype.UUID{}
 	}
 	return util.MustParseUUID(s)
+}
+
+// seedDir resolves the directory seed template names are read from. An empty
+// WORKSPACE_SEED_DIR keeps the documented default rather than disabling the
+// lookup: a deployment that names a template almost always means the standard
+// `presets` directory next to the working directory.
+func seedDir(raw string) string {
+	if trimmed := strings.TrimSpace(raw); trimmed != "" {
+		return trimmed
+	}
+	return seed.DefaultPresetDir
 }
 
 func splitAndTrim(s string) []string {
