@@ -52,9 +52,9 @@ python3 import_preset.py
 
 | 文件 | 作用 |
 |---|---|
-| `preset.json` | 自包含预设包(技能内容内联 + 智能体指令 + MCP 配置 + 编队结构)。 |
-| `import_preset.py` | 读 `preset.json`,经 API 在目标工作区重建整套配置。 |
-| `gen_preset.py` | 从一个已配置好的源工作区导出 `preset.json`(维护套件时用)。 |
+| `../../presets/bayclaw-biopharma.json` | 自包含预设包(技能内容内联 + 智能体指令 + MCP 配置 + 编队结构)。服务端可选的种子模板，唯一副本。 |
+| `import_preset.py` | 读该预设包,经 API 在目标工作区重建整套配置。 |
+| `gen_preset.py` | 从一个已配置好的源工作区导出该预设包(维护套件时用)。 |
 | `Dockerfile.r` / `env-r.yaml` | R/Bioconductor 生信镜像。 |
 | `Dockerfile.py` / `env-py.yaml` | Python 科学计算 + NGS 镜像。 |
 | `SKILL.md` | 容器沙箱桥技能源文档(已注入预设)。 |

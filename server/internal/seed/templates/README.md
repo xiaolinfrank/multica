@@ -27,8 +27,10 @@ seeding is skipped; it never fails the daemon registration.
 
 ## Writing one
 
-`presets/bayclaw-biopharma.json` in the repository root is a complete worked
-example (biomedical intelligence team). The schema is:
+A complete worked example ships under `presets/` in the repository root: one
+deployment's full roster, kept there rather than here precisely so the generic
+binary carries no team. Point `WORKSPACE_SEED_DIR` at that directory (or copy
+the file into your own) to use it. The schema is:
 
 ```json
 {

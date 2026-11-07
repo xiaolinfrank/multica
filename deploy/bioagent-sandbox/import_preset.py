@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-click import of the BayClaw bio-agent preset into a target workspace.
 
-Reads preset.json (skills + agents + squad, fully inlined) and recreates the
+Reads the deployment preset (skills + agents + squad, fully inlined) and recreates the
 whole team in a workspace via the public API. Idempotent by name: a skill or
 agent that already exists is reused, not duplicated, so re-running tops up a
 partial import instead of erroring.
@@ -24,7 +24,8 @@ API = os.environ["API"].rstrip("/")
 JWT = os.environ["JWT"]
 WS = os.environ["WS"]
 RUNTIME_ID = os.environ.get("RUNTIME_ID", "")
-PRESET = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "preset.json")
+PRESET = sys.argv[1] if len(sys.argv) > 1 else os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "presets", "bayclaw-biopharma.json"))
 H = {"Authorization": f"Bearer {JWT}", "X-Workspace-ID": WS, "Content-Type": "application/json"}
 
 

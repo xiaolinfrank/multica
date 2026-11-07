@@ -9,7 +9,7 @@ keeps each skill's source URL for provenance.
 
 Usage:
   API=http://127.0.0.1:18080 JWT=<owner jwt> WS=<workspace uuid> \
-    python3 gen_preset.py > preset.json
+    python3 gen_preset.py > ../../presets/bayclaw-biopharma.json
 """
 import json, os, sys, urllib.request
 
@@ -93,8 +93,9 @@ for sq in as_list(get("/api/squads"), "squads"):
 bundle = {
     "preset": "bayclaw-biopharma",
     "title": "BayClaw 生物医药情报套件",
-    "description": "复星医药大湾区虚拟员工平台预制套件:6 个生物医药智能体(文献/临床/靶点/法规/生信/主管)、"
-                   "21 个技能(检索+办公产出+临床法规深度+生信分析+容器沙箱)、ToolUniverse MCP、"
+    "description": f"复星医药大湾区虚拟员工平台预制套件:{len(agents_out)} 个生物医药智能体"
+                   f"(文献/临床/靶点/法规/生信/主管)、{len(skills_import)+len(skills_inline)} 个技能"
+                   "(检索+办公产出+临床法规深度+生信分析+容器沙箱)、ToolUniverse MCP、"
                    "以及 R/Python 生信容器镜像。",
     "container_images": [
         {"tag": "bayclaw/bioinformatics:r", "dockerfile": "Dockerfile.r", "env": "env-r.yaml",
