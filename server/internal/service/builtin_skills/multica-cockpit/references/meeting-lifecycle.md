@@ -1,9 +1,11 @@
 # Meeting preparation, records and confirmation
 
-A meeting has one shared NAS directory with fixed subdirectories. Creating a
-meeting provisions that directory; prepare materials and keep minutes there.
-Use the meeting's directory link instead of separate materials and work-package
-folders. Inaccessible storage is an error to report, not evidence of readiness.
+A meeting has one persistent collaboration directory with fixed subdirectories.
+The standard single-owner deployment uses the Mac's internal disk; shared storage
+is an explicit alternative, not a prerequisite. Creating a meeting provisions
+that directory; prepare materials and keep minutes there. Use the meeting's
+directory link instead of separate materials and work-package folders.
+Inaccessible storage is an error to report, not evidence of readiness.
 
 The meeting workspace has three sections:
 

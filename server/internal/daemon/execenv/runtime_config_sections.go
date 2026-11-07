@@ -574,7 +574,7 @@ func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextF
 	default:
 		b.WriteString("Name the path you wrote in your issue comment, as plain text, so a person can open it.\n\n")
 	}
-	b.WriteString("Before creating a missing project directory, verify the exact configured binding is on this host's writable internal disk, with safe containment and ownership. Only then create the missing bound directory and its module/task subdirectories. A missing path does not imply an unmounted NAS. If the binding is unconfigured, inaccessible, or permission is denied, report the observed problem where this surface permits it, keep the result in the task workdir, and do not claim durable delivery. Never guess another path, change a binding, or substitute a nearby directory.\n\n")
+	b.WriteString("Before creating a missing project directory, verify the exact configured binding is on this host's writable internal disk, with safe containment and ownership. Only then create the missing bound directory and its module/task subdirectories. A missing path does not identify the storage failure or authorize a replacement root. If the binding is unconfigured, inaccessible, or permission is denied, report the observed problem where this surface permits it, keep the result in the task workdir, and do not claim durable delivery. Never guess another path, change a binding, or substitute a nearby directory.\n\n")
 }
 
 // writeInstructionPrecedence emits the "Agent Identity wins over the issue

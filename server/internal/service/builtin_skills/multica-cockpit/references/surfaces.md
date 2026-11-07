@@ -1,7 +1,7 @@
 # Scoped cockpit reads
 
 All endpoints require workspace membership and an explicit `X-Workspace-ID`.
-These reads do not initialize a cockpit, dispatch Issues or touch NAS. The old
+These reads do not initialize a cockpit, dispatch Issues or touch external storage. The old
 full-board endpoint remains an installed-client contract; new screens read only
 their work surface and selected objects.
 

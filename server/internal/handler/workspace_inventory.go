@@ -16,7 +16,7 @@ import (
 
 // Workspace inventory is the push-reported, server-cached view of every agent
 // workspace on disk across the fleet's daemons. Daemons cannot be reached
-// inbound and the server has no Full Disk Access to read their (NAS-backed)
+// inbound and the server has no Full Disk Access to read the daemon's
 // filesystems directly, so each daemon periodically POSTs a per-workspace
 // footprint snapshot and the server caches it here to power the workspace
 // management UI without any on-demand round trip.

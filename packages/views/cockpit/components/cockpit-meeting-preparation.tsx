@@ -4,7 +4,7 @@
 // The stage surface is a single action — the platform's own create-issue
 // dialog creates the task, and the created issue lands in the linked-task
 // list below with the preparation role. Everything material lives in the
-// meeting NAS directory by default; anything else is an association.
+// meeting collaboration directory by default; anything else is an association.
 
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";

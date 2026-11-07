@@ -2,7 +2,7 @@
   "title": "Workspaces",
   "subtitle": "Persistent working directories the fleet keeps per agent and issue — they live as long as their issue does.",
   "summary": {
-    "used": "Used on NAS",
+    "used": "Disk used",
     "reclaimable": "Reclaimable",
     "count": "{{count}} workspaces"
   },

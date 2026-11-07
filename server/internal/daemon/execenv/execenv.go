@@ -160,12 +160,12 @@ type TaskContextForEnv struct {
 	ProjectID                     string              // active project for this task, when present
 	ProjectTitle                  string              // human-readable project title
 	ProjectDescription            string              // durable project-level context, rendered into the brief's Project Context section
-	// ProjectCollabPath is the shared-storage directory ("人机协作空间路径")
-	// where the team exchanges deliverables. It is durable configuration like
-	// ProjectDescription, not per-run state, so rendering it into the brief
-	// keeps the brief byte-stable across resumes. Only a PROJECT carries one:
-	// a module's directory is found by name underneath it, so storing a second
-	// path would be a value that can drift from the folder it names.
+	// ProjectCollabPath is the persistent directory ("人机协作空间路径") where
+	// the team exchanges deliverables. The standard single-owner deployment uses
+	// the internal disk; shared storage is optional. It is durable configuration
+	// like ProjectDescription, not per-run state, so rendering it into the brief
+	// keeps the brief byte-stable across resumes. Only a PROJECT carries an
+	// absolute root; a module uses its stable relative directory_name binding.
 	ProjectCollabPath string
 	ModuleID          string // issue's module, when present; issue claims only
 	ModuleDirectory   *string

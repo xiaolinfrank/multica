@@ -247,8 +247,8 @@ type projectResourceFile struct {
 	ProjectDescription string `json:"project_description,omitempty"`
 	// ProjectCollabPath / Module* mirror the brief's Project Context section so
 	// a skill can read the collaboration space without parsing prose. The
-	// module carries no path of its own: its directory sits under the project's,
-	// named after the module.
+	// module carries no absolute path of its own: its stable directory_name
+	// binding sits under the project's root.
 	ProjectCollabPath string                  `json:"project_collab_path,omitempty"`
 	ModuleID          string                  `json:"module_id,omitempty"`
 	ModuleDirectory   *string                 `json:"module_directory,omitempty"`

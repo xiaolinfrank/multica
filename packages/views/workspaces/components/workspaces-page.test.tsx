@@ -87,7 +87,7 @@ describe("WorkspacesPage", () => {
     expect(screen.getByText("Other issue")).toBeTruthy();
     expect(screen.getByText("Agent One")).toBeTruthy();
     expect(screen.getByText("Agent Two")).toBeTruthy();
-    // NAS total surfaces in the summary.
+    // Total disk usage surfaces in the summary.
     expect(screen.getByText("3.0 MB")).toBeTruthy();
     // Open-issue link points at the grouped issue.
     const link = screen.getAllByText("Open issue")[0]?.closest("a");

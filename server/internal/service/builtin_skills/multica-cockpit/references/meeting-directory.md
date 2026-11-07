@@ -1,8 +1,8 @@
 # Meeting directory preparation
 
-Use `multica cockpit meeting directory` to inspect or prepare a meeting directory in the workspace's deployment-approved NAS root. This is separate from directory contacts, minutes exports, materials readiness and Agent dispatch.
+Use `multica cockpit meeting directory` to inspect or prepare a meeting directory in the workspace's deployment-approved storage root. The standard single-owner deployment uses the Mac's internal disk when this capability is configured; shared storage is optional. This is separate from directory contacts, minutes exports, materials readiness and Agent dispatch.
 
-Meeting creation uses the fixed shared directory and subdirectory layout. These commands are for inspection, explicit recovery and diagnostics, not alternative material-collection methods. Never delete or relocate existing meeting files as part of simplifying the workspace.
+Meeting creation uses the persistent collaboration directory and fixed subdirectory layout. These commands are for inspection, explicit recovery and diagnostics, not alternative material-collection methods. Never delete or relocate existing meeting files as part of simplifying the workspace.
 
 ## Read first
 
@@ -20,7 +20,7 @@ multica cockpit meeting directory command MEETING_UUID COMMAND_UUID
 
 Lists return one bounded page. Retain `next_cursor` with the same scope and page size; do not fetch all history to locate a known UUID. Steps are one complete set of at most 32. Read one attempt only when its diagnostic details are needed.
 
-The root list describes configured preparation scopes, not NAS file browsing or a promise that storage is currently writable. `prepare_subpaths` defaults to empty; existing export permission does not grant directory preparation. Root and mount identity must already be provisioned by the deployment operator. Requests never create a root, identity marker or replacement mount.
+The root list describes configured preparation scopes, not general file browsing or a promise that storage is currently writable. `prepare_subpaths` defaults to empty; existing export permission does not grant directory preparation. Root and storage identity must already be provisioned by the deployment operator. Requests never create a root, identity marker or replacement storage location.
 
 The summary contains the current binding and revision, a resolved `binding_candidate` when available, capabilities and exact history/unfinished counts. A reference path may exist without being accessible to this server. Do not derive readiness from a nonempty path, an empty history page or a completed directory plan.
 
@@ -49,7 +49,7 @@ multica cockpit meeting directory prepare MEETING_UUID --request-file command.js
 
 `preview` performs read-only checks. Continue only with `can_confirm: true`, the intended paths and a known principal. For `command.json`, retain the preview fields and add one stable UUID `command_key`, `expected_revision` equal to the observed binding revision, and the returned `context_token`.
 
-`prepare` records a durable bounded plan. A receipt confirms that authorization; it does not mean all directories exist. The server progresses the accepted plan even after the CLI or browser closes. No Issue or Agent Run is created. Existing directories are reported as `observed_existing`; only an acknowledged mkdir may report `created`. Directory preparation never overwrites, renames or deletes NAS files.
+`prepare` records a durable bounded plan. A receipt confirms that authorization; it does not mean all directories exist. The server progresses the accepted plan even after the CLI or browser closes. No Issue or Agent Run is created. Existing directories are reported as `observed_existing`; only an acknowledged mkdir may report `created`. Directory preparation never overwrites, renames or deletes existing files.
 
 ## Unknown results and retry
 
@@ -79,6 +79,6 @@ Cancelling the meeting pauses future directory steps; it does not remove existin
 
 ## Recovery and limits
 
-Use stable error codes and the exact failed attempt to distinguish a missing mount, identity mismatch, permission denial, an unexpected file/symlink, a changed binding and a transient I/O failure. A timeout cannot guarantee that an already-entered filesystem call was cancelled. Late observations are retained on their original attempt without overwriting a newer result or advancing a different grant.
+Use stable error codes and the exact failed attempt to distinguish unavailable storage, identity mismatch, permission denial, an unexpected file/symlink, a changed binding and a transient I/O failure. A timeout cannot guarantee that an already-entered filesystem call was cancelled. Late observations are retained on their original attempt without overwriting a newer result or advancing a different grant.
 
-N1 does not upload files, browse arbitrary NAS content, register fixed input versions, transcribe recordings, confirm materials readiness or publish minutes. Those actions require their own implemented workflow and permissions.
+N1 does not upload files, browse arbitrary stored content, register fixed input versions, transcribe recordings, confirm materials readiness or publish minutes. Those actions require their own implemented workflow and permissions.

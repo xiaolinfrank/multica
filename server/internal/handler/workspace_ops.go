@@ -22,7 +22,7 @@ import (
 // ---------------------------------------------------------------------------
 //
 // Browsing / reading / reclaiming a persistent agent workspace means touching
-// the daemon's (NAS-backed) filesystem, which the server can neither reach
+// the daemon's filesystem, which the server can neither reach
 // inbound nor read directly (no Full Disk Access on network volumes). So these
 // operations use the same pending-request pattern as model-list discovery
 // (see runtime_models.go): a user POST creates a pending op, the daemon pops it

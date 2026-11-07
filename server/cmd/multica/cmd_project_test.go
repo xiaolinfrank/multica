@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// testCollabPath is a project's 人机协作空间路径. Only a project stores one; a
-// module's deliverables go in a folder named after it inside this directory.
+// testCollabPath is a project's 人机协作空间路径. Only a project stores an
+// absolute root; a module uses its stable directory_name binding inside it.
 const testCollabPath = "/Volumes/人机协作空间/AI医药联合创新平台"
 
 // validateProjectStatus must accept the five DB-backed statuses and reject

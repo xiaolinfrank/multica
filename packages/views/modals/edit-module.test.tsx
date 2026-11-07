@@ -81,8 +81,8 @@ describe("EditModuleModal", () => {
     );
   });
 
-  // A module's deliverables land in a folder named after it inside the
-  // project's collaboration space, so the module has no path to edit here.
+  // A module's deliverables use its stable directory_name binding inside the
+  // project's collaboration space, so the module has no absolute path to edit here.
   it("offers no collaboration space field", () => {
     renderModal();
 

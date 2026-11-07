@@ -1,7 +1,7 @@
 // Client-side mirror of the server's collab_path validation
 // (server/internal/handler/collab_path.go). The path is a project-level field
-// — a module's deliverables live in a folder named after it inside the
-// project's space, with no separate value to validate — so this lives beside
+// — a module's deliverables use its stable directory_name binding inside the
+// project's space, with no separate absolute path to validate — so this lives beside
 // the project contract rather than inside one UI surface; every project
 // surface (web, desktop) imports it from here.
 //

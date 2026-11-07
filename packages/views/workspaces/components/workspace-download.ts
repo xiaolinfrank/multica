@@ -3,7 +3,7 @@
 /**
  * Imperative file download for a persistent agent workspace.
  *
- * The server can't read the daemon's (NAS-backed) disk, so a download is the
+ * The server can't read the daemon's filesystem, so a download is the
  * same heartbeat-relayed RPC as the rest of the file ops: fetch the file's full
  * bytes (base64) via `downloadWorkspaceFile`, decode to a Blob, and trigger a
  * "Save As". Used by the preview pane's Download button and the tree's per-file

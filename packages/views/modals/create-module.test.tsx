@@ -78,9 +78,8 @@ describe("CreateModuleModal", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  // A module's deliverables land in a folder named after it inside the
-  // project's collaboration space, so there is nothing here to set up: an
-  // input would be a second value to keep in sync with that folder.
+  // A module's deliverables use its stable directory_name binding inside the
+  // project's collaboration space, so there is no second absolute path to set up.
   it("asks for no collaboration space of its own", () => {
     renderModal();
 

@@ -2001,8 +2001,8 @@ type CockpitMeetingRequest struct {
 	Minutes   *string `json:"minutes"`
 	Decisions *string `json:"decisions"`
 	Actions   *string `json:"actions"`
-	// The meeting's folder on the shared NAS. Set by provisioning rather than
-	// typed, but writable so a folder that already existed can be adopted.
+	// The meeting's folder on configured persistent storage. Set by provisioning
+	// rather than typed, but writable so an existing folder can be adopted.
 	NasDir *string `json:"nas_dir"`
 	// Sent as false by whoever has checked a row the scan guessed at. Only
 	// the scan sets it to true.

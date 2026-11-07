@@ -8,18 +8,17 @@ import (
 	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
-// collab_path ("人机协作空间路径") binds a PROJECT to a directory on shared NAS
-// storage where people and agents hand finished work to each other. The server
-// never stats it — it is resolved on whichever daemon host runs the task — so
-// validation is the only gate between a typo and an agent writing a deliverable
-// somewhere nobody looks.
+// collab_path ("人机协作空间路径") binds a PROJECT to a persistent directory
+// where people and agents hand finished work to each other. The standard
+// single-owner deployment uses the internal disk; shared storage is optional.
+// The server never stats it — it is resolved on whichever daemon host runs the
+// task — so validation is the only gate between a typo and an agent writing a
+// deliverable somewhere nobody looks.
 //
-// Only projects store one. A module's directory sits under its project's, named
-// after the module, so the location is already derivable: a second stored path
-// would be a value that can drift out of sync with the folder it names, a
-// setting someone has to fill in correctly, and a second edit every time the
-// module set is re-cut. The module API's side of that decision is pinned in
-// module_test.go (TestModuleAPIIgnoresCollabPath).
+// Only projects store an absolute root. A module uses its stable relative
+// directory_name binding beneath that root, never a second absolute path or a
+// folder guessed from its current title. The module API's side of that decision
+// is pinned in module_test.go (TestModuleAPIIgnoresCollabPath).
 
 // collabPathExample is the shape a real deployment stores: a CJK mount point,
 // several levels deep, with full-width parentheses in the leaf.

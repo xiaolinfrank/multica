@@ -1,6 +1,6 @@
 /**
  * On-demand file operations against a persistent agent workspace. The server
- * can't read the daemon's (NAS-backed) disk directly, so these run as async
+ * can't read the daemon's filesystem directly, so these run as async
  * RPCs: the client initiates an op, the daemon executes it sandboxed to the
  * workspace and reports back, and the client polls the request until terminal.
  */

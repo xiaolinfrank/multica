@@ -72,8 +72,8 @@ const claimProjectCollabPath = "/Volumes/人机协作空间/AI医药联合创新
 // The whole point of the feature, end to end: an issue inside a module that
 // belongs to a project naming a collaboration space produces a claim carrying
 // the project's path plus the module identity the brief needs to say which
-// module the work belongs to — and NO module path, because the module's folder
-// is found by name under that one directory.
+// module the work belongs to — and NO second absolute module path, because the
+// module uses its stable relative directory_name binding under that one root.
 func TestClaimTask_IssueModuleContext_CarriesProjectCollabPath(t *testing.T) {
 	if testHandler == nil {
 		t.Skip("database not available")

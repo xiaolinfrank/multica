@@ -14,18 +14,18 @@ use the same persistent plan/executor. Work-package meetings use `create_task:fa
 A directory failure never requires creating a second meeting or Issue.
 
 Project or board destinations propose paths; they do not grant filesystem
-write permission. The deployment's existing single workspace NAS root must
-explicitly list `prepare_subpaths` (at most 32; empty by default). Export
-permission does not enable preparation. Roots and permitted boundaries must
-already exist. A preview fixes the root, target and at most 32 ordered steps;
-confirmation never runs an Agent or creates the optional legacy task itself.
+write permission. The workspace's configured storage root must explicitly list
+`prepare_subpaths` (at most 32; empty by default). Export permission does not
+enable preparation. Roots and permitted boundaries must already exist. A preview
+fixes the root, target and at most 32 ordered steps; confirmation never runs an
+Agent or creates the optional legacy task itself.
 
 Darwin/Linux pin directory descriptors and root identity, reject symlink
 components and file conflicts, and confirm each step independently. Other
 platforms refuse unsafe path-based writes. Existing files and partial folders
 are never renamed, overwritten, rolled back or automatically deleted.
 `created` means that attempt performed mkdir; `observed_existing` means only
-that the exact directory was verified. Neither proves permanent NAS availability.
+that the exact directory was verified. Neither proves permanent storage availability.
 
 Provision returns independent `task_error` and `dir_error` outcomes.
 `dir_created:true` confirms only the base directory; nonempty `dir_error` means
@@ -52,7 +52,7 @@ Cloud credentials without a concrete task can only read existing plans.
 Pause or abandon prevents future attempts; in-flight I/O may finish and is
 recorded without reviving the plan. Human claim creates an explicit new grant.
 
-These boundaries do not replace NAS account permissions or isolate two workspaces
+These boundaries do not replace filesystem or storage-account permissions, or isolate two workspaces
 whose administrators deliberately configure the same physical directory.
 
 ## Workspace contact book

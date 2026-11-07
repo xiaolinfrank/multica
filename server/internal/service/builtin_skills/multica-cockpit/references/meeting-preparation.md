@@ -2,7 +2,7 @@
 
 Normal preparation is ordinary material-preparation Issues linked to a meeting.
 Minutes work lives in the linked minutes Issue, and files use the meeting's one
-NAS directory. There are no reusable preparation templates or agenda effects.
+persistent collaboration directory. There are no reusable preparation templates or agenda effects.
 See [meeting lifecycle](meeting-lifecycle.md) for the three-section workspace.
 Direct Issue and execution-item associations, including their purpose labels,
 remain editable after a meeting ends, is cancelled or is archived. These edits

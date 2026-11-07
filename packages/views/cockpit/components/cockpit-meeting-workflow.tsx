@@ -62,7 +62,7 @@ export function CockpitMeetingWorkflowPanel({
   loading: boolean;
   loadError: boolean;
   onReload: () => void;
-  /** The meeting NAS directory: the panel's "open directory" hands off to the OS. */
+  /** The meeting collaboration directory: the panel's "open directory" hands off to the OS. */
   nasDir: string;
   /** Where to open the minutes task when the workflow is not enabled yet. */
   recordingHref?: string;

@@ -47,9 +47,9 @@ func newModuleListTestCmd() *cobra.Command {
 }
 
 // moduleRow is the shape ListModules/GetModule answer with, including the
-// issue counters the CLI renders as done/total. There is no collab_path: a
-// module's deliverables live in a folder named after it inside the project's
-// collaboration space, so the module itself stores no path.
+// issue counters the CLI renders as done/total. There is no absolute collab_path:
+// a module's deliverables use its stable directory_name binding inside the
+// project's collaboration space.
 func moduleRow(id, title string) map[string]any {
 	return map[string]any{
 		"id":           id,

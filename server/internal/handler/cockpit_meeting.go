@@ -32,11 +32,11 @@ import (
 //  1. the meeting row itself (cockpit.go — an ordinary board row),
 //  2. the task it is carried out through: an ordinary Multica issue, filed
 //     under the project and module the programme keeps its meetings in,
-//  3. the folder its material goes in, on the shared NAS under the project's
+//  3. the folder its material goes in, under the project's persistent
 //     collaboration space.
 //
-// Only (1) is guaranteed to succeed. A NAS that is not mounted on this host,
-// or a project with no collaboration space, must not cost someone the record
+// Only (1) is guaranteed to succeed. Inaccessible storage or a project with no
+// collaboration space must not cost someone the record
 // of a meeting that happened — so provisioning reports per-part outcomes and
 // can be re-run for the part that failed.
 

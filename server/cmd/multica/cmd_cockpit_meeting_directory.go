@@ -21,7 +21,7 @@ type cockpitDirectoryCLIOperation struct {
 }
 
 func newCockpitMeetingDirectoryCommand() *cobra.Command {
-	parent := &cobra.Command{Use: "directory", Short: "Prepare and recover a meeting's fixed NAS directory plan",
+	parent := &cobra.Command{Use: "directory", Short: "Prepare and recover a meeting's persistent collaboration directory plan",
 		Long: "Read one bounded page or exact record. Preview is read-only; prepare registers a durable plan executed by the server. " +
 			"Writes require a human credential or an authorized task token within a configured prepare_subpaths scope. " +
 			"Keep the exact request and command key after an unknown result; read the command before explicitly retrying. " +

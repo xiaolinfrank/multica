@@ -159,7 +159,7 @@ func TestCollaborationSpaceRequiresTaskLayerAndAuthorizedDelivery(t *testing.T) 
 			"waiting for confirmation on large files when requested",
 			"where `## Output` permits them, never as clickable links",
 			"verify the exact configured binding is on this host's writable internal disk",
-			"A missing path does not imply an unmounted NAS",
+			"A missing path does not identify the storage failure or authorize a replacement root",
 			"Never guess another path",
 		} {
 			if !strings.Contains(out, want) {

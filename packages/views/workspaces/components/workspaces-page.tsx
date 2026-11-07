@@ -25,7 +25,7 @@ import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { WorkspaceExplorerDialog } from "./workspace-file-browser";
 
-/** Human-readable byte size (binary units, NAS is reported in raw bytes). */
+/** Human-readable byte size (binary units; storage use is reported in raw bytes). */
 function formatBytes(bytes: number): string {
   if (!bytes || bytes < 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];

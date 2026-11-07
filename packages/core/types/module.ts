@@ -10,10 +10,9 @@ export interface Module {
   directory_name?: string | null;
   description: string | null;
   position: number;
-  // No collaboration-space path of its own: a module always lives inside its
-  // project, so its deliverables sit in a folder named after the module under
-  // the project's 人机协作空间路径. Storing that location again would add a
-  // value that can drift from the folder it names.
+  // No absolute collaboration-space path of its own: a module always lives
+  // inside its project and uses directory_name as its stable relative binding
+  // under the project's 人机协作空间路径. Title edits do not move that folder.
   created_at: string;
   updated_at: string;
   issue_count: number;

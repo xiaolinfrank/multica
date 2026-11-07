@@ -93,7 +93,7 @@ single-owner macOS deployment uses its internal disk; shared storage is an
 explicit alternative, not a prerequisite. A task workdir is private scratch
 on the executing machine and does not replace this persistent project root.
 
-Inside it, the layout is derived rather than configured:
+Inside it, the layout uses the stable directory bindings:
 
 ```text
 <project collab_path>/                  ← the unique project root
@@ -126,7 +126,7 @@ POSIX (`/Volumes/...`), UNC (`\\nas\share\...`), or a Windows drive
 separator is assumed. A blank value stores NULL. The server never stats the
 path: it is resolved on whichever daemon host claims the task, so availability
 and permissions must be checked on that host.
-A missing path alone does not establish that a NAS is unmounted.
+A missing path alone does not identify the storage failure or authorize a replacement root.
 
 Presence semantics on update: a key absent from the request body keeps the
 stored value, and the key present with `null` or `""` clears it to NULL.
@@ -160,7 +160,7 @@ module's directory is `project_collab_path` joined with its stable `module_direc
   containment. Only then create that bound root and its module/task children.
   If the root is unconfigured, inaccessible or lacks permission, report the
   actual problem, keep the result in workdir and do not claim persistent
-  delivery. Do not infer an unmounted NAS, silently remount storage, change the
+  delivery. Do not guess the storage failure, silently remount storage, change the
   binding or substitute a nearby directory.
 
 New workspaces receive the versioned collaboration context automatically.
@@ -226,9 +226,9 @@ list in one call stays `PUT /api/modules/reorder`, which has no CLI surface.
 `delete` is owner/admin gated and leaves the module's issues in the project
 with `module_id` null.
 
-There is no `--collab-path` here: the collaboration space is set once on the
-project and each module's folder is found by name inside it — see
-[Collaboration space](#collaboration-space).
+There is no `--collab-path` here: the absolute collaboration root is set once on
+the project and each module uses its stable relative `directory_name` binding
+inside it — see [Collaboration space](#collaboration-space).
 
 To file an issue into a module, use `multica issue create --module` /
 `multica issue update --module` — see

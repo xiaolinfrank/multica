@@ -178,10 +178,9 @@ func TestCreateModuleValidation(t *testing.T) {
 }
 
 // Modules briefly carried a `collab_path` ("人机协作空间路径") of their own before
-// the value was scoped back to the project alone: a module lives inside its
-// project on disk as well as on the platform, so its folder is found by name
-// under the project's directory and a stored second path would only be
-// something that can drift out of sync with the folder it names.
+// the absolute value was scoped back to the project alone: a module lives inside
+// its project on disk as well as on the platform and uses a stable relative
+// directory_name binding, not a second absolute path or a title-derived guess.
 //
 // A desktop client pinned to the older build still posts the key. This test
 // pins what the server does with it: IGNORE — no 400, no echo. Rejecting it

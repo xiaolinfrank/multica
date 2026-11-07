@@ -1955,7 +1955,7 @@
     "bind_after": "After the meeting directory is verified, bind this meeting to the displayed target.",
     "binding_kept": "Keep the current meeting directory binding.",
     "configuration": "Configuration guidance",
-    "configuration_hint": "Ask an administrator to configure preparation subpaths for this workspace’s managed NAS root and verify the executing service’s mount. Then check again. Permission to export minutes does not itself authorize directory preparation.",
+    "configuration_hint": "Ask an administrator to configure preparation subpaths for this workspace’s managed storage root and verify the executing service’s access. Then check again. Permission to export minutes does not itself authorize directory preparation.",
     "prepare_not_configured": "No directory preparation range is configured for this workspace.",
     "outside_scope": "Choose a destination within the authorized preparation range, then preview again.",
     "root_unavailable": "The managed root cannot be accessed. Restore its mount or connection, then check again.",

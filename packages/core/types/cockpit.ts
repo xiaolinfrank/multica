@@ -318,7 +318,7 @@ export interface CockpitMeeting {
   minutes: string;
   decisions: string;
   actions: string;
-  /** Absolute path of the meeting's folder on the shared NAS, as the daemon
+  /** Absolute path of the meeting's folder on configured persistent storage, as the daemon
    *  hosts mount it. Written by provisioning; rendered through the shared
    *  local-path affordance, never as a bare link. */
   nas_dir: string;

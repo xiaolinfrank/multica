@@ -7,7 +7,7 @@ import (
 
 const (
 	// workspaceInventoryInterval is how often the daemon rescans and reports its
-	// workspace footprint. Slow enough not to thrash the (NAS-backed) tree, fast
+	// workspace footprint. Slow enough not to thrash the workspace tree, fast
 	// enough that the management page reflects reality within a few minutes.
 	workspaceInventoryInterval = 3 * time.Minute
 	// workspaceInventoryStartDelay lets registration + the first heartbeat settle
@@ -18,8 +18,8 @@ const (
 // workspaceInventoryLoop periodically scans the workspaces root and reports a
 // per-workspace footprint snapshot to the server. The server caches it to power
 // the workspace management UI — it can never read the daemon's filesystem
-// directly (no inbound reachability, no Full Disk Access on NAS volumes), so
-// this push is the only way the footprint reaches the UI.
+// directly (no inbound reachability or direct disk access), so this push is
+// the only way the footprint reaches the UI.
 func (d *Daemon) workspaceInventoryLoop(ctx context.Context) {
 	if !d.cfg.GCEnabled {
 		// The inventory mirrors what the GC manages; with GC disabled the daemon

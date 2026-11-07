@@ -452,7 +452,7 @@ func printCockpitSurfaceResult(kind string, value map[string]any, q url.Values) 
 	fmt.Fprintf(os.Stdout, "Workspace: %s\nScope: project=%s module=%s\n", strVal(value, "workspace_id"), scopeCLIValue(q.Get("project_id")), scopeCLIValue(q.Get("module_id")))
 	if kind == "meeting" {
 		meeting := value["meeting"].(map[string]any)
-		fmt.Fprintf(os.Stdout, "Meeting: %s (%s)\nNAS directory: %s\n", strVal(meeting, "title"), strVal(meeting, "id"), strVal(meeting, "nas_dir"))
+		fmt.Fprintf(os.Stdout, "Meeting: %s (%s)\nCollaboration directory: %s\n", strVal(meeting, "title"), strVal(meeting, "id"), strVal(meeting, "nas_dir"))
 		fmt.Fprintln(os.Stdout, strVal(meeting, "note"))
 		for _, field := range []string{"linked_issues", "linked_nodes"} {
 			page := value[field].(map[string]any)

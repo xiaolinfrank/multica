@@ -1,6 +1,6 @@
 # Fixed input materials
 
-`multica cockpit input` uses fixed input records for Issue material manifests and Agent Runs; meetings use their shared NAS directory and linked Issues. Availability depends on the deployed server capabilities; a missing endpoint is not permission to upload through another resource or invent a source URL.
+`multica cockpit input` uses fixed input records for Issue material manifests and Agent Runs; meetings use their persistent collaboration directory and linked Issues. Availability depends on the deployed server capabilities; a missing endpoint is not permission to upload through another resource or invent a source URL.
 
 ## Read the exact scope
 

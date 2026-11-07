@@ -88,7 +88,7 @@ A meeting carries what it WAS (`meet_date`, `start_time`/`end_time` as `HH:MM`,
 `kind`, `status`, `track`, `parties`, `organizer`, `location`, `attendees`,
 `meet_no`, `link`) and what it LEFT BEHIND (`note` for remarks,
 `minutes`, `decisions`, `actions`, `nas_dir`). `detected` marks a row the
-scan read off the share rather than one somebody typed.
+scan read from the configured collaboration directory rather than one somebody typed.
 
 `track` names the line of the programme the meeting advances ("高质量数据集",
 "AI平台", "合规和质量体系", "项目管理" — free text, the board's own words).
@@ -147,9 +147,9 @@ surviving pairs. Snapshots and import documents preserve purposes in
 
 `POST .../provision` is the compound step and reports each part on its own
 (`task`, `task_error`, `dir`, `dir_created`, `dir_error`). It never fails the
-meeting: a share that is not mounted on the server must not cost the record of
-a meeting that happened, so re-running it is safe and an existing folder is
-accepted as-is. The task is assigned to the member filing the meeting unless
+meeting: unavailable storage must not cost the record of a meeting that happened,
+so re-running it is safe and an existing folder is accepted as-is. The task is
+assigned to the member filing the meeting unless
 `assignee_type`/`assignee_id` say otherwise — leaving it unassigned would hand
 a diary entry to the workspace's fallback agent and start a run.
 
@@ -157,7 +157,7 @@ Task provisioning serializes on the board and meeting and reuses an existing
 live `role: "task"` issue. A new issue, its meeting relation and optional archive
 node relation commit atomically. Repeating a request does not create a second
 issue or reassign/reclassify the existing one. Directory work is still a
-separate outcome: this is not yet a durable NAS synchronization workflow or a
+separate outcome: this is not yet a continuous storage synchronization workflow or a
 meeting-readiness scheduler. A user-assigned `minutes` purpose on an ordinary
 link does not automatically promote it to the provisioned task.
 
@@ -299,7 +299,7 @@ provision. `meeting_node_id` is the archive sub-item — a node on this board's
 tree, one level below the module ("06.06.03 会议纪要与素材"): its folder holds
 the material and its `code` opens the meeting task's title. The folder chain
 below the project's collaboration space is created if it is missing, one level
-at a time. This endpoint requires an existing root; a missing path does not imply an unmounted NAS.
+at a time. This endpoint requires an existing root; a missing path does not identify the storage failure or authorize a replacement root.
 For local internal-disk storage, verify exact binding, ownership, permissions and containment before preparing the root, then retry; never substitute another root.
 The meeting directory is the task/result layer; its persistent copy does not replace Issue attachments or `## Output` rules.
 

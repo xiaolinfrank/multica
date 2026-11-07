@@ -637,9 +637,9 @@ describe("ProjectDetail collaboration space", () => {
     expect(mocks.updateProject).not.toHaveBeenCalled();
   });
 
-  // A module's deliverables live in a folder named after it inside this
+  // A module's deliverables use its stable directory_name binding inside this
   // directory, so narrowing the page to one module must not grow a second
-  // path for someone to fill in and keep in sync with the first.
+  // absolute path for someone to fill in and keep in sync with the first.
   it("keeps one space when the page is filtered to a module", () => {
     mocks.modules.current = [
       {

@@ -463,7 +463,7 @@ type DaemonHeartbeatAckPayload struct {
 	// and fall back to the singular PendingLocalSkillImport above.
 	PendingLocalSkillImports []DaemonHeartbeatPendingLocalSkillImport `json:"pending_local_skill_imports,omitempty"`
 	// PendingWorkspaceOp asks the daemon to browse/read/reclaim a persistent
-	// agent workspace on its (NAS-backed) disk — the server can't reach it
+	// agent workspace on the daemon's filesystem — the server can't reach it
 	// directly. Carries the op kind plus the target envRoot coordinates the
 	// daemon sandboxes against. Old daemons ignore the unknown field.
 	PendingWorkspaceOp *DaemonHeartbeatPendingWorkspaceOp `json:"pending_workspace_op,omitempty"`

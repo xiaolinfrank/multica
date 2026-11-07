@@ -18,10 +18,10 @@ import (
 )
 
 // Workspace file ops let the management UI browse, read and reclaim a
-// persistent agent workspace that lives on the daemon's (NAS-backed) disk. The
-// server can neither reach the daemon inbound nor read its filesystem (no Full
-// Disk Access on network volumes), so it relays the request through the
-// heartbeat ack and the daemon executes it locally and reports the result.
+// persistent agent workspace on the daemon's filesystem. The server can neither
+// reach the daemon inbound nor read its filesystem directly, so it relays the
+// request through the heartbeat ack and the daemon executes it locally and
+// reports the result.
 //
 // Every op is sandboxed to the target envRoot — legacy layout
 // {WorkspacesRoot}/{WorkspaceID}/{TaskShort} or readable layout
