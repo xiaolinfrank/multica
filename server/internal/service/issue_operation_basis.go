@@ -53,9 +53,8 @@ func projectIssueOperationBasis(f issueOperationFacts, human bool) IssueOperatio
 	if f.ParentIssueID != nil {
 		out.Scope = operationField("allowed", "parent_scope_requires_detach")
 	}
-	if f.PrimaryScope {
-		out.Scope = operationField("blocked", "primary_scope")
-	}
+	// A work item is the filing; changing project/module now re-files or
+	// clears it, so primary ownership no longer blocks a scope edit.
 	if f.RetainedScope {
 		out.Scope = operationField("blocked", "retained_artifact_scope")
 	}
@@ -199,16 +198,9 @@ func (s *IssueService) GetContainerOperationBasis(ctx context.Context, p Contain
 		if f.ActionScope {
 			out.Delete = operationField("blocked", "retained_meeting_action")
 		}
-		if f.PrimaryScope {
-			out.Delete = operationField("blocked", "primary_scope")
-			out.StructuralEdit = operationField("blocked", "primary_scope")
-		}
 		if f.RetainedScope {
 			out.Delete = operationField("blocked", "retained_artifact_scope")
 			out.StructuralEdit = operationField("blocked", "retained_artifact_scope")
-		}
-		if f.PrimarySelf {
-			out.AddChild = operationField("blocked", "primary_execution_leaf")
 		}
 		if f.RetainedSelf {
 			out.AddChild = operationField("blocked", "retained_execution_leaf")
@@ -241,18 +233,6 @@ func (s *IssueService) GetContainerOperationBasis(ctx context.Context, p Contain
 	retained, err := q.HasCockpitArtifactScope(ctx, db.HasCockpitArtifactScopeParams{WorkspaceID: p.WorkspaceID, ProjectID: projectID, ModuleID: moduleID})
 	if err != nil {
 		return out, err
-	}
-	var primary bool
-	if projectID.Valid {
-		primary, err = q.HasCockpitPrimaryForProject(ctx, db.HasCockpitPrimaryForProjectParams{WorkspaceID: p.WorkspaceID, ProjectID: projectID})
-	} else {
-		primary, err = q.HasCockpitPrimaryForModule(ctx, db.HasCockpitPrimaryForModuleParams{WorkspaceID: p.WorkspaceID, ModuleID: moduleID})
-	}
-	if err != nil {
-		return out, err
-	}
-	if primary {
-		out.Delete = operationField("blocked", "primary_scope")
 	}
 	if retained {
 		out.Delete = operationField("blocked", "retained_artifact_scope")

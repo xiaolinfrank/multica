@@ -17,8 +17,8 @@ WITH RECURSIVE args AS (
  AND (x.module IS NULL OR t.valid AND t.module=x.module
  AND EXISTS(SELECT 1 FROM module m WHERE m.workspace_id=x.ws AND m.id=t.module AND m.project_id=t.project))
 ), links AS (
- SELECT p.node_id,p.issue_id FROM cockpit_issue_primary p JOIN scoped n ON n.id=p.node_id CROSS JOIN args x
- WHERE p.workspace_id=x.ws AND p.issue_deleted_at IS NULL
+ SELECT i.work_item_id AS node_id,i.id AS issue_id FROM issue i JOIN scoped n ON n.id=i.work_item_id CROSS JOIN args x
+ WHERE i.workspace_id=x.ws
  UNION
  SELECT l.node_id,l.issue_id FROM cockpit_node_issue l JOIN scoped n ON n.id=l.node_id CROSS JOIN args x WHERE l.workspace_id=x.ws
 ), facts AS MATERIALIZED (

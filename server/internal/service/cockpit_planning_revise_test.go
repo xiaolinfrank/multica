@@ -60,8 +60,8 @@ func TestCockpitPlanningReviseTrailsDecisionsAndKeepsCreatedIssues(t *testing.T)
 	if got := f.Count(t, "SELECT count(*) FROM issue WHERE workspace_id=$1 AND id=$2", f.ws, createdIssue); got != 1 {
 		t.Fatal("revising to dismiss deleted the previously created issue")
 	}
-	if got := f.Count(t, "SELECT count(*) FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2 AND node_id=$3 AND issue_deleted_at IS NULL", f.ws, createdIssue, f.a); got != 1 {
-		t.Fatal("revising to dismiss unbound the created issue's primary ownership")
+	if got := f.Count(t, "SELECT count(*) FROM issue WHERE workspace_id=$1 AND id=$2 AND work_item_id=$3", f.ws, createdIssue, f.a); got != 1 {
+		t.Fatal("revising to dismiss unbound the created issue's work item")
 	}
 	trail := actionTrail(t, f, a.ID)
 	if len(trail) != 1 || trail[0]["resolution"] != "create" || trail[0]["status"] != "accepted" || trail[0]["issue_id"] != util.UUIDToString(createdIssue) {

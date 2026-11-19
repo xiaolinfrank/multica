@@ -143,7 +143,7 @@ func linkCockpitAcceptanceReviewerIssue(ctx context.Context, q *db.Queries, p Is
 	if err != nil {
 		return err
 	}
-	if _, err = q.CreateCockpitIssuePrimary(ctx, db.CreateCockpitIssuePrimaryParams{WorkspaceID: in.WorkspaceID, IssueID: issue.ID, NodeID: in.NodeID, CreatedBy: in.ActorID}); err != nil {
+	if err = fileCockpitIssueUnderNode(ctx, q, issue, in.NodeID, in.ActorID); err != nil {
 		return err
 	}
 	h.retired, err = q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{WorkspaceID: in.WorkspaceID, ID: r.ReviewIssueID, Status: "cancelled"})

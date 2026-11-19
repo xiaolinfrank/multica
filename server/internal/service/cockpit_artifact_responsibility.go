@@ -270,8 +270,7 @@ func linkCockpitArtifactProducerIssue(ctx context.Context, q *db.Queries, p Issu
 	if err != nil {
 		return err
 	}
-	_, err = q.CreateCockpitIssuePrimary(ctx, db.CreateCockpitIssuePrimaryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID, NodeID: h.artifact.OwnerNodeID, CreatedBy: h.producer.ActorID})
-	return err
+	return fileCockpitIssueUnderNode(ctx, q, issue, h.artifact.OwnerNodeID, h.producer.ActorID)
 }
 func (s *IssueService) ListCockpitArtifactProducerHistory(ctx context.Context, p CockpitArtifactRead) (CockpitArtifactProducerPage, error) {
 	tx, q, err := s.beginPlanningRead(ctx)
@@ -498,7 +497,7 @@ func linkCockpitArtifactReviewerIssue(ctx context.Context, q *db.Queries, p Issu
 	if _, err = q.SetCockpitArtifactVersionReviewer(ctx, db.SetCockpitArtifactVersionReviewerParams{WorkspaceID: in.WorkspaceID, ArtifactID: in.ArtifactID, ID: h.version.ID, ReviewerID: in.ReviewerID, ReviewIssueID: issue.ID}); err != nil {
 		return err
 	}
-	if _, err = q.CreateCockpitIssuePrimary(ctx, db.CreateCockpitIssuePrimaryParams{WorkspaceID: in.WorkspaceID, IssueID: issue.ID, NodeID: old.OwnerNodeID, CreatedBy: in.ActorID}); err != nil {
+	if err = fileCockpitIssueUnderNode(ctx, q, issue, old.OwnerNodeID, in.ActorID); err != nil {
 		return err
 	}
 	h.retired, err = q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{WorkspaceID: in.WorkspaceID, ID: h.version.ReviewIssueID, Status: "cancelled"})

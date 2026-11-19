@@ -323,8 +323,7 @@ func TestCockpitPreparationDerivedScopeCanBeExplicitlyReauthorized(t *testing.T)
 		}
 	}
 	setScope(project, module)
-	primaryBinding, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, NodeID: parseTestUUID(t, node), ActorID: f.owner})
-	if err != nil {
+	if _, err := attachWorkItem(t, f, issue, parseTestUUID(t, node)); err != nil {
 		t.Fatal(err)
 	}
 	due := "2026-12-20"
@@ -334,21 +333,22 @@ func TestCockpitPreparationDerivedScopeCanBeExplicitlyReauthorized(t *testing.T)
 	}
 	_, application := preparationCancel(t, f, CockpitCancellationPreviewInput{Reason: "Move the retained preparation with its confirmed delivery.", Issues: []CockpitCancellationIssueChoice{{IssueID: util.UUIDToString(issue), ExpectedRevision: issueRow.Revision, Action: "change_due_date", DueDate: &due}}, RunIDs: []string{}})
 	effects := preparationEffects(t, f, application.Current.ID)
-	// An existing primary prevents changing its inherited scope underneath the
-	// Issue. Withdraw the binding, change the mapping, then explicitly reattach.
-	unlinked, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, ActorID: f.owner, ExpectedRevision: primaryBinding.Revision})
+	// Withdraw the filing, change the mapping underneath it, then name the work
+	// item again: naming it refiles the issue to the node's new project and
+	// module (the old "ownership never refiles" refusal is gone).
+	beforeUnlink, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: issue})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlinked, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, ActorID: f.owner, ExpectedRevision: beforeUnlink.Revision})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err = f.Pool.Exec(ctx, "UPDATE cockpit_node SET project_id=$2,module_id=$3 WHERE workspace_id=$1 AND id=$4", f.ws, nextProject, nextModule, root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, NodeID: parseTestUUID(t, node), ActorID: f.owner, ExpectedRevision: unlinked.Revision}); !errors.Is(err, ErrCockpitWorkflowConflict) {
-		t.Fatalf("ownership silently refiled an Issue with mismatched scope: %v", err)
-	}
-	setScope(nextProject, nextModule)
 	if _, err = f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, NodeID: parseTestUUID(t, node), ActorID: f.owner, ExpectedRevision: unlinked.Revision}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("attach after rebinding: %v", err)
 	}
 	p := CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: parseTestUUID(t, application.Current.ID), EffectID: parseTestUUID(t, effects[0].ID)}
 	old := CockpitPreparationEffectApplyInput{CommandKey: effects[0].CommandKey, AuthorizationKey: effects[0].AuthorizationKey, AuthorizationRevision: effects[0].AuthorizationRevision}
@@ -376,8 +376,8 @@ func TestCockpitPreparationDerivedScopeCanBeExplicitlyReauthorized(t *testing.T)
 		t.Fatalf("new grant did not govern the retained Issue: %+v %+v %v", updated, created, err)
 	}
 	var primary string
-	if err = f.Pool.QueryRow(ctx, "SELECT node_id::text FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2", f.ws, updated.ID).Scan(&primary); err != nil || primary != node {
-		t.Fatalf("stable primary identity lost: %s %v", primary, err)
+	if err = f.Pool.QueryRow(ctx, "SELECT work_item_id::text FROM issue WHERE workspace_id=$1 AND id=$2", f.ws, updated.ID).Scan(&primary); err != nil || primary != node {
+		t.Fatalf("stable work item identity lost: %s %v", primary, err)
 	}
 }
 

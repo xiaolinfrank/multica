@@ -60,6 +60,11 @@ type CockpitIssueSummary struct {
 	PrimaryRevision int64   `json:"primary_revision"`
 	CreationKey     *string `json:"creation_key"`
 }
+
+// CockpitPrimaryView is the compatibility projection of issue.work_item_id.
+// Revision is the ISSUE's revision: naming a work item refiles the issue, so
+// the optimistic check and the returned token both live on the issue rather
+// than on the creation receipt.
 type CockpitPrimaryView struct {
 	IssueID   string  `json:"issue_id"`
 	NodeID    *string `json:"node_id"`

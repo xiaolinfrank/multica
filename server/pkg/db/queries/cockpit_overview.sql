@@ -36,12 +36,12 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  AND (x.project IS NULL OR p.id=x.project) AND (x.module IS NULL OR m.id=x.module)
 ), primary_facts AS (
  SELECT i.id,i.title,i.status,cockpit_issue_category(i.status,st.category) AS category,
- i.assignee_type,i.assignee_id,i.due_date,i.created_at,p.node_id,
+ i.assignee_type,i.assignee_id,i.due_date,i.created_at,i.work_item_id AS node_id,
  (cockpit_issue_category(i.status,st.category) NOT IN ('done','closed') AND i.due_date<x.as_of)::bool AS overdue,
  (cockpit_issue_category(i.status,st.category) NOT IN ('done','closed') AND (i.status='blocked' OR st.category='blocked'))::bool AS blocked
- FROM cockpit_issue_primary p JOIN issue i ON i.id=p.issue_id AND i.workspace_id=p.workspace_id CROSS JOIN args x
+ FROM issue i CROSS JOIN args x
  LEFT JOIN issue_status st ON st.workspace_id=i.workspace_id AND st.key=i.status
- WHERE p.workspace_id=x.ws AND p.node_id IS NOT NULL AND p.issue_deleted_at IS NULL AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
+ WHERE i.workspace_id=x.ws AND i.work_item_id IS NOT NULL AND (x.project IS NULL OR i.project_id=x.project) AND (x.module IS NULL OR i.module_id=x.module)
 ), meetings AS (
  SELECT m.id,m.code,m.title,m.meet_date,m.time_range,m.status,m.created_at,m.ended_at,m.archived_at,
  m.minutes_configured_by AS created_by,m.minutes_focus_issue_id,m.minutes_reviewer_id,m.minutes_materials_ready,m.minutes_current_version_id,m.minutes_published_version_id

@@ -9,8 +9,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/events"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 type cockpitPlanningIssue struct {
@@ -135,42 +137,96 @@ func beginPlanning(ctx context.Context, s *IssueService, ws, actor pgtype.UUID) 
 	}
 	return tx, q, nil
 }
-func attachPlanningPrimary(ctx context.Context, q *db.Queries, issue db.Issue, node db.CockpitNode, actor pgtype.UUID, refuseOther bool, create *CockpitNodeTaskCreate) (db.CockpitIssuePrimary, pgtype.UUID, error) {
+
+// attachPlanningPrimary files an issue under a work item. issue.work_item_id
+// is the filing; the legacy cockpit_issue_primary row is only the creation
+// receipt (creation_key/hash), so its node_id is deliberately left NULL. A
+// named work item supplies its own module and project, and the DB guard that
+// used to refuse such a move is cleared first for the whole subtree (I4).
+func attachPlanningPrimary(ctx context.Context, q *db.Queries, issue db.Issue, node db.CockpitNode, actor pgtype.UUID, create *CockpitNodeTaskCreate) (db.CockpitIssuePrimary, pgtype.UUID, error) {
 	_, project, module, err := requireExecutionLeaf(ctx, q, issue.WorkspaceID, node.ID)
 	if err != nil {
 		return db.CockpitIssuePrimary{}, pgtype.UUID{}, err
 	}
-	if issue.ProjectID != project || issue.ModuleID != module {
-		return db.CockpitIssuePrimary{}, pgtype.UUID{}, fmt.Errorf("%w: issue project/module does not match this L3; ownership never refiles an issue", ErrCockpitWorkflowConflict)
+	previous := issue.WorkItemID
+	if previous == node.ID {
+		receipt, err := ensureCockpitPrimaryReceipt(ctx, q, issue, actor, create)
+		return receipt, previous, err
 	}
-	old, err := q.LockCockpitIssuePrimary(ctx, db.LockCockpitIssuePrimaryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return old, pgtype.UUID{}, err
+	// A sub-issue is filed where its parent is filed (I4). This is the same
+	// rule the issue update path applies; the work item is not an independent
+	// property a child may change on its own.
+	if issue.ParentIssueID.Valid {
+		parent, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{ID: issue.ParentIssueID, WorkspaceID: issue.WorkspaceID})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return db.CockpitIssuePrimary{}, previous, err
+		}
+		if err == nil && parent.WorkItemID != node.ID {
+			return db.CockpitIssuePrimary{}, previous, fmt.Errorf("%w: a sub-issue must stay in its parent's work item", ErrChildWorkItemMismatch)
+		}
 	}
+	// The work item the issue leaves becomes a related node, the same way the
+	// old primary row did: a refile changes the filing, not the history.
+	if previous.Valid {
+		if err := q.EnsureCockpitNodeReference(ctx, db.EnsureCockpitNodeReferenceParams{WorkspaceID: issue.WorkspaceID, NodeID: previous, IssueID: issue.ID}); err != nil {
+			return db.CockpitIssuePrimary{}, previous, err
+		}
+	}
+	if err := q.ClearCockpitPrimaryNodeIDsForSubtree(ctx, db.ClearCockpitPrimaryNodeIDsForSubtreeParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID}); err != nil {
+		return db.CockpitIssuePrimary{}, previous, err
+	}
+	if err := q.SetIssueWorkItemSubtree(ctx, db.SetIssueWorkItemSubtreeParams{
+		WorkspaceID: issue.WorkspaceID,
+		IssueID:     issue.ID,
+		WorkItemID:  node.ID,
+		ProjectID:   project,
+		ModuleID:    module,
+	}); err != nil {
+		return db.CockpitIssuePrimary{}, previous, err
+	}
+	receipt, err := ensureCockpitPrimaryReceipt(ctx, q, issue, actor, create)
+	return receipt, previous, err
+}
+
+// fileCockpitIssueUnderNode files a just-created issue under the work item its
+// artifact/acceptance flow belongs to, and writes its creation receipt. These
+// flows used to write the legacy primary row directly; the filing now lives on
+// issue.work_item_id so every reader sees one authority.
+func fileCockpitIssueUnderNode(ctx context.Context, q *db.Queries, issue db.Issue, nodeID, actor pgtype.UUID) error {
+	if !nodeID.Valid {
+		return nil
+	}
+	node, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{WorkspaceID: issue.WorkspaceID, ID: nodeID})
+	if err != nil {
+		return planningError(err)
+	}
+	_, _, err = attachPlanningPrimary(ctx, q, issue, node, actor, nil)
+	return err
+}
+
+// ensureCockpitPrimaryReceipt locks the creation receipt, creating it when the
+// issue predates the receipt table. Its node_id stays NULL: the filing lives on
+// issue.work_item_id, and the receipt only keeps creation-key idempotency.
+func ensureCockpitPrimaryReceipt(ctx context.Context, q *db.Queries, issue db.Issue, actor pgtype.UUID, create *CockpitNodeTaskCreate) (db.CockpitIssuePrimary, error) {
+	receipt, err := q.LockCockpitIssuePrimary(ctx, db.LockCockpitIssuePrimaryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID})
 	if err == nil {
-		if old.NodeID == node.ID {
-			return old, old.NodeID, nil
-		}
-		if refuseOther && old.NodeID.Valid {
-			return old, old.NodeID, fmt.Errorf("%w: issue already belongs to another L3; move it explicitly first", ErrCockpitWorkflowConflict)
-		}
-		if old.NodeID.Valid {
-			if err := q.EnsureCockpitNodeReference(ctx, db.EnsureCockpitNodeReferenceParams{WorkspaceID: issue.WorkspaceID, NodeID: old.NodeID, IssueID: issue.ID}); err != nil {
-				return old, old.NodeID, err
-			}
-		}
-		row, err := q.SetCockpitIssuePrimary(ctx, db.SetCockpitIssuePrimaryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID, NodeID: node.ID, ActorID: actor, ExpectedRevision: old.Revision})
-		return row, old.NodeID, planningError(err)
+		return receipt, nil
 	}
-	params := db.CreateCockpitIssuePrimaryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID, NodeID: node.ID, CreatedBy: actor}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return receipt, err
+	}
+	params := db.CreateCockpitIssuePrimaryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID, CreatedBy: actor}
 	if create != nil {
 		params.CreationKey = create.CreationKey
 		params.CreationNodeID = create.NodeID
 		params.CreationHash = nodeTaskCreationHash(*create)
 	}
-	row, err := q.CreateCockpitIssuePrimary(ctx, params)
-	return row, pgtype.UUID{}, planningError(err)
+	return q.CreateCockpitIssuePrimary(ctx, params)
 }
+
+// SetCockpitIssuePrimaryNode is the compatibility surface for the old primary
+// endpoint: it now writes issue.work_item_id and uses the ISSUE's revision for
+// the optimistic check (the receipt revision no longer guards a filing).
 func (s *IssueService) SetCockpitIssuePrimaryNode(ctx context.Context, p CockpitPrimaryNodeCommand) (db.CockpitIssuePrimary, error) {
 	if p.ExpectedRevision < 0 {
 		return db.CockpitIssuePrimary{}, fmt.Errorf("%w: expected_revision must not be negative", ErrCockpitWorkflowInput)
@@ -184,44 +240,79 @@ func (s *IssueService) SetCockpitIssuePrimaryNode(ctx context.Context, p Cockpit
 	if err != nil {
 		return db.CockpitIssuePrimary{}, planningError(err)
 	}
-	old, err := q.LockCockpitIssuePrimary(ctx, db.LockCockpitIssuePrimaryParams{WorkspaceID: p.WorkspaceID, IssueID: p.IssueID})
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return old, err
+	if issue.Revision != p.ExpectedRevision {
+		return db.CockpitIssuePrimary{}, ErrCockpitWorkflowConflict
 	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		old = db.CockpitIssuePrimary{IssueID: p.IssueID, WorkspaceID: p.WorkspaceID}
+	if issue.WorkItemID == p.NodeID {
+		receipt, err := ensureCockpitPrimaryReceipt(ctx, q, issue, p.ActorID, nil)
+		if err != nil {
+			return receipt, err
+		}
+		receipt.Revision = issue.Revision
+		receipt.NodeID = issue.WorkItemID
+		if err := tx.Commit(ctx); err != nil {
+			return receipt, err
+		}
+		return receipt, nil
 	}
-	if old.Revision != p.ExpectedRevision {
-		return old, ErrCockpitWorkflowConflict
-	}
-	if old.NodeID == p.NodeID {
-		return old, nil
-	}
-	var row db.CockpitIssuePrimary
+	var receipt db.CockpitIssuePrimary
 	if p.NodeID.Valid {
 		node, _, _, err := requireExecutionLeaf(ctx, q, p.WorkspaceID, p.NodeID)
 		if err != nil {
-			return old, err
+			return db.CockpitIssuePrimary{}, err
 		}
-		row, _, err = attachPlanningPrimary(ctx, q, issue, node, p.ActorID, false, nil)
+		receipt, _, err = attachPlanningPrimary(ctx, q, issue, node, p.ActorID, nil)
 		if err != nil {
-			return old, err
+			return receipt, err
 		}
 	} else {
-		if err := q.EnsureCockpitNodeReference(ctx, db.EnsureCockpitNodeReferenceParams{WorkspaceID: p.WorkspaceID, NodeID: old.NodeID, IssueID: p.IssueID}); err != nil {
-			return old, err
+		// Unfiling leaves the issue in its current project/module; the work
+		// item was the only thing being withdrawn.
+		if err := q.ClearCockpitPrimaryNodeIDsForSubtree(ctx, db.ClearCockpitPrimaryNodeIDsForSubtreeParams{WorkspaceID: p.WorkspaceID, IssueID: p.IssueID}); err != nil {
+			return db.CockpitIssuePrimary{}, err
 		}
-		row, err = q.SetCockpitIssuePrimary(ctx, db.SetCockpitIssuePrimaryParams{WorkspaceID: p.WorkspaceID, IssueID: p.IssueID, NodeID: p.NodeID, ActorID: p.ActorID, ExpectedRevision: p.ExpectedRevision})
+		if err := q.SetIssueWorkItemSubtree(ctx, db.SetIssueWorkItemSubtreeParams{WorkspaceID: p.WorkspaceID, IssueID: p.IssueID, ProjectID: issue.ProjectID, ModuleID: issue.ModuleID}); err != nil {
+			return db.CockpitIssuePrimary{}, err
+		}
+		receipt, err = ensureCockpitPrimaryReceipt(ctx, q, issue, p.ActorID, nil)
 		if err != nil {
-			return old, planningError(err)
+			return receipt, err
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return old, err
+	updated, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: p.WorkspaceID, ID: p.IssueID})
+	if err != nil {
+		return receipt, err
 	}
-	s.primaryChanged(p.WorkspaceID, p.ActorID, p.IssueID, old.NodeID, p.NodeID)
-	return row, nil
+	receipt.Revision = updated.Revision
+	receipt.NodeID = updated.WorkItemID
+	if err := tx.Commit(ctx); err != nil {
+		return receipt, err
+	}
+	s.publishIssueFilingUpdate(ctx, updated, issue.ProjectID, issue.ModuleID, issue.WorkItemID, p.ActorID)
+	s.primaryChanged(p.WorkspaceID, p.ActorID, p.IssueID, issue.WorkItemID, p.NodeID)
+	return receipt, nil
 }
+
+// publishIssueFilingUpdate tells issue subscribers that the filing moved. The
+// flags mirror the update handler: a derived project/module move still sets
+// them, unlike a work-item change made through UpdateIssue.
+func (s *IssueService) publishIssueFilingUpdate(ctx context.Context, issue db.Issue, previousProject, previousModule, previousWorkItem, actor pgtype.UUID) {
+	if s.Bus == nil {
+		return
+	}
+	workspace, err := s.Queries.GetWorkspace(ctx, issue.WorkspaceID)
+	if err != nil {
+		return
+	}
+	s.Bus.Publish(events.Event{Type: protocol.EventIssueUpdated, WorkspaceID: util.UUIDToString(issue.WorkspaceID), ActorType: "member", ActorID: util.UUIDToString(actor), Payload: map[string]any{
+		"issue":             IssueToMapResolved(ctx, s.Queries, issue, workspace.IssuePrefix),
+		"work_item_changed": previousWorkItem != issue.WorkItemID,
+		"project_changed":   previousProject != issue.ProjectID,
+		"module_changed":    previousModule != issue.ModuleID,
+		"prev_work_item_id": planningUUID(previousWorkItem),
+	}})
+}
+
 func nodeTaskCreationHash(p CockpitNodeTaskCreate) string {
 	return planningHash(struct {
 		Node, Actor                                     pgtype.UUID
@@ -331,6 +422,10 @@ func prepareCockpitPlanningIssue(ctx context.Context, q *db.Queries, p *IssueCre
 	next.WorkspaceID = p.WorkspaceID
 	next.CreatorID = p.CreatorID
 	next.CreatorType = "member"
+	// The work item is the filing authority; Create derives (and verifies)
+	// project/module from it. The pair is passed too so the request is
+	// explicit about the scope the node resolved to.
+	next.WorkItemID = node.ID
 	next.ProjectID = project
 	next.ModuleID = module
 	next.Status = "backlog"
@@ -341,7 +436,7 @@ func prepareCockpitPlanningIssue(ctx context.Context, q *db.Queries, p *IssueCre
 }
 func linkCockpitPlanningIssue(ctx context.Context, q *db.Queries, p IssueCreateParams, issue db.Issue) error {
 	hook := p.CockpitPlanning
-	if _, _, err := attachPlanningPrimary(ctx, q, issue, hook.node, p.CreatorID, true, hook.create); err != nil {
+	if _, _, err := attachPlanningPrimary(ctx, q, issue, hook.node, p.CreatorID, hook.create); err != nil {
 		return err
 	}
 	if hook.action != nil {

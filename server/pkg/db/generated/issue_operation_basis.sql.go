@@ -18,7 +18,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (SELECT $1::uuid AS ws,$2::uuid AS node_
  UNION SELECT n.id,n.parent_id FROM cockpit_node n JOIN descendants d ON n.parent_id=d.id WHERE n.workspace_id=(SELECT ws FROM args)
 ), protected AS MATERIALIZED (
  SELECT d.id,'artifact'::text AS reason FROM descendants d WHERE cockpit_artifact_references_node((SELECT ws FROM args),d.id)
- UNION SELECT d.id,'primary' FROM descendants d JOIN cockpit_issue_primary p ON p.node_id=d.id WHERE p.workspace_id=(SELECT ws FROM args)
+ UNION SELECT d.id,'primary' FROM descendants d JOIN issue i ON i.work_item_id=d.id WHERE i.workspace_id=(SELECT ws FROM args)
  UNION SELECT d.id,'action' FROM descendants d JOIN cockpit_meeting_action a ON a.node_id=d.id WHERE a.workspace_id=(SELECT ws FROM args)
 ), targets AS (
  SELECT p.id,jsonb_build_object('kind','node','node_id',p.id,'view',CASE WHEN bool_or(p.reason='artifact') THEN CASE WHEN EXISTS(SELECT 1 FROM cockpit_acceptance_definition a WHERE a.workspace_id=(SELECT ws FROM args) AND a.node_id=p.id) THEN 'acceptance' ELSE 'artifacts' END ELSE 'tasks' END,'label',n.name,'purpose',CASE WHEN bool_or(p.reason='artifact') THEN 'retained_node' ELSE 'primary' END) AS target FROM protected p JOIN cockpit_node n ON n.id=p.id AND n.workspace_id=(SELECT ws FROM args) GROUP BY p.id,n.name
@@ -59,7 +59,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (SELECT $1::uuid AS ws,$2::uuid AS proje
  UNION SELECT a.root_id,n.id,n.parent_id,n.project_id,n.module_id FROM ancestors a JOIN cockpit_node n ON n.id=a.parent_id AND n.workspace_id=(SELECT ws FROM args)
 ), matching AS (
  SELECT DISTINCT a.root_id AS id FROM ancestors a,args x WHERE (x.project_id IS NOT NULL AND a.project_id=x.project_id) OR (x.module_id IS NOT NULL AND a.module_id=x.module_id)
- UNION SELECT p.node_id FROM cockpit_issue_primary p JOIN issue i ON i.id=p.issue_id AND i.workspace_id=p.workspace_id,args x WHERE p.workspace_id=x.ws AND p.node_id IS NOT NULL AND ((x.project_id IS NOT NULL AND i.project_id=x.project_id) OR (x.module_id IS NOT NULL AND i.module_id=x.module_id))
+ UNION SELECT i.work_item_id FROM issue i,args x WHERE i.workspace_id=x.ws AND i.work_item_id IS NOT NULL AND ((x.project_id IS NOT NULL AND i.project_id=x.project_id) OR (x.module_id IS NOT NULL AND i.module_id=x.module_id))
 ), page AS (SELECT m.id,n.name FROM matching m JOIN cockpit_node n ON n.id=m.id AND n.workspace_id=(SELECT ws FROM args) ORDER BY m.id LIMIT 3)
 SELECT jsonb_build_object('items',coalesce((SELECT jsonb_agg(jsonb_build_object('kind','node','node_id',p.id,'view','details','label',p.name,'purpose','retained_scope') ORDER BY p.id) FROM page p),'[]'::jsonb),'total',(SELECT count(*) FROM matching))::jsonb AS payload
 `
@@ -111,7 +111,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  WHERE v.workspace_id=(SELECT ws FROM args) AND (EXISTS(SELECT 1 FROM agent_task_queue t WHERE t.input_manifest_version_id=v.id)
  OR EXISTS(SELECT 1 FROM cockpit_artifact_version a WHERE a.workspace_id=v.workspace_id AND a.input_manifest_version_id=v.id))
 ), retained AS MATERIALIZED (SELECT DISTINCT issue_id FROM artifact_edges), primary_edges AS MATERIALIZED (
- SELECT p.issue_id,p.node_id FROM cockpit_issue_primary p JOIN related r ON r.id=p.issue_id WHERE p.workspace_id=(SELECT ws FROM args) AND p.node_id IS NOT NULL
+ SELECT i.id AS issue_id,i.work_item_id AS node_id FROM issue i JOIN related r ON r.id=i.id WHERE i.workspace_id=(SELECT ws FROM args) AND i.work_item_id IS NOT NULL
 ), meeting_edges AS MATERIALIZED (
  SELECT l.issue_id,l.meeting_id,NULL::uuid AS action_id,'meeting_workflow'::text AS purpose,
    EXISTS(SELECT 1 FROM cockpit_meeting m WHERE m.workspace_id=l.workspace_id AND m.id=l.meeting_id

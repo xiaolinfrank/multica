@@ -496,13 +496,9 @@ func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "This module is retained by artifact or acceptance facts; preserve its plan structure and use the formal workflow")
 		return
 	}
-	if owned, err := qtx.HasCockpitPrimaryForModule(r.Context(), db.HasCockpitPrimaryForModuleParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to check L3 ownership")
-		return
-	} else if owned {
-		writeError(w, http.StatusConflict, "clear L3 primary ownership before deleting this module")
-		return
-	}
+	// Work items are the filing now, and detaching the module's issues clears
+	// them (DetachIssuesFromModule). The node rows themselves are removed by
+	// the structure writer in S3; this path must not refuse the delete.
 	if err := qtx.ClearCockpitNodeModuleBinding(r.Context(), db.ClearCockpitNodeModuleBindingParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
 		return

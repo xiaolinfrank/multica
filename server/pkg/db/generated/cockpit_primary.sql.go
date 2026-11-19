@@ -11,14 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearCockpitPrimaryNodeIDsForSubtree = `-- name: ClearCockpitPrimaryNodeIDsForSubtree :exec
+WITH RECURSIVE descendants AS (
+    SELECT id FROM issue WHERE workspace_id=$1::uuid AND id=$2::uuid
+    UNION ALL
+    SELECT i.id FROM issue i JOIN descendants d ON i.parent_issue_id=d.id
+     WHERE i.workspace_id=$1::uuid
+)
+UPDATE cockpit_issue_primary p SET node_id=NULL,revision=p.revision+1,updated_at=now()
+WHERE p.workspace_id=$1::uuid AND p.node_id IS NOT NULL
+  AND p.issue_id IN (SELECT id FROM descendants)
+`
+
+type ClearCockpitPrimaryNodeIDsForSubtreeParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+}
+
+// The receipt stops naming a node (issue.work_item_id is the filing), and the
+// database guard refuses a project/module change while any receipt in the
+// subtree still names one. Clearing first is what makes a re-file legal.
+func (q *Queries) ClearCockpitPrimaryNodeIDsForSubtree(ctx context.Context, arg ClearCockpitPrimaryNodeIDsForSubtreeParams) error {
+	_, err := q.db.Exec(ctx, clearCockpitPrimaryNodeIDsForSubtree, arg.WorkspaceID, arg.IssueID)
+	return err
+}
+
 const countCockpitNodeTasksByStatus = `-- name: CountCockpitNodeTasksByStatus :many
 WITH candidates AS (
- SELECT p.issue_id FROM cockpit_issue_primary p
- WHERE p.workspace_id=$4::uuid AND p.node_id=$5::uuid AND $6::text='primary'
+ SELECT i.id AS issue_id FROM issue i
+ WHERE i.workspace_id=$4::uuid AND i.work_item_id=$5::uuid AND $6::text='primary'
  UNION ALL
  SELECT l.issue_id FROM cockpit_node_issue l
+ JOIN issue i ON i.id=l.issue_id AND i.workspace_id=l.workspace_id
  WHERE l.workspace_id=$4::uuid AND l.node_id=$5::uuid AND $6::text='reference'
-  AND NOT EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=l.workspace_id AND p.issue_id=l.issue_id AND p.node_id=l.node_id)
+  AND i.work_item_id IS DISTINCT FROM l.node_id
 )
 SELECT i.status,cockpit_issue_category(i.status,s.category)::text AS category,count(*)::bigint AS total,
  count(*) FILTER(WHERE ($1::text='' OR i.status=$1::text)
@@ -139,35 +165,6 @@ func (q *Queries) EnsureCockpitNodeReference(ctx context.Context, arg EnsureCock
 	return err
 }
 
-const getCockpitIssuePrimary = `-- name: GetCockpitIssuePrimary :one
-SELECT issue_id, workspace_id, node_id, revision, creation_key, creation_node_id, creation_hash, created_by, updated_by, created_at, updated_at, issue_deleted_at FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2
-`
-
-type GetCockpitIssuePrimaryParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	IssueID     pgtype.UUID `json:"issue_id"`
-}
-
-func (q *Queries) GetCockpitIssuePrimary(ctx context.Context, arg GetCockpitIssuePrimaryParams) (CockpitIssuePrimary, error) {
-	row := q.db.QueryRow(ctx, getCockpitIssuePrimary, arg.WorkspaceID, arg.IssueID)
-	var i CockpitIssuePrimary
-	err := row.Scan(
-		&i.IssueID,
-		&i.WorkspaceID,
-		&i.NodeID,
-		&i.Revision,
-		&i.CreationKey,
-		&i.CreationNodeID,
-		&i.CreationHash,
-		&i.CreatedBy,
-		&i.UpdatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.IssueDeletedAt,
-	)
-	return i, err
-}
-
 const getCockpitNodeTaskCreation = `-- name: GetCockpitNodeTaskCreation :one
 SELECT issue_id, workspace_id, node_id, revision, creation_key, creation_node_id, creation_hash, created_by, updated_by, created_at, updated_at, issue_deleted_at FROM cockpit_issue_primary WHERE workspace_id=$1 AND creation_key=$2
 `
@@ -198,8 +195,8 @@ func (q *Queries) GetCockpitNodeTaskCreation(ctx context.Context, arg GetCockpit
 }
 
 const hasCockpitPlanningForBoard = `-- name: HasCockpitPlanningForBoard :one
-SELECT EXISTS(SELECT 1 FROM cockpit_issue_primary p JOIN cockpit_node n ON n.id=p.node_id AND n.workspace_id=p.workspace_id
- WHERE p.workspace_id=$1::uuid AND n.cockpit_id=$2::uuid
+SELECT EXISTS(SELECT 1 FROM issue i JOIN cockpit_node n ON n.id=i.work_item_id AND n.workspace_id=i.workspace_id
+ WHERE i.workspace_id=$1::uuid AND n.cockpit_id=$2::uuid
  UNION ALL SELECT 1 FROM cockpit_meeting_action a JOIN cockpit_meeting m ON m.id=a.meeting_id AND m.workspace_id=a.workspace_id
  WHERE a.workspace_id=$1::uuid AND m.cockpit_id=$2::uuid
  UNION ALL SELECT 1 FROM cockpit_artifact a JOIN cockpit_node n ON n.workspace_id=a.workspace_id AND n.id=a.owner_node_id WHERE a.workspace_id=$1::uuid AND n.cockpit_id=$2::uuid
@@ -218,50 +215,16 @@ func (q *Queries) HasCockpitPlanningForBoard(ctx context.Context, arg HasCockpit
 	return column_1, err
 }
 
-const hasCockpitPrimaryForModule = `-- name: HasCockpitPrimaryForModule :one
-SELECT EXISTS(SELECT 1 FROM cockpit_issue_primary p JOIN issue i ON i.id=p.issue_id AND i.workspace_id=p.workspace_id
-WHERE p.workspace_id=$1 AND p.node_id IS NOT NULL AND i.module_id=$2)::bool
-`
-
-type HasCockpitPrimaryForModuleParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	ModuleID    pgtype.UUID `json:"module_id"`
-}
-
-func (q *Queries) HasCockpitPrimaryForModule(ctx context.Context, arg HasCockpitPrimaryForModuleParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasCockpitPrimaryForModule, arg.WorkspaceID, arg.ModuleID)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const hasCockpitPrimaryForProject = `-- name: HasCockpitPrimaryForProject :one
-SELECT EXISTS(SELECT 1 FROM cockpit_issue_primary p JOIN issue i ON i.id=p.issue_id AND i.workspace_id=p.workspace_id
-WHERE p.workspace_id=$1 AND p.node_id IS NOT NULL AND i.project_id=$2)::bool
-`
-
-type HasCockpitPrimaryForProjectParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	ProjectID   pgtype.UUID `json:"project_id"`
-}
-
-func (q *Queries) HasCockpitPrimaryForProject(ctx context.Context, arg HasCockpitPrimaryForProjectParams) (bool, error) {
-	row := q.db.QueryRow(ctx, hasCockpitPrimaryForProject, arg.WorkspaceID, arg.ProjectID)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const listCockpitIssueFacts = `-- name: ListCockpitIssueFacts :many
 SELECT i.id,i.number,(w.issue_prefix||'-'||i.number::text)::text AS identifier,i.title,i.status,
  cockpit_issue_category(i.status,s.category)::text AS status_category,i.priority,i.assignee_type,i.assignee_id,
  COALESCE(u.name,a.name,sq.name,'')::text AS assignee_name,i.due_date,i.project_id,i.module_id,
- p.node_id AS primary_node_id,COALESCE(n.code,'')::text AS primary_node_code,COALESCE(n.name,'')::text AS primary_node_name,
- COALESCE(p.revision,0)::bigint AS primary_revision,p.creation_key
+ i.work_item_id AS primary_node_id,COALESCE(n.code,'')::text AS primary_node_code,COALESCE(n.name,'')::text AS primary_node_name,
+ i.revision AS primary_revision,p.creation_key
 FROM issue i JOIN workspace w ON w.id=i.workspace_id
 LEFT JOIN issue_status s ON s.workspace_id=i.workspace_id AND s.key=i.status
-LEFT JOIN cockpit_issue_primary p ON p.workspace_id=i.workspace_id AND p.issue_id=i.id
-LEFT JOIN cockpit_node n ON n.id=p.node_id AND n.workspace_id=i.workspace_id
+LEFT JOIN cockpit_issue_primary p ON p.workspace_id=i.workspace_id AND p.issue_id=i.id AND p.issue_deleted_at IS NULL
+LEFT JOIN cockpit_node n ON n.id=i.work_item_id AND n.workspace_id=i.workspace_id
 LEFT JOIN "user" u ON i.assignee_type='member' AND u.id=i.assignee_id
 LEFT JOIN agent a ON i.assignee_type='agent' AND a.id=i.assignee_id AND a.workspace_id=i.workspace_id
 LEFT JOIN squad sq ON i.assignee_type='squad' AND sq.id=i.assignee_id AND sq.workspace_id=i.workspace_id
@@ -294,6 +257,9 @@ type ListCockpitIssueFactsRow struct {
 	CreationKey     pgtype.UUID `json:"creation_key"`
 }
 
+// The work item is the filing; the revision clients round-trip is the issue's
+// own revision, not the receipt's. cockpit_issue_primary only supplies the
+// creation key.
 func (q *Queries) ListCockpitIssueFacts(ctx context.Context, arg ListCockpitIssueFactsParams) ([]ListCockpitIssueFactsRow, error) {
 	rows, err := q.db.Query(ctx, listCockpitIssueFacts, arg.WorkspaceID, arg.IssueIds)
 	if err != nil {
@@ -335,12 +301,13 @@ func (q *Queries) ListCockpitIssueFacts(ctx context.Context, arg ListCockpitIssu
 
 const listCockpitNodeTaskIDs = `-- name: ListCockpitNodeTaskIDs :many
 WITH candidates AS (
- SELECT p.issue_id FROM cockpit_issue_primary p
- WHERE p.workspace_id=$1::uuid AND p.node_id=$8::uuid AND $9::text='primary'
+ SELECT i.id AS issue_id FROM issue i
+ WHERE i.workspace_id=$1::uuid AND i.work_item_id=$8::uuid AND $9::text='primary'
  UNION ALL
  SELECT l.issue_id FROM cockpit_node_issue l
+ JOIN issue i ON i.id=l.issue_id AND i.workspace_id=l.workspace_id
  WHERE l.workspace_id=$1::uuid AND l.node_id=$8::uuid AND $9::text='reference'
-  AND NOT EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=l.workspace_id AND p.issue_id=l.issue_id AND p.node_id=l.node_id)
+  AND i.work_item_id IS DISTINCT FROM l.node_id
 )
 SELECT i.id,i.number FROM candidates c JOIN issue i ON i.id=c.issue_id JOIN workspace w ON w.id=i.workspace_id
 LEFT JOIN issue_status s ON s.workspace_id=i.workspace_id AND s.key=i.status
@@ -370,6 +337,8 @@ type ListCockpitNodeTaskIDsRow struct {
 	Number int32       `json:"number"`
 }
 
+// Primary work is issue.work_item_id; a link naming the issue's own work item
+// is the filing, so the reference lane excludes it.
 func (q *Queries) ListCockpitNodeTaskIDs(ctx context.Context, arg ListCockpitNodeTaskIDsParams) ([]ListCockpitNodeTaskIDsRow, error) {
 	rows, err := q.db.Query(ctx, listCockpitNodeTaskIDs,
 		arg.WorkspaceID,
@@ -429,44 +398,43 @@ func (q *Queries) LockCockpitIssuePrimary(ctx context.Context, arg LockCockpitIs
 	return i, err
 }
 
-const setCockpitIssuePrimary = `-- name: SetCockpitIssuePrimary :one
-UPDATE cockpit_issue_primary SET node_id=$1::uuid,revision=revision+1,updated_by=$2::uuid,updated_at=now()
-WHERE workspace_id=$3::uuid AND issue_id=$4::uuid
- AND revision=$5::bigint AND issue_deleted_at IS NULL RETURNING issue_id, workspace_id, node_id, revision, creation_key, creation_node_id, creation_hash, created_by, updated_by, created_at, updated_at, issue_deleted_at
+const setIssueWorkItemSubtree = `-- name: SetIssueWorkItemSubtree :exec
+WITH RECURSIVE descendants AS (
+    SELECT id FROM issue WHERE workspace_id=$4::uuid AND id=$5::uuid
+    UNION ALL
+    SELECT i.id FROM issue i JOIN descendants d ON i.parent_issue_id=d.id
+     WHERE i.workspace_id=$4::uuid
+)
+UPDATE issue i SET
+    work_item_id=$1::uuid,
+    project_id=$2::uuid,
+    module_id=$3::uuid,
+    revision=i.revision+1,
+    last_activity_at=GREATEST(COALESCE(i.last_activity_at,i.updated_at),now()),
+    updated_at=now()
+WHERE i.workspace_id=$4::uuid AND i.id IN (SELECT id FROM descendants)
 `
 
-type SetCockpitIssuePrimaryParams struct {
-	NodeID           pgtype.UUID `json:"node_id"`
-	ActorID          pgtype.UUID `json:"actor_id"`
-	WorkspaceID      pgtype.UUID `json:"workspace_id"`
-	IssueID          pgtype.UUID `json:"issue_id"`
-	ExpectedRevision int64       `json:"expected_revision"`
+type SetIssueWorkItemSubtreeParams struct {
+	WorkItemID  pgtype.UUID `json:"work_item_id"`
+	ProjectID   pgtype.UUID `json:"project_id"`
+	ModuleID    pgtype.UUID `json:"module_id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
 }
 
-func (q *Queries) SetCockpitIssuePrimary(ctx context.Context, arg SetCockpitIssuePrimaryParams) (CockpitIssuePrimary, error) {
-	row := q.db.QueryRow(ctx, setCockpitIssuePrimary,
-		arg.NodeID,
-		arg.ActorID,
+// Files an issue (and its subtree, I4) under a work item, deriving project and
+// module from it. NULL work_item_id unfiles; the caller keeps the issue's
+// current project/module in that case.
+func (q *Queries) SetIssueWorkItemSubtree(ctx context.Context, arg SetIssueWorkItemSubtreeParams) error {
+	_, err := q.db.Exec(ctx, setIssueWorkItemSubtree,
+		arg.WorkItemID,
+		arg.ProjectID,
+		arg.ModuleID,
 		arg.WorkspaceID,
 		arg.IssueID,
-		arg.ExpectedRevision,
 	)
-	var i CockpitIssuePrimary
-	err := row.Scan(
-		&i.IssueID,
-		&i.WorkspaceID,
-		&i.NodeID,
-		&i.Revision,
-		&i.CreationKey,
-		&i.CreationNodeID,
-		&i.CreationHash,
-		&i.CreatedBy,
-		&i.UpdatedBy,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.IssueDeletedAt,
-	)
-	return i, err
+	return err
 }
 
 const tombstoneCockpitIssuePrimary = `-- name: TombstoneCockpitIssuePrimary :exec

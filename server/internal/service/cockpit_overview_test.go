@@ -40,7 +40,7 @@ func TestCockpitOverviewCountsBoundedPagesAndScope(t *testing.T) {
 		}
 		id := parseTestUUID(t, f.Issue(t, fmt.Sprintf("Dashboard task %02d", i), testutil.Cols{"project_id": f.project, "module_id": f.module, "status": status, "assignee_type": "member", "assignee_id": assigned, "due_date": "2026-10-09"}))
 		f.Cleanup(t, "DELETE FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2", f.ws, id)
-		if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: id, NodeID: f.a, ActorID: f.owner}); err != nil {
+		if _, err := attachWorkItem(t, f.cockpitWorkflowFixture, id, f.a); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -113,12 +113,12 @@ func TestCockpitOverviewFormalReviewOwnsDutyDespiteOrdinaryIssueEdits(t *testing
 	// Attach governance issues to primary L3 to exercise queue deduplication.
 	for _, id := range []pgtype.UUID{work.MinutesIssueID, f.version.ReviewIssueID} {
 		f.Exec(t, "UPDATE issue SET project_id=$2,module_id=$3 WHERE id=$1", id, f.project, f.module)
-		if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: id, NodeID: f.a, ActorID: f.owner}); err != nil {
+		if _, err := attachWorkItem(t, f.cockpitWorkflowFixture, id, f.a); err != nil {
 			t.Fatal(err)
 		}
 	}
 	current, _ := submitHandoffFixtureVersion(t, f.cockpitWorkflowFixture)
-	if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: current.ReviewIssueID, NodeID: f.a, ActorID: f.owner}); err != nil {
+	if _, err := attachWorkItem(t, f.cockpitWorkflowFixture, current.ReviewIssueID, f.a); err != nil {
 		t.Fatal(err)
 	}
 	colleague := parseTestUUID(t, f.member(t, "review-assignee-only"))
@@ -275,7 +275,7 @@ func TestCockpitOverviewFactsPrioritizeIssuesAndKeepRecordedNASExceptions(t *tes
 		}
 		id := parseTestUUID(t, f.Issue(t, fmt.Sprintf("Priority task %d", i), testutil.Cols{"project_id": f.project, "module_id": f.module, "status": status, "due_date": due, "assignee_type": "member", "assignee_id": f.owner}))
 		f.Cleanup(t, "DELETE FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2", f.ws, id)
-		if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: id, NodeID: f.a, ActorID: f.owner}); err != nil {
+		if _, err := attachWorkItem(t, f.cockpitWorkflowFixture, id, f.a); err != nil {
 			t.Fatal(err)
 		}
 		ids = append(ids, util.UUIDToString(id))

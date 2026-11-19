@@ -47,8 +47,8 @@ func TestIssueOperationBasisFormalAndOrdinaryBoundaries(t *testing.T) {
 			t.Fatal("read reordered requested IDs")
 		}
 	}
-	if p.Items[0].Scope.State != "blocked" || p.Items[0].Delete.State != "allowed" || p.Items[0].Primary.State != "allowed" {
-		t.Fatalf("ordinary primary confused with retained source: %+v", p.Items[0])
+	if p.Items[0].Scope.State != "allowed" || p.Items[0].Delete.State != "allowed" || p.Items[0].Primary.State != "allowed" {
+		t.Fatalf("a work item must not block a scope edit: %+v", p.Items[0])
 	}
 	if p.Items[1].Availability != "unavailable" || p.Items[1].Status.State != "unknown" || len(p.Items[1].Status.AllowedCategories) != 0 || p.Items[1].TargetsTotal != 0 {
 		t.Fatalf("missing target leaked/unlocked: %+v", p.Items[1])
@@ -105,7 +105,7 @@ func TestIssueOperationBasisDescendantTriageAndContainerGuards(t *testing.T) {
 	for _, c := range []struct {
 		kind string
 		id   pgtype.UUID
-	}{{"node", f.a}, {"node", f.grouping}, {"project", f.project}, {"module", f.module}} {
+	}{{"node", f.a}, {"node", f.moduleNode}, {"project", f.project}, {"module", f.module}} {
 		b, err := f.issues.GetContainerOperationBasis(ctx, ContainerOperationBasisQuery{WorkspaceID: f.ws, ActorID: f.owner, Human: true, ResourceID: c.id, ResourceKind: c.kind})
 		if err != nil {
 			t.Fatal(err)

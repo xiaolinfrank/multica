@@ -548,8 +548,7 @@ func linkCockpitArtifactIssue(ctx context.Context, q *db.Queries, p IssueCreateP
 		return err
 	}
 	hook.version = v
-	_, err = q.CreateCockpitIssuePrimary(ctx, db.CreateCockpitIssuePrimaryParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID, NodeID: hook.artifact.OwnerNodeID, CreatedBy: hook.submission.ActorID})
-	if err != nil {
+	if err = fileCockpitIssueUnderNode(ctx, q, issue, hook.artifact.OwnerNodeID, hook.submission.ActorID); err != nil {
 		return err
 	}
 	if err = retireUnrequestedArtifactCapture(ctx, q, hook.artifact); err != nil {

@@ -300,7 +300,7 @@ func linkCockpitArtifactCaptured(ctx context.Context, q *db.Queries, p IssueCrea
 		return err
 	}
 	h.version = v
-	if _, err = q.CreateCockpitIssuePrimary(ctx, db.CreateCockpitIssuePrimaryParams{WorkspaceID: c.WorkspaceID, IssueID: issue.ID, NodeID: h.artifact.OwnerNodeID, CreatedBy: c.CreatedBy}); err != nil {
+	if err = fileCockpitIssueUnderNode(ctx, q, issue, h.artifact.OwnerNodeID, c.CreatedBy); err != nil {
 		return err
 	}
 	if err = q.QueueCockpitArtifactAttemptCleanup(ctx, db.QueueCockpitArtifactAttemptCleanupParams{WorkspaceID: c.WorkspaceID, VersionID: c.VersionID, ExceptID: h.captured.Attempt.ID}); err != nil {

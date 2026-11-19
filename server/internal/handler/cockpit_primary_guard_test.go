@@ -9,56 +9,54 @@ import (
 	"github.com/multica-ai/multica/server/internal/testutil"
 )
 
-func TestCockpitPrimaryOldMutationPathsRespectOwnership(t *testing.T) {
+// The compat primary endpoint now reads and writes issue.work_item_id. Editing
+// the module away clears the filing (I3) instead of being refused, and naming
+// the work item again restores the derived scope. The creation receipt still
+// outlives the issue so a replayed creation key stays idempotent.
+func TestCockpitPrimaryFilingFollowsWorkItem(t *testing.T) {
 	ws, _, _, node := cockpitActionHTTPFixture(t)
 	key := uuid.NewString()
-	create := map[string]any{"creation_key": key, "title": "Guarded L3 task"}
+	create := map[string]any{"creation_key": key, "title": "Filed L3 task"}
 	var issue service.CockpitIssueSummary
-	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNodeTask), testutil.WithURLParams(cockpitRequest("POST", "/tasks", ws, create), "id", node.ID)).Want(200).JSON(&issue)
-	if issue.ProjectID == nil || issue.ModuleID == nil || issue.PrimaryNodeID == nil {
-		t.Fatal("fixture issue is not filed under the mapped execution leaf")
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNodeTask), testutil.WithURLParams(cockpitRequest("POST", "/tasks", ws, create), "id", node.ID)).Want(http.StatusOK).JSON(&issue)
+	if issue.ProjectID == nil || issue.ModuleID == nil || issue.PrimaryNodeID == nil || *issue.PrimaryNodeID != node.ID {
+		t.Fatalf("fixture issue is not filed under the work item: %+v", issue)
 	}
-	call := func(handler http.HandlerFunc, method, path string, body any, key, id string, status int) {
-		t.Helper()
-		req := cockpitRequest(method, path, ws, body)
-		if key != "" {
-			req = testutil.WithURLParams(req, key, id)
-		}
-		testutil.Call(t, cockpitHandler(handler), req).Want(status)
+	if dbfx.Count(t, "SELECT count(*) FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2 AND node_id IS NULL", ws, issue.ID) != 1 {
+		t.Fatal("creation receipt still names a node instead of leaving the filing on issue.work_item_id")
 	}
-	t.Run("ordinary scope edit", func(t *testing.T) {
-		call(testHandler.UpdateIssue, "PUT", "/issues/"+issue.ID, map[string]any{"module_id": nil}, "id", issue.ID, 409)
-	})
-	t.Run("batch scope edit", func(t *testing.T) {
-		call(testHandler.BatchUpdateIssues, "PUT", "/issues/batch", map[string]any{"issue_ids": []string{issue.ID}, "updates": map[string]any{"project_id": nil, "module_id": nil}}, "", "", 409)
-	})
-	t.Run("node reparent", func(t *testing.T) {
-		call(testHandler.UpdateCockpitNode, "PATCH", "/nodes/"+node.ID, map[string]any{"parent_id": nil}, "id", node.ID, 409)
-	})
-	t.Run("leaf cannot become grouping", func(t *testing.T) {
-		call(testHandler.CreateCockpitNode, "POST", "/nodes", map[string]any{"code": "blocked-child", "name": "Blocked child", "parent_id": node.ID}, "", "", 409)
-	})
-	t.Run("node delete", func(t *testing.T) {
-		call(testHandler.DeleteCockpitNode, "DELETE", "/nodes/"+node.ID, nil, "id", node.ID, 409)
-	})
-	t.Run("project delete", func(t *testing.T) {
-		call(testHandler.DeleteProject, "DELETE", "/projects/"+*issue.ProjectID, nil, "id", *issue.ProjectID, 409)
-	})
-	t.Run("module delete", func(t *testing.T) {
-		call(testHandler.DeleteModule, "DELETE", "/modules/"+*issue.ModuleID, nil, "id", *issue.ModuleID, 409)
-	})
-	t.Run("ordinary progress remains editable", func(t *testing.T) {
-		call(testHandler.UpdateCockpitNode, "PATCH", "/nodes/"+node.ID, map[string]any{"progress": 40}, "id", node.ID, 200)
-	})
-	var ownership service.CockpitPrimaryView
-	testutil.Call(t, cockpitHandler(testHandler.GetCockpitIssuePrimaryNode), testutil.WithURLParams(cockpitRequest("GET", "/primary", ws, nil), "issueId", issue.ID)).Want(200).JSON(&ownership)
-	if ownership.NodeID == nil || *ownership.NodeID != node.ID || ownership.ModuleID == nil || *ownership.ModuleID != *issue.ModuleID {
-		t.Fatal("a refused mutation changed ownership or issue scope")
+
+	// A module move without a work item clears the filing rather than 409ing.
+	testutil.Call(t, cockpitHandler(testHandler.UpdateIssue), testutil.WithURLParams(
+		cockpitRequest(http.MethodPut, "/issues/"+issue.ID, ws, map[string]any{"module_id": nil}), "id", issue.ID,
+	)).Want(http.StatusOK)
+	var cleared service.CockpitPrimaryView
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitIssuePrimaryNode), testutil.WithURLParams(
+		cockpitRequest(http.MethodGet, "/primary", ws, nil), "issueId", issue.ID,
+	)).Want(http.StatusOK).JSON(&cleared)
+	if cleared.NodeID != nil {
+		t.Fatalf("module move kept the work item: %+v", cleared)
 	}
-	call(testHandler.SetCockpitIssuePrimaryNode, "PUT", "/primary", map[string]any{"expected_revision": ownership.Revision, "node_id": nil}, "issueId", issue.ID, 200)
-	call(testHandler.UpdateIssue, "PUT", "/issues/"+issue.ID, map[string]any{"module_id": nil}, "id", issue.ID, 200)
-	call(testHandler.DeleteIssue, "DELETE", "/issues/"+issue.ID, nil, "id", issue.ID, 204)
-	call(testHandler.CreateCockpitNodeTask, "POST", "/tasks", create, "id", node.ID, 409)
+
+	// Naming the work item re-files it and derives module/project again.
+	testutil.Call(t, cockpitHandler(testHandler.UpdateIssue), testutil.WithURLParams(
+		cockpitRequest(http.MethodPut, "/issues/"+issue.ID, ws, map[string]any{"work_item_id": node.ID}), "id", issue.ID,
+	)).Want(http.StatusOK)
+	var refiled service.CockpitPrimaryView
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitIssuePrimaryNode), testutil.WithURLParams(
+		cockpitRequest(http.MethodGet, "/primary", ws, nil), "issueId", issue.ID,
+	)).Want(http.StatusOK).JSON(&refiled)
+	if refiled.NodeID == nil || *refiled.NodeID != node.ID || refiled.ModuleID == nil || *refiled.ModuleID != *issue.ModuleID {
+		t.Fatalf("re-file did not restore the derived scope: %+v", refiled)
+	}
+
+	// Deleting the issue keeps the receipt; replaying the key stays refused.
+	testutil.Call(t, cockpitHandler(testHandler.DeleteIssue), testutil.WithURLParams(
+		cockpitRequest(http.MethodDelete, "/issues/"+issue.ID, ws, nil), "id", issue.ID,
+	)).Want(http.StatusNoContent)
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNodeTask), testutil.WithURLParams(
+		cockpitRequest(http.MethodPost, "/tasks", ws, create), "id", node.ID,
+	)).Want(http.StatusConflict)
 	if dbfx.Count(t, "SELECT count(*) FROM cockpit_issue_primary WHERE workspace_id=$1 AND creation_key=$2 AND issue_deleted_at IS NOT NULL", ws, key) != 1 {
 		t.Fatal("HTTP deletion discarded the creation-key receipt")
 	}

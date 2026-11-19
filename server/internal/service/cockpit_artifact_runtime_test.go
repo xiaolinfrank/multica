@@ -113,9 +113,8 @@ func TestCockpitArtifactRuntimeTextReviewIsAtomicAndImmutable(t *testing.T) {
 	if issue.AssigneeType.String != "member" || issue.AssigneeID != f.owner || issue.Status != "todo" || issue.ParentIssueID.Valid {
 		t.Fatal("formal review task scope or responsibility is wrong")
 	}
-	primary, err := f.q.GetCockpitIssuePrimary(ctx, db.GetCockpitIssuePrimaryParams{WorkspaceID: f.ws, IssueID: issue.ID})
-	if err != nil || primary.NodeID != f.a {
-		t.Fatalf("formal review missing from L3 work: %+v %v", primary, err)
+	if issue.WorkItemID != f.a {
+		t.Fatalf("formal review missing from L3 work: %v", issue.WorkItemID)
 	}
 	if _, err = f.q.UpdateIssueStatus(ctx, db.UpdateIssueStatusParams{WorkspaceID: f.ws, ID: issue.ID, Status: "done"}); err == nil {
 		t.Fatal("ordinary done bypassed formal review")

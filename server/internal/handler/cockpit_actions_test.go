@@ -113,7 +113,7 @@ func TestCockpitActionHTTPCreateReuseAndIssueFacts(t *testing.T) {
 	if len(page.Items) != 1 || page.Total != 2 || page.FilteredTotal != 2 || page.NextCursor == nil || page.Items[0].Issue == nil || page.Items[0].Issue.Status != "done" {
 		t.Fatalf("action page duplicated execution state or lost its bound: %+v", page)
 	}
-	if count := dbfx.Count(t, "SELECT count(*) FROM cockpit_issue_primary WHERE workspace_id=$1 AND node_id=$2", ws, node.ID); count != 1 {
+	if count := dbfx.Count(t, "SELECT count(*) FROM issue WHERE workspace_id=$1 AND work_item_id=$2", ws, node.ID); count != 1 {
 		t.Fatalf("reused issue counted more than once: %d", count)
 	}
 	if count := dbfx.Count(t, "SELECT count(*) FROM agent_task_queue q JOIN issue i ON i.id=q.issue_id WHERE i.workspace_id=$1", ws); count != 0 {

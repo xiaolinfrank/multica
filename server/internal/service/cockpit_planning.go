@@ -296,6 +296,7 @@ func (s *IssueService) settlePlanningAction(ctx context.Context, p CockpitAction
 		return a, err
 	}
 	var node db.CockpitNode
+	var previousProject, previousModule, previousWorkItem pgtype.UUID
 	if p.Outcome == "reuse" {
 		if err := checkActionSource(work, v, a.SourceQuote, true); err != nil {
 			return a, err
@@ -315,7 +316,8 @@ func (s *IssueService) settlePlanningAction(ctx context.Context, p CockpitAction
 		if governance {
 			return a, fmt.Errorf("%w: minutes and formal review issues cannot be reused as action execution", ErrCockpitWorkflowConflict)
 		}
-		if _, _, err := attachPlanningPrimary(ctx, q, issue, node, p.ActorID, true, nil); err != nil {
+		previousProject, previousModule, previousWorkItem = issue.ProjectID, issue.ModuleID, issue.WorkItemID
+		if _, _, err := attachPlanningPrimary(ctx, q, issue, node, p.ActorID, nil); err != nil {
 			return a, err
 		}
 	}
@@ -328,7 +330,10 @@ func (s *IssueService) settlePlanningAction(ctx context.Context, p CockpitAction
 	}
 	s.planningChanged(p.WorkspaceID, p.ActorID, "meeting_actions", map[string]any{"meeting_id": util.UUIDToString(p.MeetingID), "action_id": util.UUIDToString(p.ActionID)})
 	if p.Outcome == "reuse" {
-		s.primaryChanged(p.WorkspaceID, p.ActorID, row.IssueID, pgtype.UUID{}, row.NodeID)
+		if updated, e := s.Queries.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: p.WorkspaceID, ID: p.IssueID}); e == nil {
+			s.publishIssueFilingUpdate(ctx, updated, previousProject, previousModule, previousWorkItem, p.ActorID)
+		}
+		s.primaryChanged(p.WorkspaceID, p.ActorID, row.IssueID, previousWorkItem, row.NodeID)
 	}
 	return row, nil
 }

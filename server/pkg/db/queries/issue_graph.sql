@@ -83,7 +83,7 @@ LEFT JOIN cockpit_node p2 ON p2.id = n.parent_id AND p2.workspace_id=n.workspace
 LEFT JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.workspace_id=n.workspace_id
 WHERE n.workspace_id = $1
  AND ((p1.id IS NOT NULL AND p1.parent_id IS NULL)
-  OR EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=n.workspace_id AND p.node_id=n.id))
+  OR EXISTS(SELECT 1 FROM issue i WHERE i.workspace_id=n.workspace_id AND i.work_item_id=n.id))
 ORDER BY n.position ASC, n.code ASC;
 
 -- name: ListIssueGraphExecNodeIssues :many
@@ -92,7 +92,7 @@ ORDER BY n.position ASC, n.code ASC;
 WITH links AS (
  SELECT node_id,issue_id FROM cockpit_node_issue WHERE workspace_id=$1
  UNION
- SELECT node_id,issue_id FROM cockpit_issue_primary WHERE workspace_id=$1 AND node_id IS NOT NULL
+ SELECT work_item_id AS node_id,id AS issue_id FROM issue WHERE workspace_id=$1 AND work_item_id IS NOT NULL
 )
 SELECT ni.node_id, ni.issue_id
 FROM links ni
@@ -100,7 +100,7 @@ JOIN cockpit_node n ON n.id = ni.node_id AND n.workspace_id=$1
 LEFT JOIN cockpit_node p2 ON p2.id = n.parent_id AND p2.workspace_id=n.workspace_id
 LEFT JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.workspace_id=n.workspace_id
 WHERE (p1.id IS NOT NULL AND p1.parent_id IS NULL)
- OR EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=n.workspace_id AND p.node_id=n.id);
+ OR EXISTS(SELECT 1 FROM issue i WHERE i.workspace_id=n.workspace_id AND i.work_item_id=n.id);
 
 -- name: ListIssueGraphExecNodeMeetings :many
 -- Meeting↔L3-node links, rendered as
@@ -112,7 +112,7 @@ LEFT JOIN cockpit_node p2 ON p2.id = n.parent_id AND p2.workspace_id=n.workspace
 LEFT JOIN cockpit_node p1 ON p1.id = p2.parent_id AND p1.workspace_id=n.workspace_id
 WHERE mn.workspace_id = $1
  AND ((p1.id IS NOT NULL AND p1.parent_id IS NULL)
-  OR EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=n.workspace_id AND p.node_id=n.id));
+  OR EXISTS(SELECT 1 FROM issue i WHERE i.workspace_id=n.workspace_id AND i.work_item_id=n.id));
 
 -- name: ListIssueGraphCockpitNodeIndex :many
 -- Slim (id, code, parent, position) index of the whole cockpit board. The

@@ -17,8 +17,8 @@ import (
 
 type planningFixture struct {
 	cockpitWorkflowFixture
-	project, module, moduleNode, grouping, a, b pgtype.UUID
-	version                                     db.CockpitMinutesVersion
+	project, module, moduleNode, a, b pgtype.UUID
+	version                           db.CockpitMinutesVersion
 }
 
 func newPlanningFixture(t *testing.T) planningFixture {
@@ -42,8 +42,9 @@ func newPlanningFixture(t *testing.T) planningFixture {
 	}
 	root := node("P", pgtype.UUID{}, testutil.Cols{"project_id": project})
 	moduleNode := node("M", root, testutil.Cols{"project_id": project, "module_id": module})
-	group := node("display-group", moduleNode, nil)
-	a, b := node("execution-a", group, nil), node("execution-b", group, nil)
+	// Work items are the third level: directly under the module row. The
+	// legacy display-group level is gone after reconciliation.
+	a, b := node("execution-a", moduleNode, nil), node("execution-b", moduleNode, nil)
 	// All planning rows are removed before fixture issues, nodes and modules.
 	f.Cleanup(t, "DELETE FROM cockpit_issue_primary WHERE workspace_id=$1", f.ws)
 	f.Cleanup(t, "DELETE FROM cockpit_meeting_action WHERE workspace_id=$1", f.ws)
@@ -54,8 +55,23 @@ func newPlanningFixture(t *testing.T) planningFixture {
 	if err := f.issues.PublishCockpitMeetingMinutes(context.Background(), CockpitMinutesVersionCommand{CockpitWorkPackageCommand: f.command(t), VersionID: v.ID}); err != nil {
 		t.Fatal(err)
 	}
-	return planningFixture{cockpitWorkflowFixture: f, project: parseTestUUID(t, project), module: parseTestUUID(t, module), moduleNode: moduleNode, grouping: group, a: a, b: b, version: f.versions(t)[0]}
+	return planningFixture{cockpitWorkflowFixture: f, project: parseTestUUID(t, project), module: parseTestUUID(t, module), moduleNode: moduleNode, a: a, b: b, version: f.versions(t)[0]}
 }
+
+// attachWorkItem files an issue under a node using its current revision. The
+// compat endpoint's expected_revision is the ISSUE's revision now, so tests
+// that do not care about the race guard read it rather than passing 0.
+func attachWorkItem(t *testing.T, f cockpitWorkflowFixture, issue, node pgtype.UUID) (db.CockpitIssuePrimary, error) {
+	t.Helper()
+	row, err := f.q.GetIssueInWorkspace(context.Background(), db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: issue})
+	if err != nil {
+		return db.CockpitIssuePrimary{}, err
+	}
+	return f.issues.SetCockpitIssuePrimaryNode(context.Background(), CockpitPrimaryNodeCommand{
+		WorkspaceID: f.ws, IssueID: issue, NodeID: node, ActorID: f.owner, ExpectedRevision: row.Revision,
+	})
+}
+
 func (f planningFixture) draft(t *testing.T, title string) db.CockpitMeetingAction {
 	t.Helper()
 	a, err := f.issues.CreateCockpitMeetingAction(context.Background(), CockpitActionDraft{WorkspaceID: f.ws, MeetingID: f.meeting, VersionID: f.version.ID, ActorID: f.owner, ProposalKey: dbid.NewV7(), Title: title, Description: "Deliver the agreed scope.", SourceQuote: "Fixed evidence"})
@@ -158,7 +174,11 @@ func TestCockpitPlanningAcceptanceRollbackLeavesNoOrphan(t *testing.T) {
 	}
 }
 
-func TestCockpitPlanningReusePreservesIssueAndRequiresExplicitMove(t *testing.T) {
+// Reusing an issue as action execution files it under the chosen work item
+// (project and module follow). Execution fields stay untouched, the old work
+// item remains as a related node, and replaying the accepted action does not
+// move the issue back.
+func TestCockpitPlanningReuseRefilesOnceAndReplayKeepsTheMove(t *testing.T) {
 	f := newPlanningFixture(t)
 	ctx := context.Background()
 	id := parseTestUUID(t, f.Issue(t, "Existing execution", testutil.Cols{"project_id": f.project, "module_id": f.module, "status": "in_progress", "assignee_type": "member", "assignee_id": f.owner, "due_date": "2027-01-31"}))
@@ -169,44 +189,42 @@ func TestCockpitPlanningReusePreservesIssueAndRequiresExplicitMove(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	primary, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: id, NodeID: f.b, ActorID: f.owner})
-	if err != nil {
+	if _, err := attachWorkItem(t, f.cockpitWorkflowFixture, id, f.b); err != nil {
 		t.Fatal(err)
 	}
 	a := f.draft(t, "Reuse planned work")
 	in := f.resolve(a)
 	in.Outcome = "reuse"
 	in.IssueID = id
-	if _, err := f.issues.ResolveCockpitMeetingAction(ctx, in, IssueCreateOpts{}); !errors.Is(err, ErrCockpitWorkflowConflict) {
-		t.Fatalf("implicit move = %v", err)
-	}
-	primary, err = f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: id, NodeID: f.a, ActorID: f.owner, ExpectedRevision: primary.Revision})
-	if err != nil {
-		t.Fatal(err)
-	}
 	resolved, err := f.issues.ResolveCockpitMeetingAction(ctx, in, IssueCreateOpts{})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("reuse refiles the issue: %v", err)
 	}
 	after, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Title != before.Title || after.Status != before.Status || after.AssigneeID != before.AssigneeID || after.DueDate != before.DueDate || resolved.IssueID != id {
+	if after.WorkItemID != f.a || after.ProjectID != before.ProjectID || after.ModuleID != before.ModuleID || resolved.IssueID != id {
+		t.Fatalf("reuse filing = %v/%v/%v", after.WorkItemID, after.ProjectID, after.ModuleID)
+	}
+	if after.Title != before.Title || after.Status != before.Status || after.AssigneeID != before.AssigneeID || after.DueDate != before.DueDate {
 		t.Fatal("reuse modified existing issue execution fields")
 	}
 	if f.Count(t, "SELECT count(*) FROM cockpit_node_issue WHERE node_id=$1 AND issue_id=$2", f.b, id) != 1 {
-		t.Fatal("explicit move lost the previous reference")
+		t.Fatal("refile lost the previous work item as a related node")
 	}
-	if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: id, NodeID: f.b, ActorID: f.owner, ExpectedRevision: primary.Revision}); err != nil {
+	// Moving it again explicitly, then replaying the old acceptance, must not
+	// drag the issue back to the action's node.
+	current, err := attachWorkItem(t, f.cockpitWorkflowFixture, id, f.b)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.issues.ResolveCockpitMeetingAction(ctx, in, IssueCreateOpts{}); err != nil {
 		t.Fatal(err)
 	}
-	current, err := f.issues.GetCockpitIssuePrimaryNode(ctx, f.ws, id)
-	if err != nil || current.NodeID == nil || *current.NodeID != util.UUIDToString(f.b) {
-		t.Fatal("old acceptance replay silently moved Issue back")
+	view, err := f.issues.GetCockpitIssuePrimaryNode(ctx, f.ws, id)
+	if err != nil || view.NodeID == nil || *view.NodeID != util.UUIDToString(f.b) {
+		t.Fatalf("old acceptance replay silently moved Issue back: %+v / %v (revision %d)", view, err, current.Revision)
 	}
 }
 
@@ -266,41 +284,53 @@ func TestCockpitPlanningCreationReceiptSurvivesClearMoveAndDeletion(t *testing.T
 	}
 }
 
-func TestCockpitPlanningScopeAndStructureGuards(t *testing.T) {
+// Naming a work item refiles the issue, project and module included; the old
+// "ownership never refiles an issue" refusal is gone. The creation receipt
+// still guards direct deletion.
+func TestCockpitPlanningRefileAndReceiptDeletionGuard(t *testing.T) {
 	f := newPlanningFixture(t)
 	ctx := context.Background()
-	created, err := f.issues.CreateCockpitNodeTask(ctx, f.createInput("Owned leaf task"), IssueCreateOpts{})
+	created, err := f.issues.CreateCockpitNodeTask(ctx, f.createInput("Refile me"), IssueCreateOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, query := range map[string]string{
-		"issue filing":    "UPDATE issue SET module_id=NULL WHERE id=$1",
-		"node reparent":   "UPDATE cockpit_node SET parent_id=NULL WHERE id=$1",
-		"ancestor unbind": "UPDATE cockpit_node SET module_id=NULL,project_id=NULL WHERE id=$1",
-		"node deletion":   "DELETE FROM cockpit_node WHERE id=$1",
-	} {
-		t.Run(name, func(t *testing.T) {
-			id := f.a
-			if name == "issue filing" {
-				id = created.Issue.ID
-			} else if name == "ancestor unbind" {
-				id = f.moduleNode
-			}
-			_, err := f.Pool.Exec(ctx, query, id)
-			if !IsCockpitPrimaryIntegrityError(err) {
-				t.Fatalf("guard = %v", err)
-			}
-		})
+
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
 	}
-	_, err = f.Pool.Exec(ctx, "INSERT INTO cockpit_node(workspace_id,cockpit_id,parent_id,code,name) SELECT workspace_id,cockpit_id,id,'forbidden-child','child' FROM cockpit_node WHERE id=$1", f.a)
-	if !IsCockpitPrimaryIntegrityError(err) {
-		t.Fatalf("owned leaf became group: %v", err)
+	otherProject := f.Project(t, "Refile project")
+	otherModule := f.Module(t, otherProject, "Refile module")
+	otherRoot := f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": "RP", "name": "Refile project",
+		"position": 9, "project_id": otherProject,
+	})
+	otherModuleNode := f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "parent_id": otherRoot, "code": "RP.01", "name": "Refile module",
+		"position": 0, "project_id": otherProject, "module_id": otherModule,
+	})
+	otherNode := parseTestUUID(t, f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "parent_id": otherModuleNode, "code": "RP.01.01", "name": "Refile work item",
+		"position": 0,
+	}))
+
+	before, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: created.Issue.ID})
+	if err != nil {
+		t.Fatal(err)
 	}
-	otherProject := f.Project(t, "Unrelated project")
-	otherModule := f.Module(t, otherProject, "Unrelated module")
-	unrelated := parseTestUUID(t, f.Issue(t, "Wrong scope", testutil.Cols{"project_id": otherProject, "module_id": otherModule}))
-	if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: unrelated, NodeID: f.a, ActorID: f.owner}); !errors.Is(err, ErrCockpitWorkflowConflict) {
-		t.Fatalf("ownership silently refiled issue: %v", err)
+	if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: created.Issue.ID, NodeID: otherNode, ActorID: f.owner, ExpectedRevision: before.Revision}); err != nil {
+		t.Fatalf("attach refiles the issue: %v", err)
+	}
+	after, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: created.Issue.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.WorkItemID != otherNode || after.ProjectID != parseTestUUID(t, otherProject) || after.ModuleID != parseTestUUID(t, otherModule) {
+		t.Fatalf("after refile: work_item=%v project=%v module=%v", after.WorkItemID, after.ProjectID, after.ModuleID)
+	}
+
+	if err := f.q.DeleteIssue(ctx, db.DeleteIssueParams{WorkspaceID: f.ws, ID: created.Issue.ID}); !IsCockpitPrimaryIntegrityError(err) {
+		t.Fatalf("unguarded direct deletion = %v", err)
 	}
 }
 
@@ -318,7 +348,7 @@ func TestCockpitPlanningNodePaginationCountsAndUnknownStates(t *testing.T) {
 		}
 		id := parseTestUUID(t, f.Issue(t, fmt.Sprintf("Paged task %02d", i), testutil.Cols{"project_id": f.project, "module_id": f.module, "status": status}))
 		f.Cleanup(t, "DELETE FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2", f.ws, id)
-		if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: id, NodeID: f.a, ActorID: f.owner}); err != nil {
+		if _, err := attachWorkItem(t, f.cockpitWorkflowFixture, id, f.a); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -364,10 +394,10 @@ func TestCockpitPlanningNodePaginationCountsAndUnknownStates(t *testing.T) {
 	if _, err := f.issues.ListCockpitNodeTasks(ctx, query); !errors.Is(err, ErrCockpitWorkflowInput) {
 		t.Fatalf("cross-node cursor = %v", err)
 	}
-	query = CockpitNodeTaskList{WorkspaceID: f.ws, NodeID: f.grouping}
+	query = CockpitNodeTaskList{WorkspaceID: f.ws, NodeID: f.moduleNode}
 	page, err = f.issues.ListCockpitNodeTasks(ctx, query)
 	if err != nil || page.Eligibility.Eligible || len(page.Items) != 0 {
-		t.Fatal("display grouping is an eligible primary task destination")
+		t.Fatal("a module row is an eligible primary task destination")
 	}
 }
 

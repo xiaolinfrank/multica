@@ -38,7 +38,7 @@ func TestCockpitSurfacePlanKeepsContextWithoutOutsidePayments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !out.Complete || out.Counts.Nodes != 5 || out.Counts.Payments != 2 || len(out.ContextNodeIDs) != 1 || out.ContextNodeIDs[0] != util.UUIDToString(root.ID) {
+	if !out.Complete || out.Counts.Nodes != 4 || out.Counts.Payments != 2 || len(out.ContextNodeIDs) != 1 || out.ContextNodeIDs[0] != util.UUIDToString(root.ID) {
 		t.Fatalf("scoped complete plan: %+v", out.Counts)
 	}
 	var payments []struct {
@@ -58,7 +58,7 @@ func TestCockpitSurfacePlanKeepsContextWithoutOutsidePayments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !detail.ScopeMatch || !detail.Binding.Eligible || detail.Binding.ModuleID == nil || *detail.Binding.ModuleID != util.UUIDToString(f.module) || len(detail.Ancestors) != 3 || detail.PaymentTotal != 10 {
+	if !detail.ScopeMatch || !detail.Binding.Eligible || detail.Binding.ModuleID == nil || *detail.Binding.ModuleID != util.UUIDToString(f.module) || len(detail.Ancestors) != 2 || detail.PaymentTotal != 10 {
 		t.Fatalf("node scope/binding: %+v", detail)
 	}
 	otherModule := parseTestUUID(t, f.Module(t, util.UUIDToString(f.project), "Other module"))
@@ -207,7 +207,7 @@ func TestCockpitSurfaceMarkersDeduplicateDescendantsAndBoundWindows(t *testing.T
 			f.InsertNoID(t, "cockpit_meeting_node", testutil.Cols{"workspace_id": f.ws, "meeting_id": meeting, "node_id": node}, "workspace_id=$1 AND meeting_id=$2 AND node_id=$3", f.ws, meeting, node)
 		}
 	}
-	query := CockpitPlanMarkerQuery{CockpitSurfaceQuery: p, Rows: []CockpitPlanMarkerRow{{RowKey: util.UUIDToString(f.grouping), NodeIDs: []string{util.UUIDToString(f.grouping)}}, {RowKey: util.UUIDToString(f.a), NodeIDs: []string{util.UUIDToString(f.a)}}}, DateFrom: "2026-10-01", DateTo: "2026-10-31"}
+	query := CockpitPlanMarkerQuery{CockpitSurfaceQuery: p, Rows: []CockpitPlanMarkerRow{{RowKey: util.UUIDToString(f.moduleNode), NodeIDs: []string{util.UUIDToString(f.moduleNode)}}, {RowKey: util.UUIDToString(f.a), NodeIDs: []string{util.UUIDToString(f.a)}}}, DateFrom: "2026-10-01", DateTo: "2026-10-31"}
 	query.Rows = append(query.Rows, CockpitPlanMarkerRow{RowKey: "merged-directions", NodeIDs: []string{util.UUIDToString(f.a), util.UUIDToString(f.b)}})
 	out, err := f.issues.GetCockpitPlanMeetingMarkers(ctx, query)
 	if err != nil {
@@ -268,7 +268,7 @@ func TestCockpitSurfaceOverviewModuleKeepsItsOwnIssueFacts(t *testing.T) {
 		status       string
 	}{{f.module, f.a, "done"}, {otherModule, otherLeaf, "todo"}} {
 		id := parseTestUUID(t, f.Issue(t, "Scope task", testutil.Cols{"project_id": f.project, "module_id": item.module, "status": item.status}))
-		if _, err = f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: id, NodeID: item.node, ActorID: f.owner}); err != nil {
+		if _, err = attachWorkItem(t, f.cockpitWorkflowFixture, id, item.node); err != nil {
 			t.Fatal(err)
 		}
 	}

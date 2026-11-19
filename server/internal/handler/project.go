@@ -735,13 +735,8 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "This project is retained by artifact or acceptance facts; preserve its plan structure and use the formal workflow")
 		return
 	}
-	if owned, err := qtx.HasCockpitPrimaryForProject(r.Context(), db.HasCockpitPrimaryForProjectParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to check L3 ownership")
-		return
-	} else if owned {
-		writeError(w, http.StatusConflict, "clear L3 primary ownership before deleting this project")
-		return
-	}
+	// Work items are the filing now, and DetachProjectModuleIssues clears them
+	// with the module. The node rows are removed by the structure writer in S3.
 	if err := qtx.ClearCockpitNodeProjectBindings(r.Context(), db.ClearCockpitNodeProjectBindingsParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
 		return

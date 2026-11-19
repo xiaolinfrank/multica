@@ -52,24 +52,25 @@ func edgeKeys(g graphPayload) map[string]bool {
 	return keys
 }
 
-func TestGetIssueGraphIncludesPrimaryTasksWithoutBoardLinkDuplication(t *testing.T) {
-	ws, _, _, existing := cockpitActionHTTPFixture(t)
-	group := createNode(t, ws, map[string]any{"code": "display-group", "parent_id": *existing.ParentID})
-	leaf := createNode(t, ws, map[string]any{"code": "deep-execution", "parent_id": group.ID})
+func TestGetIssueGraphIncludesWorkItemsWithoutBoardLinkDuplication(t *testing.T) {
+	ws, _, _, workItem := cockpitActionHTTPFixture(t)
 	var issue service.CockpitIssueSummary
 	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNodeTask), testutil.WithURLParams(cockpitRequest("POST", "/tasks", ws,
-		map[string]any{"creation_key": uuid.NewString(), "title": "Owned task through a display group"}), "id", leaf.ID)).Want(200).JSON(&issue)
+		map[string]any{"creation_key": uuid.NewString(), "title": "Owned work item task"}), "id", workItem.ID)).Want(200).JSON(&issue)
 	if dbfx.Count(t, "SELECT count(*) FROM cockpit_node_issue WHERE workspace_id=$1 AND issue_id=$2", ws, issue.ID) != 0 {
-		t.Fatal("new primary task was mirrored into the full board's reference array")
+		t.Fatal("new work item task was mirrored into the full board's reference array")
 	}
 	var graph graphPayload
 	testutil.Call(t, graphWorkspaceHandler(testHandler.GetIssueGraph), graphRequest("GET", "/api/issues/graph?project_id="+*issue.ProjectID, ws)).Want(200).JSON(&graph)
-	edge := fmt.Sprintf("exc:%s>%s:execution", leaf.ID, issue.ID)
-	if len(graph.Executions) != 1 || graph.Executions[0].ID != leaf.ID || !edgeKeys(graph)[edge] {
-		t.Fatalf("graph omitted primary ownership outside display depth three: %+v", graph)
+	edge := fmt.Sprintf("exc:%s>%s:execution", workItem.ID, issue.ID)
+	if len(graph.Executions) != 1 || graph.Executions[0].ID != workItem.ID || !edgeKeys(graph)[edge] {
+		t.Fatalf("graph omitted the work item's issue: %+v", graph)
 	}
-	dbfx.InsertNoID(t, "cockpit_node_issue", testutil.Cols{"workspace_id": ws, "node_id": leaf.ID, "issue_id": issue.ID},
-		"workspace_id=$1 AND node_id=$2 AND issue_id=$3", ws, leaf.ID, issue.ID)
+
+	// A legacy board link naming the same node and issue is the same edge, not
+	// a second one.
+	dbfx.InsertNoID(t, "cockpit_node_issue", testutil.Cols{"workspace_id": ws, "node_id": workItem.ID, "issue_id": issue.ID},
+		"workspace_id=$1 AND node_id=$2 AND issue_id=$3", ws, workItem.ID, issue.ID)
 	testutil.Call(t, graphWorkspaceHandler(testHandler.GetIssueGraph), graphRequest("GET", "/api/issues/graph?project_id="+*issue.ProjectID, ws)).Want(200).JSON(&graph)
 	count := 0
 	for _, e := range graph.Edges {
@@ -78,7 +79,7 @@ func TestGetIssueGraphIncludesPrimaryTasksWithoutBoardLinkDuplication(t *testing
 		}
 	}
 	if count != 1 {
-		t.Fatalf("primary and reference duplicated an execution edge: %d", count)
+		t.Fatalf("work item and reference duplicated an execution edge: %d", count)
 	}
 }
 

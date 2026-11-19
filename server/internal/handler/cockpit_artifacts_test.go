@@ -76,8 +76,8 @@ func TestCockpitArtifactHTTPFixedReviewAndStrictIdentity(t *testing.T) {
 	if receipt.Version.Content == nil || *receipt.Version.Content != "# Report\r\nFixed bytes  \n" || v.ReviewIssue == nil || v.Decision != "pending" || !receipt.Version.ContentAvailable {
 		t.Fatalf("fixed review incomplete: %+v", receipt)
 	}
-	if got := dbfx.Count(t, "SELECT count(*) FROM cockpit_issue_primary WHERE workspace_id=$1 AND issue_id=$2 AND node_id=$3", f.ws, v.ReviewIssue.ID, f.node); got != 1 {
-		t.Fatal("formal review missing its primary L3")
+	if got := dbfx.Count(t, "SELECT count(*) FROM issue WHERE workspace_id=$1 AND id=$2 AND work_item_id=$3", f.ws, v.ReviewIssue.ID, f.node); got != 1 {
+		t.Fatal("formal review missing its work item")
 	}
 	f.call(t, f.h.ReviewCockpitArtifactVersion, "POST", "/review", map[string]any{"expected_revision": v.Revision, "decision": "changes_requested", "feedback": "Clarify the boundary"}, "artifactId", artifact.ID, "versionId", v.ID).Want(200).JSON(&receipt)
 	if receipt.Version.Version.Decision != "changes_requested" || receipt.Version.Feedback != "Clarify the boundary" || receipt.Version.Version.ReviewIssue.Status != "done" {

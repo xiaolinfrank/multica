@@ -5,7 +5,7 @@ WITH args AS NOT MATERIALIZED (
 ), refs AS MATERIALIZED (
  SELECT l.node_id AS id FROM cockpit_node_issue l,args x
  WHERE x.kind='nodes' AND l.workspace_id=x.ws AND l.issue_id=x.issue_id
- AND NOT EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=x.ws AND p.issue_id=x.issue_id AND p.node_id=l.node_id)
+ AND NOT EXISTS(SELECT 1 FROM issue i WHERE i.workspace_id=x.ws AND i.id=x.issue_id AND i.work_item_id=l.node_id)
  UNION ALL
  SELECT l.meeting_id AS id FROM cockpit_meeting_issue l,args x
  WHERE x.kind='meetings' AND l.workspace_id=x.ws AND l.issue_id=x.issue_id

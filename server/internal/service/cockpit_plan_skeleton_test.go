@@ -151,8 +151,8 @@ func TestCockpitPlanSurfaceDerivesStructureAndCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	nodes := decodePlanNodes(t, plan.Nodes)
-	if len(nodes) != 5 {
-		t.Fatalf("nodes = %d, want 5", len(nodes))
+	if len(nodes) != 4 {
+		t.Fatalf("nodes = %d, want 4", len(nodes))
 	}
 	a := nodes[util.UUIDToString(f.a)]
 	if a.Kind != "work_item" || a.Name != "execution-a" {
@@ -181,10 +181,8 @@ func TestCockpitPlanSurfaceDerivesStructureAndCounts(t *testing.T) {
 	}
 	// Context ancestors outside the module scope keep their identity but carry
 	// no counts, exactly like payments; the module and the group below it do.
-	for label, id := range map[string]string{"module": util.UUIDToString(f.moduleNode), "group": util.UUIDToString(f.grouping)} {
-		if got := counts[id]; got.PrimaryTotal != 3 || got.Active != 2 || got.Done != 1 {
-			t.Fatalf("rolled-up counts at %s (%s) = %+v", label, id, got)
-		}
+	if got := counts[util.UUIDToString(f.moduleNode)]; got.PrimaryTotal != 3 || got.Active != 2 || got.Done != 1 {
+		t.Fatalf("rolled-up counts at the module = %+v", got)
 	}
 
 	wide := CockpitSurfaceQuery{WorkspaceID: f.ws, ActorID: f.owner, Human: true}
@@ -200,8 +198,8 @@ func TestCockpitPlanSurfaceDerivesStructureAndCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shown.Counts.Nodes != 5 {
-		t.Fatalf("include_closed nodes = %d, want 5", shown.Counts.Nodes)
+	if shown.Counts.Nodes != 4 {
+		t.Fatalf("include_closed nodes = %d, want 4", shown.Counts.Nodes)
 	}
 	// Workspace-wide, the project root is part of the scope and answers for the
 	// same three issues.
