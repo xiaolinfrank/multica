@@ -58,7 +58,7 @@ func runReconcileCLI(t *testing.T, args ...string) string {
 
 func TestCockpitReconcileCLIDryRunApplyAndEmptyReport(t *testing.T) {
 	report := map[string]any{
-		"groups": []any{map[string]any{"id": "02.02-09", "name": "平台架构与开发", "kept": "node-a", "removed": []any{"node-b", "node-c"}}},
+		"groups": []any{map[string]any{"id": "02.02-09", "name": "平台架构与开发", "kept": "node-a", "kept_code": "02.02", "removed": []any{"node-b", "node-c"}}},
 		"new_projects": []any{
 			map[string]any{"node_id": "node-a", "project_id": "project-1", "code": "01", "title": "高质量数据集"},
 		},
@@ -78,7 +78,7 @@ func TestCockpitReconcileCLIDryRunApplyAndEmptyReport(t *testing.T) {
 	for _, want := range []string{
 		"Plan reconcile (dry run)",
 		"structure groups: 1",
-		"02.02-09 → kept node-a, removed 2",
+		"02.02-09 → kept 02.02, removed 2",
 		"new projects: 1",
 		"01 高质量数据集",
 		"issue filings: 1",

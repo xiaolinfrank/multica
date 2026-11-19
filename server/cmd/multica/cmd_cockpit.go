@@ -1143,7 +1143,11 @@ func runCockpitReconcile(cmd *cobra.Command, _ []string) error {
 	}
 	fmt.Printf("Plan reconcile (%s)\n", mode)
 	printReconcileSection("structure groups", report["groups"], func(item map[string]any) string {
-		return fmt.Sprintf("%s → kept %v, removed %d", strVal(item, "id"), item["kept"], anyListLen(item, "removed"))
+		kept := strVal(item, "kept_code")
+		if kept == "" {
+			kept = strVal(item, "kept")
+		}
+		return fmt.Sprintf("%s → kept %s, removed %d", strVal(item, "id"), kept, anyListLen(item, "removed"))
 	})
 	printReconcileSection("code changes", report["code_changes"], func(item map[string]any) string {
 		return fmt.Sprintf("%s %s: %s → %s", strVal(item, "kind"), strVal(item, "name"), strVal(item, "old_code"), strVal(item, "new_code"))

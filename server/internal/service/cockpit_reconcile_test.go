@@ -68,7 +68,7 @@ func TestCockpitPlanReconcileRestoresStructureAndFilesIssues(t *testing.T) {
 	if len(report.Blockers) != 0 {
 		t.Fatalf("blockers: %v", report.Blockers)
 	}
-	if len(report.Groups) != 1 || report.Groups[0].Kept == "" || len(report.Groups[0].Removed) != 7 {
+	if len(report.Groups) != 1 || report.Groups[0].Kept == "" || report.Groups[0].KeptCode != "02.02" || len(report.Groups[0].Removed) != 7 {
 		t.Fatalf("summary group = %+v", report.Groups)
 	}
 	if len(report.Projects) != 2 {

@@ -27,12 +27,13 @@ type CockpitReconcileInput struct {
 }
 
 type CockpitReconcileGroup struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Kept    string   `json:"kept"`
-	Moved   []string `json:"moved,omitempty"`
-	Removed []string `json:"removed,omitempty"`
-	Notes   []string `json:"notes,omitempty"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Kept     string   `json:"kept"`
+	KeptCode string   `json:"kept_code"`
+	Moved    []string `json:"moved,omitempty"`
+	Removed  []string `json:"removed,omitempty"`
+	Notes    []string `json:"notes,omitempty"`
 }
 
 type CockpitReconcileCodeChange struct {
@@ -497,8 +498,8 @@ func (st *cockpitReconciler) restoreDisplayStructure() {
 		if len(members) == 0 {
 			continue
 		}
-		change := CockpitReconcileGroup{ID: group.ID, Name: group.Name, Kept: util.UUIDToString(members[0])}
 		keep := st.nodes[members[0]]
+		change := CockpitReconcileGroup{ID: group.ID, Name: group.Name, Kept: util.UUIDToString(keep.id), KeptCode: keep.code}
 		// Merging is all-or-nothing per group: a member still carrying payments,
 		// milestones or links would be deleted with them, so the whole group
 		// waits. Reporting a half-merged group would misdescribe a dry run.
