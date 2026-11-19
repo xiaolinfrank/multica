@@ -54,6 +54,14 @@ export interface CockpitNode {
   module_id?: string | null;
   /** The human address of the node — "L1-02", "L3-01-08". Unique per board. */
   code: string;
+  /**
+   * Read-only projections the plan surface adds: the row's level, the name the
+   * tree shows (project/module title for L1/L2, the node's own name for a work
+   * item), and the status of the project the row belongs to. Writes ignore
+   * them; a node row read through the board API carries the structural name.
+   */
+  kind?: "project" | "module" | "work_item";
+  project_status?: string;
   name: string;
   position: number;
   /** Branch colour; empty means "inherit from the nearest ancestor that sets one". */

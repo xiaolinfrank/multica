@@ -23,6 +23,9 @@ type CockpitPlanExport struct {
 
 func (s *IssueService) GetCockpitPlanExport(ctx context.Context, p CockpitSurfaceQuery) (CockpitPlanExport, error) {
 	var out CockpitPlanExport
+	if _, err := s.EnsureCockpitPlanSkeleton(ctx, p.WorkspaceID); err != nil {
+		return out, err
+	}
 	tx, q, err := s.beginPlanningRead(ctx)
 	if err != nil {
 		return out, err

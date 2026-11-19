@@ -454,6 +454,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		}
 		resp := projectToResponse(project)
 		h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{"project": resp})
+		h.ensurePlanSkeleton(r.Context(), wsUUID)
 		writeJSON(w, http.StatusCreated, resp)
 		return
 	}
@@ -515,6 +516,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	resp := projectToResponse(project)
 	resp.ResourceCount = int64(len(resourceResp))
 	h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{"project": resp})
+	h.ensurePlanSkeleton(r.Context(), wsUUID)
 	for _, rr := range resourceResp {
 		h.publish(protocol.EventProjectResourceCreated, workspaceID, "member", userID, map[string]any{
 			"resource":   rr,

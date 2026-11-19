@@ -18,6 +18,10 @@ var ErrCockpitScopeLimit = errors.New("cockpit scope exceeds the complete plan l
 type CockpitSurfaceQuery struct {
 	WorkspaceID, ProjectID, ModuleID, ActorID pgtype.UUID
 	Human                                     bool
+	// IncludeClosed keeps paused/completed/cancelled projects in a workspace
+	// plan. It has no effect on a project- or module-scoped read: opening a
+	// paused project's own page must still show its tree.
+	IncludeClosed                             bool
 	ArtifactsAvailable                        bool `json:"-"`
 	MeetingLifecycleAvailable                 bool `json:"-"`
 	MeetingDispositionAvailable               bool `json:"-"`
@@ -175,6 +179,9 @@ func (s *IssueService) GetCockpitSurfaceContext(ctx context.Context, p CockpitSu
 }
 func (s *IssueService) GetCockpitPlanSurface(ctx context.Context, p CockpitSurfaceQuery) (CockpitSurfacePlan, error) {
 	var out CockpitSurfacePlan
+	if _, err := s.EnsureCockpitPlanSkeleton(ctx, p.WorkspaceID); err != nil {
+		return out, err
+	}
 	tx, q, err := s.beginPlanningRead(ctx)
 	if err != nil {
 		return out, err
@@ -193,7 +200,7 @@ func (s *IssueService) GetCockpitPlanSurface(ctx context.Context, p CockpitSurfa
 
 func readCockpitPlanSurface(ctx context.Context, q *db.Queries, header CockpitSurfaceContext, p CockpitSurfaceQuery) (CockpitSurfacePlan, error) {
 	var out CockpitSurfacePlan
-	payload, err := q.GetCockpitPlanSurface(ctx, db.GetCockpitPlanSurfaceParams{WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, ModuleID: p.ModuleID})
+	payload, err := q.GetCockpitPlanSurface(ctx, db.GetCockpitPlanSurfaceParams{WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, ModuleID: p.ModuleID, IncludeClosed: p.IncludeClosed})
 	if err != nil {
 		return out, err
 	}

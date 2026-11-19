@@ -219,6 +219,7 @@ func (h *Handler) CreateModule(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := moduleToResponse(module)
 	h.publish(protocol.EventModuleCreated, workspaceID, "member", userID, map[string]any{"module": resp})
+	h.ensurePlanSkeleton(r.Context(), wsUUID)
 	writeJSON(w, http.StatusCreated, map[string]any{"module": resp})
 }
 

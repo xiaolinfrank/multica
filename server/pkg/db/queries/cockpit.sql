@@ -795,3 +795,58 @@ SELECT * FROM project WHERE id = $1 AND workspace_id = $2 FOR SHARE;
 
 -- name: GetModuleForCockpitBinding :one
 SELECT * FROM module WHERE id = $1 AND workspace_id = $2 FOR SHARE;
+
+-- name: CountCockpitPlanSkeletonGaps :one
+-- Cheap pre-check for the plan-skeleton writer: how many projects/modules are
+-- missing their L1/L2 identity row. The common read path runs this instead of
+-- taking the board lock, and only a non-zero answer opens the write path.
+SELECT (
+    (SELECT count(*) FROM project p
+      WHERE p.workspace_id = sqlc.arg('workspace_id')::uuid
+        AND NOT EXISTS (
+          SELECT 1 FROM cockpit_node n
+           WHERE n.workspace_id = p.workspace_id AND n.project_id = p.id
+             AND n.parent_id IS NULL AND n.module_id IS NULL))
+  + (SELECT count(*) FROM module m
+      WHERE m.workspace_id = sqlc.arg('workspace_id')::uuid
+        AND NOT EXISTS (
+          SELECT 1 FROM cockpit_node n
+           WHERE n.workspace_id = m.workspace_id AND n.module_id = m.id))
+)::bigint AS gaps;
+
+-- name: ListProjectsMissingCockpitRoot :many
+SELECT p.id, p.title
+FROM project p
+WHERE p.workspace_id = sqlc.arg('workspace_id')::uuid
+  AND NOT EXISTS (
+    SELECT 1 FROM cockpit_node n
+     WHERE n.workspace_id = p.workspace_id AND n.project_id = p.id
+       AND n.parent_id IS NULL AND n.module_id IS NULL)
+ORDER BY p.created_at, p.id;
+
+-- name: ListModulesMissingCockpitNode :many
+SELECT m.id, m.title, m.project_id
+FROM module m
+WHERE m.workspace_id = sqlc.arg('workspace_id')::uuid
+  AND NOT EXISTS (
+    SELECT 1 FROM cockpit_node n
+     WHERE n.workspace_id = m.workspace_id AND n.module_id = m.id)
+ORDER BY m.created_at, m.id;
+
+-- name: CreateCockpitSkeletonNode :one
+-- The L1/L2 row a skeleton pass adds: identity only (code, binding, position),
+-- name mirrors the project/module title but is never read back — I5 keeps
+-- names on project.title / module.title.
+INSERT INTO cockpit_node (
+    workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position
+) VALUES (
+    sqlc.arg('workspace_id')::uuid,
+    sqlc.arg('cockpit_id')::uuid,
+    sqlc.narg('parent_id')::uuid,
+    sqlc.narg('project_id')::uuid,
+    sqlc.narg('module_id')::uuid,
+    sqlc.arg('code')::text,
+    sqlc.arg('name')::text,
+    sqlc.arg('position')::double precision
+)
+RETURNING *;

@@ -61,6 +61,32 @@ func (q *Queries) CockpitHasBoundNodes(ctx context.Context, arg CockpitHasBoundN
 	return column_1, err
 }
 
+const countCockpitPlanSkeletonGaps = `-- name: CountCockpitPlanSkeletonGaps :one
+SELECT (
+    (SELECT count(*) FROM project p
+      WHERE p.workspace_id = $1::uuid
+        AND NOT EXISTS (
+          SELECT 1 FROM cockpit_node n
+           WHERE n.workspace_id = p.workspace_id AND n.project_id = p.id
+             AND n.parent_id IS NULL AND n.module_id IS NULL))
+  + (SELECT count(*) FROM module m
+      WHERE m.workspace_id = $1::uuid
+        AND NOT EXISTS (
+          SELECT 1 FROM cockpit_node n
+           WHERE n.workspace_id = m.workspace_id AND n.module_id = m.id))
+)::bigint AS gaps
+`
+
+// Cheap pre-check for the plan-skeleton writer: how many projects/modules are
+// missing their L1/L2 identity row. The common read path runs this instead of
+// taking the board lock, and only a non-zero answer opens the write path.
+func (q *Queries) CountCockpitPlanSkeletonGaps(ctx context.Context, workspaceID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countCockpitPlanSkeletonGaps, workspaceID)
+	var gaps int64
+	err := row.Scan(&gaps)
+	return gaps, err
+}
+
 const createCockpit = `-- name: CreateCockpit :one
 INSERT INTO cockpit (workspace_id, title, goal_title, goal_date, basis)
 VALUES (
@@ -699,6 +725,84 @@ func (q *Queries) CreateCockpitPendingChange(ctx context.Context, arg CreateCock
 		&i.UpdatedAt,
 		&i.SourceTaskID,
 		&i.DecisionNote,
+	)
+	return i, err
+}
+
+const createCockpitSkeletonNode = `-- name: CreateCockpitSkeletonNode :one
+INSERT INTO cockpit_node (
+    workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position
+) VALUES (
+    $1::uuid,
+    $2::uuid,
+    $3::uuid,
+    $4::uuid,
+    $5::uuid,
+    $6::text,
+    $7::text,
+    $8::double precision
+)
+RETURNING id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id, directory_name
+`
+
+type CreateCockpitSkeletonNodeParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	CockpitID   pgtype.UUID `json:"cockpit_id"`
+	ParentID    pgtype.UUID `json:"parent_id"`
+	ProjectID   pgtype.UUID `json:"project_id"`
+	ModuleID    pgtype.UUID `json:"module_id"`
+	Code        string      `json:"code"`
+	Name        string      `json:"name"`
+	Position    float64     `json:"position"`
+}
+
+// The L1/L2 row a skeleton pass adds: identity only (code, binding, position),
+// name mirrors the project/module title but is never read back — I5 keeps
+// names on project.title / module.title.
+func (q *Queries) CreateCockpitSkeletonNode(ctx context.Context, arg CreateCockpitSkeletonNodeParams) (CockpitNode, error) {
+	row := q.db.QueryRow(ctx, createCockpitSkeletonNode,
+		arg.WorkspaceID,
+		arg.CockpitID,
+		arg.ParentID,
+		arg.ProjectID,
+		arg.ModuleID,
+		arg.Code,
+		arg.Name,
+		arg.Position,
+	)
+	var i CockpitNode
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.CockpitID,
+		&i.ParentID,
+		&i.Code,
+		&i.Name,
+		&i.Position,
+		&i.Color,
+		&i.Owner,
+		&i.Collaborators,
+		&i.StartDate,
+		&i.EndDate,
+		&i.Status,
+		&i.Progress,
+		&i.Deliverable,
+		&i.Dependencies,
+		&i.Note,
+		&i.CurrentProgress,
+		&i.Vendor,
+		&i.BudgetCategory,
+		&i.BudgetAmount,
+		&i.ExecStatus,
+		&i.Contract,
+		&i.Source,
+		&i.UpdatedByType,
+		&i.UpdatedByID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ProjectID,
+		&i.ModuleID,
+		&i.DirectoryName,
 	)
 	return i, err
 }
@@ -2261,6 +2365,78 @@ func (q *Queries) ListCockpitUsedCodes(ctx context.Context, cockpitID pgtype.UUI
 			return nil, err
 		}
 		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listModulesMissingCockpitNode = `-- name: ListModulesMissingCockpitNode :many
+SELECT m.id, m.title, m.project_id
+FROM module m
+WHERE m.workspace_id = $1::uuid
+  AND NOT EXISTS (
+    SELECT 1 FROM cockpit_node n
+     WHERE n.workspace_id = m.workspace_id AND n.module_id = m.id)
+ORDER BY m.created_at, m.id
+`
+
+type ListModulesMissingCockpitNodeRow struct {
+	ID        pgtype.UUID `json:"id"`
+	Title     string      `json:"title"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+func (q *Queries) ListModulesMissingCockpitNode(ctx context.Context, workspaceID pgtype.UUID) ([]ListModulesMissingCockpitNodeRow, error) {
+	rows, err := q.db.Query(ctx, listModulesMissingCockpitNode, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListModulesMissingCockpitNodeRow{}
+	for rows.Next() {
+		var i ListModulesMissingCockpitNodeRow
+		if err := rows.Scan(&i.ID, &i.Title, &i.ProjectID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectsMissingCockpitRoot = `-- name: ListProjectsMissingCockpitRoot :many
+SELECT p.id, p.title
+FROM project p
+WHERE p.workspace_id = $1::uuid
+  AND NOT EXISTS (
+    SELECT 1 FROM cockpit_node n
+     WHERE n.workspace_id = p.workspace_id AND n.project_id = p.id
+       AND n.parent_id IS NULL AND n.module_id IS NULL)
+ORDER BY p.created_at, p.id
+`
+
+type ListProjectsMissingCockpitRootRow struct {
+	ID    pgtype.UUID `json:"id"`
+	Title string      `json:"title"`
+}
+
+func (q *Queries) ListProjectsMissingCockpitRoot(ctx context.Context, workspaceID pgtype.UUID) ([]ListProjectsMissingCockpitRootRow, error) {
+	rows, err := q.db.Query(ctx, listProjectsMissingCockpitRoot, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProjectsMissingCockpitRootRow{}
+	for rows.Next() {
+		var i ListProjectsMissingCockpitRootRow
+		if err := rows.Scan(&i.ID, &i.Title); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

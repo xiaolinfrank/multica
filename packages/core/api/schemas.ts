@@ -2055,6 +2055,8 @@ export const CockpitNodeSchema = z.object({
   project_id: z.string().nullable().catch(null).default(null),
   module_id: z.string().nullable().catch(null).default(null),
   code: z.string().default(""),
+  kind: z.enum(["project", "module", "work_item"]).optional(),
+  project_status: z.string().optional(),
   name: z.string().default(""),
   position: z.number().default(0),
   color: z.string().default(""),

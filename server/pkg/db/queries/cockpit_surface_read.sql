@@ -2,22 +2,29 @@
 -- Counts and bounded payloads share one snapshot. Context ancestors retain their
 -- identity but do not contribute their own payments to a narrower scope.
 WITH RECURSIVE args AS NOT MATERIALIZED (
- SELECT sqlc.arg('workspace_id')::uuid AS ws, sqlc.narg('project_id')::uuid AS project, sqlc.narg('module_id')::uuid AS module
+ SELECT sqlc.arg('workspace_id')::uuid AS ws, sqlc.narg('project_id')::uuid AS project, sqlc.narg('module_id')::uuid AS module,
+ sqlc.arg('include_closed')::bool AS include_closed
 ), tree AS (
- SELECT n.id,n.parent_id,n.project_id AS project,n.module_id AS module,ARRAY[n.id] AS path,TRUE AS valid
+ -- I2 is enforced by writes and by the reconcile pass; the read no longer
+ -- re-derives validity from bindings, it only inherits the scope.
+ SELECT n.id,n.parent_id,n.project_id AS project,n.module_id AS module,ARRAY[n.id] AS path
  FROM cockpit_node n,args x WHERE n.workspace_id=x.ws AND n.parent_id IS NULL
  UNION ALL
- SELECT n.id,n.parent_id,COALESCE(n.project_id,t.project),COALESCE(n.module_id,t.module),t.path||n.id,
- t.valid AND (n.project_id IS NULL OR t.project IS NULL OR n.project_id=t.project)
- AND (n.module_id IS NULL OR (t.module IS NULL AND n.project_id IS NOT NULL))
+ SELECT n.id,n.parent_id,COALESCE(n.project_id,t.project),COALESCE(n.module_id,t.module),t.path||n.id
  FROM cockpit_node n JOIN tree t ON n.parent_id=t.id CROSS JOIN args x
  WHERE n.workspace_id=x.ws AND NOT n.id=ANY(t.path)
 ), scoped AS MATERIALIZED (
  SELECT n.id,COALESCE(t.path,ARRAY[n.id]) AS path FROM cockpit_node n CROSS JOIN args x LEFT JOIN tree t ON t.id=n.id
- WHERE n.workspace_id=x.ws AND (x.project IS NULL OR t.valid AND t.project=x.project
+ WHERE n.workspace_id=x.ws AND (x.project IS NULL OR t.project=x.project
  AND EXISTS(SELECT 1 FROM project p WHERE p.workspace_id=x.ws AND p.id=t.project))
- AND (x.module IS NULL OR t.valid AND t.module=x.module
+ AND (x.module IS NULL OR t.module=x.module
  AND EXISTS(SELECT 1 FROM module m WHERE m.workspace_id=x.ws AND m.id=t.module AND m.project_id=t.project))
+ -- Paused/completed/cancelled projects are hidden from the workspace tree
+ -- only: a project- or module-scoped read names its subject, and its own page
+ -- must keep working after the project closes.
+ AND (x.include_closed OR x.project IS NOT NULL OR t.project IS NULL
+   OR NOT EXISTS(SELECT 1 FROM project hp WHERE hp.id=t.project AND hp.workspace_id=x.ws
+                 AND hp.status IN ('paused','completed','cancelled')))
 ), visible AS MATERIALIZED (
  SELECT DISTINCT unnest(path) AS id FROM scoped
 ), bounded_nodes AS (
@@ -26,31 +33,55 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT p.* FROM cockpit_payment p JOIN scoped n ON n.id=p.node_id CROSS JOIN args x WHERE p.workspace_id=x.ws ORDER BY p.position,p.id LIMIT 25001
 ), bounded_milestones AS (
  SELECT m.* FROM cockpit_milestone m CROSS JOIN args x WHERE m.workspace_id=x.ws
- AND (x.project IS NULL AND x.module IS NULL OR EXISTS(SELECT 1 FROM scoped n WHERE n.id=m.node_id)) ORDER BY m.position,m.id LIMIT 2001
+ AND ((m.node_id IS NULL AND x.project IS NULL AND x.module IS NULL)
+   OR EXISTS(SELECT 1 FROM scoped n WHERE n.id=m.node_id)) ORDER BY m.position,m.id LIMIT 2001
 ), node_index AS (
  SELECT n.id,n.parent_id,n.code,n.position FROM cockpit_node n,args x WHERE n.workspace_id=x.ws ORDER BY n.position,n.id LIMIT 20001
-), primary_counts AS MATERIALIZED (
- SELECT p.node_id,count(*) AS primary_total,
+), work_item_counts AS MATERIALIZED (
+ -- The work item is the single filing authority: counts start there and roll
+ -- up the tree, so an L1/L2 row answers for the work filed below it.
+ SELECT i.work_item_id AS node_id,count(*) AS primary_total,
  count(*) FILTER(WHERE cockpit_issue_category(i.status,st.category) NOT IN ('done','closed')) AS active,
  count(*) FILTER(WHERE cockpit_issue_category(i.status,st.category)='done') AS done,
  count(*) FILTER(WHERE cockpit_issue_category(i.status,st.category)='closed') AS closed
- FROM cockpit_issue_primary p JOIN scoped n ON n.id=p.node_id CROSS JOIN args x
- JOIN issue i ON i.id=p.issue_id AND i.workspace_id=x.ws LEFT JOIN issue_status st ON st.workspace_id=x.ws AND st.key=i.status
- WHERE p.workspace_id=x.ws AND p.issue_deleted_at IS NULL GROUP BY p.node_id
+ FROM issue i CROSS JOIN args x JOIN scoped s ON s.id=i.work_item_id
+ LEFT JOIN issue_status st ON st.workspace_id=x.ws AND st.key=i.status
+ WHERE i.workspace_id=x.ws AND i.work_item_id IS NOT NULL GROUP BY i.work_item_id
+), rolled_counts AS MATERIALIZED (
+ SELECT ancestor.id AS node_id,SUM(c.primary_total)::bigint AS primary_total,
+ SUM(c.active)::bigint AS active,SUM(c.done)::bigint AS done,SUM(c.closed)::bigint AS closed
+ FROM work_item_counts c JOIN tree t ON t.id=c.node_id
+ CROSS JOIN LATERAL unnest(t.path) AS ancestor(id) GROUP BY ancestor.id
 ), reference_counts AS MATERIALIZED (
+ -- Related work only: a link that names the issue's own work item is the
+ -- filing itself, not a reference.
  SELECT l.node_id,count(*) AS reference_total FROM cockpit_node_issue l JOIN scoped n ON n.id=l.node_id CROSS JOIN args x
  JOIN issue i ON i.id=l.issue_id AND i.workspace_id=x.ws
- WHERE l.workspace_id=x.ws AND NOT EXISTS(SELECT 1 FROM cockpit_issue_primary p WHERE p.workspace_id=x.ws AND p.issue_id=l.issue_id AND p.node_id=l.node_id AND p.issue_deleted_at IS NULL)
+ WHERE l.workspace_id=x.ws AND i.work_item_id IS DISTINCT FROM l.node_id
  GROUP BY l.node_id
 ), task_counts AS (
  SELECT n.id AS node_id,COALESCE(p.primary_total,0) AS primary_total,COALESCE(r.reference_total,0) AS reference_total,
  COALESCE(p.active,0) AS active,COALESCE(p.done,0) AS done,COALESCE(p.closed,0) AS closed
- FROM bounded_nodes n LEFT JOIN primary_counts p ON p.node_id=n.id LEFT JOIN reference_counts r ON r.node_id=n.id
+ FROM bounded_nodes n LEFT JOIN rolled_counts p ON p.node_id=n.id LEFT JOIN reference_counts r ON r.node_id=n.id
  WHERE EXISTS(SELECT 1 FROM scoped s WHERE s.id=n.id)
+), enriched_nodes AS MATERIALIZED (
+ SELECT n.id,n.position,
+ to_jsonb(n) || jsonb_build_object(
+   'kind',CASE WHEN n.parent_id IS NULL THEN 'project' WHEN n.module_id IS NOT NULL THEN 'module' ELSE 'work_item' END,
+   'name',CASE WHEN n.parent_id IS NULL THEN COALESCE(pj.title,n.name)
+               WHEN n.module_id IS NOT NULL THEN COALESCE(m.title,n.name)
+               ELSE n.name END,
+   'project_status',COALESCE(pj.status,'')
+ ) AS node
+ FROM bounded_nodes n CROSS JOIN args x
+ LEFT JOIN cockpit_node parent ON parent.id=n.parent_id
+ LEFT JOIN module pm ON pm.id=parent.module_id AND pm.workspace_id=x.ws
+ LEFT JOIN project pj ON pj.workspace_id=x.ws AND pj.id=COALESCE(n.project_id,pm.project_id)
+ LEFT JOIN module m ON m.workspace_id=x.ws AND m.id=n.module_id
 )
 SELECT jsonb_build_object(
  'complete',TRUE,
- 'nodes',COALESCE((SELECT jsonb_agg(n ORDER BY n.position,n.id) FROM bounded_nodes n),'[]'::jsonb),
+ 'nodes',COALESCE((SELECT jsonb_agg(n.node ORDER BY n.position,n.id) FROM enriched_nodes n),'[]'::jsonb),
  'payments',COALESCE((SELECT jsonb_agg(p ORDER BY p.position,p.id) FROM bounded_payments p),'[]'::jsonb),
  'milestones',COALESCE((SELECT jsonb_agg(m ORDER BY m.position,m.id) FROM bounded_milestones m),'[]'::jsonb),
  'node_index',COALESCE((SELECT jsonb_agg(n ORDER BY n.position,n.id) FROM node_index n),'[]'::jsonb),
@@ -58,7 +89,9 @@ SELECT jsonb_build_object(
  'task_counts',COALESCE((SELECT jsonb_agg(t) FROM task_counts t),'[]'::jsonb),
  'counts',jsonb_build_object('nodes',(SELECT count(*) FROM visible),
    'payments',(SELECT count(*) FROM cockpit_payment p,args x WHERE p.workspace_id=x.ws AND EXISTS(SELECT 1 FROM scoped n WHERE n.id=p.node_id)),
-   'milestones',(SELECT count(*) FROM cockpit_milestone m,args x WHERE m.workspace_id=x.ws AND (x.project IS NULL AND x.module IS NULL OR EXISTS(SELECT 1 FROM scoped n WHERE n.id=m.node_id))),
+   'milestones',(SELECT count(*) FROM cockpit_milestone m,args x WHERE m.workspace_id=x.ws
+     AND ((m.node_id IS NULL AND x.project IS NULL AND x.module IS NULL)
+       OR EXISTS(SELECT 1 FROM scoped n WHERE n.id=m.node_id))),
    'index_nodes',(SELECT count(*) FROM cockpit_node n,args x WHERE n.workspace_id=x.ws))
 )::jsonb AS payload;
 
