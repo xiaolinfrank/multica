@@ -65,6 +65,9 @@ func TestCockpitReconcileCLIDryRunApplyAndEmptyReport(t *testing.T) {
 		"issues": []any{
 			map[string]any{"issue_id": "issue-1", "identifier": "TES-1", "rule": "single_work_item", "new_work_item": "node-c"},
 		},
+		"unfiled_issues": []any{
+			map[string]any{"issue_id": "issue-2", "identifier": "#9", "reason": "ambiguous_links"},
+		},
 		"dangling_links": 2,
 	}
 	srv, body := reconcileCLIServer(t, report)
@@ -83,6 +86,8 @@ func TestCockpitReconcileCLIDryRunApplyAndEmptyReport(t *testing.T) {
 		"01 高质量数据集",
 		"issue filings: 1",
 		"TES-1 single_work_item → node-c",
+		"unfiled issues: 1",
+		"#9 ambiguous_links",
 		"dangling links: 2",
 	} {
 		if !strings.Contains(out, want) {

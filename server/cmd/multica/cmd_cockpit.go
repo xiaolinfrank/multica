@@ -1183,6 +1183,20 @@ func runCockpitReconcile(cmd *cobra.Command, _ []string) error {
 	printReconcileSection("issue filings", report["issues"], func(item map[string]any) string {
 		return fmt.Sprintf("%s %s → %s", strVal(item, "identifier"), strVal(item, "rule"), strVal(item, "new_work_item"))
 	})
+	// Undecided issues are the human's worklist: print them even when empty so
+	// an operator never mistakes "no filings section" for "everything filed".
+	unfiled := mapList(report, "unfiled_issues")
+	fmt.Printf("unfiled issues: %d\n", len(unfiled))
+	limit := len(unfiled)
+	if limit > 20 {
+		limit = 20
+	}
+	for _, item := range unfiled[:limit] {
+		fmt.Printf("  %s %s\n", strVal(item, "identifier"), strVal(item, "reason"))
+	}
+	if len(unfiled) > limit {
+		fmt.Printf("  … %d more (use --json for the full report)\n", len(unfiled)-limit)
+	}
 	printReconcileSection("directory names", report["directory_names"], func(item map[string]any) string {
 		return fmt.Sprintf("%s %s → %s", strVal(item, "code"), strVal(item, "name"), strVal(item, "directory_name"))
 	})
@@ -1195,7 +1209,7 @@ func runCockpitReconcile(cmd *cobra.Command, _ []string) error {
 			fmt.Printf("  - %v\n", blocker)
 		}
 	}
-	if reconcileChangeCount(report) == 0 && len(mapList(report, "blockers")) == 0 {
+	if reconcileChangeCount(report) == 0 && len(mapList(report, "blockers")) == 0 && len(mapList(report, "unfiled_issues")) == 0 {
 		fmt.Println("no structure, binding, or filing changes")
 	}
 	if apply {
@@ -1210,8 +1224,10 @@ func runCockpitReconcile(cmd *cobra.Command, _ []string) error {
 // used to tell "nothing to migrate" apart from a silently empty report.
 func reconcileChangeCount(report map[string]any) int {
 	total := 0
+	// directory_names is informational: every row has one after apply, so it
+	// would otherwise always read as outstanding work.
 	for _, key := range []string{"groups", "code_changes", "projects", "new_projects", "new_roots",
-		"modules", "new_modules", "new_module_nodes", "reflows", "title_splits", "issues", "directory_names"} {
+		"modules", "new_modules", "new_module_nodes", "reflows", "title_splits", "issues", "unfiled_issues"} {
 		total += len(mapList(report, key))
 	}
 	return total

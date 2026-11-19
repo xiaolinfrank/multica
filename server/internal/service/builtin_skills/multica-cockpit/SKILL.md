@@ -43,7 +43,7 @@ Prefer bounded pages ([overview queues](references/overview.md), `node tasks`, `
 ## Structural changes
 
 A new project or module gets its plan row automatically — do not create one by hand while a row already binds it (duplicate bindings return 409).
-`multica cockpit reconcile` previews the one-time plan migration (display structure, bindings, work-item filings, directory names); `--apply` writes it in one transaction after a snapshot and is human-only. Read `--json` before applying; a blocked group means money, milestones or links still sit on a row the merge would delete.
+`multica cockpit reconcile` previews the one-time plan migration (display structure, bindings, work-item filings, directory names); `--apply` writes it in one transaction after a snapshot, is human-only, and is accepted **once** — after that only a preview runs. Read `--json` before applying: a blocked group means money, milestones or links still sit on a row the merge would delete, and every unfiled issue is listed with its reason for a human to file by hand.
 
 Rows that are real new work are created, not proposed:
 

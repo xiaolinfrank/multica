@@ -97,7 +97,7 @@ VALUES (
     $5::text
 )
 ON CONFLICT (workspace_id) DO UPDATE SET workspace_id = EXCLUDED.workspace_id
-RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at
+RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at, reconcile_report
 `
 
 type CreateCockpitParams struct {
@@ -138,6 +138,7 @@ func (q *Queries) CreateCockpit(ctx context.Context, arg CreateCockpitParams) (C
 		&i.MeetingAssigneeType,
 		&i.MeetingAssigneeID,
 		&i.PlanReconciledAt,
+		&i.ReconcileReport,
 	)
 	return i, err
 }
@@ -1272,7 +1273,7 @@ func (q *Queries) DeleteWorkspaceCockpitData(ctx context.Context, workspaceID pg
 
 const getCockpitByWorkspace = `-- name: GetCockpitByWorkspace :one
 
-SELECT id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at FROM cockpit
+SELECT id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at, reconcile_report FROM cockpit
 WHERE workspace_id = $1::uuid
 `
 
@@ -1305,6 +1306,7 @@ func (q *Queries) GetCockpitByWorkspace(ctx context.Context, workspaceID pgtype.
 		&i.MeetingAssigneeType,
 		&i.MeetingAssigneeID,
 		&i.PlanReconciledAt,
+		&i.ReconcileReport,
 	)
 	return i, err
 }
@@ -2622,7 +2624,7 @@ UPDATE cockpit SET
     updated_at      = now()
 WHERE id = $19::uuid
   AND workspace_id = $20::uuid
-RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at
+RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at, reconcile_report
 `
 
 type UpdateCockpitParams struct {
@@ -2693,6 +2695,7 @@ func (q *Queries) UpdateCockpit(ctx context.Context, arg UpdateCockpitParams) (C
 		&i.MeetingAssigneeType,
 		&i.MeetingAssigneeID,
 		&i.PlanReconciledAt,
+		&i.ReconcileReport,
 	)
 	return i, err
 }

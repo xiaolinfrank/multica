@@ -627,6 +627,7 @@ type Cockpit struct {
 	MeetingAssigneeType string             `json:"meeting_assignee_type"`
 	MeetingAssigneeID   pgtype.UUID        `json:"meeting_assignee_id"`
 	PlanReconciledAt    pgtype.Timestamptz `json:"plan_reconciled_at"`
+	ReconcileReport     []byte             `json:"reconcile_report"`
 }
 
 type CockpitAcceptanceCriterion struct {

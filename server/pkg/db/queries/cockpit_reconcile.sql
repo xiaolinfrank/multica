@@ -116,3 +116,9 @@ SELECT * FROM cockpit_node_issue WHERE workspace_id=sqlc.arg('workspace_id')::uu
 -- name: MoveCockpitMilestonesToNode :exec
 UPDATE cockpit_milestone SET node_id=sqlc.arg('node_id')::uuid, updated_at=now()
 WHERE workspace_id=sqlc.arg('workspace_id')::uuid AND node_id=sqlc.arg('from_node_id')::uuid;
+
+-- name: SaveCockpitReconcileReport :exec
+-- Keeps the applied report next to the plan it rewrote: the snapshot freezes
+-- structure only, so filings, title splits and created rows live here.
+UPDATE cockpit SET reconcile_report=sqlc.arg('report')::jsonb, updated_at=now()
+WHERE workspace_id=sqlc.arg('workspace_id')::uuid;

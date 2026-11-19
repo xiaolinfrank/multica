@@ -372,6 +372,23 @@ func (q *Queries) MoveCockpitMilestonesToNode(ctx context.Context, arg MoveCockp
 	return err
 }
 
+const saveCockpitReconcileReport = `-- name: SaveCockpitReconcileReport :exec
+UPDATE cockpit SET reconcile_report=$1::jsonb, updated_at=now()
+WHERE workspace_id=$2::uuid
+`
+
+type SaveCockpitReconcileReportParams struct {
+	Report      []byte      `json:"report"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+// Keeps the applied report next to the plan it rewrote: the snapshot freezes
+// structure only, so filings, title splits and created rows live here.
+func (q *Queries) SaveCockpitReconcileReport(ctx context.Context, arg SaveCockpitReconcileReportParams) error {
+	_, err := q.db.Exec(ctx, saveCockpitReconcileReport, arg.Report, arg.WorkspaceID)
+	return err
+}
+
 const setCockpitNodeDirectoryName = `-- name: SetCockpitNodeDirectoryName :exec
 UPDATE cockpit_node SET directory_name=$1::text, updated_at=now()
 WHERE workspace_id=$2::uuid AND id=$3::uuid

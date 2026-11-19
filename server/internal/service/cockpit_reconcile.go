@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/issueworkflow"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/dbid"
@@ -124,6 +126,16 @@ type CockpitReconcileIssue struct {
 	Note        string `json:"note,omitempty"`
 }
 
+// CockpitReconcileUnfiled records an issue the backfill left unfiled. §3.3
+// requires the report to name every issue no rule could decide, so a human
+// files it by hand instead of it silently vanishing from the migration.
+type CockpitReconcileUnfiled struct {
+	IssueID    string `json:"issue_id"`
+	Identifier string `json:"identifier"`
+	Reason     string `json:"reason"`
+	Note       string `json:"note,omitempty"`
+}
+
 type CockpitReconcileDirectory struct {
 	NodeID        string `json:"node_id"`
 	Code          string `json:"code"`
@@ -147,6 +159,7 @@ type CockpitReconcileReport struct {
 	Reflows        []CockpitReconcileReflow        `json:"reflows,omitempty"`
 	TitleSplits    []CockpitReconcileTitleSplit    `json:"title_splits,omitempty"`
 	Issues         []CockpitReconcileIssue         `json:"issues,omitempty"`
+	Unfiled        []CockpitReconcileUnfiled       `json:"unfiled_issues,omitempty"`
 	DanglingLinks  int64                           `json:"dangling_links"`
 	DirectoryNames []CockpitReconcileDirectory     `json:"directory_names,omitempty"`
 	Blockers       []string                        `json:"blockers,omitempty"`
@@ -241,6 +254,7 @@ type cockpitReconciler struct {
 	moduleIdx  map[pgtype.UUID]*reconcileModuleInfo
 	issues     []db.ListCockpitReconcileIssuesRow
 	issueIdx   map[pgtype.UUID]*db.ListCockpitReconcileIssuesRow
+	unfiled    map[pgtype.UUID]string
 	links      []db.CockpitNodeIssue
 	dependents map[pgtype.UUID]db.ListCockpitNodeDependentsRow
 	usedCodes  map[string]bool
@@ -257,6 +271,9 @@ type cockpitReconciler struct {
 	// roots for them.
 	blockedRoots    map[pgtype.UUID]bool
 	blockedProjects map[pgtype.UUID]bool
+	// reflowedRoots collects the workstream rows a reflow removed; their L1
+	// numbers are freed once every root has been decided.
+	reflowedRoots   []pgtype.UUID
 	filings         map[pgtype.UUID]reconcileFiling
 	danglingLinks   int64
 	milestonesMoves []milestoneMove
@@ -277,12 +294,20 @@ func (s *IssueService) ReconcileCockpitPlan(ctx context.Context, in CockpitRecon
 	if err != nil {
 		return report, err
 	}
+	if in.Apply && board.PlanReconciledAt.Valid {
+		// Codes are fixed once the plan is reconciled (§2.5); re-applying
+		// would renumber rows users have reordered since. Preview stays open.
+		return report, fmt.Errorf("%w: this board's plan was already reconciled; only a dry run is available", ErrCockpitWorkflowConflict)
+	}
 	if !in.Apply {
 		st, err := newCockpitReconciler(ctx, s.Queries, in.WorkspaceID, board)
 		if err != nil {
 			return report, err
 		}
 		if err := st.run(); err != nil {
+			return report, err
+		}
+		if err := st.checkCrossProjectStatus(ctx, s.Queries); err != nil {
 			return report, err
 		}
 		report = st.report
@@ -315,6 +340,9 @@ func (s *IssueService) ReconcileCockpitPlan(ctx context.Context, in CockpitRecon
 		report.Apply = true
 		return report, nil
 	}
+	if err := st.checkCrossProjectStatus(ctx, qtx); err != nil {
+		return report, err
+	}
 	snapshotID, err := snapshot(ctx, qtx, board)
 	if err != nil {
 		return report, fmt.Errorf("plan snapshot: %w", err)
@@ -346,6 +374,7 @@ func newCockpitReconciler(ctx context.Context, q *db.Queries, ws pgtype.UUID, bo
 		nodes: make(map[pgtype.UUID]*reconcileNode), children: make(map[pgtype.UUID][]pgtype.UUID),
 		projectIdx: make(map[pgtype.UUID]*reconcileProjectInfo), moduleIdx: make(map[pgtype.UUID]*reconcileModuleInfo),
 		issueIdx: make(map[pgtype.UUID]*db.ListCockpitReconcileIssuesRow), dependents: make(map[pgtype.UUID]db.ListCockpitNodeDependentsRow),
+		unfiled:   make(map[pgtype.UUID]string),
 		usedCodes: make(map[string]bool), usedL1: make(map[string]bool),
 		projectTitles: make(map[pgtype.UUID]string), moduleTitles: make(map[pgtype.UUID]string),
 		createdProjects: make(map[pgtype.UUID]bool), createdModules: make(map[pgtype.UUID]bool),
@@ -417,7 +446,7 @@ func newCockpitReconciler(ctx context.Context, q *db.Queries, ws pgtype.UUID, bo
 
 func (st *cockpitReconciler) rebuildTree() {
 	st.children = make(map[pgtype.UUID][]pgtype.UUID)
-	st.roots = st.roots[:0]
+	roots := make([]pgtype.UUID, 0, len(st.order))
 	for _, id := range st.order {
 		n := st.nodes[id]
 		if n == nil || n.deleted {
@@ -429,9 +458,13 @@ func (st *cockpitReconciler) rebuildTree() {
 				continue
 			}
 		}
-		st.roots = append(st.roots, id)
+		roots = append(roots, id)
 	}
-	sort.SliceStable(st.roots, func(i, j int) bool { return st.less(st.roots[i], st.roots[j]) })
+	sort.SliceStable(roots, func(i, j int) bool { return st.less(roots[i], roots[j]) })
+	// A fresh slice, never st.roots[:0]: callers iterate st.roots while reflow
+	// mutates the tree, and reusing the backing array rewrites the slice being
+	// ranged over, skipping or repeating rows (pmo-showcase lost L1-04/L1-06).
+	st.roots = roots
 	for parent := range st.children {
 		ids := st.children[parent]
 		sort.SliceStable(ids, func(i, j int) bool { return st.less(ids[i], ids[j]) })
@@ -473,8 +506,14 @@ func (st *cockpitReconciler) kind(id pgtype.UUID) string {
 func (st *cockpitReconciler) run() error {
 	st.restoreDisplayStructure()
 	st.assignProjects()
+	// Display codes BEFORE module matching: module titles carry the display
+	// numbering ("03.03 科学测评与用户验证"), so matching a pre-renumber L2
+	// stored code bound project 03's rows to the wrong modules. Both passes
+	// record: the second only adds rows created between them (duplicates are
+	// suppressed), so a merged board reports each row once with its final code.
+	st.applyCodes(true)
 	st.assignModules()
-	st.applyCodes()
+	st.applyCodes(true)
 	st.backfillIssues()
 	st.computeDirectoryNames()
 	return nil
@@ -582,9 +621,15 @@ func (st *cockpitReconciler) maxChildPosition(parent pgtype.UUID) float64 {
 
 func (st *cockpitReconciler) assignProjects() {
 	matched := make(map[pgtype.UUID]bool)
-	for _, rootID := range st.roots {
+	// Iterate a copy: tryReflow rebuilds the tree (and st.roots) while this
+	// loop runs. Same fix as rebuildTree's fresh slice — a [:0] rewrite made
+	// pmo-showcase skip its middle workstream rows.
+	for _, rootID := range append([]pgtype.UUID(nil), st.roots...) {
 		l1 := st.nodes[rootID]
-		project, method, candidates, ok := st.matchProject(l1)
+		if l1 == nil || l1.deleted {
+			continue
+		}
+		project, method, candidates, ok := st.matchProject(l1, matched)
 		if ok {
 			l1.projectID = project.ID
 			matched[project.ID] = true
@@ -610,19 +655,28 @@ func (st *cockpitReconciler) assignProjects() {
 		}
 		st.createRootForProject(project)
 	}
+	st.releaseReflowCodes()
 	st.rebuildTree()
 }
 
-func (st *cockpitReconciler) matchProject(l1 *reconcileNode) (db.Project, string, []string, bool) {
+func (st *cockpitReconciler) matchProject(l1 *reconcileNode, matched map[pgtype.UUID]bool) (db.Project, string, []string, bool) {
 	if l1.projectID.Valid && st.projectIdx[l1.projectID] != nil {
 		return st.projectIdx[l1.projectID].project, "bound", nil, true
 	}
 	_, name := splitReconcileTitle(l1.name)
 	normalized := normalizeReconcileName(name)
+	// Deterministic order: the projects slice is position-stable, a map walk is
+	// not, and tie-breaks must not flip between dry runs.
 	var candidates []*reconcileProjectInfo
-	for _, p := range st.projectIdx {
-		if normalizeReconcileName(p.name) == normalized {
-			candidates = append(candidates, p)
+	for _, p := range st.projects {
+		info := st.projectIdx[p.ID]
+		if info == nil || matched[p.ID] {
+			// One L1 per project: a project another row already claimed is not
+			// a candidate again.
+			continue
+		}
+		if normalizeReconcileName(info.name) == normalized {
+			candidates = append(candidates, info)
 		}
 	}
 	if len(candidates) > 0 {
@@ -636,9 +690,13 @@ func (st *cockpitReconciler) matchProject(l1 *reconcileNode) (db.Project, string
 		return best.project, "name", alternatives, true
 	}
 	l1Code := trailingDigits(l1.code)
-	for _, p := range st.projectIdx {
-		if p.code != "" && p.code == l1Code && (strings.Contains(normalizeReconcileName(p.name), normalized) || strings.Contains(normalized, normalizeReconcileName(p.name))) {
-			return p.project, "code_contains", nil, true
+	for _, p := range st.projects {
+		info := st.projectIdx[p.ID]
+		if info == nil || matched[p.ID] {
+			continue
+		}
+		if info.code != "" && info.code == l1Code && (strings.Contains(normalizeReconcileName(info.name), normalized) || strings.Contains(normalized, normalizeReconcileName(info.name))) {
+			return p, "code_contains", nil, true
 		}
 	}
 	return db.Project{}, "", nil, false
@@ -698,7 +756,7 @@ func (st *cockpitReconciler) createRootForProject(project db.Project) {
 	id := dbid.NewV7()
 	node := &reconcileNode{
 		id: id, projectID: project.ID, code: code, name: name,
-		position: float64(len(st.roots)), created: true,
+		position: st.maxRootPosition() + 1, created: true,
 	}
 	st.nodes[id] = node
 	st.order = append(st.order, id)
@@ -707,6 +765,32 @@ func (st *cockpitReconciler) createRootForProject(project db.Project) {
 	if st.projectTitles[project.ID] == "" {
 		st.projectTitles[project.ID] = name
 	}
+}
+
+// maxRootPosition is the largest root position; new roots append after it so
+// two rows never share a sort position (len(roots) could collide with an
+// imported board whose positions are not 0..n-1).
+func (st *cockpitReconciler) maxRootPosition() float64 {
+	max := -1.0
+	for _, id := range st.roots {
+		if n := st.nodes[id]; n != nil && n.position > max {
+			max = n.position
+		}
+	}
+	return max
+}
+
+// releaseReflowCodes frees the L1 numbers of removed workstream rows so a
+// reflowed board numbers its new project rows from 01. The old rows' codes
+// would otherwise keep 01–08 occupied and push the new roots to 09+.
+func (st *cockpitReconciler) releaseReflowCodes() {
+	if len(st.reflowedRoots) == 0 {
+		return
+	}
+	for _, id := range st.reflowedRoots {
+		delete(st.usedL1, trailingDigits(st.nodes[id].code))
+	}
+	st.reflowedRoots = nil
 }
 
 func (st *cockpitReconciler) projectHasRoot(project pgtype.UUID) bool {
@@ -754,23 +838,34 @@ func (st *cockpitReconciler) projectPathSuggestion(code, name string) string {
 }
 
 func (st *cockpitReconciler) assignModules() {
-	for _, rootID := range st.roots {
+	bound := make(map[pgtype.UUID]pgtype.UUID) // module id -> the L2 row that holds it
+	for _, rootID := range append([]pgtype.UUID(nil), st.roots...) {
 		root := st.nodes[rootID]
-		if !root.projectID.Valid {
+		if root == nil || root.deleted || !root.projectID.Valid {
 			continue
 		}
 		for _, l2ID := range st.children[rootID] {
 			l2 := st.nodes[l2ID]
+			if l2 == nil || l2.deleted {
+				continue
+			}
 			if l2.projectID.Valid && l2.moduleID.Valid {
+				bound[l2.moduleID] = l2ID
 				continue
 			}
 			module, method, confirm, ok := st.matchModule(root.projectID, l2)
 			if !ok {
 				module = st.createModule(root.projectID, l2)
 				st.report.NewModules = append(st.report.NewModules, CockpitReconcileNewModule{NodeID: util.UUIDToString(l2.id), ModuleID: util.UUIDToString(module.ID), Title: module.Title})
+			} else if holder, clash := bound[module.ID]; clash {
+				// Two rows claiming one module breaks the binding's unique
+				// index on apply; name it instead of failing the transaction.
+				st.report.Blockers = append(st.report.Blockers, fmt.Sprintf("module %q (%s) matched both %s and %s; resolve before apply", module.Title, util.UUIDToString(module.ID), st.nodes[holder].oldCode, l2.oldCode))
+				continue
 			} else {
 				st.report.Modules = append(st.report.Modules, CockpitReconcileModule{NodeID: util.UUIDToString(l2.id), ModuleID: util.UUIDToString(module.ID), Title: module.Title, Method: method, NeedsReview: confirm})
 				st.stripModuleTitle(module)
+				bound[module.ID] = l2ID
 			}
 			l2.projectID = root.projectID
 			l2.moduleID = module.ID
@@ -778,14 +873,8 @@ func (st *cockpitReconciler) assignModules() {
 		}
 	}
 	// Modules without an L2 row get one under their project's L1.
-	bound := make(map[pgtype.UUID]bool)
-	for _, n := range st.nodes {
-		if n != nil && !n.deleted && n.moduleID.Valid {
-			bound[n.moduleID] = true
-		}
-	}
 	for _, module := range st.modules {
-		if bound[module.ID] {
+		if _, ok := bound[module.ID]; ok {
 			continue
 		}
 		root := st.rootForProject(module.ProjectID)
@@ -805,36 +894,45 @@ func (st *cockpitReconciler) assignModules() {
 		st.nodes[id] = node
 		st.order = append(st.order, id)
 		st.children[root.id] = append(st.children[root.id], id)
+		bound[module.ID] = id
 		st.report.NewModuleNodes = append(st.report.NewModuleNodes, CockpitReconcileNewModuleNode{ModuleID: util.UUIDToString(module.ID), NodeID: util.UUIDToString(id), Code: code, Title: info.name, Source: source})
 	}
 	st.rebuildTree()
 }
 
+// matchModule binds an L2 row to a module of its project, in the order the
+// plan fixes: code AND name, then name alone (flagged for review), then code.
+// l2.code is the DISPLAY code (applyCodes ran first), which is the numbering
+// module titles carry. A module another row already bound is never returned.
 func (st *cockpitReconciler) matchModule(projectID pgtype.UUID, l2 *reconcileNode) (db.Module, string, bool, bool) {
 	_, name := splitReconcileTitle(l2.name)
 	normalized := normalizeReconcileName(name)
-	var byName, byCode []*reconcileModuleInfo
-	for _, m := range st.moduleIdx {
-		if m.module.ProjectID != projectID {
+	var byName, byCode []db.Module
+	for _, m := range st.modules {
+		if m.ProjectID != projectID {
 			continue
 		}
-		if m.code != "" && m.code == l2.code {
+		info := st.moduleIdx[m.ID]
+		if info == nil {
+			continue
+		}
+		if info.code != "" && info.code == l2.code {
 			byCode = append(byCode, m)
 		}
-		if normalizeReconcileName(m.name) == normalized {
+		if normalizeReconcileName(info.name) == normalized {
 			byName = append(byName, m)
 		}
 	}
 	for _, m := range byCode {
-		if normalizeReconcileName(m.name) == normalized {
-			return m.module, "code_name", false, true
+		if normalizeReconcileName(st.moduleIdx[m.ID].name) == normalized {
+			return m, "code_name", false, true
 		}
 	}
 	if len(byCode) == 1 {
-		return byCode[0].module, "code", true, true
+		return byCode[0], "code", true, true
 	}
 	if len(byName) == 1 {
-		return byName[0].module, "name", true, true
+		return byName[0], "name", true, true
 	}
 	return db.Module{}, "", false, false
 }
@@ -887,7 +985,9 @@ func (st *cockpitReconciler) nextChildCode(parentCode string) string {
 
 // tryReflow handles a board whose L1 rows are workstreams rather than projects:
 // every L2 maps by name to an existing module, so the L2s move under their
-// modules' projects and the old L1 is removed.
+// modules' projects and the old L1 is removed. The whole old row is decided
+// up front (all L2s mapped, no dependents) before any tree mutation, so a
+// failed reflow leaves the board untouched.
 func (st *cockpitReconciler) tryReflow(l1 *reconcileNode) bool {
 	children := st.children[l1.id]
 	if len(children) == 0 {
@@ -904,12 +1004,16 @@ func (st *cockpitReconciler) tryReflow(l1 *reconcileNode) bool {
 		l2 := st.nodes[l2ID]
 		_, name := splitReconcileTitle(l2.name)
 		var found *reconcileModuleInfo
-		for _, m := range st.moduleIdx {
-			if normalizeReconcileName(m.name) == normalizeReconcileName(name) {
-				if found != nil && found.module.ID != m.module.ID {
+		for _, m := range st.modules {
+			info := st.moduleIdx[m.ID]
+			if info == nil {
+				continue
+			}
+			if normalizeReconcileName(info.name) == normalizeReconcileName(name) {
+				if found != nil && found.module.ID != m.ID {
 					return false
 				}
-				found = m
+				found = info
 			}
 		}
 		if found == nil {
@@ -941,15 +1045,27 @@ func (st *cockpitReconciler) tryReflow(l1 *reconcileNode) bool {
 		return false
 	}
 	reflow := CockpitReconcileReflow{OldRootID: util.UUIDToString(l1.id), OldCode: l1.oldCode, OldName: l1.name}
+	// Projects take the L1 numbers in the original tree order of their first
+	// L2 row (§3.2 item 7); usedL1 still holds the old row's code, freed later
+	// by releaseReflowCodes, so numbers are assigned by order, not by lookup.
+	seen := 1
 	rootsByProject := make(map[pgtype.UUID]pgtype.UUID, len(order))
 	for _, projectID := range order {
 		g := groups[projectID]
 		root := st.rootForProject(projectID)
 		if root == nil {
-			code := st.nextL1Code()
+			code := ""
+			for {
+				candidate := fmt.Sprintf("%02d", seen)
+				seen++
+				if !st.usedL1[candidate] {
+					code = candidate
+					break
+				}
+			}
 			st.usedL1[code] = true
 			id := dbid.NewV7()
-			root = &reconcileNode{id: id, projectID: projectID, code: code, name: splitName(g.project.Title), position: float64(len(st.roots)), created: true}
+			root = &reconcileNode{id: id, projectID: projectID, code: code, name: splitName(g.project.Title), position: st.maxRootPosition() + 1, created: true}
 			st.nodes[id] = root
 			st.order = append(st.order, id)
 			st.roots = append(st.roots, id)
@@ -990,6 +1106,7 @@ func (st *cockpitReconciler) tryReflow(l1 *reconcileNode) bool {
 		}
 	}
 	l1.deleted = true
+	st.reflowedRoots = append(st.reflowedRoots, l1.id)
 	delete(st.children, l1.id)
 	st.rebuildTree()
 	st.report.Reflows = append(st.report.Reflows, reflow)
@@ -999,6 +1116,45 @@ func (st *cockpitReconciler) tryReflow(l1 *reconcileNode) bool {
 // milestonesMoves records reflow milestone reattachments.
 type milestoneMove struct{ from, to pgtype.UUID }
 
+// checkCrossProjectStatus defers cross-project workflow mapping to a human.
+// The reconcile does not translate statuses (the platform's move logic lives
+// on the issue update path); instead, an issue whose filing moves it into a
+// project with a NAMED workflow that does not list its current status is left
+// unfiled and reported, so nothing lands on a status the project forbids.
+func (st *cockpitReconciler) checkCrossProjectStatus(ctx context.Context, q *db.Queries) error {
+	defs := make(map[pgtype.UUID]*issueworkflow.Definition)
+	for _, issue := range st.issues {
+		filing := st.filings[issue.ID]
+		if !filing.valid || !issue.ProjectID.Valid || filing.project == issue.ProjectID {
+			continue
+		}
+		def := defs[filing.project]
+		if def == nil {
+			loaded, _, err := issueworkflow.ForProject(ctx, q, st.ws, filing.project)
+			if err != nil {
+				return err
+			}
+			// A default workflow accepts every status; only a named one limits.
+			// The empty Definition marks "no restriction" via its nil Steps.
+			def = &issueworkflow.Definition{}
+			if loaded != nil && !loaded.IsDefault {
+				def = loaded
+			}
+			defs[filing.project] = def
+		}
+		if def.Steps == nil || def.Has(issue.Status) {
+			// Default or unrestricted: any current status survives the move.
+			continue
+		}
+		filing.valid = false
+		filing.note = "cross_project_status_not_in_workflow"
+		st.filings[issue.ID] = filing
+		st.unfiled[issue.ID] = "cross_project_status_not_in_workflow"
+	}
+	st.buildIssueReports()
+	return nil
+}
+
 func splitName(title string) string {
 	_, name := splitReconcileTitle(title)
 	return name
@@ -1007,8 +1163,28 @@ func splitName(title string) string {
 // ---------------------------------------------------------------------------
 // 4. Codes and directory names
 
-func (st *cockpitReconciler) applyCodes() {
+// applyCodes renumbers the tree in position order. The pass runs twice: the
+// first fixes display codes so module matching compares like with like, the
+// second numbers rows assignModules appended. Only the first pass records code
+// changes; the second pass compares each row's CURRENT code, so a row the
+// first pass already renumbered (and reported) is not reported again, while a
+// row created between the passes reports its first real code.
+func (st *cockpitReconciler) applyCodes(record bool) {
 	st.rebuildTree()
+	report := func(id pgtype.UUID, kind, name, old, new string) {
+		if !record {
+			return
+		}
+		if old == new {
+			return
+		}
+		for _, change := range st.report.CodeChanges {
+			if change.NodeID == util.UUIDToString(id) && change.NewCode == new {
+				return
+			}
+		}
+		st.report.CodeChanges = append(st.report.CodeChanges, CockpitReconcileCodeChange{NodeID: util.UUIDToString(id), Kind: kind, Name: name, OldCode: old, NewCode: new})
+	}
 	var walk func(id pgtype.UUID, prefix string)
 	walk = func(id pgtype.UUID, prefix string) {
 		ordinal := 0
@@ -1022,9 +1198,7 @@ func (st *cockpitReconciler) applyCodes() {
 			}
 			child.code = code
 			st.usedCodes[code] = true
-			if code != child.oldCode {
-				st.report.CodeChanges = append(st.report.CodeChanges, CockpitReconcileCodeChange{NodeID: util.UUIDToString(childID), Kind: st.kind(childID), Name: child.name, OldCode: child.oldCode, NewCode: code})
-			}
+			report(childID, st.kind(childID), child.name, child.oldCode, code)
 			walk(childID, code)
 		}
 	}
@@ -1036,9 +1210,7 @@ func (st *cockpitReconciler) applyCodes() {
 		}
 		root.code = code
 		st.usedCodes[code] = true
-		if code != root.oldCode {
-			st.report.CodeChanges = append(st.report.CodeChanges, CockpitReconcileCodeChange{NodeID: util.UUIDToString(rootID), Kind: "project", Name: root.name, OldCode: root.oldCode, NewCode: code})
-		}
+		report(rootID, "project", root.name, root.oldCode, code)
 		walk(rootID, code)
 	}
 }
@@ -1118,26 +1290,71 @@ func (st *cockpitReconciler) backfillIssues() {
 					candidate.rule = "one_of_many"
 				}
 			} else if code := issueTitleCode(issue.Title); code != "" {
-				var filing reconcileFiling
-				var ok bool
+				// Title codes are human-typed text, so the plan scopes the
+				// lookup to the issue's own module; only an issue with no
+				// module searches its project (and gains the module it finds).
+				// A code that lands in ANOTHER module of the project is not
+				// enough evidence to move the issue — it is reported instead.
 				if issue.ModuleID.Valid {
-					filing, ok = byModuleCode[util.UUIDToString(issue.ModuleID)+"|"+code]
-				}
-				if !ok && issue.ProjectID.Valid {
-					filing, ok = byProjectCode[util.UUIDToString(issue.ProjectID)+"|"+code]
-				}
-				if ok {
-					candidate = filing
-					candidate.rule = "title_code"
+					if filing, ok := byModuleCode[util.UUIDToString(issue.ModuleID)+"|"+code]; ok {
+						candidate = filing
+						candidate.rule = "title_code"
+					} else if _, ok := byProjectCode[util.UUIDToString(issue.ProjectID)+"|"+code]; ok && issue.ProjectID.Valid {
+						st.unfiled[issue.ID] = "title_code_other_module"
+					}
+				} else if issue.ProjectID.Valid {
+					if filing, ok := byProjectCode[util.UUIDToString(issue.ProjectID)+"|"+code]; ok {
+						candidate = filing
+						candidate.rule = "title_code"
+					}
 				}
 			}
+		}
+		if !candidate.valid {
+			// Only issues that carried evidence are reported: a link set or a
+			// title code the backfill could not resolve. An issue with neither
+			// was never a candidate, and listing every one of them (over a
+			// thousand in production) would bury the ones a human must decide.
+			reason := st.unfiled[issue.ID]
+			if reason == "" {
+				switch {
+				case len(linksByIssue[issue.ID]) == 0 && issueTitleCode(issue.Title) != "":
+					reason = "title_code_unmatched"
+				case len(linksByIssue[issue.ID]) == 0:
+					reason = ""
+				case len(workItemLinks(linksByIssue[issue.ID], workItems)) == 0:
+					reason = "only_structural_links"
+				default:
+					reason = "ambiguous_links"
+				}
+			}
+			st.unfiled[issue.ID] = reason
 		}
 		st.filings[issue.ID] = candidate
 	}
 	st.applyParentFiling()
+	st.buildIssueReports()
+}
+
+// buildIssueReports regenerates the applied and unfiled sections from
+// st.filings. It is rebuildable on purpose: checkCrossProjectStatus invalidates
+// filings after the backfill, and a report that still listed them as moves
+// would describe an apply that no longer matches the transaction.
+func (st *cockpitReconciler) buildIssueReports() {
+	st.report.Issues = nil
+	st.report.Unfiled = nil
 	for _, issue := range st.issues {
 		filing := st.filings[issue.ID]
 		if !filing.valid {
+			// Only issues with evidence are named; see backfillIssues. A row
+			// with no reason would read as "nothing to do" anyway.
+			reason := st.unfiled[issue.ID]
+			if reason == "" {
+				continue
+			}
+			st.report.Unfiled = append(st.report.Unfiled, CockpitReconcileUnfiled{
+				IssueID: util.UUIDToString(issue.ID), Identifier: fmt.Sprintf("#%d", issue.Number), Reason: reason,
+			})
 			continue
 		}
 		if filing.workItem == issue.WorkItemID && filing.project == issue.ProjectID && filing.module == issue.ModuleID {
@@ -1149,6 +1366,17 @@ func (st *cockpitReconciler) backfillIssues() {
 			OldProject: reconcileUUID(issue.ProjectID), NewProject: reconcileUUID(filing.project), Note: filing.note,
 		})
 	}
+}
+
+// workItemLinks filters a link set down to the nodes that can host a filing.
+func workItemLinks(links []pgtype.UUID, workItems map[pgtype.UUID]reconcileFiling) []pgtype.UUID {
+	var out []pgtype.UUID
+	for _, id := range links {
+		if workItems[id].valid {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func filingMatchesIssue(filing reconcileFiling, issue *db.ListCockpitReconcileIssuesRow) bool {
@@ -1203,14 +1431,21 @@ func (st *cockpitReconciler) applyParentFiling() {
 				child.valid = false
 				child.note = "child_matched_without_parent"
 				st.filings[issue.ID] = child
+				st.unfiled[issue.ID] = "child_matched_without_parent"
 			}
 			continue
 		}
 		child := st.filings[issue.ID]
 		if !child.valid || child.workItem != parent.workItem {
+			// The override flag compares the child's OWN computed filing: the
+			// stored work_item_id is empty before the migration, so keying on
+			// it never flagged anything. A matched child (or an already-filed
+			// one pointing elsewhere) that the parent moves is the case §3.3
+			// wants named.
+			overridden := child.valid && child.workItem != parent.workItem
 			child = parent
 			child.rule = "followed_parent"
-			if issue.WorkItemID.Valid && issue.WorkItemID != parent.workItem {
+			if overridden {
 				child.note = "parent_overrode_child"
 			}
 			st.filings[issue.ID] = child
@@ -1255,8 +1490,11 @@ func (st *cockpitReconciler) apply() error {
 			return err
 		}
 	}
-	// Nodes: create parents before children, then rewrite moved rows, then
-	// delete merged-away rows (their children have already been reparented).
+	// Nodes: create parents before children. Renumbering runs in two phases
+	// because (cockpit_id, code) is unique: writing 02.10's new code 02.03
+	// while the merged-away 02.03 row still exists violates the index, and a
+	// swap (A↔B) can never work row by row. Rows are deleted first, then every
+	// renumbered row moves to a temporary code, then to its final code.
 	var created []*reconcileNode
 	for _, n := range st.nodes {
 		if n.created {
@@ -1264,6 +1502,8 @@ func (st *cockpitReconciler) apply() error {
 		}
 	}
 	sort.SliceStable(created, func(i, j int) bool { return st.depth(created[i].id) < st.depth(created[j].id) })
+	// New rows are created with their FINAL code: their old codes never existed
+	// in the table, so they cannot collide with a surviving row's old code.
 	for _, n := range created {
 		if _, err := st.q.CreateCockpitReconcileNode(st.ctx, db.CreateCockpitReconcileNodeParams{
 			ID: n.id, WorkspaceID: st.ws, CockpitID: st.board.ID, ParentID: n.parentID,
@@ -1273,25 +1513,10 @@ func (st *cockpitReconciler) apply() error {
 			return err
 		}
 	}
-	for _, id := range st.order {
-		n := st.nodes[id]
-		if n == nil || n.created || n.deleted {
-			continue
-		}
-		if n.parentID == n.oldParentID && n.projectID == n.oldProject && n.moduleID == n.oldModule &&
-			n.code == n.oldCode && n.name == n.oldName && n.directory == n.oldDirectory && n.position == n.oldPosition {
-			continue
-		}
-		if err := st.q.UpdateCockpitNodeStructure(st.ctx, db.UpdateCockpitNodeStructureParams{
+	structure := func(n *reconcileNode, code string) db.UpdateCockpitNodeStructureParams {
+		return db.UpdateCockpitNodeStructureParams{
 			WorkspaceID: st.ws, ID: n.id, ParentID: n.parentID, ProjectID: n.projectID, ModuleID: n.moduleID,
-			Code: n.code, Name: n.name, Position: n.position,
-		}); err != nil {
-			return err
-		}
-		if n.directory.Valid && n.directory.String != "" {
-			if err := st.q.SetCockpitNodeDirectoryName(st.ctx, db.SetCockpitNodeDirectoryNameParams{WorkspaceID: st.ws, ID: n.id, DirectoryName: n.directory.String}); err != nil {
-				return err
-			}
+			Code: code, Name: n.name, Position: n.position,
 		}
 	}
 	// Milestones move off a removed workstream row BEFORE the row goes.
@@ -1303,6 +1528,39 @@ func (st *cockpitReconciler) apply() error {
 	for _, id := range st.order {
 		if n := st.nodes[id]; n != nil && n.deleted {
 			if err := st.q.DeleteCockpitNodeRow(st.ctx, db.DeleteCockpitNodeRowParams{WorkspaceID: st.ws, ID: id}); err != nil {
+				return err
+			}
+		}
+	}
+	changed := make([]*reconcileNode, 0)
+	for _, id := range st.order {
+		n := st.nodes[id]
+		if n == nil || n.created || n.deleted {
+			continue
+		}
+		if n.parentID == n.oldParentID && n.projectID == n.oldProject && n.moduleID == n.oldModule &&
+			n.code == n.oldCode && n.name == n.oldName && n.directory == n.oldDirectory && n.position == n.oldPosition {
+			continue
+		}
+		changed = append(changed, n)
+	}
+	// Phase 1: every changed row that keeps existing takes a code no row can
+	// hold — "~<id>" is not a valid outline code, so the unique index is safe.
+	for _, n := range changed {
+		if n.code == n.oldCode {
+			continue
+		}
+		if err := st.q.UpdateCockpitNodeStructure(st.ctx, structure(n, "~"+util.UUIDToString(n.id))); err != nil {
+			return err
+		}
+	}
+	// Phase 2: final codes. No two surviving rows share one.
+	for _, n := range changed {
+		if err := st.q.UpdateCockpitNodeStructure(st.ctx, structure(n, n.code)); err != nil {
+			return err
+		}
+		if n.directory.Valid && n.directory.String != "" {
+			if err := st.q.SetCockpitNodeDirectoryName(st.ctx, db.SetCockpitNodeDirectoryNameParams{WorkspaceID: st.ws, ID: n.id, DirectoryName: n.directory.String}); err != nil {
 				return err
 			}
 		}
@@ -1332,6 +1590,13 @@ func (st *cockpitReconciler) apply() error {
 		if _, err := st.q.RecordCockpitUsedCode(st.ctx, db.RecordCockpitUsedCodeParams{WorkspaceID: st.ws, CockpitID: st.board.ID, Code: n.code}); err != nil {
 			return err
 		}
+	}
+	if payload, err := json.Marshal(st.report); err == nil {
+		if err := st.q.SaveCockpitReconcileReport(st.ctx, db.SaveCockpitReconcileReportParams{WorkspaceID: st.ws, Report: payload}); err != nil {
+			return err
+		}
+	} else {
+		return err
 	}
 	if err := st.q.MarkCockpitPlanReconciled(st.ctx, st.ws); err != nil {
 		return err
