@@ -41,6 +41,15 @@ var cockpitUpdateCmd = &cobra.Command{
 	RunE:  runCockpitUpdate,
 }
 
+var cockpitReconcileCmd = &cobra.Command{
+	Use:   "reconcile",
+	Short: "Preview or apply the one-time plan-tree reconciliation",
+	Long: "Compare the stored plan tree with the structure the gantt shows and report\n" +
+		"the project/module bindings and issue filings that would change. Pass --apply\n" +
+		"to write the whole mapping in one transaction (a snapshot is taken first).",
+	RunE: runCockpitReconcile,
+}
+
 var cockpitNodeCmd = &cobra.Command{
 	Use:   "node",
 	Short: "Manage work-breakdown nodes",
@@ -220,6 +229,9 @@ var cockpitVersionDeleteCmd = &cobra.Command{
 }
 
 func init() {
+	cockpitReconcileCmd.Flags().Bool("apply", false, "Write the reconciliation (a plan snapshot is taken first)")
+	cockpitReconcileCmd.Flags().Bool("json", false, "Print the full report as JSON")
+	cockpitCmd.AddCommand(cockpitReconcileCmd)
 	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd,
 		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd,
 		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"), newCockpitChangeCommand(), newCockpitArtifactCommand(), newCockpitAcceptanceCommand(), newCockpitInputCommand())
@@ -411,6 +423,13 @@ func cockpitBoard(ctx context.Context, client *cli.APIClient) (map[string]any, e
 		return nil, fmt.Errorf("get cockpit: %w", err)
 	}
 	return board, nil
+}
+
+// anyListLen counts a JSON list of scalars (e.g. the ids a merge group drops),
+// where mapList would drop every element because it keeps object entries only.
+func anyListLen(m map[string]any, key string) int {
+	raw, _ := m[key].([]any)
+	return len(raw)
 }
 
 func mapList(board map[string]any, key string) []map[string]any {
@@ -1097,4 +1116,117 @@ func runCockpitVersionDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("delete cockpit version: %w", err)
 	}
 	return nil
+}
+
+func runCockpitReconcile(cmd *cobra.Command, _ []string) error {
+	client, err := newAPIClient(cmd)
+	if err != nil {
+		return err
+	}
+	apply, _ := cmd.Flags().GetBool("apply")
+	asJSON, _ := cmd.Flags().GetBool("json")
+	var report map[string]any
+	if err := client.PostJSON(cmd.Context(), "/api/cockpit/plan/reconcile", map[string]any{"apply": apply}, &report); err != nil {
+		return err
+	}
+	if asJSON {
+		encoded, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(encoded))
+		return nil
+	}
+	mode := "dry run"
+	if apply {
+		mode = "applied"
+	}
+	fmt.Printf("Plan reconcile (%s)\n", mode)
+	printReconcileSection("structure groups", report["groups"], func(item map[string]any) string {
+		return fmt.Sprintf("%s → kept %v, removed %d", strVal(item, "id"), item["kept"], anyListLen(item, "removed"))
+	})
+	printReconcileSection("code changes", report["code_changes"], func(item map[string]any) string {
+		return fmt.Sprintf("%s %s: %s → %s", strVal(item, "kind"), strVal(item, "name"), strVal(item, "old_code"), strVal(item, "new_code"))
+	})
+	printReconcileSection("projects", report["projects"], func(item map[string]any) string {
+		return fmt.Sprintf("%s → %s (%s)", strVal(item, "l1_code"), strVal(item, "title"), strVal(item, "method"))
+	})
+	printReconcileSection("new projects", report["new_projects"], func(item map[string]any) string {
+		return fmt.Sprintf("%s %s", strVal(item, "code"), strVal(item, "title"))
+	})
+	printReconcileSection("new roots", report["new_roots"], func(item map[string]any) string {
+		return fmt.Sprintf("%s %s (%s)", strVal(item, "code"), strVal(item, "title"), strVal(item, "source"))
+	})
+	printReconcileSection("modules", report["modules"], func(item map[string]any) string {
+		line := fmt.Sprintf("%s (%s)", strVal(item, "title"), strVal(item, "method"))
+		if needsReview, _ := item["needs_review"].(bool); needsReview {
+			line += " ⚠ needs review"
+		}
+		return line
+	})
+	printReconcileSection("new modules", report["new_modules"], func(item map[string]any) string {
+		return strVal(item, "title")
+	})
+	printReconcileSection("new module rows", report["new_module_nodes"], func(item map[string]any) string {
+		return fmt.Sprintf("%s %s (%s)", strVal(item, "code"), strVal(item, "title"), strVal(item, "source"))
+	})
+	printReconcileSection("reflows", report["reflows"], func(item map[string]any) string {
+		return fmt.Sprintf("%s %s → %d projects", strVal(item, "old_code"), strVal(item, "old_name"), anyListLen(item, "projects"))
+	})
+	printReconcileSection("title splits", report["title_splits"], func(item map[string]any) string {
+		return fmt.Sprintf("%s %q → %q (%s)", strVal(item, "kind"), strVal(item, "old_title"), strVal(item, "new_title"), strVal(item, "code"))
+	})
+	printReconcileSection("issue filings", report["issues"], func(item map[string]any) string {
+		return fmt.Sprintf("%s %s → %s", strVal(item, "identifier"), strVal(item, "rule"), strVal(item, "new_work_item"))
+	})
+	printReconcileSection("directory names", report["directory_names"], func(item map[string]any) string {
+		return fmt.Sprintf("%s %s → %s", strVal(item, "code"), strVal(item, "name"), strVal(item, "directory_name"))
+	})
+	if dangling, _ := report["dangling_links"].(float64); dangling > 0 {
+		fmt.Printf("dangling links: %d (removed on apply)\n", int64(dangling))
+	}
+	if raw, ok := report["blockers"].([]any); ok && len(raw) > 0 {
+		fmt.Println("blockers:")
+		for _, blocker := range raw {
+			fmt.Printf("  - %v\n", blocker)
+		}
+	}
+	if reconcileChangeCount(report) == 0 && len(mapList(report, "blockers")) == 0 {
+		fmt.Println("no structure, binding, or filing changes")
+	}
+	if apply {
+		if id := strVal(report, "snapshot_id"); id != "" {
+			fmt.Printf("snapshot: %s\n", id)
+		}
+	}
+	return nil
+}
+
+// reconcileChangeCount is the number of reported items across every section,
+// used to tell "nothing to migrate" apart from a silently empty report.
+func reconcileChangeCount(report map[string]any) int {
+	total := 0
+	for _, key := range []string{"groups", "code_changes", "projects", "new_projects", "new_roots",
+		"modules", "new_modules", "new_module_nodes", "reflows", "title_splits", "issues", "directory_names"} {
+		total += len(mapList(report, key))
+	}
+	return total
+}
+
+func printReconcileSection(label string, raw any, render func(map[string]any) string) {
+	items := mapList(map[string]any{label: raw}, label)
+	if len(items) == 0 {
+		return
+	}
+	fmt.Printf("%s: %d\n", label, len(items))
+	limit := len(items)
+	if limit > 20 {
+		limit = 20
+	}
+	for _, item := range items[:limit] {
+		fmt.Printf("  %s\n", render(item))
+	}
+	if len(items) > limit {
+		fmt.Printf("  … %d more (use --json for the full report)\n", len(items)-limit)
+	}
 }

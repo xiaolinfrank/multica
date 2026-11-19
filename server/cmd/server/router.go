@@ -2339,6 +2339,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/plan", h.GetCockpitPlanSurface)
 				r.Get("/plan/node-index", h.GetCockpitNodeIndex)
 				r.Get("/plan/export-data", h.GetCockpitPlanExport)
+				r.Post("/plan/reconcile", h.ReconcileCockpitPlan)
 				r.Post("/plan/meetings/query", h.GetCockpitPlanMeetingMarkers)
 				r.Get("/scopes/projects", h.ListCockpitScopeProjects)
 				r.Get("/scopes/modules", h.ListCockpitScopeModules)
