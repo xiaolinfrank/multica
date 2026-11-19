@@ -1,6 +1,9 @@
 package service
 
-import "github.com/jackc/pgx/v5/pgtype"
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
+)
 
 type CockpitActionDraft struct {
 	WorkspaceID, MeetingID, VersionID, ActorID, ProposalKey pgtype.UUID
@@ -24,6 +27,9 @@ type CockpitNodeTaskCreate struct {
 type CockpitPrimaryNodeCommand struct {
 	WorkspaceID, IssueID, NodeID, ActorID pgtype.UUID
 	ExpectedRevision                      int64
+	// refiled carries the subtree rows the last SetCockpitIssuePrimaryNode
+	// write changed, so its caller can broadcast each one after commit.
+	refiled []db.RefileIssueSubtreeRow
 }
 type CockpitActionList struct {
 	WorkspaceID, MeetingID, ActorID, VersionID pgtype.UUID

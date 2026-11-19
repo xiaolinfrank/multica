@@ -143,15 +143,16 @@ func beginPlanning(ctx context.Context, s *IssueService, ws, actor pgtype.UUID) 
 // receipt (creation_key/hash), so its node_id is deliberately left NULL. A
 // named work item supplies its own module and project, and the DB guard that
 // used to refuse such a move is cleared first for the whole subtree (I4).
-func attachPlanningPrimary(ctx context.Context, q *db.Queries, issue db.Issue, node db.CockpitNode, actor pgtype.UUID, create *CockpitNodeTaskCreate) (db.CockpitIssuePrimary, pgtype.UUID, error) {
+// It returns the changed subtree rows so the caller can broadcast each one.
+func attachPlanningPrimary(ctx context.Context, q *db.Queries, issue db.Issue, node db.CockpitNode, actor pgtype.UUID, create *CockpitNodeTaskCreate) (db.CockpitIssuePrimary, pgtype.UUID, []db.RefileIssueSubtreeRow, error) {
 	_, project, module, err := requireExecutionLeaf(ctx, q, issue.WorkspaceID, node.ID)
 	if err != nil {
-		return db.CockpitIssuePrimary{}, pgtype.UUID{}, err
+		return db.CockpitIssuePrimary{}, pgtype.UUID{}, nil, err
 	}
 	previous := issue.WorkItemID
 	if previous == node.ID {
 		receipt, err := ensureCockpitPrimaryReceipt(ctx, q, issue, actor, create)
-		return receipt, previous, err
+		return receipt, previous, nil, err
 	}
 	// A sub-issue is filed where its parent is filed (I4). This is the same
 	// rule the issue update path applies; the work item is not an independent
@@ -159,33 +160,45 @@ func attachPlanningPrimary(ctx context.Context, q *db.Queries, issue db.Issue, n
 	if issue.ParentIssueID.Valid {
 		parent, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{ID: issue.ParentIssueID, WorkspaceID: issue.WorkspaceID})
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return db.CockpitIssuePrimary{}, previous, err
+			return db.CockpitIssuePrimary{}, previous, nil, err
 		}
 		if err == nil && parent.WorkItemID != node.ID {
-			return db.CockpitIssuePrimary{}, previous, fmt.Errorf("%w: a sub-issue must stay in its parent's work item", ErrChildWorkItemMismatch)
+			return db.CockpitIssuePrimary{}, previous, nil, fmt.Errorf("%w: a sub-issue must stay in its parent's work item", ErrChildWorkItemMismatch)
 		}
 	}
 	// The work item the issue leaves becomes a related node, the same way the
 	// old primary row did: a refile changes the filing, not the history.
 	if previous.Valid {
 		if err := q.EnsureCockpitNodeReference(ctx, db.EnsureCockpitNodeReferenceParams{WorkspaceID: issue.WorkspaceID, NodeID: previous, IssueID: issue.ID}); err != nil {
-			return db.CockpitIssuePrimary{}, previous, err
+			return db.CockpitIssuePrimary{}, previous, nil, err
 		}
 	}
 	if err := q.ClearCockpitPrimaryNodeIDsForSubtree(ctx, db.ClearCockpitPrimaryNodeIDsForSubtreeParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID}); err != nil {
-		return db.CockpitIssuePrimary{}, previous, err
+		return db.CockpitIssuePrimary{}, previous, nil, err
 	}
-	if err := q.SetIssueWorkItemSubtree(ctx, db.SetIssueWorkItemSubtreeParams{
-		WorkspaceID: issue.WorkspaceID,
-		IssueID:     issue.ID,
-		WorkItemID:  node.ID,
-		ProjectID:   project,
-		ModuleID:    module,
+	// The subtree write covers the descendants only; the issue itself is the
+	// row being refiled. Both must move together (I4).
+	if err := q.SetIssueWorkItem(ctx, db.SetIssueWorkItemParams{
+		WorkspaceID: issue.WorkspaceID, IssueID: issue.ID,
+		WorkItemID: node.ID, ProjectID: project, ModuleID: module,
 	}); err != nil {
-		return db.CockpitIssuePrimary{}, previous, err
+		return db.CockpitIssuePrimary{}, previous, nil, err
+	}
+	// RefileIssueSubtree returns exactly the descendant rows that changed, so
+	// each one can be broadcast — a child whose revision bumped deserves its
+	// own event, not just its parent's.
+	refiled, err := q.RefileIssueSubtree(ctx, db.RefileIssueSubtreeParams{
+		ParentIssueID: issue.ID,
+		WorkspaceID:   issue.WorkspaceID,
+		ProjectID:     project,
+		ModuleID:      module,
+		WorkItemID:    node.ID,
+	})
+	if err != nil {
+		return db.CockpitIssuePrimary{}, previous, nil, err
 	}
 	receipt, err := ensureCockpitPrimaryReceipt(ctx, q, issue, actor, create)
-	return receipt, previous, err
+	return receipt, previous, refiled, err
 }
 
 // fileCockpitIssueUnderNode files a just-created issue under the work item its
@@ -200,7 +213,7 @@ func fileCockpitIssueUnderNode(ctx context.Context, q *db.Queries, issue db.Issu
 	if err != nil {
 		return planningError(err)
 	}
-	_, _, err = attachPlanningPrimary(ctx, q, issue, node, actor, nil)
+	_, _, _, err = attachPlanningPrimary(ctx, q, issue, node, actor, nil)
 	return err
 }
 
@@ -261,19 +274,44 @@ func (s *IssueService) SetCockpitIssuePrimaryNode(ctx context.Context, p Cockpit
 		if err != nil {
 			return db.CockpitIssuePrimary{}, err
 		}
-		receipt, _, err = attachPlanningPrimary(ctx, q, issue, node, p.ActorID, nil)
+		var refiled []db.RefileIssueSubtreeRow
+		receipt, _, refiled, err = attachPlanningPrimary(ctx, q, issue, node, p.ActorID, nil)
 		if err != nil {
 			return receipt, err
 		}
+		p.refiled = refiled
 	} else {
 		// Unfiling leaves the issue in its current project/module; the work
 		// item was the only thing being withdrawn.
+		//
+		// I4 cuts both ways: a child may not keep a filing its parent lost.
+		// The subtree unfile together, so a child's work item (and every
+		// descendant's) is withdrawn with the parent's — the subtree query
+		// clears each row's own work_item_id, not just the root's.
+		if issue.ParentIssueID.Valid {
+			parent, err := q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{ID: issue.ParentIssueID, WorkspaceID: p.WorkspaceID})
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return db.CockpitIssuePrimary{}, err
+			}
+			if err == nil && parent.WorkItemID != p.NodeID {
+				// The parent is filed elsewhere; clearing this child's filing
+				// would strand it outside its parent's work item.
+				return db.CockpitIssuePrimary{}, fmt.Errorf("%w: a sub-issue must stay in its parent's work item", ErrChildWorkItemMismatch)
+			}
+		}
 		if err := q.ClearCockpitPrimaryNodeIDsForSubtree(ctx, db.ClearCockpitPrimaryNodeIDsForSubtreeParams{WorkspaceID: p.WorkspaceID, IssueID: p.IssueID}); err != nil {
 			return db.CockpitIssuePrimary{}, err
 		}
-		if err := q.SetIssueWorkItemSubtree(ctx, db.SetIssueWorkItemSubtreeParams{WorkspaceID: p.WorkspaceID, IssueID: p.IssueID, ProjectID: issue.ProjectID, ModuleID: issue.ModuleID}); err != nil {
+		// The root unfiles first; the descendants follow through the subtree
+		// write, which returns exactly the rows that changed for broadcasting.
+		if err := q.SetIssueWorkItem(ctx, db.SetIssueWorkItemParams{WorkspaceID: p.WorkspaceID, IssueID: p.IssueID, ProjectID: issue.ProjectID, ModuleID: issue.ModuleID}); err != nil {
 			return db.CockpitIssuePrimary{}, err
 		}
+		refiled, err := q.RefileIssueSubtree(ctx, db.RefileIssueSubtreeParams{ParentIssueID: p.IssueID, WorkspaceID: p.WorkspaceID, ProjectID: issue.ProjectID, ModuleID: issue.ModuleID})
+		if err != nil {
+			return db.CockpitIssuePrimary{}, err
+		}
+		p.refiled = refiled
 		receipt, err = ensureCockpitPrimaryReceipt(ctx, q, issue, p.ActorID, nil)
 		if err != nil {
 			return receipt, err
@@ -289,6 +327,7 @@ func (s *IssueService) SetCockpitIssuePrimaryNode(ctx context.Context, p Cockpit
 		return receipt, err
 	}
 	s.publishIssueFilingUpdate(ctx, updated, issue.ProjectID, issue.ModuleID, issue.WorkItemID, p.ActorID)
+	s.publishRefiledSubtree(ctx, p.refiled, p.ActorID)
 	s.primaryChanged(p.WorkspaceID, p.ActorID, p.IssueID, issue.WorkItemID, p.NodeID)
 	return receipt, nil
 }
@@ -311,6 +350,25 @@ func (s *IssueService) publishIssueFilingUpdate(ctx context.Context, issue db.Is
 		"module_changed":    previousModule != issue.ModuleID,
 		"prev_work_item_id": planningUUID(previousWorkItem),
 	}})
+}
+
+// publishRefiledSubtree broadcasts each descendant row a subtree refile
+// changed. The rows come back from the same write that bumped their
+// revisions, so every listener learns its own issue moved.
+func (s *IssueService) publishRefiledSubtree(ctx context.Context, rows []db.RefileIssueSubtreeRow, actor pgtype.UUID) {
+	if s.Bus == nil {
+		return
+	}
+	for _, row := range rows {
+		s.Bus.Publish(events.Event{Type: protocol.EventIssueUpdated, WorkspaceID: util.UUIDToString(row.WorkspaceID), ActorType: "member", ActorID: util.UUIDToString(actor), Payload: map[string]any{
+			"issue": map[string]any{
+				"id": util.UUIDToString(row.ID), "workspace_id": util.UUIDToString(row.WorkspaceID),
+				"project_id": planningUUID(row.ProjectID), "module_id": planningUUID(row.ModuleID),
+				"work_item_id": planningUUID(row.WorkItemID), "revision": row.Revision, "updated_at": row.UpdatedAt.Time,
+			},
+			"work_item_changed": true, "project_changed": true, "module_changed": true,
+		}})
+	}
 }
 
 func nodeTaskCreationHash(p CockpitNodeTaskCreate) string {
@@ -436,7 +494,7 @@ func prepareCockpitPlanningIssue(ctx context.Context, q *db.Queries, p *IssueCre
 }
 func linkCockpitPlanningIssue(ctx context.Context, q *db.Queries, p IssueCreateParams, issue db.Issue) error {
 	hook := p.CockpitPlanning
-	if _, _, err := attachPlanningPrimary(ctx, q, issue, hook.node, p.CreatorID, hook.create); err != nil {
+	if _, _, _, err := attachPlanningPrimary(ctx, q, issue, hook.node, p.CreatorID, hook.create); err != nil {
 		return err
 	}
 	if hook.action != nil {

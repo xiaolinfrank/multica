@@ -398,45 +398,6 @@ func (q *Queries) LockCockpitIssuePrimary(ctx context.Context, arg LockCockpitIs
 	return i, err
 }
 
-const setIssueWorkItemSubtree = `-- name: SetIssueWorkItemSubtree :exec
-WITH RECURSIVE descendants AS (
-    SELECT id FROM issue WHERE workspace_id=$4::uuid AND id=$5::uuid
-    UNION ALL
-    SELECT i.id FROM issue i JOIN descendants d ON i.parent_issue_id=d.id
-     WHERE i.workspace_id=$4::uuid
-)
-UPDATE issue i SET
-    work_item_id=$1::uuid,
-    project_id=$2::uuid,
-    module_id=$3::uuid,
-    revision=i.revision+1,
-    last_activity_at=GREATEST(COALESCE(i.last_activity_at,i.updated_at),now()),
-    updated_at=now()
-WHERE i.workspace_id=$4::uuid AND i.id IN (SELECT id FROM descendants)
-`
-
-type SetIssueWorkItemSubtreeParams struct {
-	WorkItemID  pgtype.UUID `json:"work_item_id"`
-	ProjectID   pgtype.UUID `json:"project_id"`
-	ModuleID    pgtype.UUID `json:"module_id"`
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	IssueID     pgtype.UUID `json:"issue_id"`
-}
-
-// Files an issue (and its subtree, I4) under a work item, deriving project and
-// module from it. NULL work_item_id unfiles; the caller keeps the issue's
-// current project/module in that case.
-func (q *Queries) SetIssueWorkItemSubtree(ctx context.Context, arg SetIssueWorkItemSubtreeParams) error {
-	_, err := q.db.Exec(ctx, setIssueWorkItemSubtree,
-		arg.WorkItemID,
-		arg.ProjectID,
-		arg.ModuleID,
-		arg.WorkspaceID,
-		arg.IssueID,
-	)
-	return err
-}
-
 const tombstoneCockpitIssuePrimary = `-- name: TombstoneCockpitIssuePrimary :exec
 UPDATE cockpit_issue_primary SET node_id=NULL,issue_deleted_at=now(),revision=revision+1,updated_at=now()
 WHERE workspace_id=$1 AND issue_id=$2 AND issue_deleted_at IS NULL

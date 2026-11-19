@@ -317,7 +317,7 @@ func (s *IssueService) settlePlanningAction(ctx context.Context, p CockpitAction
 			return a, fmt.Errorf("%w: minutes and formal review issues cannot be reused as action execution", ErrCockpitWorkflowConflict)
 		}
 		previousProject, previousModule, previousWorkItem = issue.ProjectID, issue.ModuleID, issue.WorkItemID
-		if _, _, err := attachPlanningPrimary(ctx, q, issue, node, p.ActorID, nil); err != nil {
+		if _, _, _, err := attachPlanningPrimary(ctx, q, issue, node, p.ActorID, nil); err != nil {
 			return a, err
 		}
 	}

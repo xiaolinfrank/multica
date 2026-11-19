@@ -100,21 +100,3 @@ UPDATE cockpit_issue_primary p SET node_id=NULL,revision=p.revision+1,updated_at
 WHERE p.workspace_id=sqlc.arg('workspace_id')::uuid AND p.node_id IS NOT NULL
   AND p.issue_id IN (SELECT id FROM descendants);
 
--- name: SetIssueWorkItemSubtree :exec
--- Files an issue (and its subtree, I4) under a work item, deriving project and
--- module from it. NULL work_item_id unfiles; the caller keeps the issue's
--- current project/module in that case.
-WITH RECURSIVE descendants AS (
-    SELECT id FROM issue WHERE workspace_id=sqlc.arg('workspace_id')::uuid AND id=sqlc.arg('issue_id')::uuid
-    UNION ALL
-    SELECT i.id FROM issue i JOIN descendants d ON i.parent_issue_id=d.id
-     WHERE i.workspace_id=sqlc.arg('workspace_id')::uuid
-)
-UPDATE issue i SET
-    work_item_id=sqlc.narg('work_item_id')::uuid,
-    project_id=sqlc.narg('project_id')::uuid,
-    module_id=sqlc.narg('module_id')::uuid,
-    revision=i.revision+1,
-    last_activity_at=GREATEST(COALESCE(i.last_activity_at,i.updated_at),now()),
-    updated_at=now()
-WHERE i.workspace_id=sqlc.arg('workspace_id')::uuid AND i.id IN (SELECT id FROM descendants);
