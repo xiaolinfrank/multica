@@ -65,15 +65,21 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  FROM bounded_nodes n LEFT JOIN rolled_counts p ON p.node_id=n.id LEFT JOIN reference_counts r ON r.node_id=n.id
  WHERE EXISTS(SELECT 1 FROM scoped s WHERE s.id=n.id)
 ), enriched_nodes AS MATERIALIZED (
+ -- kind is structural (the row's level), never inferred from bindings: a
+ -- second-level row that has not been bound to a module yet is still a module,
+ -- and treating it as a work item would let a pre-reconcile board file issues
+ -- one level too high. name stays binding-based: it can only project a title
+ -- once the row actually binds the project/module.
  SELECT n.id,n.position,
  to_jsonb(n) || jsonb_build_object(
-   'kind',CASE WHEN n.parent_id IS NULL THEN 'project' WHEN n.module_id IS NOT NULL THEN 'module' ELSE 'work_item' END,
+   'kind',CASE WHEN n.parent_id IS NULL THEN 'project' WHEN COALESCE(cardinality(t.path),1)=2 THEN 'module' ELSE 'work_item' END,
    'name',CASE WHEN n.parent_id IS NULL THEN COALESCE(pj.title,n.name)
                WHEN n.module_id IS NOT NULL THEN COALESCE(m.title,n.name)
                ELSE n.name END,
    'project_status',COALESCE(pj.status,'')
  ) AS node
  FROM bounded_nodes n CROSS JOIN args x
+ LEFT JOIN tree t ON t.id=n.id
  LEFT JOIN cockpit_node parent ON parent.id=n.parent_id
  LEFT JOIN module pm ON pm.id=parent.module_id AND pm.workspace_id=x.ws
  LEFT JOIN project pj ON pj.workspace_id=x.ws AND pj.id=COALESCE(n.project_id,pm.project_id)

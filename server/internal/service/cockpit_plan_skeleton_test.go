@@ -208,3 +208,36 @@ func TestCockpitPlanSurfaceDerivesStructureAndCounts(t *testing.T) {
 		t.Fatalf("root counts in the workspace tree = %+v", got)
 	}
 }
+
+// kind answers "which level is this row", not "is it bound". A board that has
+// not been reconciled yet still has unbound second-level rows; calling them
+// work items would let a caller file an issue one level too high.
+func TestCockpitPlanSurfaceKindsAreStructuralNotBindingBased(t *testing.T) {
+	f := newPlanningFixture(t)
+	ctx := context.Background()
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root string
+	if err := f.Pool.QueryRow(ctx, `SELECT id::text FROM cockpit_node WHERE workspace_id=$1 AND parent_id IS NULL`, f.ws).Scan(&root); err != nil {
+		t.Fatal(err)
+	}
+	unbound := f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "parent_id": parseTestUUID(t, root),
+		"code": "M-unbound", "name": "未绑定模块",
+	})
+	plan, err := f.issues.GetCockpitPlanSurface(ctx, CockpitSurfaceQuery{WorkspaceID: f.ws, ActorID: f.owner, Human: true, IncludeClosed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := decodePlanNodes(t, plan.Nodes)[unbound]
+	if row.Kind != "module" {
+		t.Fatalf("unbound second-level row kind = %q, want module", row.Kind)
+	}
+	// With no module bound there is no title to project, so the row keeps its
+	// own name until the reconcile pass binds it.
+	if row.Name != "未绑定模块" {
+		t.Fatalf("unbound row name = %q", row.Name)
+	}
+}

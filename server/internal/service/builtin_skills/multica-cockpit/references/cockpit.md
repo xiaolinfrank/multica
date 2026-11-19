@@ -27,7 +27,7 @@ For paginated issues per work item, the filing read/write and meeting actions, s
 | GET | `/api/cockpit` | the whole board in one read |
 | PATCH | `/api/cockpit` | board title, goal, goal date, basis, meeting destination |
 | PUT | `/api/cockpit/import` | replace the board (owner/admin only) |
-| POST | `/api/cockpit/plan/reconcile` | preview (`apply:false`) or apply (`apply:true`, human only) the one-time plan migration; apply snapshots first |
+| POST | `/api/cockpit/plan/reconcile` | preview (`apply:false`) or apply (`apply:true`, human only) the one-time plan migration; apply snapshots first, and a preview's new-row UUIDs are placeholders |
 | GET | `/api/cockpit/issues/{issueId}/primary-node` | the issue's current work item and filing revision |
 | PUT | `/api/cockpit/issues/{issueId}/primary-node` | refile (`node_id`) or clear (null) with `expected_revision`; human only, rewrites module/project |
 | GET | `/api/cockpit/nodes/next-code?parent_id={id}` | preview the code the next task under a direction would wear (codes are spent once used) |
