@@ -21,13 +21,13 @@ type CockpitSurfaceQuery struct {
 	// IncludeClosed keeps paused/completed/cancelled projects in a workspace
 	// plan. It has no effect on a project- or module-scoped read: opening a
 	// paused project's own page must still show its tree.
-	IncludeClosed                             bool
-	ArtifactsAvailable                        bool `json:"-"`
-	MeetingLifecycleAvailable                 bool `json:"-"`
-	MeetingDispositionAvailable               bool `json:"-"`
-	MeetingDirectoryAvailable                 bool `json:"-"`
-	InputsAvailable                           bool `json:"-"`
-	RunInputManifestsAvailable                bool `json:"-"`
+	IncludeClosed               bool
+	ArtifactsAvailable          bool `json:"-"`
+	MeetingLifecycleAvailable   bool `json:"-"`
+	MeetingDispositionAvailable bool `json:"-"`
+	MeetingDirectoryAvailable   bool `json:"-"`
+	InputsAvailable             bool `json:"-"`
+	RunInputManifestsAvailable  bool `json:"-"`
 }
 type CockpitSurfaceScope struct {
 	ProjectID    *string `json:"project_id"`
