@@ -347,6 +347,10 @@ func (s *IssueService) ReconcileCockpitPlan(ctx context.Context, in CockpitRecon
 	if err != nil {
 		return report, fmt.Errorf("plan snapshot: %w", err)
 	}
+	// The report persisted with the apply carries what the caller sees: it is
+	// an applied run and which snapshot precedes it.
+	st.report.Apply = true
+	st.report.SnapshotID = snapshotID
 	if err := st.apply(); err != nil {
 		return report, err
 	}
