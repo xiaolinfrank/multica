@@ -346,7 +346,7 @@ func writeIssueStatusRaceError(w http.ResponseWriter, err error) bool {
 		return true
 	}
 	if service.IsCockpitPrimaryIntegrityError(err) {
-		writeError(w, http.StatusConflict, "clear L3 primary ownership before changing this issue's project or module")
+		writeError(w, http.StatusConflict, "this issue is retained by a confirmed meeting action; reload before changing its plan filing")
 		return true
 	}
 	if errors.Is(err, errIssueStatusArchivedRace) {

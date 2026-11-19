@@ -203,7 +203,7 @@ func TestCockpitNodeTaskCLIUsesBoundedPagesAndAtomicCreation(t *testing.T) {
 }
 
 func TestCockpitPrimaryCLIReadsAndExplicitlyChangesOwnership(t *testing.T) {
-	for _, mode := range []string{"show", "set", "clear", "unconfirmed"} {
+	for _, mode := range []string{"show", "set", "set-by-work-item", "clear", "unconfirmed"} {
 		t.Run(mode, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/api/cockpit/issues/"+actionCLIIssue+"/primary-node" {
@@ -215,7 +215,13 @@ func TestCockpitPrimaryCLIReadsAndExplicitlyChangesOwnership(t *testing.T) {
 					var body map[string]any
 					_ = json.NewDecoder(r.Body).Decode(&body)
 					if r.Method != "PUT" || body["expected_revision"] != float64(0) {
-						t.Errorf("missing observed ownership revision: %s %v", r.Method, body)
+						t.Errorf("missing observed filing revision: %s %v", r.Method, body)
+					}
+					if mode != "clear" && body["node_id"] != actionCLINode {
+						t.Errorf("filing body names %v, want the work item", body["node_id"])
+					}
+					if mode == "clear" && body["node_id"] != nil {
+						t.Errorf("clear sent node_id=%v", body["node_id"])
 					}
 					node, revision = body["node_id"], 1
 				} else if r.Method != "GET" {
@@ -231,6 +237,8 @@ func TestCockpitPrimaryCLIReadsAndExplicitlyChangesOwnership(t *testing.T) {
 			args := []string{"primary", actionCLIIssue}
 			if mode == "set" || mode == "unconfirmed" {
 				args = append(args, "--node-id", actionCLINode, "--revision", "0")
+			} else if mode == "set-by-work-item" {
+				args = append(args, "--work-item", actionCLINode, "--revision", "0")
 			} else if mode == "clear" {
 				args = append(args, "--clear", "--revision", "0")
 			}
@@ -239,5 +247,23 @@ func TestCockpitPrimaryCLIReadsAndExplicitlyChangesOwnership(t *testing.T) {
 				t.Fatalf("mode=%s err=%v", mode, err)
 			}
 		})
+	}
+}
+
+// --work-item and its older --node-id spelling name the same row, so naming two
+// different ones must fail before any request leaves the CLI.
+func TestCockpitPrimaryCLIRejectsConflictingFilingFlags(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls.Add(1); w.WriteHeader(500) }))
+	defer srv.Close()
+	configureWorkflowCLIEnv(t, srv.URL)
+	for _, args := range [][]string{
+		{"primary", actionCLIIssue, "--work-item", actionCLINode, "--node-id", workflowCLIVersion, "--revision", "0"},
+		{"primary", actionCLIIssue, "--work-item", actionCLINode, "--clear"},
+		{"primary", actionCLIIssue, "--revision", "3"},
+	} {
+		if _, err := executeActionCLI(t, newCockpitIssueCommand(), args...); err == nil || calls.Load() != 0 {
+			t.Fatalf("%v: calls=%d err=%v", args, calls.Load(), err)
+		}
 	}
 }

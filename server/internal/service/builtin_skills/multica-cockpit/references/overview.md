@@ -47,7 +47,7 @@ data. CLI validates scope echoes, list bounds, counts and cursor receipts.
 
 ## Meanings
 
-- Counts use valid primary L3 issue ownership, not reference-link multiplicity.
+- Counts use the issue's work-item filing (`work_item_id`), not related-link multiplicity.
   Unowned issues are outside this execution summary. Node progress/acceptance is
   independent of issue completion.
 - Active excludes done and closed, retaining unknown old states. Closed is not
@@ -62,7 +62,7 @@ data. CLI validates scope echoes, list bounds, counts and cursor receipts.
 - Draft actions remain visible when old; superseded sources require disposition
   and cannot be used for new dispatch. NAS retry/attention remains independent of
   platform publication. Neither is silently assigned to every admin.
-- Ordinary issue attention includes all active primary issues; managed minutes
+- Ordinary issue attention includes every active filed issue; managed minutes
   and review issues are represented by workflow instead of duplicated there.
 - Order is workflow, action, NAS, issue; within each kind overdue then blocked then
   other, followed by stable ID. This is not a global risk or due-date ranking.

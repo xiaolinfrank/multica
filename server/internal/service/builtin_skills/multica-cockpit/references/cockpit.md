@@ -20,20 +20,23 @@ providers called by a skill still require their own native grants.
 Every route is workspace-scoped through the `X-Workspace-ID` header.
 For scoped plans, paginated meeting/object reads and visible-row markers, see [surfaces.md](surfaces.md).
 For bounded minutes metadata/body reads and compact command receipts, see [history.md](history.md). For bounded work overview, personal/team attention and recent meetings, see [overview.md](overview.md).
-For paginated L3 tasks, primary ownership and meeting actions, see [actions.md](actions.md); primary tasks are not added to the board's reference array. For explicit cancellation plans, impact and archive recovery, see [meeting-preparation.md](meeting-preparation.md).
+For paginated issues per work item, the filing read/write and meeting actions, see [actions.md](actions.md); filed issues are not added to the board's reference array. For explicit cancellation plans, impact and archive recovery, see [meeting-preparation.md](meeting-preparation.md).
 
 | Method | Path | What it does |
 | --- | --- | --- |
 | GET | `/api/cockpit` | the whole board in one read |
 | PATCH | `/api/cockpit` | board title, goal, goal date, basis, meeting destination |
 | PUT | `/api/cockpit/import` | replace the board (owner/admin only) |
+| POST | `/api/cockpit/plan/reconcile` | preview (`apply:false`) or apply (`apply:true`, human only) the one-time plan migration; apply snapshots first |
+| GET | `/api/cockpit/issues/{issueId}/primary-node` | the issue's current work item and filing revision |
+| PUT | `/api/cockpit/issues/{issueId}/primary-node` | refile (`node_id`) or clear (null) with `expected_revision`; human only, rewrites module/project |
 | GET | `/api/cockpit/nodes/next-code?parent_id={id}` | preview the code the next task under a direction would wear (codes are spent once used) |
 | POST | `/api/cockpit/nodes` | add a work-breakdown node |
 | PATCH | `/api/cockpit/nodes/{id}` | edit a node |
 | DELETE | `/api/cockpit/nodes/{id}` | delete a leaf node |
-| PUT | `/api/cockpit/nodes/{id}/issues` | replace a node's issue links |
-| POST | `/api/cockpit/nodes/{id}/issues` | append `{issue_id}`; returns `{workspace_id,node_id,link}` without replacing unloaded references |
-| DELETE | `/api/cockpit/nodes/{id}/issues/{issueId}` | unlink one issue |
+| PUT | `/api/cockpit/nodes/{id}/issues` | replace a node's related issue links (never files) |
+| POST | `/api/cockpit/nodes/{id}/issues` | append `{issue_id}` as related; returns `{workspace_id,node_id,link}` without replacing unloaded references |
+| DELETE | `/api/cockpit/nodes/{id}/issues/{issueId}` | remove one related link |
 | POST | `/api/cockpit/nodes/{id}/payments` | add an instalment |
 | PATCH | `/api/cockpit/payments/{paymentId}` | edit an instalment |
 | DELETE | `/api/cockpit/payments/{paymentId}` | delete an instalment |
@@ -77,7 +80,7 @@ For paginated L3 tasks, primary ownership and meeting actions, see [actions.md](
 | DELETE | `/api/cockpit/meetings/{meetingId}` | delete a meeting |
 
 `{id}` on a node route accepts either a UUID or the node's own `code`, so
-`L3-01-08` works everywhere a UUID does. `{issueId}` accepts either a UUID or
+`01.01.08` works everywhere a UUID does. `{issueId}` accepts either a UUID or
 the workspace issue identifier such as `BIO-314`. `{nodeId}` on a meeting's
 work-item routes takes the same two forms as `{id}`.
 
@@ -314,62 +317,21 @@ failing the batch. `create_task` defaults to false there: those meetings have
 already been held.
 Directory root boundaries and partial outcomes: [directory-operations.md](directory-operations.md). Persistent meeting directory preparation uses [meeting-directory.md](meeting-directory.md).
 
-## Stable project/module bindings
+## Project, module and work-item rows
 
-A node may explicitly bind an existing workspace project (`project_id`) or
-module (`module_id`). These nullable UUID fields travel on nodes, authored
-imports and saved snapshots. A module binding also stores and returns the
-module's real `project_id`; unrelated titles, folder names, numbering and tree
-depth never establish a binding. Unbound descendants keep both fields null and
-resolve their scope through the parent UUID chain.
+The plan is exactly three levels: an L1 row represents a workspace project, an L2 row a module, and an L3 row a work item. `project_id`/`module_id` record that relationship and travel on nodes, authored imports and saved snapshots; the plan skeleton and the reconcile pass keep one row per project and one per module. Duplicate bindings return 409, and a module must belong to the row's inherited project.
 
-For node create/update, an omitted field keeps its value on update; null or an
-empty string clears it. Setting `module_id` without `project_id` resolves the
-module's project. An explicitly supplied project must match. To remove a
-module binding, clear BOTH fields. Clearing only the module leaves an explicit
-project binding and may conflict with the project's existing bound row.
+`kind` on a plan read answers which level a row is. On L1/L2 rows `name` is a projection of `project.title`/`module.title`: the read returns the live title, and editing the row does not rename the project. Rename the project or the module instead. Only L3 rows carry a name of their own, and only L3 rows accept new work: an issue is filed on at most one of them.
 
-Within a board, one project-only row may bind each project, and one module row
-may bind each module. Duplicate bindings return 409. A module must belong to
-the inherited project, and an explicit project/module binding cannot sit below
-another module binding. Reparenting checks all bound descendants through any
-unbound grouping rows; conflicting ancestry returns 400 and rolls back the
-whole edit. Existing issue links remain references: binding a node does not
-move an issue or change its project/module.
+Rows created before the migration may still be unbound grouping rows or workstream L1s; `multica cockpit reconcile` is the one-time pass that binds them and merges display groups. Until it runs, an unbound row keeps its own name and resolves scope through the parent UUID chain.
 
-CLI node create/update accept `--project-id <uuid>` and `--module-id <uuid>`;
-`--project-id "" --module-id ""` removes the explicit binding. Project/module
-deletion clears affected bindings in that workspace, retaining the plan nodes
-and their UUIDs. Names and ordering can change without changing the binding.
+For node create/update, an omitted field keeps its value on update; null or an empty string clears it. Setting `module_id` without `project_id` resolves the module's project. An explicitly supplied project must match. To remove a module binding, clear BOTH fields. Clearing only the module leaves an explicit project binding and may conflict with the project's existing bound row.
 
-Once a board has bound nodes, whole-board import and snapshot restore return
-409: those operations rebuild node UUIDs and would break stable references.
-Edit existing nodes instead; snapshots can still be saved and inspected.
-Importing a binding document into a currently unbound board validates the
-resources and final tree before committing. There is no name-based migration.
+Within a board, one project-only row may bind each project, and one module row may bind each module. An explicit project/module binding cannot sit below another module binding. Reparenting checks all bound descendants through any unbound grouping rows; conflicting ancestry returns 400 and rolls back the whole edit.
 
-### Keeping names aligned (guidance, not a rule)
+CLI node create/update accept `--project-id <uuid>` and `--module-id <uuid>`; `--project-id "" --module-id ""` removes the explicit binding. Project/module deletion clears affected bindings in that workspace, retaining the plan nodes and their UUIDs but clearing the work item on their issues.
 
-Bindings are UUIDs and stay UUIDs; nothing migrates by name. As working
-practice, when a row exists to represent a bound project or module, keep its
-name aligned with the current title: default to the title on `node create`,
-and when a title changes, propose the matching rename (`change propose` on
-`name`) together with any other drift you are filing — the 治理 queue lets a
-human skip it when the divergence is intentional.
-
-Identify a representing row by its binding fields (`project_id`/`module_id`),
-never by name similarity: a same-named row without the binding is an unrelated
-grouping row.
-
-Not every row maps to a project or module: milestones, payments and ad-hoc
-grouping rows keep whatever name serves the programme, and a user may want a
-board row to differ from its project title on purpose. Alignment is the
-default posture, not a constraint the user must argue against; once they say
-a row should differ, follow them and stop proposing for that row. That
-decision outlives the conversation only where it is written down: before
-re-proposing a rename, check the node's change history for a rejected
-alignment; when the user wants a standing exemption, offer to record it in
-the node's `note` (with their agreement).
+Once a board has bound nodes, whole-board import and snapshot restore return 409: those operations rebuild node UUIDs and would break stable references. Edit existing nodes instead; snapshots can still be saved and inspected. Importing a binding document into a currently unbound board validates the resources and final tree before committing. There is no name-based migration.
 
 ## Field semantics
 
@@ -379,6 +341,9 @@ the node's `note` (with their agreement).
   leaves it unchanged. `budget_amount` behaves the same way with `null`.
 - `progress` is a number 0-100; fractional values such as `62.5` are accepted.
   Anything outside that range is rejected with 400 rather than clamped.
+- Codes are outline numbers — L1 `04`, L2 `04.01`, L3 `04.01.03`. A node
+  created before that rule may still wear `L3-01-08`; the reconcile pass
+  rewrites it to the outline number the gantt already showed.
 - A `code` is spent the moment it is handed out: creating a node records it
   in the board's ledger, and so does renaming one. The ledger is never
   cleared — deleting a row does not free its number — and a spent code
@@ -415,68 +380,11 @@ summary cards are carried by the payload — absent on an authored import
 document (which leaves the board's cards alone), always present on a snapshot
 (so a restore brings back exactly what was frozen).
 
-## Pending changes
+## Pending changes and realtime
 
-The review queue between an observation and an edit. A proposal is one field
-of one node carrying a new value; nothing on the board moves until a human
-applies it. This is how an agent should report board drift it observed: never
-PATCH the node directly on the programme's behalf — file the change and let
-the programme decide.
-
-A proposal body is `{node, field, new_value, reason}`, where `node` accepts
-a UUID or a `code` like every other route, and `new_value` is text (numbers
-and dates canonicalised server-side; an empty string is a real edit meaning
-"clear the field", except for `progress` which must be a number 0-100).
-`reason` is required from a task credential — what is inconsistent and why
-the update is necessary — and optional for humans; either way it is capped
-at 2000 characters, and the same cap family guards the 500-character note a
-rejection may carry.
-Proposable fields: `name`, `owner`, `collaborators`, `status`, `progress`,
-`start_date`, `end_date`, `current_progress`, `deliverable`, `dependencies`,
-`note`, `vendor`, `budget_category`, `budget_amount`, `exec_status`,
-`contract`, `color`, `source`. Tree shape (`code`, `parent_id`, `position`)
-is not proposable.
-
-The server judges each proposal before it queues anything:
-
-- value identical to the board's current one → skipped (`no_change`);
-- an open proposal for the same (node, field) already exists → its value is
-  replaced when different (`updated`, latest intent wins) or returned as-is
-  when identical (`duplicate`);
-- bad field, unparseable value, or unknown node → rejected; on the batch
-  endpoint this is one item's outcome, never the whole request's.
-
-Batch ingest answers one result per proposal, machine-readable:
-`{node, field, status, reason, id}` with `status` one of `queued`, `updated`,
-`skipped`, `rejected`. The `source` a queued change carries (`manual` or
-`agent`) is derived from the authenticated caller, never from the body.
-
-Apply/reject require a human actor, and direct node PATCHes refuse machine
-credentials outright (403, pointing here): the queue is the only write path
-for what an agent observes. An agent may withdraw only proposals its own
-task filed. Decisions are one-way: all decisions answer 409 on a change
-that is no longer open. Apply re-reads the live column it overwrites and
-records that as `old_value`, so the history stays true even when the board
-moved between filing and deciding. Applied and rejected decisions leave a
-system comment on the source task's issue, rejection note included, so the
-requesting run learns its outcome without polling. Every request is kept:
-deleting a node or replacing the board by import/restore closes still-open
-proposals as system withdrawals (the note records why) and leaves decided
-history queryable; nothing about the queue is hard-deleted except with the
-workspace itself.
-
-## Realtime
-
-Every write broadcasts a `cockpit:changed` event carrying `{scope, action, entity}`.
-A client patches the changed row into its cached board; a `board` scope (`imported`, `restored`) means the board changed
-wholesale and has to be re-read; a `snapshots` scope means only the version
-history moved — an edit past the auto-checkpoint interval also lands here
-with action `created`; a `changes` scope (`queued`, `ingested`, `applied`,
-`rejected`, `withdrawn`) means only the review queue moved — an apply also
-carries its own `node` scope frame with the row it wrote; a `directory` scope
-(`upserted`, `deleted`) means the contact book moved, and it lives outside the board
-read, so the frame just has clients re-fetch it.
-Single reference changes use one `board/reference_changed` frame with `{relation_kind,reference}`. New clients merge its scoped single-link receipt; older clients safely refresh the board. It never sends a one-element `links` array as a complete relation set.
+The review queue between an observation and a plan edit, and the `cockpit:changed`
+frames every write broadcasts, are documented in [changes.md](changes.md). Direct
+node PATCHes stay a human prerogative: propose, do not overwrite.
 
 ## Import document
 
@@ -488,11 +396,15 @@ Single reference changes use one `board/reference_changed` frame with `{relation
   "basis": "BIO-314《六模块项目管理总表》",
   "nodes": [
     {
-      "code": "L1-01", "name": "高质量数据集", "color": "#2563eb",
-      "owner": "李青娇", "position": 0
+      "code": "01", "project_id": "<project-uuid>", "name": "高质量数据集",
+      "color": "#2563eb", "owner": "李青娇", "position": 0
     },
     {
-      "code": "L3-01-08", "parent_code": "L1-01", "name": "协议签署",
+      "code": "01.01", "parent_code": "01", "module_id": "<module-uuid>",
+      "name": "数据采集", "position": 0
+    },
+    {
+      "code": "01.01.08", "parent_code": "01.01", "name": "协议签署",
       "start_date": "2026-09-05", "end_date": "2026-09-20",
       "status": "未开始", "progress": 0, "budget_amount": 30,
       "payments": [{"label": "第1笔", "pay_date": "2026-09-05", "amount": 15}],
@@ -500,7 +412,7 @@ Single reference changes use one `board/reference_changed` frame with `{relation
     }
   ],
   "milestones": [
-    {"name": "验收", "plan_date": "2026-11-30", "status": "前置准备", "node_code": "L1-01"}
+    {"name": "验收", "plan_date": "2026-11-30", "status": "前置准备", "node_code": "01"}
   ],
   "meetings": [
     {
@@ -509,7 +421,7 @@ Single reference changes use one `board/reference_changed` frame with `{relation
       "kind": "例会", "parties": "复星医药、华大基因", "organizer": "杨涛",
       "issue_ids": ["BIO-314"], "task_issue_id": "BIO-314", "detected": false,
       "issue_roles": {"BIO-314": ["minutes", "review"]},
-      "node_codes": ["L3-01-08"]
+      "node_codes": ["01.01.08"]
     }
   ]
 }
@@ -518,5 +430,10 @@ Single reference changes use one `board/reference_changed` frame with `{relation
 The whole document commits in one transaction: a bad `parent_code`, a duplicate
 `code` or an unparseable date rejects it entirely and leaves the previous board
 untouched.
+
+Once a row carries `project_id` or `module_id`, its `name` is ignored on read —
+the plan shows the project/module title. Keep the name in the document for
+authored boards that are not bound yet, and rename the project or module rather
+than the row afterwards.
 
 Storage and deletion behavior: [storage.md](storage.md).

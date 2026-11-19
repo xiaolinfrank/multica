@@ -336,7 +336,7 @@ func runCockpitMeetingAction(cmd *cobra.Command, args []string, verb string) err
 }
 
 func newCockpitNodeTasksCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "tasks <node-id>", Args: exactArgs(1), Short: "Read one bounded page of L3 tasks and full-scope counts",
+	cmd := &cobra.Command{Use: "tasks <node-id>", Args: exactArgs(1), Short: "Read one bounded page of an L3 work item's issues and full-scope counts",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			node, err := cockpitWorkflowUUID(args[0], "node-id")
 			if err != nil {
@@ -374,13 +374,13 @@ func newCockpitNodeTasksCommand() *cobra.Command {
 			return cli.PrintJSON(os.Stdout, result)
 		}}
 	cockpitPageFlags(cmd)
-	cmd.Flags().String("relation", "primary", "primary tasks or legacy reference links; references do not imply ownership")
+	cmd.Flags().String("relation", "primary", "primary: issues filed under this work item; reference: legacy related links, which never imply filing")
 	cmd.Flags().String("category", "", "Lifecycle category or active (excludes done/closed); combined with the exact status filter")
 	return cmd
 }
 
 func newCockpitNodeCreateTaskCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "create-task <node-id>", Args: exactArgs(1), Short: "Atomically create a backlog issue with L3 primary ownership",
+	cmd := &cobra.Command{Use: "create-task <work-item>", Args: exactArgs(1), Short: "Atomically create a backlog issue filed under this work item",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			node, err := cockpitWorkflowUUID(args[0], "node-id")
 			if err != nil {
@@ -423,17 +423,33 @@ func newCockpitNodeCreateTaskCommand() *cobra.Command {
 }
 
 func newCockpitIssueCommand() *cobra.Command {
-	root := &cobra.Command{Use: "issue", Short: "Manage an issue's explicit cockpit ownership"}
+	root := &cobra.Command{Use: "issue", Short: "Manage an issue's cockpit filing"}
 	root.AddCommand(newCockpitIssueArtifactsCommand())
-	cmd := &cobra.Command{Use: "primary <issue>", Args: exactArgs(1), Short: "Read primary ownership, or set/clear it with an observed revision",
+	cmd := &cobra.Command{Use: "primary <issue>", Args: exactArgs(1), Short: "Read the issue's work item, or refile/clear it with an observed revision",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			set, clear := cmd.Flags().Changed("node-id"), cmd.Flags().Changed("clear")
+			nodeFlag, nodeSet := "", cmd.Flags().Changed("node-id")
+			if nodeSet {
+				nodeFlag, _ = cmd.Flags().GetString("node-id")
+			}
+			workItem, workItemSet := "", cmd.Flags().Changed("work-item")
+			if workItemSet {
+				workItem, _ = cmd.Flags().GetString("work-item")
+			}
+			if nodeSet && workItemSet && nodeFlag != workItem {
+				return fmt.Errorf("choose either --work-item or --node-id")
+			}
+			if nodeSet {
+				// --node-id is the pre-work-item spelling; both name the same
+				// third-level row, so they share one path through the command.
+				workItem, workItemSet = nodeFlag, true
+			}
+			set, clear := workItemSet, cmd.Flags().Changed("clear")
 			body := map[string]any{}
 			if set && clear {
-				return fmt.Errorf("choose either --node-id or --clear")
+				return fmt.Errorf("choose either --work-item or --clear")
 			}
 			if !set && !clear && cmd.Flags().Changed("revision") {
-				return fmt.Errorf("--revision requires --node-id or --clear")
+				return fmt.Errorf("--revision requires --work-item or --clear")
 			}
 			if set || clear {
 				revision, err := cockpitActionRevision(cmd, true)
@@ -442,14 +458,13 @@ func newCockpitIssueCommand() *cobra.Command {
 				}
 				body["expected_revision"], body["node_id"] = revision, nil
 				if set {
-					value, _ := cmd.Flags().GetString("node-id")
-					node, err := cockpitWorkflowUUID(value, "--node-id")
+					node, err := cockpitWorkflowUUID(workItem, "--work-item")
 					if err != nil {
 						return err
 					}
 					body["node_id"] = node
 				} else if value, _ := cmd.Flags().GetBool("clear"); !value {
-					return fmt.Errorf("--clear=false is not an ownership command")
+					return fmt.Errorf("--clear=false is not a filing command")
 				}
 			}
 			client, err := newAPIClient(cmd)
@@ -482,13 +497,14 @@ func newCockpitIssueCommand() *cobra.Command {
 				}
 			}
 			if !valid {
-				return fmt.Errorf("primary ownership receipt was not confirmed; reload before retrying a change")
+				return fmt.Errorf("work item receipt was not confirmed; reload before retrying a change")
 			}
 			return cli.PrintJSON(os.Stdout, result)
 		}}
-	cmd.Flags().String("node-id", "", "Set a primary L3 UUID; preserves the issue's project and module")
-	cmd.Flags().Bool("clear", false, "Explicitly clear primary ownership")
-	cmd.Flags().Int64("revision", 0, "Required ownership revision for a change; 0 only when no ownership record exists")
+	cmd.Flags().String("work-item", "", "Work item UUID (the third plan level); refiles the issue's module and project")
+	cmd.Flags().String("node-id", "", "Alias for --work-item, kept for existing scripts")
+	cmd.Flags().Bool("clear", false, "Clear the issue's work item filing")
+	cmd.Flags().Int64("revision", 0, "Required filing revision for a change; 0 only when the issue has no work item yet")
 	root.AddCommand(cmd)
 	return root
 }

@@ -2592,9 +2592,9 @@ func (h *Handler) runCockpitImport(r *http.Request, cc cockpitContext, req Cockp
 		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "meeting input references protect this board; open meeting Resources to remove their exact references before replacing meeting identities"}
 	}
 	if protected, err := qtx.HasCockpitPlanningForBoard(ctx, db.HasCockpitPlanningForBoardParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID}); err != nil {
-		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect primary ownership and meeting actions"}
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusInternalServerError, "failed to inspect work-item filings and meeting actions"}
 	} else if protected {
-		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "L3 primary ownership or meeting action history protects this board from full replacement"}
+		return CockpitImportResponse{}, &cockpitImportError{http.StatusConflict, "work-item filings or meeting action history protect this board from full replacement"}
 	}
 	bound, err := qtx.CockpitHasBoundNodes(ctx, db.CockpitHasBoundNodesParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID})
 	if err != nil {

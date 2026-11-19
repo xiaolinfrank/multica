@@ -31,6 +31,9 @@ func addCockpitSurfaceFlags(cmd *cobra.Command, scope, page bool) {
 func newCockpitSurfaceCommand(kind string) *cobra.Command {
 	cmd := &cobra.Command{Use: kind, Args: exactArgs(0), Short: "Read the scoped cockpit " + kind, RunE: func(cmd *cobra.Command, args []string) error { return runCockpitSurface(cmd, args, kind) }}
 	addCockpitSurfaceFlags(cmd, true, false)
+	if kind == "plan" {
+		cmd.Flags().Bool("include-closed", false, "Include paused, completed and cancelled projects; the workspace tree hides them by default")
+	}
 	return cmd
 }
 func newCockpitMeetingPageCommand() *cobra.Command {
@@ -81,6 +84,11 @@ func cockpitSurfaceQuery(cmd *cobra.Command, kind string) (url.Values, int, erro
 		query, err = cockpitSurfaceScopeQuery(cmd)
 		if err != nil {
 			return nil, 0, err
+		}
+		if cmd.Flags().Lookup("include-closed") != nil {
+			if includeClosed, _ := cmd.Flags().GetBool("include-closed"); includeClosed {
+				query.Set("include_closed", "true")
+			}
 		}
 	}
 	size := 0
@@ -475,9 +483,13 @@ func printCockpitSurfaceResult(kind string, value map[string]any, q url.Values) 
 		rows := [][]string{}
 		for _, entry := range value["nodes"].([]any) {
 			row := entry.(map[string]any)
-			rows = append(rows, []string{strVal(row, "code"), strVal(row, "name"), strVal(row, "id")})
+			rowKind := strVal(row, "kind")
+			if status := strVal(row, "project_status"); status == "paused" || status == "completed" || status == "cancelled" {
+				rowKind += " (" + status + ")"
+			}
+			rows = append(rows, []string{rowKind, strVal(row, "code"), strVal(row, "name"), strVal(row, "id")})
 		}
-		cli.PrintTable(os.Stdout, []string{"CODE", "NAME", "ID"}, rows)
+		cli.PrintTable(os.Stdout, []string{"KIND", "CODE", "NAME", "ID"}, rows)
 		return
 	}
 	if kind == "diff" {

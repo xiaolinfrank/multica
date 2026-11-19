@@ -128,7 +128,7 @@ Registration and management require human workspace authority. Trusted Agent tas
 credentials may submit only for their current authorized production Issue. Formal
 reviews use the designated human's credential; a normal Issue assignee change or
 completion cannot approve a version, transfer formal responsibility, or reopen a
-retired review. The current formal Review Issue is primary-linked to its L3.
+retired review. The current formal Review Issue is filed on its work item.
 
 `decision` is approved/changes_requested/rejected. Non-approval requires feedback.
 `can_review` denotes the designated human's decision authority. It does not assert

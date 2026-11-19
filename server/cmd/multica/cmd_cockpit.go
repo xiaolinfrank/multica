@@ -90,14 +90,14 @@ var cockpitNodeDeleteCmd = &cobra.Command{
 
 var cockpitNodeLinkCmd = &cobra.Command{
 	Use:   "link <code-or-id> <issue>...",
-	Short: "Link issues to a node (accepts BIO-314 or a UUID)",
+	Short: "Mark issues as related to a node (accepts BIO-314 or a UUID; linking never files)",
 	Args:  cobra.MinimumNArgs(2),
 	RunE:  runCockpitNodeLink,
 }
 
 var cockpitNodeUnlinkCmd = &cobra.Command{
 	Use:   "unlink <code-or-id> <issue>",
-	Short: "Unlink one issue from a node",
+	Short: "Remove the related link between one issue and a node",
 	Args:  exactArgs(2),
 	RunE:  runCockpitNodeUnlink,
 }

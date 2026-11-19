@@ -33,7 +33,7 @@ func (h *Handler) ListCockpitNodeTasks(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateCockpitNodeTask(w http.ResponseWriter, r *http.Request) {
 	if isMachineCredentialActor(r) {
-		writeError(w, http.StatusForbidden, "creating a primary L3 task requires a human actor")
+		writeError(w, http.StatusForbidden, "creating an issue filed under a work item requires a human actor")
 		return
 	}
 	cc, ok := h.requireCockpit(w, r)
@@ -110,7 +110,7 @@ func (h *Handler) ListCockpitIssueActionSources(w http.ResponseWriter, r *http.R
 
 func (h *Handler) SetCockpitIssuePrimaryNode(w http.ResponseWriter, r *http.Request) {
 	if isMachineCredentialActor(r) {
-		writeError(w, http.StatusForbidden, "changing primary ownership requires a human actor")
+		writeError(w, http.StatusForbidden, "changing an issue's work item requires a human actor")
 		return
 	}
 	cc, ok := h.requireCockpit(w, r)

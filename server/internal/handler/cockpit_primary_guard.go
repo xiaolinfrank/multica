@@ -15,7 +15,7 @@ func writeCockpitPrimaryIntegrityError(w http.ResponseWriter, err error) bool {
 	if errors.As(err, &pgerr) {
 		writeError(w, http.StatusConflict, pgerr.Message)
 	} else {
-		writeError(w, http.StatusConflict, "L3 primary ownership must be cleared before this structural change")
+		writeError(w, http.StatusConflict, "a confirmed meeting action still retains this plan row; reload before changing its structure")
 	}
 	return true
 }

@@ -10,6 +10,7 @@ their work surface and selected objects.
 ```bash
 multica cockpit context --project-id <uuid> --module-id <uuid> --json
 multica cockpit plan --project-id <uuid> --json
+multica cockpit plan --include-closed --json   # workspace tree hides closed projects by default
 multica cockpit meeting page --project-id <uuid> --from 2026-10-01 --to 2026-10-31 --page-size 25 --json
 multica cockpit meeting page --party 'Partner,A' --party 'Partner B' --track 'Delivery,Phase 1' --only consensus --json
 multica cockpit version compare <snapshot-uuid> --page-size 25 --json
@@ -45,7 +46,7 @@ Cockpit chat renders scope literals such as `project=*` and `module=*` as inline
 | GET endpoint | Purpose |
 | --- | --- |
 | `/api/cockpit/context` | Nullable board, actor and scope titles; no collection payloads |
-| `/api/cockpit/plan` | Complete scoped nodes, payments, milestones, task counts and a slim display-code index |
+| `/api/cockpit/plan` | Complete scoped nodes with `kind`/`project_status`, payments, milestones, work-item counts and a slim code index; `include_closed` shows paused/completed/cancelled projects |
 | `/api/cockpit/scopes/projects` | Project metadata search; `q`, `cursor`, 20 per page |
 | `/api/cockpit/scopes/modules` | Module metadata search within `project_id`; 20 per page |
 | `/api/cockpit/meetings` | Meeting metadata register, repeated filters and calendar counts |
@@ -55,14 +56,22 @@ Cockpit chat renders scope literals such as `project=*` and `module=*` as inline
 | `/api/cockpit/nodes/{id}/meetings` | Cursor page of meetings linked to the node or descendants, deduplicated |
 | `/api/cockpit/meetings/{meetingId}/issues` | Cursor page of Issue links with roles and protected required roles |
 | `/api/cockpit/meetings/{meetingId}/nodes` | Cursor page of execution links |
-| `/api/cockpit/issues/{issueId}/nodes` | Issue reference nodes, separate from its primary execution owner |
+| `/api/cockpit/issues/{issueId}/nodes` | Related nodes, separate from the work item the issue is filed on |
 | `/api/cockpit/issues/{issueId}/meetings` | Issue meeting references with protected workflow purposes |
 | `/api/cockpit/meetings/next-code?date=YYYY-MM-DD` | Non-reserving meeting code preview |
 | `/api/cockpit/plan/node-index` | Workspace display identity index, independent of a loaded plan |
-| `/api/cockpit/plan/export-data` | Explicit complete scoped export, including deduplicated primary/reference Issue mappings |
+| `/api/cockpit/plan/export-data` | Explicit complete scoped export, including deduplicated filed/related Issue mappings |
 | `/api/cockpit/changes/page` | Scoped proposal/history page with authoritative counts |
 | `/api/cockpit/snapshots/page` | Workspace-wide saved-board metadata page; no snapshot body |
 | `/api/cockpit/nodes/next-code?parent_id={uuid}` | Non-reserving child-code preview; omit parent_id for a root code |
+
+Plan rows carry `kind` (`project` / `module` / `work_item`). L1/L2 `name` is the live
+project/module title, and L1 rows also return `project_status`; only L3 rows carry a
+name of their own. `task_counts` counts issues by `work_item_id` and rolls them up the
+path, so an L1/L2 row answers for the work filed below it; `reference_total` counts
+related links only, excluding the filing link itself.
+The workspace tree hides paused, completed and cancelled projects and their subtrees
+unless `include_closed=true`; a project/module-scoped read always keeps its own subject.
 
 Plan `context_node_ids` identifies ancestors included only to explain the tree.
 Their own payments are outside a narrower scope. Use `node_index` to preserve
@@ -156,7 +165,7 @@ and a new desktop tab, not an explicit object link or a restored desktop session
 Web root routing accepts only these named pages from the preference cookie.
 
 Issue reverse references default to 25 rows and accept at most 100, with only
-`cursor`/`page_size`. `/nodes` excludes the current primary execution node; read
+`cursor`/`page_size`. `/nodes` excludes the work item the issue is filed on; read
 that separately from `primary-node`. Action provenance keeps its own `/actions`
 page. `available:false` preserves an orphan reference without inventing a link
 destination. `required_roles` includes formal minutes and review duties,

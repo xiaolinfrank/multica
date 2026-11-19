@@ -24,6 +24,15 @@ func surfaceCLIPlan() map[string]any {
 	value["counts"] = map[string]any{"nodes": 0, "payments": 0, "milestones": 0, "index_nodes": 0}
 	return value
 }
+func surfaceCLIPlanWorkspace() map[string]any {
+	value := surfaceCLIContext(nil, nil)
+	value["complete"] = true
+	for _, key := range []string{"nodes", "payments", "milestones", "node_index", "context_node_ids", "task_counts"} {
+		value[key] = []any{}
+	}
+	value["counts"] = map[string]any{"nodes": 0, "payments": 0, "milestones": 0, "index_nodes": 0}
+	return value
+}
 func surfaceCLIMeetings() map[string]any {
 	value := surfaceCLIContext(nil, nil)
 	delete(value, "actor")
@@ -55,6 +64,7 @@ func TestCockpitSurfaceCLIWireAndSinglePages(t *testing.T) {
 	}{
 		{"context", "/api/cockpit/context", func() *cobra.Command { return newCockpitSurfaceCommand("context") }, []string{"--json"}, map[string][]string{}, surfaceCLIContext(nil, nil)},
 		{"plan scope", "/api/cockpit/plan", func() *cobra.Command { return newCockpitSurfaceCommand("plan") }, []string{"--project-id", workflowCLIProject, "--module-id", workflowCLIModule, "--output", "json"}, map[string][]string{"project_id": {workflowCLIProject}, "module_id": {workflowCLIModule}}, surfaceCLIPlan()},
+		{"plan include closed", "/api/cockpit/plan", func() *cobra.Command { return newCockpitSurfaceCommand("plan") }, []string{"--include-closed", "--json"}, map[string][]string{"include_closed": {"true"}}, surfaceCLIPlanWorkspace()},
 		{"meeting exact filters", "/api/cockpit/meetings", newCockpitMeetingPageCommand, []string{"--q", " review ", "--from", "2026-10-01", "--to", "2026-10-31", "--node-id", actionCLINode, "--party", "Partner,A", "--party", "Partner B", "--track", "Delivery,Phase 1", "--kind", "Review", "--status", "finished", "--only", "consensus", "--cursor", "same+page", "--page-size", "2", "--json"}, map[string][]string{"q": {"review"}, "date_from": {"2026-10-01"}, "date_to": {"2026-10-31"}, "node_id": {actionCLINode}, "parties": {"Partner,A", "Partner B"}, "tracks": {"Delivery,Phase 1"}, "kinds": {"Review"}, "statuses": {"finished"}, "only": {"consensus"}, "cursor": {"same+page"}, "page_size": {"2"}}, nil},
 		{"version compare", "/api/cockpit/snapshots/" + workflowCLIVersion + "/diff", newCockpitVersionCompareCommand, []string{workflowCLIVersion, "--cursor", "diff+page", "--json"}, map[string][]string{"cursor": {"diff+page"}, "page_size": {"25"}}, surfaceCLIDiff(true)},
 	} {
@@ -294,5 +304,30 @@ func TestCockpitOverviewCLIModuleScopeIsExplicitAndConfirmed(t *testing.T) {
 				t.Fatal("missing project reached HTTP")
 			}
 		})
+	}
+}
+
+// The plan table names each row's level and flags a closed project, so an agent
+// reading the table does not have to infer the model from the code shape.
+func TestCockpitSurfacePlanTableShowsKindAndClosedStatus(t *testing.T) {
+	reply := surfaceCLIPlanWorkspace()
+	reply["nodes"] = []any{
+		map[string]any{"id": actionCLINode, "code": "01", "name": "高质量数据集", "kind": "project", "project_status": "paused"},
+		map[string]any{"id": actionCLIIssue, "code": "01.01.08", "name": "协议签署", "kind": "work_item", "project_status": "paused"},
+	}
+	reply["counts"] = map[string]any{"nodes": 2, "payments": 0, "milestones": 0, "index_nodes": 0}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(reply)
+	}))
+	defer srv.Close()
+	configureWorkflowCLIEnv(t, srv.URL)
+	out, err := executeActionCLI(t, newCockpitSurfaceCommand("plan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"KIND", "project (paused)", "work_item (paused)", "01.01.08", "协议签署"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("plan table missing %q:\n%s", want, out)
+		}
 	}
 }

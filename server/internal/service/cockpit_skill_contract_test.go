@@ -31,3 +31,36 @@ func TestMikaReceivesCurrentCockpitSkillAndInstructions(t *testing.T) {
 		}
 	}
 }
+
+// The routing body is what every activation pays for, and it is also where the
+// plan model is stated. Pin the statements an agent must not have to guess:
+// three fixed levels, the issue's single work-item filing, L1/L2 names coming
+// from titles, related links never filing, and the one-time reconcile command.
+func TestCockpitSkillBodyStatesTheWorkItemModel(t *testing.T) {
+	body, err := builtinSkillsFS.ReadFile("builtin_skills/multica-cockpit/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range []string{
+		"Project → module → work item",
+		"`issue.work_item_id`",
+		"`project.title` / `module.title`",
+		"Related links never file",
+		"multica cockpit reconcile",
+		"`--include-closed`",
+	} {
+		if !strings.Contains(string(body), contract) {
+			t.Errorf("cockpit SKILL.md is missing %q", contract)
+		}
+	}
+
+	changes, err := builtinSkillsFS.ReadFile("builtin_skills/multica-cockpit/references/changes.md")
+	if err != nil {
+		t.Fatalf("the review queue and event frames moved out of cockpit.md but are not embedded: %v", err)
+	}
+	for _, contract := range []string{"cockpit:changed", "work_item_changed", "name` is only proposable on a work item"} {
+		if !strings.Contains(string(changes), contract) {
+			t.Errorf("changes.md is missing %q", contract)
+		}
+	}
+}
