@@ -639,3 +639,108 @@ func TestDeleteProjectClearsWorkItemFiling(t *testing.T) {
 		t.Fatalf("issue after project delete: module=%q work_item=%q, want both empty", moduleAfter, workItemAfter)
 	}
 }
+
+// newSiblingWorkItem adds a second work item under the same module row: the
+// closest place a sub-issue could try to jump to without leaving the module.
+func newSiblingWorkItem(t *testing.T, plan workItemPlan) string {
+	t.Helper()
+	var moduleNodeID, moduleCode string
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT parent_id::text FROM cockpit_node WHERE id = $1`, plan.workItem).Scan(&moduleNodeID); err != nil {
+		t.Fatalf("read module node: %v", err)
+	}
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT code FROM cockpit_node WHERE id = $1`, moduleNodeID).Scan(&moduleCode); err != nil {
+		t.Fatalf("read module code: %v", err)
+	}
+	return dbfx.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": testWorkspaceID,
+		"cockpit_id":   ensureTestCockpit(t),
+		"parent_id":    moduleNodeID,
+		"code":         moduleCode + ".02",
+		"name":         "兄弟工作项",
+		"position":     1,
+	})
+}
+
+// I4 has no same-module loophole: a sub-issue may not move to a sibling work
+// item, and may not clear its work item while its parent keeps one. Both moves
+// leave project and module untouched, which used to skip the parent check
+// entirely.
+func TestUpdateIssueChildCannotLeaveParentsWorkItem(t *testing.T) {
+	plan := newWorkItemPlan(t, "child guard")
+	sibling := newSiblingWorkItem(t, plan)
+
+	_, parent := createIssueRequest(t, map[string]any{
+		"title":        "child guard parent " + uuid.NewString(),
+		"status":       "todo",
+		"priority":     "none",
+		"work_item_id": plan.workItem,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, parent.ID) })
+	_, child := createIssueRequest(t, map[string]any{
+		"title":           "child guard child " + uuid.NewString(),
+		"status":          "todo",
+		"priority":        "none",
+		"parent_issue_id": parent.ID,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, child.ID) })
+
+	for name, body := range map[string]map[string]any{
+		"sibling work item": {"work_item_id": sibling},
+		"clear work item":   {"work_item_id": nil},
+	} {
+		w, _ := putIssueRequest(t, child.ID, body)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("%s: expected 400, got %d: %s", name, w.Code, w.Body.String())
+		}
+		if !containsJSONCode(w.Body.Bytes(), errCodeChildWorkItemMismatch) {
+			t.Fatalf("%s: expected %s, got %s", name, errCodeChildWorkItemMismatch, w.Body.String())
+		}
+	}
+
+	// The refusals must not leave a half-written filing behind.
+	var storedWorkItem, storedModule string
+	if err := testPool.QueryRow(context.Background(),
+		`SELECT COALESCE(work_item_id::text, ''), COALESCE(module_id::text, '') FROM issue WHERE id = $1`, child.ID).
+		Scan(&storedWorkItem, &storedModule); err != nil {
+		t.Fatalf("read child filing: %v", err)
+	}
+	if storedWorkItem != plan.workItem || storedModule != plan.moduleID {
+		t.Fatalf("child filing = %s/%s after refusals, want %s/%s", storedWorkItem, storedModule, plan.workItem, plan.moduleID)
+	}
+}
+
+// The batch path calls the same guard; a batch move of a child to a sibling
+// work item rejects the whole request.
+func TestBatchUpdateChildCannotLeaveParentsWorkItem(t *testing.T) {
+	plan := newWorkItemPlan(t, "batch child guard")
+	sibling := newSiblingWorkItem(t, plan)
+
+	_, parent := createIssueRequest(t, map[string]any{
+		"title":        "batch child guard parent " + uuid.NewString(),
+		"status":       "todo",
+		"priority":     "none",
+		"work_item_id": plan.workItem,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, parent.ID) })
+	_, child := createIssueRequest(t, map[string]any{
+		"title":           "batch child guard child " + uuid.NewString(),
+		"status":          "todo",
+		"priority":        "none",
+		"parent_issue_id": parent.ID,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, child.ID) })
+
+	w := httptest.NewRecorder()
+	testHandler.BatchUpdateIssues(w, newRequest(http.MethodPost, "/api/issues/batch-update", map[string]any{
+		"issue_ids": []string{child.ID},
+		"updates":   map[string]any{"work_item_id": sibling},
+	}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("batch move: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !containsJSONCode(w.Body.Bytes(), errCodeChildWorkItemMismatch) {
+		t.Fatalf("batch move: expected %s, got %s", errCodeChildWorkItemMismatch, w.Body.String())
+	}
+}

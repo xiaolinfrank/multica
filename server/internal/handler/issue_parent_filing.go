@@ -28,10 +28,11 @@ const childWorkItemMismatchMessage = "a sub-issue must stay in its parent's work
 
 // applyIssueParentFiling enforces, on the resolved update params, that an issue
 // with a parent stays filed exactly where that parent is: same project, same
-// module. A sub-issue's module is not an independent property — it is the
-// parent's, which is what makes "move the parent" able to carry the subtree
-// (see refileIssueSubtree) and what makes a module group in the table a
-// complete picture of the work under it.
+// module, same work item. A sub-issue's module and work item are not
+// independent properties — they are the parent's, which is what makes "move the
+// parent" able to carry the subtree (see refileIssueSubtree) and what makes a
+// module or work item group in the table a complete picture of the work under
+// it.
 //
 // Two directions meet here:
 //
@@ -61,7 +62,12 @@ func applyIssueParentFilingWithQueries(ctx context.Context, q *db.Queries, param
 		return 0, "", ""
 	}
 	adopting := params.ParentIssueID != prev.ParentIssueID
-	moving := params.ProjectID != prev.ProjectID || params.ModuleID != prev.ModuleID
+	// The work item belongs in "moving": a child can leave its parent's work
+	// item without touching project or module (a sibling node under the same
+	// module, or an explicit clear), and that is exactly what I4 forbids.
+	moving := params.ProjectID != prev.ProjectID ||
+		params.ModuleID != prev.ModuleID ||
+		params.WorkItemID != prev.WorkItemID
 	if !adopting && !moving {
 		return 0, "", ""
 	}
