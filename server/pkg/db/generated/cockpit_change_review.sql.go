@@ -48,7 +48,7 @@ func (q *Queries) LockCockpitChangeForReview(ctx context.Context, arg LockCockpi
 }
 
 const lockCockpitChangeNode = `-- name: LockCockpitChangeNode :one
-SELECT id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id FROM cockpit_node WHERE workspace_id=$1::uuid AND id=$2::uuid FOR UPDATE
+SELECT id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id, directory_name FROM cockpit_node WHERE workspace_id=$1::uuid AND id=$2::uuid FOR UPDATE
 `
 
 type LockCockpitChangeNodeParams struct {
@@ -90,6 +90,7 @@ func (q *Queries) LockCockpitChangeNode(ctx context.Context, arg LockCockpitChan
 		&i.UpdatedAt,
 		&i.ProjectID,
 		&i.ModuleID,
+		&i.DirectoryName,
 	)
 	return i, err
 }

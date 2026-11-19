@@ -7,7 +7,7 @@
 -- "Assigned to me"), and the two filters must produce disjoint result sets.
 SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
        i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
-       i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.metadata, i.stage, i.properties,
+       i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.work_item_id, i.metadata, i.stage, i.properties,
        i.revision, i.duplicate_of_issue_id
 FROM issue i
 WHERE i.workspace_id = $1
@@ -181,11 +181,11 @@ RETURNING *;
 INSERT INTO issue (
     workspace_id, title, description, status, priority,
     assignee_type, assignee_id, creator_type, creator_id,
-    parent_issue_id, position, start_date, due_date, number, project_id, module_id,
+    parent_issue_id, position, start_date, due_date, number, project_id, module_id, work_item_id,
     stage, properties, last_activity_at, id
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-    sqlc.narg('module_id'), sqlc.narg('stage'), COALESCE(sqlc.narg('properties')::jsonb, '{}'::jsonb), now(), COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
+    sqlc.narg('module_id'), sqlc.narg('work_item_id'), sqlc.narg('stage'), COALESCE(sqlc.narg('properties')::jsonb, '{}'::jsonb), now(), COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
 ) RETURNING *;
 
 -- name: GetIssueByNumber :one
@@ -242,6 +242,7 @@ WITH wakeup_source AS MATERIALIZED (SELECT set_config('multica.source_task_id', 
         sqlc.narg('parent_issue_id')::uuid AS next_parent_issue_id,
         sqlc.narg('project_id')::uuid AS next_project_id,
         sqlc.narg('module_id')::uuid AS next_module_id,
+        sqlc.narg('work_item_id')::uuid AS next_work_item_id,
         sqlc.narg('stage')::integer AS next_stage,
         -- A supplied pointer marks the issue (the handler also sets cancelled).
         -- Otherwise a mark only survives a write that leaves an already
@@ -265,22 +266,22 @@ WITH wakeup_source AS MATERIALIZED (SELECT set_config('multica.source_task_id', 
         candidate.*,
         ROW(
             title, description, status, priority, assignee_type, assignee_id,
-            position, start_date, due_date, parent_issue_id, project_id, module_id, stage,
+            position, start_date, due_date, parent_issue_id, project_id, module_id, work_item_id, stage,
             duplicate_of_issue_id
         ) IS DISTINCT FROM ROW(
             next_title, next_description, next_status, next_priority,
             next_assignee_type, next_assignee_id, next_position, next_start_date,
-            next_due_date, next_parent_issue_id, next_project_id, next_module_id, next_stage,
+            next_due_date, next_parent_issue_id, next_project_id, next_module_id, next_work_item_id, next_stage,
             next_duplicate_of_issue_id
         ) AS did_change,
         ROW(
             title, description, status, priority, assignee_type, assignee_id,
-            start_date, due_date, parent_issue_id, project_id, module_id, stage,
+            start_date, due_date, parent_issue_id, project_id, module_id, work_item_id, stage,
             duplicate_of_issue_id
         ) IS DISTINCT FROM ROW(
             next_title, next_description, next_status, next_priority,
             next_assignee_type, next_assignee_id, next_start_date, next_due_date,
-            next_parent_issue_id, next_project_id, next_module_id, next_stage,
+            next_parent_issue_id, next_project_id, next_module_id, next_work_item_id, next_stage,
             next_duplicate_of_issue_id
         ) AS did_activity
     FROM candidate
@@ -298,6 +299,7 @@ UPDATE issue AS i SET
     parent_issue_id = changed.next_parent_issue_id,
     project_id = changed.next_project_id,
     module_id = changed.next_module_id,
+    work_item_id = changed.next_work_item_id,
     stage = changed.next_stage,
     duplicate_of_issue_id = changed.next_duplicate_of_issue_id,
     revision = i.revision + changed.did_change::integer,
@@ -316,9 +318,9 @@ WHERE i.id = changed.id
 RETURNING i.*;
 
 -- name: RefileIssueSubtree :many
--- Move every descendant of an issue into the project/module the issue itself
--- was just filed into. A sub-issue always sits in its parent's module, so a
--- parent that moves takes its whole subtree with it.
+-- Move every descendant of an issue into the project/module/work item the
+-- issue itself was just filed into. A sub-issue always sits in its parent's
+-- module and work item, so a parent that moves takes its whole subtree with it.
 --
 -- The tree carries no foreign keys, so the workspace bound is re-applied at
 -- every hop. UNION on stable IDs terminates even on malformed old cycles;
@@ -341,14 +343,16 @@ WITH RECURSIVE descendants AS (
 UPDATE issue AS i SET
     project_id = sqlc.narg('project_id')::uuid,
     module_id = sqlc.narg('module_id')::uuid,
+    work_item_id = sqlc.narg('work_item_id')::uuid,
     revision = i.revision + 1,
     last_activity_at = GREATEST(COALESCE(i.last_activity_at, i.updated_at), now()),
     updated_at = now()
 WHERE i.id IN (SELECT id FROM descendants)
   AND i.workspace_id = @workspace_id::uuid
   AND (i.project_id IS DISTINCT FROM sqlc.narg('project_id')::uuid
-    OR i.module_id IS DISTINCT FROM sqlc.narg('module_id')::uuid)
-RETURNING i.id,i.workspace_id,i.project_id,i.module_id,i.revision,i.updated_at;
+    OR i.module_id IS DISTINCT FROM sqlc.narg('module_id')::uuid
+    OR i.work_item_id IS DISTINCT FROM sqlc.narg('work_item_id')::uuid)
+RETURNING i.id,i.workspace_id,i.project_id,i.module_id,i.work_item_id,i.revision,i.updated_at;
 
 -- name: UpdateIssueStatus :one
 -- Workspace_id in the WHERE clause is a SQL-layer tenant guard; see DeleteIssue.
@@ -447,11 +451,11 @@ RETURNING *;
 INSERT INTO issue (
     workspace_id, title, description, status, priority,
     assignee_type, assignee_id, creator_type, creator_id,
-    parent_issue_id, position, start_date, due_date, number, project_id, module_id,
+    parent_issue_id, position, start_date, due_date, number, project_id, module_id, work_item_id,
     origin_type, origin_id, stage, properties, last_activity_at, id
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-    sqlc.narg('module_id'), sqlc.narg('origin_type'), sqlc.narg('origin_id'), sqlc.narg('stage'), COALESCE(sqlc.narg('properties')::jsonb, '{}'::jsonb), now(), COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
+    sqlc.narg('module_id'), sqlc.narg('work_item_id'), sqlc.narg('origin_type'), sqlc.narg('origin_id'), sqlc.narg('stage'), COALESCE(sqlc.narg('properties')::jsonb, '{}'::jsonb), now(), COALESCE(sqlc.narg('id')::uuid, gen_random_uuid())
 ) RETURNING *;
 
 -- name: LockIssueDuplicateKey :exec
@@ -550,7 +554,7 @@ DELETE FROM issue WHERE issue.id IN (SELECT target.id FROM target);
 -- filter; member-direct assignment is intentionally excluded).
 SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
        i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
-       i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.metadata, i.stage, i.properties,
+       i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.work_item_id, i.metadata, i.stage, i.properties,
        i.revision, i.duplicate_of_issue_id
 FROM issue i
 WHERE i.workspace_id = $1
@@ -570,6 +574,9 @@ WHERE i.workspace_id = $1
     OR i.module_id = sqlc.narg('module_id')
     OR (COALESCE(sqlc.narg('include_no_module')::bool, FALSE) AND i.module_id IS NULL)
   )
+  -- Work item lane filter: one L3 node of the plan tree. Plain equality — a
+  -- work item's issues never include its sibling's.
+  AND (sqlc.narg('work_item_id')::uuid IS NULL OR i.work_item_id = sqlc.narg('work_item_id'))
   AND (sqlc.narg('metadata_filter')::jsonb IS NULL OR i.metadata @> sqlc.narg('metadata_filter')::jsonb)
   -- properties_filter is a jsonb array of groups, each group an array of
   -- patterns (built by parsePropertiesFilterParam): the issue must match at

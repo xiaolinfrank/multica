@@ -60,3 +60,32 @@ in a required task/result subdirectory below that bound relative folder, never
 flat in the module or project root; title edits do not rename it — see
 [projects.md](projects.md#collaboration-space).
 
+## Work items: the third level under a module
+
+A work item is a node of the cockpit plan tree below a module, and the most
+specific place an issue can be filed. `issue.work_item_id` is the single
+filing authority: it is nullable, and when set it always agrees with
+`project_id` and `module_id`, which the server derives from the node.
+
+- `multica issue create --work-item <code-or-id>` files a new issue under
+  that work item; `--project`/`--module` may be omitted. Naming a work item
+  together with a conflicting project or module is rejected (400
+  `work item does not belong to the issue's project or module`). The
+  `--work-item` flag accepts a plan code such as `02.02.06` as well as a UUID.
+- `multica issue update <issue-id> --work-item <code-or-id>` re-files an
+  existing issue, updating its module and project with it; `--work-item ""`
+  unfiles it. Moving an issue to another module without naming a work item
+  clears it, because a work item means nothing outside its own module.
+- A sub-issue stays in its parent's work item: creating or moving one into a
+  different work item returns 400 `child_work_item_mismatch`, the same rule
+  as `child_module_mismatch` one level down. Detach the issue from its parent
+  in the same write to move it elsewhere.
+- Creating or moving a parent carries its whole subtree, work items included.
+- Listing filters by `work_item_id` (single), `work_item_ids` (any of) and
+  `include_no_work_item=true`, all compiling to one OR predicate. Table
+  grouping exposes a `work_item` kind with keys `work_item:<uuid>` and
+  `work_item:none`; unlike modules there is no empty-lane catalog, because
+  the plan tree is what renders nodes without issues.
+- `work_item_id` appears on every issue payload and in `--fields` output.
+
+

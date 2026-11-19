@@ -464,6 +464,70 @@ func resolveModuleID(ctx context.Context, client *cli.APIClient, projectID, inpu
 	}
 }
 
+// resolveWorkItemID resolves --work-item. Accepted forms are a full UUID, a
+// UUID prefix, or a plan node code such as "02.02.06" — the code is what the
+// tree shows and what issue titles carry, so it is the handle an agent
+// naturally has. Ambiguity is reported instead of guessed.
+func resolveWorkItemID(ctx context.Context, client *cli.APIClient, input string) (resolvedID, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return resolvedID{}, fmt.Errorf("work item is required")
+	}
+	if uuidRegexp.MatchString(trimmed) {
+		return resolvedID{ID: trimmed, Display: trimmed}, nil
+	}
+	board, err := cockpitBoard(ctx, client)
+	if err != nil {
+		return resolvedID{}, err
+	}
+	nodes := mapList(board, "nodes")
+
+	if prefix, prefixErr := normalizeUUIDPrefix(trimmed); prefixErr == nil {
+		matches := make([]idCandidate, 0, 1)
+		for _, n := range nodes {
+			id := strVal(n, "id")
+			if id != "" && strings.HasPrefix(compactUUID(id), prefix) {
+				matches = append(matches, idCandidate{ID: id, Display: nodeDisplay(n)})
+			}
+		}
+		if len(matches) > 1 {
+			return resolvedID{}, ambiguousIDPrefixError("work item", input, matches)
+		}
+		if len(matches) == 1 {
+			return moduleResolvedID(matches[0]), nil
+		}
+	}
+
+	codeMatches := make([]idCandidate, 0, 1)
+	for _, n := range nodes {
+		if strVal(n, "code") != "" && strings.EqualFold(strVal(n, "code"), trimmed) {
+			codeMatches = append(codeMatches, idCandidate{ID: strVal(n, "id"), Display: nodeDisplay(n)})
+		}
+	}
+	switch len(codeMatches) {
+	case 1:
+		return moduleResolvedID(codeMatches[0]), nil
+	case 0:
+		return resolvedID{}, fmt.Errorf("no work item found matching %q; run `multica cockpit node list` to see the plan codes", input)
+	default:
+		return resolvedID{}, fmt.Errorf("work item %q is ambiguous: %d nodes share that code", input, len(codeMatches))
+	}
+}
+
+// nodeDisplay renders "code name", the same label the plan tree shows.
+func nodeDisplay(n map[string]any) string {
+	code := strVal(n, "code")
+	name := strVal(n, "name")
+	switch {
+	case code == "":
+		return name
+	case name == "":
+		return code
+	default:
+		return code + " " + name
+	}
+}
+
 func moduleResolvedID(c idCandidate) resolvedID {
 	display := c.Display
 	if display == "" {

@@ -90,6 +90,8 @@ type issueTableFiltersRequest struct {
 	IncludeNoProject  bool                 `json:"include_no_project,omitempty"`
 	ModuleIDs         []string             `json:"module_ids,omitempty"`
 	IncludeNoModule   bool                 `json:"include_no_module,omitempty"`
+	WorkItemIDs       []string             `json:"work_item_ids,omitempty"`
+	IncludeNoWorkItem bool                 `json:"include_no_work_item,omitempty"`
 	// ProjectStatuses filters on the parent project's lifecycle status
 	// (`validProjectStatuses`), independently of ProjectIDs.
 	ProjectStatuses []string `json:"project_statuses,omitempty"`
@@ -291,6 +293,7 @@ func canonicalIssueTableFingerprint(workspaceID string, spec issueTableQuerySpec
 	normalized.Filters.Priorities = sortedUniqueStrings(normalized.Filters.Priorities)
 	normalized.Filters.ProjectIDs = sortedUniqueStrings(normalized.Filters.ProjectIDs)
 	normalized.Filters.ModuleIDs = sortedUniqueStrings(normalized.Filters.ModuleIDs)
+	normalized.Filters.WorkItemIDs = sortedUniqueStrings(normalized.Filters.WorkItemIDs)
 	normalized.Filters.ProjectStatuses = sortedUniqueStrings(normalized.Filters.ProjectStatuses)
 	normalized.Filters.LabelIDs = sortedUniqueStrings(normalized.Filters.LabelIDs)
 	normalized.Filters.Relations = sortedUniqueStrings(normalized.Filters.Relations)
@@ -733,6 +736,24 @@ func (h *Handler) compileIssueTableQuery(w http.ResponseWriter, r *http.Request,
 			ors = append(ors, "i.module_id IS NULL")
 		}
 		where = append(where, "("+strings.Join(ors, " OR ")+")")
+	}
+
+	// Work item narrows to plan-tree leaves. `include_no_work_item` is what
+	// the project page sends when it selects a module: everything under the
+	// module that is not yet split into a work item still belongs to it.
+	workItemIDs, ok := parseIssueTableUUIDList(w, spec.Filters.WorkItemIDs, "filters.work_item_ids")
+	if !ok {
+		return issueTableSQL{}, false
+	}
+	if len(workItemIDs) > 0 || spec.Filters.IncludeNoWorkItem {
+		ors := make([]string, 0, 2)
+		if len(workItemIDs) > 0 {
+			ors = append(ors, fmt.Sprintf("i.work_item_id = ANY(%s::uuid[])", addArg(workItemIDs)))
+		}
+		if spec.Filters.IncludeNoWorkItem {
+			ors = append(ors, "i.work_item_id IS NULL")
+		}
+		appendFilter("work_item_ids", "("+strings.Join(ors, " OR ")+")")
 	}
 
 	if len(spec.Filters.ProjectStatuses) > 0 {

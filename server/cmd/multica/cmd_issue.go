@@ -545,7 +545,7 @@ var validIssueFields = []string{
 	"id", "workspace_id", "number", "identifier", "title", "description",
 	"status", "status_category", "status_name", "priority", "assignee_type",
 	"assignee_id", "creator_type", "creator_id", "parent_issue_id",
-	"duplicate_of", "project_id", "module_id", "position", "stage", "start_date", "due_date", "created_at",
+	"duplicate_of", "project_id", "module_id", "work_item_id", "position", "stage", "start_date", "due_date", "created_at",
 	"updated_at", "revision", "last_activity_at", "metadata", "properties",
 	"labels",
 }
@@ -641,6 +641,7 @@ func init() {
 	issueListCmd.Flags().String("assignee-id", "", "Filter by assignee UUID — member, agent, or squad (mutually exclusive with --assignee)")
 	issueListCmd.Flags().String("project", "", "Filter by project ID")
 	issueListCmd.Flags().String("module", "", "Filter by module ID or title; a title is resolved inside --project when given, otherwise across the workspace")
+	issueListCmd.Flags().String("work-item", "", "Filter by work item ID or plan code (e.g. 02.02.06)")
 	issueListCmd.Flags().String("updated-since", "", "Include issues updated at or after this RFC3339 timestamp; requires --updated-until (keep both bounds fixed across pages)")
 	issueListCmd.Flags().String("updated-until", "", "Include issues updated before this RFC3339 timestamp; requires --updated-since")
 	issueListCmd.Flags().StringSlice("metadata", nil, "Filter by metadata key=value (repeatable; combined with AND). Value is JSON-parsed: 'true'/'false' → bool, numbers → number, otherwise string. Wrap as '\"42\"' to force a string when the value would otherwise sniff as a number.")
@@ -677,6 +678,7 @@ func init() {
 	issueCreateCmd.Flags().Int("stage", 0, "Stage ordinal (>=1) grouping this sub-issue into an ordered barrier group under its parent; omit for unstaged. The parent assignee is woken only when every sub-issue in a stage finishes.")
 	issueCreateCmd.Flags().String("project", "", "Project ID")
 	issueCreateCmd.Flags().String("module", "", "Module ID or title within the project; a title is resolved inside --project when given, otherwise across the workspace")
+	issueCreateCmd.Flags().String("work-item", "", "Work item ID or plan code (e.g. 02.02.06); it supplies the module and project")
 	issueCreateCmd.Flags().String("start-date", "", "Start date (calendar day, YYYY-MM-DD)")
 	issueCreateCmd.Flags().String("due-date", "", "Due date (calendar day, YYYY-MM-DD)")
 	issueCreateCmd.Flags().Bool("allow-duplicate", false, "Allow creating an issue even when an active duplicate exists")
@@ -698,6 +700,7 @@ func init() {
 	issueUpdateCmd.Flags().String("assignee-id", "", "New assignee UUID — member, agent, or squad (mutually exclusive with --assignee)")
 	issueUpdateCmd.Flags().String("project", "", "Project ID")
 	issueUpdateCmd.Flags().String("module", "", "New module ID or title (use --module \"\" to file the issue directly under the project)")
+	issueUpdateCmd.Flags().String("work-item", "", "New work item ID or plan code (use --work-item \"\" to unfile the issue from its work item)")
 	issueUpdateCmd.Flags().String("start-date", "", "New start date (calendar day, YYYY-MM-DD; pass empty string to clear)")
 	issueUpdateCmd.Flags().String("due-date", "", "New due date (calendar day, YYYY-MM-DD)")
 	issueUpdateCmd.Flags().String("parent", "", "Parent issue ID (use --parent \"\" to clear)")
@@ -887,6 +890,13 @@ func runIssueList(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		params.Set("module_id", module.ID)
+	}
+	if v, _ := cmd.Flags().GetString("work-item"); v != "" {
+		workItem, err := resolveWorkItemID(ctx, client, v)
+		if err != nil {
+			return err
+		}
+		params.Set("work_item_id", workItem.ID)
 	}
 	if mdFlags, _ := cmd.Flags().GetStringSlice("metadata"); len(mdFlags) > 0 {
 		filter, err := buildMetadataFilterQueryParam(mdFlags)
@@ -1631,6 +1641,15 @@ func runIssueCreate(cmd *cobra.Command, _ []string) error {
 		}
 		body["module_id"] = module.ID
 	}
+	// A work item supplies its module and project; the server rejects a
+	// conflicting pair rather than silently re-filing.
+	if v, _ := cmd.Flags().GetString("work-item"); v != "" {
+		workItem, err := resolveWorkItemID(ctx, client, v)
+		if err != nil {
+			return err
+		}
+		body["work_item_id"] = workItem.ID
+	}
 	if cmd.Flags().Changed("stage") {
 		stage, _ := cmd.Flags().GetInt("stage")
 		if stage < 1 {
@@ -1880,6 +1899,20 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			body["module_id"] = module.ID
+		}
+	}
+	// Same Changed() semantics one level down: an explicit empty value unfiles
+	// the issue, and a named work item overrides any module named above.
+	if cmd.Flags().Changed("work-item") {
+		v, _ := cmd.Flags().GetString("work-item")
+		if v == "" {
+			body["work_item_id"] = nil
+		} else {
+			workItem, err := resolveWorkItemID(ctx, client, v)
+			if err != nil {
+				return err
+			}
+			body["work_item_id"] = workItem.ID
 		}
 	}
 	if cmd.Flags().Changed("start-date") {

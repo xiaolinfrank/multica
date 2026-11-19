@@ -79,7 +79,12 @@ type IssueResponse struct {
 	// ModuleID names the module the issue is filed into within its project;
 	// nil = directly under the project.
 	ModuleID *string `json:"module_id"`
-	Position float64 `json:"position"`
+	// WorkItemID names the plan-tree work item (third-level cockpit node) the
+	// issue belongs to; nil = filed only to the module/project. The work item
+	// always agrees with ProjectID and ModuleID (see the S1 invariants in
+	// docs/design/cockpit-unification-2026-11-19).
+	WorkItemID *string `json:"work_item_id"`
+	Position   float64 `json:"position"`
 	// Stage groups sub-issues under the same parent into ordered barrier
 	// groups (null = unstaged). See service/issue_wakeup_system.go for how a
 	// closed stage wakes the parent's assignee.
@@ -519,6 +524,7 @@ func issueToResponse(i db.Issue, issuePrefix string) IssueResponse {
 		duplicateOfIssueID: duplicateOfPointer(i.Status, i.DuplicateOfIssueID),
 		ProjectID:          uuidToPtr(i.ProjectID),
 		ModuleID:           uuidToPtr(i.ModuleID),
+		WorkItemID:         uuidToPtr(i.WorkItemID),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -558,6 +564,7 @@ func issueListRowToResponse(i db.ListIssuesRow, issuePrefix string) IssueRespons
 		duplicateOfIssueID: duplicateOfPointer(i.Status, i.DuplicateOfIssueID),
 		ProjectID:          uuidToPtr(i.ProjectID),
 		ModuleID:           uuidToPtr(i.ModuleID),
+		WorkItemID:         uuidToPtr(i.WorkItemID),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -629,6 +636,7 @@ func openIssueRowToResponse(i db.ListOpenIssuesRow, issuePrefix string) IssueRes
 		duplicateOfIssueID: duplicateOfPointer(i.Status, i.DuplicateOfIssueID),
 		ProjectID:          uuidToPtr(i.ProjectID),
 		ModuleID:           uuidToPtr(i.ModuleID),
+		WorkItemID:         uuidToPtr(i.WorkItemID),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -1121,7 +1129,7 @@ func buildSearchQuery(phrase string, terms []string, queryNum int, hasNum bool, 
 	SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
 		i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
 		i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position,
-		i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id,
+		i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.work_item_id,
 		i.revision, i.duplicate_of_issue_id,
 		pc.match_source,
 		COALESCE(c.content, '') AS matched_comment_content
@@ -1221,6 +1229,7 @@ func (h *Handler) SearchIssues(w http.ResponseWriter, r *http.Request) {
 				&sr.issue.Number,
 				&sr.issue.ProjectID,
 				&sr.issue.ModuleID,
+				&sr.issue.WorkItemID,
 				&sr.issue.Revision,
 				&sr.issue.DuplicateOfIssueID,
 				&sr.matchSource,
@@ -1382,6 +1391,19 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	rawIncludeNoModule := r.URL.Query().Get("include_no_module")
 	includeNoModule := rawIncludeNoModule == "true" || rawIncludeNoModule == "1"
+	// Work item lane filter: work_item_id narrows to one plan-tree node; the
+	// include flag widens it to issues not yet split into a work item, which
+	// is how the project page reads a module's unfiled remainder.
+	var workItemFilter pgtype.UUID
+	if wi := r.URL.Query().Get("work_item_id"); wi != "" {
+		id, ok := parseUUIDOrBadRequest(w, wi, "work_item_id")
+		if !ok {
+			return
+		}
+		workItemFilter = id
+	}
+	rawIncludeNoWorkItem := r.URL.Query().Get("include_no_work_item")
+	includeNoWorkItem := rawIncludeNoWorkItem == "true" || rawIncludeNoWorkItem == "1"
 	// involves_user_id widens the assignee filter to surface issues where the
 	// user is the indirect assignee (their owned agent, or a squad they belong
 	// to / lead / have an agent inside). Direct member-assignment is excluded
@@ -1450,6 +1472,7 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 			ProjectID:          projectFilter,
 			ModuleID:           moduleFilter,
 			IncludeNoModule:    pgtype.Bool{Bool: includeNoModule, Valid: true},
+			WorkItemID:         workItemFilter,
 			InvolvesUserID:     involvesUserFilter,
 			MetadataFilter:     metadataFilter,
 			PropertiesFilter:   openPropertiesFilter,
@@ -1664,6 +1687,26 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		where = append(where, "("+strings.Join(ors, " OR ")+")")
 	}
+	// work_item_id / work_item_ids / include_no_work_item follow the module
+	// shape one level down: one OR predicate so "this work item or its unfiled
+	// remainder" is expressible.
+	workItemIDs, ok := parseUUIDParamList(w, r.URL.Query().Get("work_item_ids"), "work_item_ids")
+	if !ok {
+		return
+	}
+	if workItemFilter.Valid || len(workItemIDs) > 0 || includeNoWorkItem {
+		ors := make([]string, 0, 3)
+		if workItemFilter.Valid {
+			ors = append(ors, fmt.Sprintf("i.work_item_id = %s::uuid", addArg(workItemFilter)))
+		}
+		if len(workItemIDs) > 0 {
+			ors = append(ors, fmt.Sprintf("i.work_item_id = ANY(%s::uuid[])", addArg(workItemIDs)))
+		}
+		if includeNoWorkItem {
+			ors = append(ors, "i.work_item_id IS NULL")
+		}
+		where = append(where, "("+strings.Join(ors, " OR ")+")")
+	}
 
 	// Table facets must be part of the server window. Applying them after
 	// LIMIT/OFFSET hides matches that live on later pages and makes `total`
@@ -1842,7 +1885,7 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 
 	query := fmt.Sprintf(`SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
        i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
-       i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.metadata, i.stage, i.properties,
+       i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.work_item_id, i.metadata, i.stage, i.properties,
 	   i.revision, i.duplicate_of_issue_id
 FROM issue i
 WHERE %s
@@ -1881,6 +1924,7 @@ LIMIT %s OFFSET %s`, whereSql, orderBy, limitRef, offsetRef)
 			&row.Number,
 			&row.ProjectID,
 			&row.ModuleID,
+			&row.WorkItemID,
 			&row.Metadata,
 			&row.Stage,
 			&row.Properties,
@@ -2346,6 +2390,36 @@ func (h *Handler) ListGroupedIssues(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "("+strings.Join(ors, " OR ")+")")
 	}
 
+	// Work item lane filter, mirroring the module predicate one level down:
+	// the singular form is what the project's issue surface sends once a work
+	// item is selected in the plan tree.
+	var workItemFilter pgtype.UUID
+	if wi := r.URL.Query().Get("work_item_id"); wi != "" {
+		id, ok := parseUUIDOrBadRequest(w, wi, "work_item_id")
+		if !ok {
+			return
+		}
+		workItemFilter = id
+	}
+	workItemIDs, ok := parseUUIDParamList(w, r.URL.Query().Get("work_item_ids"), "work_item_ids")
+	if !ok {
+		return
+	}
+	includeNoWorkItem := r.URL.Query().Get("include_no_work_item") == "true"
+	if workItemFilter.Valid || len(workItemIDs) > 0 || includeNoWorkItem {
+		ors := make([]string, 0, 3)
+		if workItemFilter.Valid {
+			ors = append(ors, fmt.Sprintf("i.work_item_id = %s::uuid", addArg(workItemFilter)))
+		}
+		if len(workItemIDs) > 0 {
+			ors = append(ors, fmt.Sprintf("i.work_item_id = ANY(%s::uuid[])", addArg(workItemIDs)))
+		}
+		if includeNoWorkItem {
+			ors = append(ors, "i.work_item_id IS NULL")
+		}
+		where = append(where, "("+strings.Join(ors, " OR ")+")")
+	}
+
 	labelIDs, ok := parseUUIDParamList(w, r.URL.Query().Get("label_ids"), "label_ids")
 	if !ok {
 		return
@@ -2476,7 +2550,7 @@ WITH ranked AS (
 		i.id, i.workspace_id, i.title, i.description, i.status, i.priority,
 		i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
 		i.parent_issue_id, i.position, i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at,
-		i.number, i.project_id, i.module_id, i.metadata, i.stage, i.properties, i.revision, i.duplicate_of_issue_id,
+		i.number, i.project_id, i.module_id, i.work_item_id, i.metadata, i.stage, i.properties, i.revision, i.duplicate_of_issue_id,
 		COUNT(*) OVER (PARTITION BY i.assignee_type, i.assignee_id) AS group_total,
 		ROW_NUMBER() OVER (
 			PARTITION BY i.assignee_type, i.assignee_id
@@ -2489,7 +2563,7 @@ SELECT
 	id, workspace_id, title, description, status, priority,
 	assignee_type, assignee_id, creator_type, creator_id,
 	parent_issue_id, position, start_date, due_date, created_at, updated_at, last_activity_at,
-	number, project_id, module_id, metadata, stage, properties, revision, duplicate_of_issue_id, group_total
+	number, project_id, module_id, work_item_id, metadata, stage, properties, revision, duplicate_of_issue_id, group_total
 FROM ranked
 WHERE rn > %s AND rn <= %s + %s
 ORDER BY
@@ -2535,6 +2609,7 @@ ORDER BY
 			&row.Number,
 			&row.ProjectID,
 			&row.ModuleID,
+			&row.WorkItemID,
 			&row.Metadata,
 			&row.Stage,
 			&row.Properties,
@@ -3186,7 +3261,11 @@ type CreateIssueRequest struct {
 	// ModuleID files the issue into one of the project's modules. When
 	// ProjectID is absent the module's project is adopted; a mismatching pair
 	// is rejected by IssueService.Create (ErrModuleNotInProject).
-	ModuleID      *string  `json:"module_id"`
+	ModuleID *string `json:"module_id"`
+	// WorkItemID files the issue under a plan-tree work item. The work item
+	// supplies the module and project; a conflicting explicit pair is rejected
+	// by IssueService.Create (ErrWorkItemNotInScope).
+	WorkItemID    *string  `json:"work_item_id"`
 	Stage         *int32   `json:"stage,omitempty"`
 	StartDate     *string  `json:"start_date"`
 	DueDate       *string  `json:"due_date"`
@@ -3448,6 +3527,14 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		moduleID = id
 	}
+	var workItemID pgtype.UUID
+	if req.WorkItemID != nil {
+		id, ok := parseUUIDOrBadRequest(w, *req.WorkItemID, "work_item_id")
+		if !ok {
+			return
+		}
+		workItemID = id
+	}
 
 	// Project workflow (MUL-7420). A new issue in a project on a named
 	// workflow must start on a status the workflow lists, and a column the
@@ -3638,6 +3725,7 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		ParentIssueID:  parentIssueID,
 		ProjectID:      projectID,
 		ModuleID:       moduleID,
+		WorkItemID:     workItemID,
 		StartDate:      startDate,
 		DueDate:        dueDate,
 		OriginType:     originType,
@@ -3706,6 +3794,19 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 			"a sub-issue must stay in its parent's module")
 		return
 	}
+	if errors.Is(err, service.ErrWorkItemNotFound) {
+		writeError(w, http.StatusBadRequest, "work item not found in this workspace")
+		return
+	}
+	if errors.Is(err, service.ErrWorkItemNotInScope) {
+		writeError(w, http.StatusBadRequest, "work item does not belong to the issue's project or module")
+		return
+	}
+	if errors.Is(err, service.ErrChildWorkItemMismatch) {
+		writeErrorCode(w, http.StatusBadRequest, errCodeChildWorkItemMismatch,
+			"a sub-issue must stay in its parent's work item")
+		return
+	}
 	if errors.Is(err, service.ErrIssueLabelNotFound) {
 		writeError(w, http.StatusBadRequest, "one or more labels not found in this workspace")
 		return
@@ -3764,7 +3865,11 @@ type UpdateIssueRequest struct {
 	ParentIssueID   *string  `json:"parent_issue_id"`
 	ProjectID       *string  `json:"project_id"`
 	ModuleID        *string  `json:"module_id"`
-	Stage           *int32   `json:"stage"`
+	// WorkItemID files the issue under a plan-tree work item. The work item
+	// supplies its module and project, so a conflicting pair in the same
+	// request is refused; an explicit null unfiles it.
+	WorkItemID *string `json:"work_item_id"`
+	Stage      *int32  `json:"stage"`
 	// AttachmentIDs lets the description editor bind newly uploaded files to
 	// this issue so they surface in `GET /api/issues/:id/attachments` and the
 	// editor's preview Eye keeps working past a refresh. Existing bindings
@@ -3869,7 +3974,12 @@ func refreshUntouchedNullableIssueParams(params *db.UpdateIssueParams, current d
 	if _, touched := rawFields["parent_issue_id"]; !touched {
 		params.ParentIssueID = current.ParentIssueID
 	}
-	if _, touched := rawFields["project_id"]; !touched {
+	// A named work item carries its own module and project. Those are not
+	// independent values the caller left unchanged, so the refresh must not
+	// restore the stored pair on top of the derived one.
+	_, namedWorkItem := rawFields["work_item_id"]
+	derivedFromWorkItem := namedWorkItem && params.WorkItemID.Valid
+	if _, touched := rawFields["project_id"]; !touched && !derivedFromWorkItem {
 		params.ProjectID = current.ProjectID
 	}
 	// A project move re-files the issue: the handler clears module_id when the
@@ -3879,8 +3989,14 @@ func refreshUntouchedNullableIssueParams(params *db.UpdateIssueParams, current d
 	// keeps that guard honest: an echoed, unchanged project_id is not a move,
 	// and its module must survive the refresh. ProjectID was refreshed above,
 	// so an untouched project is already current here.
-	if _, touched := rawFields["module_id"]; !touched && params.ProjectID == current.ProjectID {
+	if _, touched := rawFields["module_id"]; !touched && !derivedFromWorkItem && params.ProjectID == current.ProjectID {
 		params.ModuleID = current.ModuleID
+	}
+	// Same shape one level down: an untouched work item survives only while
+	// the issue stays in the module it was filed under. A write that moves the
+	// module keeps the clearing the caller computed.
+	if _, touched := rawFields["work_item_id"]; !touched && params.ProjectID == current.ProjectID && params.ModuleID == current.ModuleID {
+		params.WorkItemID = current.WorkItemID
 	}
 	if _, touched := rawFields["stage"]; !touched {
 		params.Stage = current.Stage
@@ -4015,7 +4131,7 @@ func (h *Handler) updateIssueAtomically(ctx context.Context, workspaceID pgtype.
 	}
 	var refiled []db.RefileIssueSubtreeRow
 	if issueFilingChanged(current, issue) {
-		refiled, err = qtx.RefileIssueSubtree(ctx, db.RefileIssueSubtreeParams{ParentIssueID: issue.ID, WorkspaceID: workspaceID, ProjectID: issue.ProjectID, ModuleID: issue.ModuleID})
+		refiled, err = qtx.RefileIssueSubtree(ctx, db.RefileIssueSubtreeParams{ParentIssueID: issue.ID, WorkspaceID: workspaceID, ProjectID: issue.ProjectID, ModuleID: issue.ModuleID, WorkItemID: issue.WorkItemID})
 		if err != nil {
 			return db.Issue{}, current, false, nil, fmt.Errorf("refile issue subtree: %w", err)
 		}
@@ -4077,6 +4193,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		ParentIssueID: prevIssue.ParentIssueID,
 		ProjectID:     prevIssue.ProjectID,
 		ModuleID:      prevIssue.ModuleID,
+		WorkItemID:    prevIssue.WorkItemID,
 		Stage:         prevIssue.Stage,
 		// Checked against the locked rows in updateIssueAtomically.
 		DuplicateOfIssueID: duplicateOfID,
@@ -4265,6 +4382,46 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		params.ModuleID = pgtype.UUID{Valid: false}
 	}
 
+	// Presence semantics for work_item_id mirror module_id. A named work item
+	// supplies the module and project the issue must carry, so pinning a
+	// conflicting pair in the same request is refused rather than silently
+	// re-filing. Moving the issue's module or project away from its work item
+	// clears it: a work item means nothing outside its own module.
+	if _, ok := rawFields["work_item_id"]; ok {
+		if req.WorkItemID != nil {
+			workItemUUID, ok := parseUUIDOrBadRequest(w, *req.WorkItemID, "work_item_id")
+			if !ok {
+				return
+			}
+			scope, err := h.Queries.GetCockpitWorkItemScope(r.Context(), db.GetCockpitWorkItemScopeParams{
+				ID:          workItemUUID,
+				WorkspaceID: prevIssue.WorkspaceID,
+			})
+			if err != nil {
+				if !isNotFound(err) {
+					slog.Error("update issue: validate work item scope",
+						append(logger.RequestAttrs(r), "work_item_id", uuidToString(workItemUUID), "error", err)...)
+					writeError(w, http.StatusInternalServerError, "failed to validate work item")
+					return
+				}
+				writeError(w, http.StatusBadRequest, "work item not found in this workspace")
+				return
+			}
+			if (params.ModuleID.Valid && params.ModuleID != scope.ModuleID) ||
+				(params.ProjectID.Valid && params.ProjectID != scope.ProjectID) {
+				writeError(w, http.StatusBadRequest, "work item does not belong to the issue's project or module")
+				return
+			}
+			params.WorkItemID = workItemUUID
+			params.ModuleID = scope.ModuleID
+			params.ProjectID = scope.ProjectID
+		} else {
+			params.WorkItemID = pgtype.UUID{Valid: false} // explicit null = unfiled from the work item
+		}
+	} else if params.ModuleID != prevIssue.ModuleID || params.ProjectID != prevIssue.ProjectID {
+		params.WorkItemID = pgtype.UUID{Valid: false}
+	}
+
 	// A sub-issue is filed where its parent is filed. Checked on the RESOLVED
 	// params so the project-move clear above is included, and only for a write
 	// that actually moves the issue or hands it a new parent.
@@ -4374,6 +4531,9 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	// that clears the module is left to the client's module_id diff, mirroring
 	// how project_changed only covers the explicitly requested field.
 	moduleChanged := req.ModuleID != nil && uuidToString(prevIssue.ModuleID) != uuidToString(issue.ModuleID)
+	// work_item_changed gates plan-tree issue pages and per-node counts the
+	// same way module_changed gates module caches.
+	workItemChanged := req.WorkItemID != nil && uuidToString(prevIssue.WorkItemID) != uuidToString(issue.WorkItemID)
 	descriptionChanged := req.Description != nil && textToPtr(prevIssue.Description) != resp.Description
 	titleChanged := req.Title != nil && prevIssue.Title != issue.Title
 	prevStartDate := dateToPtr(prevIssue.StartDate)
@@ -4408,6 +4568,7 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		"priority_changed":    priorityChanged,
 		"project_changed":     projectChanged,
 		"module_changed":      moduleChanged,
+		"work_item_changed":   workItemChanged,
 		"start_date_changed":  startDateChanged,
 		"due_date_changed":    dueDateChanged,
 		"description_changed": descriptionChanged,
@@ -5020,7 +5181,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		req.Updates.Priority != nil ||
 		req.Updates.Position != nil
 	if !hasMutation {
-		for _, k := range []string{"assignee_type", "assignee_id", "start_date", "due_date", "parent_issue_id", "project_id", "module_id", "stage"} {
+		for _, k := range []string{"assignee_type", "assignee_id", "start_date", "due_date", "parent_issue_id", "project_id", "module_id", "work_item_id", "stage"} {
 			if _, ok := rawUpdates[k]; ok {
 				hasMutation = true
 				break
@@ -5111,6 +5272,42 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		batchModuleID = moduleUUID
 	}
 
+	// The batch shares one work_item_id as well. A work item names the module
+	// and project every target must carry, so a co-submitted conflicting pair
+	// rejects the whole request before any issue is touched.
+	batchWorkItemID := pgtype.UUID{Valid: false}
+	var batchWorkItem db.GetCockpitWorkItemScopeRow
+	if _, ok := rawUpdates["work_item_id"]; ok && req.Updates.WorkItemID != nil {
+		workItemUUID, ok := parseUUIDOrBadRequest(w, *req.Updates.WorkItemID, "work_item_id")
+		if !ok {
+			return
+		}
+		scope, err := h.Queries.GetCockpitWorkItemScope(r.Context(), db.GetCockpitWorkItemScopeParams{
+			ID:          workItemUUID,
+			WorkspaceID: wsUUID,
+		})
+		if err != nil {
+			if !isNotFound(err) {
+				slog.Error("batch update issues: validate work item scope",
+					append(logger.RequestAttrs(r), "work_item_id", uuidToString(workItemUUID), "error", err)...)
+				writeError(w, http.StatusInternalServerError, "failed to validate work item")
+				return
+			}
+			writeError(w, http.StatusBadRequest, "work item not found in this workspace")
+			return
+		}
+		if _, submitted := rawUpdates["module_id"]; submitted && batchModuleID != scope.ModuleID {
+			writeError(w, http.StatusBadRequest, "work item does not belong to the issue's project or module")
+			return
+		}
+		if _, submitted := rawUpdates["project_id"]; submitted && batchProjectID != scope.ProjectID {
+			writeError(w, http.StatusBadRequest, "work item does not belong to the issue's project or module")
+			return
+		}
+		batchWorkItem = scope
+		batchWorkItemID = workItemUUID
+	}
+
 	updated := 0
 	// One Resolver for the whole batch — a per-issue filler would query the
 	// catalog once per custom-status row. (MUL-6243)
@@ -5149,6 +5346,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			ParentIssueID: prevIssue.ParentIssueID,
 			ProjectID:     prevIssue.ProjectID,
 			ModuleID:      prevIssue.ModuleID,
+			WorkItemID:    prevIssue.WorkItemID,
 			Stage:         prevIssue.Stage,
 		}
 
@@ -5263,6 +5461,21 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			// their modules.
 			params.ModuleID = pgtype.UUID{Valid: false}
 		}
+		// Work item: resolved before the loop, and its module/project win over
+		// whatever the batch's own module/project left behind. An implicit
+		// move (module or project changed without naming a work item) clears
+		// it, exactly like the single update.
+		if _, ok := rawUpdates["work_item_id"]; ok {
+			if batchWorkItemID.Valid {
+				params.WorkItemID = batchWorkItemID
+				params.ModuleID = batchWorkItem.ModuleID
+				params.ProjectID = batchWorkItem.ProjectID
+			} else {
+				params.WorkItemID = pgtype.UUID{Valid: false}
+			}
+		} else if params.ModuleID != prevIssue.ModuleID || params.ProjectID != prevIssue.ProjectID {
+			params.WorkItemID = pgtype.UUID{Valid: false}
+		}
 		// Same sub-issue rule as the single update: a child stays filed where
 		// its parent is. Rejected for the whole batch rather than skipped for
 		// one issue, like the module/project guard above — a caller moving a
@@ -5367,6 +5580,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		priorityChanged := req.Updates.Priority != nil && prevIssue.Priority != issue.Priority
 		projectChanged := req.Updates.ProjectID != nil && uuidToString(prevIssue.ProjectID) != uuidToString(issue.ProjectID)
 		moduleChanged := req.Updates.ModuleID != nil && uuidToString(prevIssue.ModuleID) != uuidToString(issue.ModuleID)
+		workItemChanged := req.Updates.WorkItemID != nil && uuidToString(prevIssue.WorkItemID) != uuidToString(issue.WorkItemID)
 
 		batchHandoffNote := req.Updates.HandoffNote
 		trigger, willRun := h.IssueService.WillEnqueueRun(r.Context(),
@@ -5387,6 +5601,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			"priority_changed":           priorityChanged,
 			"project_changed":            projectChanged,
 			"module_changed":             moduleChanged,
+			"work_item_changed":          workItemChanged,
 			"prev_status":                prevIssue.Status,
 			"duplicate_of_issue_id":      liveDuplicateMark(issue.Status, issue.DuplicateOfIssueID),
 			"prev_duplicate_of_issue_id": liveDuplicateMark(prevIssue.Status, prevIssue.DuplicateOfIssueID),

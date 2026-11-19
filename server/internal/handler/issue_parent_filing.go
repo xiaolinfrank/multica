@@ -20,6 +20,12 @@ const errCodeChildModuleMismatch = "child_module_mismatch"
 
 const childModuleMismatchMessage = "a sub-issue must stay in its parent's module"
 
+// errCodeChildWorkItemMismatch is the same refusal one level down: a sub-issue
+// may not leave the work item its parent is filed under.
+const errCodeChildWorkItemMismatch = "child_work_item_mismatch"
+
+const childWorkItemMismatchMessage = "a sub-issue must stay in its parent's work item"
+
 // applyIssueParentFiling enforces, on the resolved update params, that an issue
 // with a parent stays filed exactly where that parent is: same project, same
 // module. A sub-issue's module is not an independent property — it is the
@@ -75,13 +81,18 @@ func applyIssueParentFilingWithQueries(ctx context.Context, q *db.Queries, param
 	}
 	_, namedModule := rawFields["module_id"]
 	_, namedProject := rawFields["project_id"]
-	if adopting && !namedModule && !namedProject {
+	_, namedWorkItem := rawFields["work_item_id"]
+	if adopting && !namedModule && !namedProject && !namedWorkItem {
 		params.ProjectID = parent.ProjectID
 		params.ModuleID = parent.ModuleID
+		params.WorkItemID = parent.WorkItemID
 		return 0, "", ""
 	}
 	if params.ProjectID != parent.ProjectID || params.ModuleID != parent.ModuleID {
 		return http.StatusBadRequest, errCodeChildModuleMismatch, childModuleMismatchMessage
+	}
+	if params.WorkItemID != parent.WorkItemID {
+		return http.StatusBadRequest, errCodeChildWorkItemMismatch, childWorkItemMismatchMessage
 	}
 	return 0, "", ""
 }
@@ -92,14 +103,14 @@ func applyIssueParentFilingWithQueries(ctx context.Context, q *db.Queries, param
 func (h *Handler) publishIssueFilingChanges(rows []db.RefileIssueSubtreeRow, workspaceID, actorType, actorID string) {
 	for _, child := range rows {
 		h.publish(protocol.EventIssueUpdated, workspaceID, actorType, actorID, map[string]any{
-			"issue":           map[string]any{"id": uuidToString(child.ID), "workspace_id": uuidToString(child.WorkspaceID), "project_id": uuidToPtr(child.ProjectID), "module_id": uuidToPtr(child.ModuleID), "revision": child.Revision, "updated_at": child.UpdatedAt.Time},
-			"project_changed": true, "module_changed": true,
+			"issue":           map[string]any{"id": uuidToString(child.ID), "workspace_id": uuidToString(child.WorkspaceID), "project_id": uuidToPtr(child.ProjectID), "module_id": uuidToPtr(child.ModuleID), "work_item_id": uuidToPtr(child.WorkItemID), "revision": child.Revision, "updated_at": child.UpdatedAt.Time},
+			"project_changed": true, "module_changed": true, "work_item_changed": true,
 		})
 	}
 }
 
 func issueHierarchyFieldsTouched(fields map[string]json.RawMessage) bool {
-	for _, name := range []string{"parent_issue_id", "project_id", "module_id"} {
+	for _, name := range []string{"parent_issue_id", "project_id", "module_id", "work_item_id"} {
 		if _, ok := fields[name]; ok {
 			return true
 		}
@@ -108,9 +119,9 @@ func issueHierarchyFieldsTouched(fields map[string]json.RawMessage) bool {
 }
 
 // issueFilingChanged reports whether an update moved the issue between
-// projects or modules — the trigger for carrying its subtree along.
+// projects, modules or work items — the trigger for carrying its subtree along.
 func issueFilingChanged(prev, next db.Issue) bool {
-	return prev.ProjectID != next.ProjectID || prev.ModuleID != next.ModuleID
+	return prev.ProjectID != next.ProjectID || prev.ModuleID != next.ModuleID || prev.WorkItemID != next.WorkItemID
 }
 
 // Carries the same boundary error when the authoritative check is inside a tx.

@@ -28,5 +28,5 @@ func UpdateIssueStoppingWakeups(ctx context.Context, q *db.Queries, params db.Up
 func RetainedIssueUpdateFields(issue db.Issue) db.UpdateIssueParams {
 	return db.UpdateIssueParams{ID: issue.ID, AssigneeType: issue.AssigneeType, AssigneeID: issue.AssigneeID,
 		StartDate: issue.StartDate, DueDate: issue.DueDate, ParentIssueID: issue.ParentIssueID,
-		ProjectID: issue.ProjectID, ModuleID: issue.ModuleID, Stage: issue.Stage, DuplicateOfIssueID: issue.DuplicateOfIssueID}
+		ProjectID: issue.ProjectID, ModuleID: issue.ModuleID, WorkItemID: issue.WorkItemID, Stage: issue.Stage, DuplicateOfIssueID: issue.DuplicateOfIssueID}
 }

@@ -106,19 +106,26 @@ type IssueCreateParams struct {
 	// module; a module that disagrees with the parent's fails with
 	// ErrChildModuleMismatch.
 	ModuleID pgtype.UUID
+	// WorkItemID files the new issue under a work item — a third-level plan
+	// node of the cockpit tree. A work item names its own module and project,
+	// which are derived from it here; an explicit project or module that
+	// disagrees fails with ErrWorkItemNotInScope. Sub-issues inherit the
+	// parent's work item, and one that disagrees with the parent's fails with
+	// ErrChildWorkItemMismatch.
+	WorkItemID pgtype.UUID
 	// MeetingTask identifies an atomic cockpit provisioning request. Its
 	// meeting is locked before duplicate detection and linked before commit.
 	MeetingTask     *CockpitMeetingTask
 	CockpitWorkflow *CockpitWorkflowIssue
 	// Internal typed hook: action resolution / L3 create and primary ownership
 	// share the canonical Issue transaction, quota and post-commit effects.
-	CockpitPlanning    *cockpitPlanningIssue
-	CockpitArtifact    *cockpitArtifactIssue
-	StartDate          pgtype.Date
-	DueDate            pgtype.Date
-	OriginType         pgtype.Text
-	OriginID           pgtype.UUID
-	AttachmentIDs      []pgtype.UUID
+	CockpitPlanning *cockpitPlanningIssue
+	CockpitArtifact *cockpitArtifactIssue
+	StartDate       pgtype.Date
+	DueDate         pgtype.Date
+	OriginType      pgtype.Text
+	OriginID        pgtype.UUID
+	AttachmentIDs   []pgtype.UUID
 	// LabelIDs are the issue-scoped labels to attach to the new issue. They
 	// are validated and written inside the create transaction (see Create),
 	// so the issue is never committed with a partial or wrong label set. An
@@ -217,6 +224,20 @@ var ErrModuleNotInProject = errors.New("module does not belong to project")
 // the module and inherits, or drops the parent. Callers translate this into
 // 400.
 var ErrChildModuleMismatch = errors.New("a sub-issue must stay in its parent's module")
+
+// ErrWorkItemNotFound signals that the supplied WorkItemID is not a work item
+// (third-level plan node) of the issue's workspace, or that its branch is not
+// bound to a module. Same boundary semantics as ErrModuleNotFound.
+var ErrWorkItemNotFound = errors.New("work item not found in this workspace")
+
+// ErrWorkItemNotInScope signals that the supplied WorkItemID resolves to a
+// module or project other than the one the issue is being filed into. Callers
+// translate this into 400.
+var ErrWorkItemNotInScope = errors.New("work item does not belong to the issue's project or module")
+
+// ErrChildWorkItemMismatch signals that a sub-issue would sit in a different
+// work item than its parent. Mirrors ErrChildModuleMismatch one level down.
+var ErrChildWorkItemMismatch = errors.New("a sub-issue must stay in its parent's work item")
 
 // ErrIssueLabelNotFound signals that one of the supplied LabelIDs does not
 // exist in the issue's workspace or is not an issue-scoped label. The whole
@@ -419,7 +440,9 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	// foreign workspace.
 	projectID := p.ProjectID
 	moduleID := p.ModuleID
+	workItemID := p.WorkItemID
 	parentModuleID := pgtype.UUID{}
+	parentWorkItemID := pgtype.UUID{}
 	hasParent := false
 	if p.ParentIssueID.Valid {
 		if err := ValidateIssueParentChain(ctx, qtx, p.WorkspaceID, pgtype.UUID{}, p.ParentIssueID); err != nil {
@@ -434,6 +457,7 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		}
 		hasParent = true
 		parentModuleID = parent.ModuleID
+		parentWorkItemID = parent.WorkItemID
 		// Back-fill project from parent when the caller did not pin
 		// one explicitly. Matches the long-standing HTTP behavior: a
 		// sub-issue inherits its parent's project unless overridden.
@@ -447,6 +471,12 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 		// that rather than a module/project pair that cannot validate.
 		if !moduleID.Valid && projectID == parent.ProjectID {
 			moduleID = parent.ModuleID
+		}
+		// And its work item: same reasoning one level further down. An
+		// explicit module or project that already moved the child elsewhere
+		// suppresses the inheritance, and the mismatch check below refuses it.
+		if !workItemID.Valid && projectID == parent.ProjectID && (!moduleID.Valid || moduleID == parent.ModuleID) {
+			workItemID = parent.WorkItemID
 		}
 	}
 	// A module must live in the issue's project. A create that names a
@@ -469,11 +499,39 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 			projectID = module.ProjectID
 		}
 	}
+	// A work item names the module and project the issue must be filed into.
+	// Resolving it here keeps the single-filing-authority rule true for every
+	// create entry: an issue is never written with a work item that disagrees
+	// with its module or project.
+	if workItemID.Valid {
+		scope, err := qtx.GetCockpitWorkItemScope(ctx, db.GetCockpitWorkItemScopeParams{
+			ID:          workItemID,
+			WorkspaceID: p.WorkspaceID,
+		})
+		if err != nil {
+			return IssueCreateResult{}, ErrWorkItemNotFound
+		}
+		// A child that names a work item other than its parent's is refused
+		// for the hierarchy reason before the scope comparison below: the
+		// parent's module is what makes the other work item look out of scope,
+		// and the caller needs to hear that the child cannot leave its parent.
+		if hasParent && workItemID != parentWorkItemID {
+			return IssueCreateResult{}, ErrChildWorkItemMismatch
+		}
+		if (moduleID.Valid && moduleID != scope.ModuleID) || (projectID.Valid && projectID != scope.ProjectID) {
+			return IssueCreateResult{}, ErrWorkItemNotInScope
+		}
+		moduleID = scope.ModuleID
+		projectID = scope.ProjectID
+	}
 	// The sub-issue invariant, checked once on the RESOLVED module so every
 	// way of reaching a mismatch — an explicit module, or a project pin that
 	// suppressed the inheritance above — lands on the same refusal.
 	if hasParent && moduleID != parentModuleID {
 		return IssueCreateResult{}, ErrChildModuleMismatch
+	}
+	if hasParent && workItemID != parentWorkItemID {
+		return IssueCreateResult{}, ErrChildWorkItemMismatch
 	}
 	if projectID.Valid {
 		if _, err := qtx.GetProjectInWorkspace(ctx, db.GetProjectInWorkspaceParams{
@@ -542,6 +600,7 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 			Number:        issueNumber,
 			ProjectID:     projectID,
 			ModuleID:      moduleID,
+			WorkItemID:    workItemID,
 			OriginType:    p.OriginType,
 			OriginID:      p.OriginID,
 			Stage:         p.Stage,
@@ -566,6 +625,7 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 			Number:        issueNumber,
 			ProjectID:     projectID,
 			ModuleID:      moduleID,
+			WorkItemID:    workItemID,
 			Stage:         p.Stage,
 			Properties:    properties,
 		})

@@ -626,6 +626,7 @@ type Cockpit struct {
 	MeetingNodeID       pgtype.UUID        `json:"meeting_node_id"`
 	MeetingAssigneeType string             `json:"meeting_assignee_type"`
 	MeetingAssigneeID   pgtype.UUID        `json:"meeting_assignee_id"`
+	PlanReconciledAt    pgtype.Timestamptz `json:"plan_reconciled_at"`
 }
 
 type CockpitAcceptanceCriterion struct {
@@ -1607,6 +1608,7 @@ type CockpitNode struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 	ProjectID       pgtype.UUID        `json:"project_id"`
 	ModuleID        pgtype.UUID        `json:"module_id"`
+	DirectoryName   pgtype.Text        `json:"directory_name"`
 }
 
 type CockpitNodeIssue struct {
@@ -1953,6 +1955,7 @@ type Issue struct {
 	TriageState        pgtype.Text        `json:"triage_state"`
 	DuplicateOfIssueID pgtype.UUID        `json:"duplicate_of_issue_id"`
 	ModuleID           pgtype.UUID        `json:"module_id"`
+	WorkItemID         pgtype.UUID        `json:"work_item_id"`
 }
 
 type IssueChildEvent struct {

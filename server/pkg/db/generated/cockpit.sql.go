@@ -71,7 +71,7 @@ VALUES (
     $5::text
 )
 ON CONFLICT (workspace_id) DO UPDATE SET workspace_id = EXCLUDED.workspace_id
-RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id
+RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at
 `
 
 type CreateCockpitParams struct {
@@ -111,6 +111,7 @@ func (q *Queries) CreateCockpit(ctx context.Context, arg CreateCockpitParams) (C
 		&i.MeetingNodeID,
 		&i.MeetingAssigneeType,
 		&i.MeetingAssigneeID,
+		&i.PlanReconciledAt,
 	)
 	return i, err
 }
@@ -445,7 +446,7 @@ INSERT INTO cockpit_node (
     $26::text,
     $27::uuid
 )
-RETURNING id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id
+RETURNING id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id, directory_name
 `
 
 type CreateCockpitNodeParams struct {
@@ -540,6 +541,7 @@ func (q *Queries) CreateCockpitNode(ctx context.Context, arg CreateCockpitNodePa
 		&i.UpdatedAt,
 		&i.ProjectID,
 		&i.ModuleID,
+		&i.DirectoryName,
 	)
 	return i, err
 }
@@ -1166,7 +1168,7 @@ func (q *Queries) DeleteWorkspaceCockpitData(ctx context.Context, workspaceID pg
 
 const getCockpitByWorkspace = `-- name: GetCockpitByWorkspace :one
 
-SELECT id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id FROM cockpit
+SELECT id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at FROM cockpit
 WHERE workspace_id = $1::uuid
 `
 
@@ -1198,6 +1200,7 @@ func (q *Queries) GetCockpitByWorkspace(ctx context.Context, workspaceID pgtype.
 		&i.MeetingNodeID,
 		&i.MeetingAssigneeType,
 		&i.MeetingAssigneeID,
+		&i.PlanReconciledAt,
 	)
 	return i, err
 }
@@ -1299,7 +1302,7 @@ func (q *Queries) GetCockpitMeeting(ctx context.Context, arg GetCockpitMeetingPa
 }
 
 const getCockpitNode = `-- name: GetCockpitNode :one
-SELECT id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id FROM cockpit_node
+SELECT id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id, directory_name FROM cockpit_node
 WHERE id = $1::uuid
   AND workspace_id = $2::uuid
 `
@@ -1343,12 +1346,13 @@ func (q *Queries) GetCockpitNode(ctx context.Context, arg GetCockpitNodeParams) 
 		&i.UpdatedAt,
 		&i.ProjectID,
 		&i.ModuleID,
+		&i.DirectoryName,
 	)
 	return i, err
 }
 
 const getCockpitNodeByCode = `-- name: GetCockpitNodeByCode :one
-SELECT id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id FROM cockpit_node
+SELECT id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id, directory_name FROM cockpit_node
 WHERE cockpit_id = $1::uuid
   AND code = $2::text
 `
@@ -1392,6 +1396,7 @@ func (q *Queries) GetCockpitNodeByCode(ctx context.Context, arg GetCockpitNodeBy
 		&i.UpdatedAt,
 		&i.ProjectID,
 		&i.ModuleID,
+		&i.DirectoryName,
 	)
 	return i, err
 }
@@ -1458,6 +1463,53 @@ func (q *Queries) GetCockpitSnapshot(ctx context.Context, arg GetCockpitSnapshot
 		&i.CreatedByType,
 		&i.CreatedByLabel,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getCockpitWorkItemScope = `-- name: GetCockpitWorkItemScope :one
+SELECT n.id, n.cockpit_id, n.parent_id, n.code, n.name,
+       p.module_id AS module_id, p.project_id AS project_id
+FROM cockpit_node n
+JOIN cockpit_node p ON p.id = n.parent_id
+WHERE n.id = $1::uuid
+  AND n.workspace_id = $2::uuid
+  AND n.parent_id IS NOT NULL
+  AND p.parent_id IS NOT NULL
+  AND p.module_id IS NOT NULL
+`
+
+type GetCockpitWorkItemScopeParams struct {
+	ID          pgtype.UUID `json:"id"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+}
+
+type GetCockpitWorkItemScopeRow struct {
+	ID        pgtype.UUID `json:"id"`
+	CockpitID pgtype.UUID `json:"cockpit_id"`
+	ParentID  pgtype.UUID `json:"parent_id"`
+	Code      string      `json:"code"`
+	Name      string      `json:"name"`
+	ModuleID  pgtype.UUID `json:"module_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// Resolves a work item (third-level plan node) into the module and project an
+// issue filed under it must carry. No rows means the id is not a work item of
+// this workspace: its parent has to be a module-level row that is bound to a
+// module, so a stray L1/L2 id or an unbound branch is refused rather than
+// silently accepted as a filing target.
+func (q *Queries) GetCockpitWorkItemScope(ctx context.Context, arg GetCockpitWorkItemScopeParams) (GetCockpitWorkItemScopeRow, error) {
+	row := q.db.QueryRow(ctx, getCockpitWorkItemScope, arg.ID, arg.WorkspaceID)
+	var i GetCockpitWorkItemScopeRow
+	err := row.Scan(
+		&i.ID,
+		&i.CockpitID,
+		&i.ParentID,
+		&i.Code,
+		&i.Name,
+		&i.ModuleID,
+		&i.ProjectID,
 	)
 	return i, err
 }
@@ -1943,7 +1995,7 @@ func (q *Queries) ListCockpitNodeIssues(ctx context.Context, cockpitID pgtype.UU
 }
 
 const listCockpitNodes = `-- name: ListCockpitNodes :many
-SELECT id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id FROM cockpit_node
+SELECT id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id, directory_name FROM cockpit_node
 WHERE cockpit_id = $1::uuid
 ORDER BY position, code
 `
@@ -1990,6 +2042,7 @@ func (q *Queries) ListCockpitNodes(ctx context.Context, cockpitID pgtype.UUID) (
 			&i.UpdatedAt,
 			&i.ProjectID,
 			&i.ModuleID,
+			&i.DirectoryName,
 		); err != nil {
 			return nil, err
 		}
@@ -2387,7 +2440,7 @@ UPDATE cockpit SET
     updated_at      = now()
 WHERE id = $19::uuid
   AND workspace_id = $20::uuid
-RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id
+RETURNING id, workspace_id, title, goal_title, goal_date, summary_overall, summary_next, summary_support, basis, created_at, updated_at, meeting_project_id, meeting_module_id, meeting_dir, meeting_node_id, meeting_assignee_type, meeting_assignee_id, plan_reconciled_at
 `
 
 type UpdateCockpitParams struct {
@@ -2457,6 +2510,7 @@ func (q *Queries) UpdateCockpit(ctx context.Context, arg UpdateCockpitParams) (C
 		&i.MeetingNodeID,
 		&i.MeetingAssigneeType,
 		&i.MeetingAssigneeID,
+		&i.PlanReconciledAt,
 	)
 	return i, err
 }
@@ -2717,7 +2771,7 @@ UPDATE cockpit_node SET
     updated_at       = now()
 WHERE id = $32::uuid
   AND workspace_id = $33::uuid
-RETURNING id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id
+RETURNING id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id, directory_name
 `
 
 type UpdateCockpitNodeParams struct {
@@ -2828,6 +2882,7 @@ func (q *Queries) UpdateCockpitNode(ctx context.Context, arg UpdateCockpitNodePa
 		&i.UpdatedAt,
 		&i.ProjectID,
 		&i.ModuleID,
+		&i.DirectoryName,
 	)
 	return i, err
 }

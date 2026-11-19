@@ -109,7 +109,7 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
 ), visible AS MATERIALIZED (
  SELECT DISTINCT unnest(path) AS id FROM scoped
 ), bounded_nodes AS (
- SELECT n.id, n.workspace_id, n.cockpit_id, n.parent_id, n.code, n.name, n.position, n.color, n.owner, n.collaborators, n.start_date, n.end_date, n.status, n.progress, n.deliverable, n.dependencies, n.note, n.current_progress, n.vendor, n.budget_category, n.budget_amount, n.exec_status, n.contract, n.source, n.updated_by_type, n.updated_by_id, n.created_at, n.updated_at, n.project_id, n.module_id FROM cockpit_node n JOIN visible v ON v.id=n.id CROSS JOIN args x WHERE n.workspace_id=x.ws ORDER BY n.position,n.id LIMIT 5001
+ SELECT n.id, n.workspace_id, n.cockpit_id, n.parent_id, n.code, n.name, n.position, n.color, n.owner, n.collaborators, n.start_date, n.end_date, n.status, n.progress, n.deliverable, n.dependencies, n.note, n.current_progress, n.vendor, n.budget_category, n.budget_amount, n.exec_status, n.contract, n.source, n.updated_by_type, n.updated_by_id, n.created_at, n.updated_at, n.project_id, n.module_id, n.directory_name FROM cockpit_node n JOIN visible v ON v.id=n.id CROSS JOIN args x WHERE n.workspace_id=x.ws ORDER BY n.position,n.id LIMIT 5001
 ), bounded_payments AS (
  SELECT p.id, p.workspace_id, p.node_id, p.label, p.pay_date, p.amount, p.position, p.created_at, p.updated_at FROM cockpit_payment p JOIN scoped n ON n.id=p.node_id CROSS JOIN args x WHERE p.workspace_id=x.ws ORDER BY p.position,p.id LIMIT 25001
 ), bounded_milestones AS (
@@ -449,7 +449,7 @@ WITH RECURSIVE ancestors AS (
  SELECT n.id,n.parent_id,a.depth+1,a.path||n.id FROM cockpit_node n JOIN ancestors a ON a.parent_id=n.id
  WHERE n.workspace_id=$1::uuid AND NOT n.id=ANY(a.path) AND a.depth<128
 )
-SELECT n.id, n.workspace_id, n.cockpit_id, n.parent_id, n.code, n.name, n.position, n.color, n.owner, n.collaborators, n.start_date, n.end_date, n.status, n.progress, n.deliverable, n.dependencies, n.note, n.current_progress, n.vendor, n.budget_category, n.budget_amount, n.exec_status, n.contract, n.source, n.updated_by_type, n.updated_by_id, n.created_at, n.updated_at, n.project_id, n.module_id,a.depth FROM ancestors a JOIN cockpit_node n ON n.id=a.id AND n.workspace_id=$1::uuid ORDER BY a.depth
+SELECT n.id, n.workspace_id, n.cockpit_id, n.parent_id, n.code, n.name, n.position, n.color, n.owner, n.collaborators, n.start_date, n.end_date, n.status, n.progress, n.deliverable, n.dependencies, n.note, n.current_progress, n.vendor, n.budget_category, n.budget_amount, n.exec_status, n.contract, n.source, n.updated_by_type, n.updated_by_id, n.created_at, n.updated_at, n.project_id, n.module_id, n.directory_name,a.depth FROM ancestors a JOIN cockpit_node n ON n.id=a.id AND n.workspace_id=$1::uuid ORDER BY a.depth
 `
 
 type ListCockpitSurfaceAncestorsParams struct {
@@ -502,6 +502,7 @@ func (q *Queries) ListCockpitSurfaceAncestors(ctx context.Context, arg ListCockp
 			&i.CockpitNode.UpdatedAt,
 			&i.CockpitNode.ProjectID,
 			&i.CockpitNode.ModuleID,
+			&i.CockpitNode.DirectoryName,
 			&i.Depth,
 		); err != nil {
 			return nil, err

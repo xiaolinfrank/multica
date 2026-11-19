@@ -74,6 +74,22 @@ SELECT * FROM cockpit_node
 WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid
   AND code = sqlc.arg('code')::text;
 
+-- name: GetCockpitWorkItemScope :one
+-- Resolves a work item (third-level plan node) into the module and project an
+-- issue filed under it must carry. No rows means the id is not a work item of
+-- this workspace: its parent has to be a module-level row that is bound to a
+-- module, so a stray L1/L2 id or an unbound branch is refused rather than
+-- silently accepted as a filing target.
+SELECT n.id, n.cockpit_id, n.parent_id, n.code, n.name,
+       p.module_id AS module_id, p.project_id AS project_id
+FROM cockpit_node n
+JOIN cockpit_node p ON p.id = n.parent_id
+WHERE n.id = sqlc.arg('id')::uuid
+  AND n.workspace_id = sqlc.arg('workspace_id')::uuid
+  AND n.parent_id IS NOT NULL
+  AND p.parent_id IS NOT NULL
+  AND p.module_id IS NOT NULL;
+
 -- The used-code ledger: written whenever a code is handed out (create,
 -- rename, import) and never cleared on delete — see migration 948.
 -- :execrows so the caller can tell a fresh spend (1) from an already-spent
