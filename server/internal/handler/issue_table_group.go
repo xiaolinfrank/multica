@@ -307,13 +307,18 @@ END, ''))`,
 )) END`,
 		}, true
 	case "work_item":
-		// Work items are the plan tree's third level. Unfiled work sorts after
-		// the named nodes, like "no module"; the sort key is the node's code,
-		// which is the order the tree itself renders in.
+		// Work items are the plan tree's third level. Groups sort by the node's
+		// code — the numbering the tree itself reads in — and unfiled work comes
+		// last. The leading '0'/'1' is what expresses "named before unfiled"
+		// inside the single text sort key: codes are zero-padded, so plain text
+		// order is the tree's order, and '1' keeps the leftovers behind them.
 		return resolvedIssueTableGroup{
-			kind:          "work_item",
-			groupExpr:     "COALESCE(i.work_item_id::text, '__no_work_item__')",
-			groupSortExpr: `CASE WHEN group_value = '__no_work_item__' THEN 1 ELSE 0 END`,
+			kind:      "work_item",
+			groupExpr: "COALESCE(i.work_item_id::text, '__no_work_item__')",
+			groupSortExpr: `CASE WHEN group_value = '__no_work_item__' THEN '1' ELSE '0' || COALESCE(
+  (SELECT n.code FROM cockpit_node n WHERE n.workspace_id = $1 AND n.id = group_value::uuid),
+  ''
+) END`,
 		}, true
 	case "parent":
 		return resolvedIssueTableGroup{

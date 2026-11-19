@@ -1607,10 +1607,21 @@ WHERE i.workspace_id = $1
     OR i.module_id = $8
     OR (COALESCE($9::bool, FALSE) AND i.module_id IS NULL)
   )
-  -- Work item lane filter: one L3 node of the plan tree. Plain equality — a
-  -- work item's issues never include its sibling's.
-  AND ($10::uuid IS NULL OR i.work_item_id = $10)
-  AND ($11::jsonb IS NULL OR i.metadata @> $11::jsonb)
+  -- Work item lane filter: work_item_id narrows to one L3 node of the plan
+  -- tree, work_item_ids to a set, and include_no_work_item widens the pair to
+  -- issues not yet split into one — the same OR predicate the paginated list
+  -- builds, kept in one clause so the flag cannot silently drop the ids.
+  AND (
+    (
+      $10::uuid IS NULL
+      AND $11::uuid[] IS NULL
+      AND NOT COALESCE($12::bool, FALSE)
+    )
+    OR ($10::uuid IS NOT NULL AND i.work_item_id = $10)
+    OR ($11::uuid[] IS NOT NULL AND i.work_item_id = ANY($11::uuid[]))
+    OR (COALESCE($12::bool, FALSE) AND i.work_item_id IS NULL)
+  )
+  AND ($13::jsonb IS NULL OR i.metadata @> $13::jsonb)
   -- properties_filter is a jsonb array of groups, each group an array of
   -- patterns (built by parsePropertiesFilterParam): the issue must match at
   -- least one pattern from EVERY group (AND of ORs). Three pattern shapes:
@@ -1628,10 +1639,10 @@ WHERE i.workspace_id = $1
   -- terminal-status predicate intentionally remains a filter rather than a
   -- positive index narrowing so unknown legacy status keys stay visible.
   AND (
-    $12::jsonb IS NULL
+    $14::jsonb IS NULL
     OR NOT EXISTS (
       SELECT 1
-      FROM jsonb_array_elements($12::jsonb) AS pf(alternatives)
+      FROM jsonb_array_elements($14::jsonb) AS pf(alternatives)
       WHERE NOT EXISTS (
         SELECT 1
         FROM jsonb_array_elements(pf.alternatives) AS alt(pattern)
@@ -1669,11 +1680,11 @@ WHERE i.workspace_id = $1
     )
   )
   AND (
-    $13::uuid IS NULL
+    $15::uuid IS NULL
     OR (i.assignee_type = 'agent' AND i.assignee_id IN (
           SELECT a.id FROM agent a
            WHERE a.workspace_id = $1
-             AND a.owner_id     = $13::uuid
+             AND a.owner_id     = $15::uuid
     ))
     OR (i.assignee_type = 'squad' AND i.assignee_id IN (
           SELECT sm.squad_id
@@ -1681,14 +1692,14 @@ WHERE i.workspace_id = $1
             JOIN squad s ON s.id = sm.squad_id
            WHERE s.workspace_id = $1
              AND sm.member_type = 'member'
-             AND sm.member_id   = $13::uuid
+             AND sm.member_id   = $15::uuid
           UNION
           SELECT s.id
             FROM squad s
             JOIN agent a ON a.id = s.leader_id
            WHERE s.workspace_id = $1
              AND a.workspace_id = $1
-             AND a.owner_id     = $13::uuid
+             AND a.owner_id     = $15::uuid
           UNION
           SELECT sm.squad_id
             FROM squad_member sm
@@ -1697,7 +1708,7 @@ WHERE i.workspace_id = $1
            WHERE s.workspace_id = $1
              AND sm.member_type = 'agent'
              AND a.workspace_id = $1
-             AND a.owner_id     = $13::uuid
+             AND a.owner_id     = $15::uuid
     ))
   )
 ORDER BY i.position ASC, i.created_at DESC
@@ -1714,6 +1725,8 @@ type ListOpenIssuesParams struct {
 	ModuleID           pgtype.UUID   `json:"module_id"`
 	IncludeNoModule    pgtype.Bool   `json:"include_no_module"`
 	WorkItemID         pgtype.UUID   `json:"work_item_id"`
+	WorkItemIds        []pgtype.UUID `json:"work_item_ids"`
+	IncludeNoWorkItem  pgtype.Bool   `json:"include_no_work_item"`
 	MetadataFilter     []byte        `json:"metadata_filter"`
 	PropertiesFilter   []byte        `json:"properties_filter"`
 	InvolvesUserID     pgtype.UUID   `json:"involves_user_id"`
@@ -1762,6 +1775,8 @@ func (q *Queries) ListOpenIssues(ctx context.Context, arg ListOpenIssuesParams) 
 		arg.ModuleID,
 		arg.IncludeNoModule,
 		arg.WorkItemID,
+		arg.WorkItemIds,
+		arg.IncludeNoWorkItem,
 		arg.MetadataFilter,
 		arg.PropertiesFilter,
 		arg.InvolvesUserID,

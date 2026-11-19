@@ -5,6 +5,7 @@ Product contracts the runtime brief does not fully encode.
 - [PR linking](#pr-linking)
 - [Reading a linked PR's real state](#reading-a-linked-prs-real-state)
 - [Modules: grouping issues inside a project](#modules-grouping-issues-inside-a-project)
+- [Work items: the plan tree's third level](#work-items-the-plan-trees-third-level)
 - [Custom properties: typed workflow state](#custom-properties-typed-workflow-state)
 - [Status changes have server side effects](#status-changes-have-server-side-effects)
 - [Who else is running right now](#who-else-is-running-right-now)
@@ -145,6 +146,19 @@ is only visible when that member owns the runtime.
 Issues can be filed into a project's modules; the `module_id` contract,
 sub-issue inheritance, filtering and grouping are in
 [modules.md](modules.md).
+
+## Work items: the plan tree's third level
+
+A work item is the node below a module in the cockpit plan tree, and the most
+specific place an issue can be filed. `multica issue create --work-item` and
+`multica issue update --work-item` take a UUID, a UUID prefix, or the node's
+plan code; the work item supplies the module and project, so
+`--module`/`--project` may be omitted, and naming a conflicting one is
+rejected. `--work-item ""` unfiles an issue, and moving it to another module
+without naming a work item clears it. A sub-issue may not leave its parent's
+work item (`child_work_item_mismatch`). Filtering and grouping mirror the
+module contract — see
+[modules.md](modules.md#work-items-the-third-level-under-a-module).
 
 ## Custom properties: typed workflow state
 

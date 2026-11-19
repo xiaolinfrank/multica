@@ -93,6 +93,7 @@ func (q *Queries) DeleteModulesForProject(ctx context.Context, arg DeleteModules
 const detachIssuesFromModule = `-- name: DetachIssuesFromModule :execrows
 UPDATE issue
 SET module_id = NULL,
+    work_item_id = NULL,
     revision = revision + 1,
     updated_at = now()
 WHERE module_id = $1 AND workspace_id = $2
@@ -104,7 +105,9 @@ type DetachIssuesFromModuleParams struct {
 }
 
 // Module deletion keeps the issues: they fall back to sitting directly under
-// the project. revision + 1 so clients holding the row refetch it.
+// the project. revision + 1 so clients holding the row refetch it. The work
+// item goes with the module: a work item only means something inside its own
+// module (I3), so leaving it behind would leave the issue filed nowhere.
 func (q *Queries) DetachIssuesFromModule(ctx context.Context, arg DetachIssuesFromModuleParams) (int64, error) {
 	result, err := q.db.Exec(ctx, detachIssuesFromModule, arg.ModuleID, arg.WorkspaceID)
 	if err != nil {
@@ -116,6 +119,7 @@ func (q *Queries) DetachIssuesFromModule(ctx context.Context, arg DetachIssuesFr
 const detachProjectModuleIssues = `-- name: DetachProjectModuleIssues :execrows
 UPDATE issue
 SET module_id = NULL,
+    work_item_id = NULL,
     revision = revision + 1,
     updated_at = now()
 WHERE issue.workspace_id = $1
@@ -128,7 +132,8 @@ type DetachProjectModuleIssuesParams struct {
 }
 
 // Project deletion, module half: issues in any of the project's modules are
-// detached before the module rows go, in the caller's transaction.
+// detached before the module rows go, in the caller's transaction. The work
+// item goes too, for the same reason as DetachIssuesFromModule.
 func (q *Queries) DetachProjectModuleIssues(ctx context.Context, arg DetachProjectModuleIssuesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, detachProjectModuleIssues, arg.WorkspaceID, arg.ProjectID)
 	if err != nil {

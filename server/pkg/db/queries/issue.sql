@@ -574,9 +574,20 @@ WHERE i.workspace_id = $1
     OR i.module_id = sqlc.narg('module_id')
     OR (COALESCE(sqlc.narg('include_no_module')::bool, FALSE) AND i.module_id IS NULL)
   )
-  -- Work item lane filter: one L3 node of the plan tree. Plain equality — a
-  -- work item's issues never include its sibling's.
-  AND (sqlc.narg('work_item_id')::uuid IS NULL OR i.work_item_id = sqlc.narg('work_item_id'))
+  -- Work item lane filter: work_item_id narrows to one L3 node of the plan
+  -- tree, work_item_ids to a set, and include_no_work_item widens the pair to
+  -- issues not yet split into one — the same OR predicate the paginated list
+  -- builds, kept in one clause so the flag cannot silently drop the ids.
+  AND (
+    (
+      sqlc.narg('work_item_id')::uuid IS NULL
+      AND sqlc.narg('work_item_ids')::uuid[] IS NULL
+      AND NOT COALESCE(sqlc.narg('include_no_work_item')::bool, FALSE)
+    )
+    OR (sqlc.narg('work_item_id')::uuid IS NOT NULL AND i.work_item_id = sqlc.narg('work_item_id'))
+    OR (sqlc.narg('work_item_ids')::uuid[] IS NOT NULL AND i.work_item_id = ANY(sqlc.narg('work_item_ids')::uuid[]))
+    OR (COALESCE(sqlc.narg('include_no_work_item')::bool, FALSE) AND i.work_item_id IS NULL)
+  )
   AND (sqlc.narg('metadata_filter')::jsonb IS NULL OR i.metadata @> sqlc.narg('metadata_filter')::jsonb)
   -- properties_filter is a jsonb array of groups, each group an array of
   -- patterns (built by parsePropertiesFilterParam): the issue must match at

@@ -641,7 +641,7 @@ func init() {
 	issueListCmd.Flags().String("assignee-id", "", "Filter by assignee UUID — member, agent, or squad (mutually exclusive with --assignee)")
 	issueListCmd.Flags().String("project", "", "Filter by project ID")
 	issueListCmd.Flags().String("module", "", "Filter by module ID or title; a title is resolved inside --project when given, otherwise across the workspace")
-	issueListCmd.Flags().String("work-item", "", "Filter by work item ID or plan code (e.g. 02.02.06)")
+	issueListCmd.Flags().String("work-item", "", "Filter by work item ID or the third-level plan code")
 	issueListCmd.Flags().String("updated-since", "", "Include issues updated at or after this RFC3339 timestamp; requires --updated-until (keep both bounds fixed across pages)")
 	issueListCmd.Flags().String("updated-until", "", "Include issues updated before this RFC3339 timestamp; requires --updated-since")
 	issueListCmd.Flags().StringSlice("metadata", nil, "Filter by metadata key=value (repeatable; combined with AND). Value is JSON-parsed: 'true'/'false' → bool, numbers → number, otherwise string. Wrap as '\"42\"' to force a string when the value would otherwise sniff as a number.")
@@ -678,7 +678,7 @@ func init() {
 	issueCreateCmd.Flags().Int("stage", 0, "Stage ordinal (>=1) grouping this sub-issue into an ordered barrier group under its parent; omit for unstaged. The parent assignee is woken only when every sub-issue in a stage finishes.")
 	issueCreateCmd.Flags().String("project", "", "Project ID")
 	issueCreateCmd.Flags().String("module", "", "Module ID or title within the project; a title is resolved inside --project when given, otherwise across the workspace")
-	issueCreateCmd.Flags().String("work-item", "", "Work item ID or plan code (e.g. 02.02.06); it supplies the module and project")
+	issueCreateCmd.Flags().String("work-item", "", "Work item ID or third-level plan code; it supplies the module and project")
 	issueCreateCmd.Flags().String("start-date", "", "Start date (calendar day, YYYY-MM-DD)")
 	issueCreateCmd.Flags().String("due-date", "", "Due date (calendar day, YYYY-MM-DD)")
 	issueCreateCmd.Flags().Bool("allow-duplicate", false, "Allow creating an issue even when an active duplicate exists")
@@ -700,7 +700,7 @@ func init() {
 	issueUpdateCmd.Flags().String("assignee-id", "", "New assignee UUID — member, agent, or squad (mutually exclusive with --assignee)")
 	issueUpdateCmd.Flags().String("project", "", "Project ID")
 	issueUpdateCmd.Flags().String("module", "", "New module ID or title (use --module \"\" to file the issue directly under the project)")
-	issueUpdateCmd.Flags().String("work-item", "", "New work item ID or plan code (use --work-item \"\" to unfile the issue from its work item)")
+	issueUpdateCmd.Flags().String("work-item", "", "New work item ID or third-level plan code (use --work-item \"\" to unfile the issue from its work item)")
 	issueUpdateCmd.Flags().String("start-date", "", "New start date (calendar day, YYYY-MM-DD; pass empty string to clear)")
 	issueUpdateCmd.Flags().String("due-date", "", "New due date (calendar day, YYYY-MM-DD)")
 	issueUpdateCmd.Flags().String("parent", "", "Parent issue ID (use --parent \"\" to clear)")
@@ -1902,7 +1902,9 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 	// Same Changed() semantics one level down: an explicit empty value unfiles
-	// the issue, and a named work item overrides any module named above.
+	// the issue. A named work item supplies its own module and project, so
+	// naming a conflicting one in the same command is rejected by the server
+	// rather than silently re-filing.
 	if cmd.Flags().Changed("work-item") {
 		v, _ := cmd.Flags().GetString("work-item")
 		if v == "" {

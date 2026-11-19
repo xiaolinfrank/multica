@@ -71,7 +71,10 @@ filing authority: it is nullable, and when set it always agrees with
   that work item; `--project`/`--module` may be omitted. Naming a work item
   together with a conflicting project or module is rejected (400
   `work item does not belong to the issue's project or module`). The
-  `--work-item` flag accepts a plan code such as `02.02.06` as well as a UUID.
+  `--work-item` flag accepts a UUID, a UUID prefix, or the node's plan code as
+  the tree shows it (after reconciliation that is the dotted numbering, e.g.
+  `02.02.06`). Only third-level codes resolve; an L1/L2 code names a project or
+  module branch and is refused with an explanation.
 - `multica issue update <issue-id> --work-item <code-or-id>` re-files an
   existing issue, updating its module and project with it; `--work-item ""`
   unfiles it. Moving an issue to another module without naming a work item
@@ -82,10 +85,9 @@ filing authority: it is nullable, and when set it always agrees with
   in the same write to move it elsewhere.
 - Creating or moving a parent carries its whole subtree, work items included.
 - Listing filters by `work_item_id` (single), `work_item_ids` (any of) and
-  `include_no_work_item=true`, all compiling to one OR predicate. Table
+  `include_no_work_item=true`, all compiling to one OR predicate on both the
+  paginated list and `open_only` paths. Table
   grouping exposes a `work_item` kind with keys `work_item:<uuid>` and
   `work_item:none`; unlike modules there is no empty-lane catalog, because
   the plan tree is what renders nodes without issues.
 - `work_item_id` appears on every issue payload and in `--fields` output.
-
-

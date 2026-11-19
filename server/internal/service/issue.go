@@ -509,12 +509,20 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 			WorkspaceID: p.WorkspaceID,
 		})
 		if err != nil {
-			return IssueCreateResult{}, ErrWorkItemNotFound
+			// A missing row is the expected "not a work item" answer; anything
+			// else is a database failure and must not masquerade as a 400.
+			if errors.Is(err, pgx.ErrNoRows) {
+				return IssueCreateResult{}, ErrWorkItemNotFound
+			}
+			return IssueCreateResult{}, fmt.Errorf("resolve work item scope: %w", err)
 		}
 		// A child that names a work item other than its parent's is refused
 		// for the hierarchy reason before the scope comparison below: the
 		// parent's module is what makes the other work item look out of scope,
 		// and the caller needs to hear that the child cannot leave its parent.
+		// This is the single place the invariant is enforced: every child
+		// reaching here either inherited the parent's work item or named one
+		// explicitly.
 		if hasParent && workItemID != parentWorkItemID {
 			return IssueCreateResult{}, ErrChildWorkItemMismatch
 		}
@@ -529,9 +537,6 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 	// suppressed the inheritance above — lands on the same refusal.
 	if hasParent && moduleID != parentModuleID {
 		return IssueCreateResult{}, ErrChildModuleMismatch
-	}
-	if hasParent && workItemID != parentWorkItemID {
-		return IssueCreateResult{}, ErrChildWorkItemMismatch
 	}
 	if projectID.Valid {
 		if _, err := qtx.GetProjectInWorkspace(ctx, db.GetProjectInWorkspaceParams{

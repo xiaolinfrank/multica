@@ -1469,14 +1469,16 @@ func (q *Queries) GetCockpitSnapshot(ctx context.Context, arg GetCockpitSnapshot
 
 const getCockpitWorkItemScope = `-- name: GetCockpitWorkItemScope :one
 SELECT n.id, n.cockpit_id, n.parent_id, n.code, n.name,
-       p.module_id AS module_id, p.project_id AS project_id
+       m.id AS module_id, m.project_id AS project_id
 FROM cockpit_node n
 JOIN cockpit_node p ON p.id = n.parent_id
+JOIN cockpit_node root ON root.id = p.parent_id
+JOIN module m ON m.id = p.module_id AND m.workspace_id = n.workspace_id
 WHERE n.id = $1::uuid
   AND n.workspace_id = $2::uuid
-  AND n.parent_id IS NOT NULL
-  AND p.parent_id IS NOT NULL
-  AND p.module_id IS NOT NULL
+  AND root.parent_id IS NULL
+  AND n.project_id IS NULL
+  AND n.module_id IS NULL
 `
 
 type GetCockpitWorkItemScopeParams struct {
@@ -1496,9 +1498,13 @@ type GetCockpitWorkItemScopeRow struct {
 
 // Resolves a work item (third-level plan node) into the module and project an
 // issue filed under it must carry. No rows means the id is not a work item of
-// this workspace: its parent has to be a module-level row that is bound to a
-// module, so a stray L1/L2 id or an unbound branch is refused rather than
-// silently accepted as a filing target.
+// this workspace. The shape is pinned by the tree contract, not inferred from
+// "has a parent": the grandparent must be a root, so a hand-made fourth level
+// cannot pass as a work item, and the node itself must be unbound — a bound
+// node is a container (module branch), not a leaf work item. The module row
+// must still exist, and it owns the project: cockpit_node.project_id on the
+// module level is a denormalised copy the reconciler maintains, while
+// module.project_id is the platform's own record.
 func (q *Queries) GetCockpitWorkItemScope(ctx context.Context, arg GetCockpitWorkItemScopeParams) (GetCockpitWorkItemScopeRow, error) {
 	row := q.db.QueryRow(ctx, getCockpitWorkItemScope, arg.ID, arg.WorkspaceID)
 	var i GetCockpitWorkItemScopeRow

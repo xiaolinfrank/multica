@@ -1404,6 +1404,12 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	rawIncludeNoWorkItem := r.URL.Query().Get("include_no_work_item")
 	includeNoWorkItem := rawIncludeNoWorkItem == "true" || rawIncludeNoWorkItem == "1"
+	// Parsed here rather than beside the paginated query builder because the
+	// open_only path filters on the same three parameters.
+	workItemIDs, ok := parseUUIDParamList(w, r.URL.Query().Get("work_item_ids"), "work_item_ids")
+	if !ok {
+		return
+	}
 	// involves_user_id widens the assignee filter to surface issues where the
 	// user is the indirect assignee (their owned agent, or a squad they belong
 	// to / lead / have an agent inside). Direct member-assignment is excluded
@@ -1473,6 +1479,8 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 			ModuleID:           moduleFilter,
 			IncludeNoModule:    pgtype.Bool{Bool: includeNoModule, Valid: true},
 			WorkItemID:         workItemFilter,
+			WorkItemIds:        workItemIDs,
+			IncludeNoWorkItem:  pgtype.Bool{Bool: includeNoWorkItem, Valid: true},
 			InvolvesUserID:     involvesUserFilter,
 			MetadataFilter:     metadataFilter,
 			PropertiesFilter:   openPropertiesFilter,
@@ -1689,11 +1697,8 @@ func (h *Handler) ListIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	// work_item_id / work_item_ids / include_no_work_item follow the module
 	// shape one level down: one OR predicate so "this work item or its unfiled
-	// remainder" is expressible.
-	workItemIDs, ok := parseUUIDParamList(w, r.URL.Query().Get("work_item_ids"), "work_item_ids")
-	if !ok {
-		return
-	}
+	// remainder" is expressible. Both values were parsed before the open_only
+	// branch, which filters on the same three parameters.
 	if workItemFilter.Valid || len(workItemIDs) > 0 || includeNoWorkItem {
 		ors := make([]string, 0, 3)
 		if workItemFilter.Valid {
@@ -4407,8 +4412,15 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "work item not found in this workspace")
 				return
 			}
-			if (params.ModuleID.Valid && params.ModuleID != scope.ModuleID) ||
-				(params.ProjectID.Valid && params.ProjectID != scope.ProjectID) {
+			// Only the module/project this request explicitly names can
+			// conflict with the work item. params carries the issue's stored
+			// pair for every untouched field, so comparing those would refuse
+			// the ordinary case of re-filing an already-filed issue into
+			// another work item.
+			_, namedModule := rawFields["module_id"]
+			_, namedProject := rawFields["project_id"]
+			if (namedModule && params.ModuleID != scope.ModuleID) ||
+				(namedProject && params.ProjectID != scope.ProjectID) {
 				writeError(w, http.StatusBadRequest, "work item does not belong to the issue's project or module")
 				return
 			}
@@ -4534,6 +4546,11 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 	// work_item_changed gates plan-tree issue pages and per-node counts the
 	// same way module_changed gates module caches.
 	workItemChanged := req.WorkItemID != nil && uuidToString(prevIssue.WorkItemID) != uuidToString(issue.WorkItemID)
+	// A work item refile also moves the issue's project and module, but
+	// project_changed/module_changed stay false: like an implicit module clear,
+	// the derived move is left to the client's own project_id/module_id diff.
+	// Cache invalidation must therefore compare the payload's ids rather than
+	// trusting these flags (S4 in the plan-tree unification plan).
 	descriptionChanged := req.Description != nil && textToPtr(prevIssue.Description) != resp.Description
 	titleChanged := req.Title != nil && prevIssue.Title != issue.Title
 	prevStartDate := dateToPtr(prevIssue.StartDate)

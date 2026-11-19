@@ -465,9 +465,11 @@ func resolveModuleID(ctx context.Context, client *cli.APIClient, projectID, inpu
 }
 
 // resolveWorkItemID resolves --work-item. Accepted forms are a full UUID, a
-// UUID prefix, or a plan node code such as "02.02.06" — the code is what the
-// tree shows and what issue titles carry, so it is the handle an agent
-// naturally has. Ambiguity is reported instead of guessed.
+// UUID prefix, or a plan node code as the tree shows it — the code is the
+// handle an agent naturally has. Only third-level nodes qualify: an L1/L2 code
+// names a project or module branch, not a filing target, and letting it through
+// would surface the server's "work item not found" for a node the caller can
+// see in the tree. Ambiguity is reported instead of guessed.
 func resolveWorkItemID(ctx context.Context, client *cli.APIClient, input string) (resolvedID, error) {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
@@ -481,12 +483,17 @@ func resolveWorkItemID(ctx context.Context, client *cli.APIClient, input string)
 		return resolvedID{}, err
 	}
 	nodes := mapList(board, "nodes")
+	byID := make(map[string]map[string]any, len(nodes))
+	for _, n := range nodes {
+		byID[strVal(n, "id")] = n
+	}
+	isWorkItem := func(n map[string]any) bool { return isThirdLevelNode(n, byID) }
 
 	if prefix, prefixErr := normalizeUUIDPrefix(trimmed); prefixErr == nil {
 		matches := make([]idCandidate, 0, 1)
 		for _, n := range nodes {
 			id := strVal(n, "id")
-			if id != "" && strings.HasPrefix(compactUUID(id), prefix) {
+			if id != "" && strings.HasPrefix(compactUUID(id), prefix) && isWorkItem(n) {
 				matches = append(matches, idCandidate{ID: id, Display: nodeDisplay(n)})
 			}
 		}
@@ -500,7 +507,7 @@ func resolveWorkItemID(ctx context.Context, client *cli.APIClient, input string)
 
 	codeMatches := make([]idCandidate, 0, 1)
 	for _, n := range nodes {
-		if strVal(n, "code") != "" && strings.EqualFold(strVal(n, "code"), trimmed) {
+		if strVal(n, "code") != "" && strings.EqualFold(strVal(n, "code"), trimmed) && isWorkItem(n) {
 			codeMatches = append(codeMatches, idCandidate{ID: strVal(n, "id"), Display: nodeDisplay(n)})
 		}
 	}
@@ -508,10 +515,64 @@ func resolveWorkItemID(ctx context.Context, client *cli.APIClient, input string)
 	case 1:
 		return moduleResolvedID(codeMatches[0]), nil
 	case 0:
+		if other := codeMatchAtOtherLevel(nodes, trimmed); other != "" {
+			return resolvedID{}, fmt.Errorf("%q is %s, not a work item; --work-item takes a third-level plan node", input, other)
+		}
 		return resolvedID{}, fmt.Errorf("no work item found matching %q; run `multica cockpit node list` to see the plan codes", input)
 	default:
 		return resolvedID{}, fmt.Errorf("work item %q is ambiguous: %d nodes share that code", input, len(codeMatches))
 	}
+}
+
+// isThirdLevelNode reports whether n sits at project → module → work item
+// depth. Bindings are not consulted here — the server owns that check.
+func isThirdLevelNode(n map[string]any, byID map[string]map[string]any) bool {
+	return planNodeDepth(n, byID) == 3
+}
+
+// planNodeDepth walks parent_id to the root and returns the 1-based depth, or
+// 0 when the parent chain is broken. The bound keeps a malformed board from
+// spinning.
+func planNodeDepth(n map[string]any, byID map[string]map[string]any) int {
+	depth := 1
+	for depth <= 16 {
+		parentID := strVal(n, "parent_id")
+		if parentID == "" {
+			return depth
+		}
+		parent, ok := byID[parentID]
+		if !ok {
+			return 0
+		}
+		n = parent
+		depth++
+	}
+	return 0
+}
+
+// codeMatchAtOtherLevel names the level a rejected code belongs to, so the
+// error explains why the visible code was not accepted.
+func codeMatchAtOtherLevel(nodes []map[string]any, code string) string {
+	byID := make(map[string]map[string]any, len(nodes))
+	for _, n := range nodes {
+		byID[strVal(n, "id")] = n
+	}
+	for _, n := range nodes {
+		if !strings.EqualFold(strVal(n, "code"), code) {
+			continue
+		}
+		switch depth := planNodeDepth(n, byID); {
+		case depth == 0:
+			return ""
+		case depth == 1:
+			return "a project-level node"
+		case depth == 2:
+			return "a module-level node"
+		default:
+			return fmt.Sprintf("a level-%d node", depth)
+		}
+	}
+	return ""
 }
 
 // nodeDisplay renders "code name", the same label the plan tree shows.

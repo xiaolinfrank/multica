@@ -69,18 +69,23 @@ GROUP BY module_id;
 
 -- name: DetachIssuesFromModule :execrows
 -- Module deletion keeps the issues: they fall back to sitting directly under
--- the project. revision + 1 so clients holding the row refetch it.
+-- the project. revision + 1 so clients holding the row refetch it. The work
+-- item goes with the module: a work item only means something inside its own
+-- module (I3), so leaving it behind would leave the issue filed nowhere.
 UPDATE issue
 SET module_id = NULL,
+    work_item_id = NULL,
     revision = revision + 1,
     updated_at = now()
 WHERE module_id = $1 AND workspace_id = $2;
 
 -- name: DetachProjectModuleIssues :execrows
 -- Project deletion, module half: issues in any of the project's modules are
--- detached before the module rows go, in the caller's transaction.
+-- detached before the module rows go, in the caller's transaction. The work
+-- item goes too, for the same reason as DetachIssuesFromModule.
 UPDATE issue
 SET module_id = NULL,
+    work_item_id = NULL,
     revision = revision + 1,
     updated_at = now()
 WHERE issue.workspace_id = $1
