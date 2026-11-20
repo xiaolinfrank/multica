@@ -122,3 +122,22 @@ WHERE workspace_id=sqlc.arg('workspace_id')::uuid AND node_id=sqlc.arg('from_nod
 -- structure only, so filings, title splits and created rows live here.
 UPDATE cockpit SET reconcile_report=sqlc.arg('report')::jsonb, updated_at=now()
 WHERE workspace_id=sqlc.arg('workspace_id')::uuid;
+
+-- name: MoveFilingScope :one
+-- A work item that moves to another module (or project) takes the issues
+-- filed under it along: the module and project are derived from the node, so
+-- they cannot stay behind. Status is mapped by the caller when the project
+-- changes (issueworkflow.MappedStatusForMove). One row per issue, so the
+-- caller can publish an exact update per changed issue.
+UPDATE issue SET
+    project_id = sqlc.arg('project_id')::uuid,
+    module_id = sqlc.arg('module_id')::uuid,
+    status = sqlc.arg('status')::text,
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND id = sqlc.arg('issue_id')::uuid
+RETURNING id, number, status, revision, project_id, module_id, work_item_id;
+
+-- name: ListIssueIDsFiledAtNode :many
+SELECT id FROM issue WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND work_item_id = sqlc.arg('work_item_id')::uuid;

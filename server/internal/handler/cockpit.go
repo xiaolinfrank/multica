@@ -1435,9 +1435,22 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
 		return
 	}
-	if _, parentTouched := raw["parent_id"]; parentTouched || binding.projectSet || binding.moduleSet {
+	_, parentTouched := raw["parent_id"]
+	if parentTouched || binding.projectSet || binding.moduleSet {
 		if err := checkCockpitBindingTree(r.Context(), qtx, cc.cockpit.ID); err != nil {
 			writeError(w, err.status, err.msg)
+			return
+		}
+	}
+	// A work item that moved takes its issues' filing scope with it (I3): the
+	// module and project come from the tree, so they are rewritten in the same
+	// transaction. Crossing projects maps the status the same way the issue
+	// detail path does (S3).
+	var refiled []db.MoveFilingScopeRow
+	if parentTouched {
+		refiled, err = h.IssueService.RefileWorkItemScope(r.Context(), qtx, cc.workspaceID, node.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to refile the issues under this work item")
 			return
 		}
 	}
@@ -1448,6 +1461,9 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 
 	resp := cockpitNodeToResponse(node)
 	h.publishCockpit(r, cc, "node", "updated", resp)
+	for _, row := range refiled {
+		h.publishRefiledWorkItemIssue(r, cc, row)
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 

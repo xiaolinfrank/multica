@@ -64,11 +64,15 @@ func (h *Handler) applyIssueWorkflow(ctx context.Context, prev db.Issue, params 
 		return nil, issueworkflow.CheckStatusOutsideProject(outside, params.Status.String)
 	}
 	projectMoving := params.ProjectID != prev.ProjectID
-	if projectMoving && !statusExplicit && !def.IsDefault && !def.Has(prev.Status) {
-		target := issueworkflow.MoveTarget(*def, prev.Status, func(key string) string {
+	if projectMoving && !statusExplicit {
+		// Same mapping the work-item move uses (issueworkflow.MappedStatusForMove):
+		// two entry points must never disagree about the status a move lands on.
+		target, mapped := issueworkflow.MappedStatusForMove(def, prev.Status, func(key string) string {
 			return issuestatus.Category(ctx, h.Queries, prev.WorkspaceID, key)
 		})
-		params.Status = pgtype.Text{String: target, Valid: true}
+		if mapped {
+			params.Status = pgtype.Text{String: target, Valid: true}
+		}
 	}
 	// A move into a Default project keeps the issue's status, as it is never
 	// mapped; a named workflow must list the status the issue lands on.

@@ -346,6 +346,35 @@ func (q *Queries) ListCockpitReconcileIssues(ctx context.Context, workspaceID pg
 	return items, nil
 }
 
+const listIssueIDsFiledAtNode = `-- name: ListIssueIDsFiledAtNode :many
+SELECT id FROM issue WHERE workspace_id = $1::uuid AND work_item_id = $2::uuid
+`
+
+type ListIssueIDsFiledAtNodeParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	WorkItemID  pgtype.UUID `json:"work_item_id"`
+}
+
+func (q *Queries) ListIssueIDsFiledAtNode(ctx context.Context, arg ListIssueIDsFiledAtNodeParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listIssueIDsFiledAtNode, arg.WorkspaceID, arg.WorkItemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.UUID{}
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markCockpitPlanReconciled = `-- name: MarkCockpitPlanReconciled :exec
 UPDATE cockpit SET plan_reconciled_at=now(), updated_at=now()
 WHERE workspace_id=$1::uuid
@@ -370,6 +399,62 @@ type MoveCockpitMilestonesToNodeParams struct {
 func (q *Queries) MoveCockpitMilestonesToNode(ctx context.Context, arg MoveCockpitMilestonesToNodeParams) error {
 	_, err := q.db.Exec(ctx, moveCockpitMilestonesToNode, arg.NodeID, arg.WorkspaceID, arg.FromNodeID)
 	return err
+}
+
+const moveFilingScope = `-- name: MoveFilingScope :one
+UPDATE issue SET
+    project_id = $1::uuid,
+    module_id = $2::uuid,
+    status = $3::text,
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE workspace_id = $4::uuid AND id = $5::uuid
+RETURNING id, number, status, revision, project_id, module_id, work_item_id
+`
+
+type MoveFilingScopeParams struct {
+	ProjectID   pgtype.UUID `json:"project_id"`
+	ModuleID    pgtype.UUID `json:"module_id"`
+	Status      string      `json:"status"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
+}
+
+type MoveFilingScopeRow struct {
+	ID         pgtype.UUID `json:"id"`
+	Number     int32       `json:"number"`
+	Status     string      `json:"status"`
+	Revision   int64       `json:"revision"`
+	ProjectID  pgtype.UUID `json:"project_id"`
+	ModuleID   pgtype.UUID `json:"module_id"`
+	WorkItemID pgtype.UUID `json:"work_item_id"`
+}
+
+// A work item that moves to another module (or project) takes the issues
+// filed under it along: the module and project are derived from the node, so
+// they cannot stay behind. Status is mapped by the caller when the project
+// changes (issueworkflow.MappedStatusForMove). One row per issue, so the
+// caller can publish an exact update per changed issue.
+func (q *Queries) MoveFilingScope(ctx context.Context, arg MoveFilingScopeParams) (MoveFilingScopeRow, error) {
+	row := q.db.QueryRow(ctx, moveFilingScope,
+		arg.ProjectID,
+		arg.ModuleID,
+		arg.Status,
+		arg.WorkspaceID,
+		arg.IssueID,
+	)
+	var i MoveFilingScopeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.Status,
+		&i.Revision,
+		&i.ProjectID,
+		&i.ModuleID,
+		&i.WorkItemID,
+	)
+	return i, err
 }
 
 const saveCockpitReconcileReport = `-- name: SaveCockpitReconcileReport :exec
