@@ -1518,6 +1518,17 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}
+	// Issues filed at a work item lose their filing with it (S3): the row is
+	// the last thing to disappear, so the issue side is cleared first.
+	unfiled, unfilErr := qtx.ClearIssuesFiledAtNode(ctx, db.ClearIssuesFiledAtNodeParams{
+		WorkspaceID: cc.workspaceID,
+		WorkItemID:  node.ID,
+	})
+	if unfilErr != nil {
+		slog.Warn("ClearIssuesFiledAtNode failed", append(logger.RequestAttrs(r), "error", unfilErr)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
+		return
+	}
 	if err := qtx.DeleteCockpitNodeIssuesByNode(ctx, db.DeleteCockpitNodeIssuesByNodeParams{
 		NodeID:      node.ID,
 		WorkspaceID: cc.workspaceID,
@@ -1560,6 +1571,16 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.publishCockpit(r, cc, "node", "deleted", map[string]any{"id": uuidToString(node.ID)})
+	for _, row := range unfiled {
+		h.publish(protocol.EventIssueUpdated, uuidToString(cc.workspaceID), "member", uuidToString(cc.member.UserID), map[string]any{
+			"issue": map[string]any{
+				"id": uuidToString(row.ID), "revision": row.Revision,
+				"project_id": uuidToPtr(row.ProjectID), "module_id": uuidToPtr(row.ModuleID),
+				"work_item_id": nil,
+			},
+			"work_item_changed": true,
+		})
+	}
 	// Pending proposals against the node were system-withdrawn in the same
 	// transaction; open queues refresh on the same event.
 	h.publishCockpit(r, cc, "changes", "withdrawn", nil)

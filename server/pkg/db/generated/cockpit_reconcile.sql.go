@@ -11,6 +11,55 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearIssuesFiledAtNode = `-- name: ClearIssuesFiledAtNode :many
+UPDATE issue SET
+    work_item_id = NULL,
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE workspace_id = $1::uuid AND work_item_id = $2::uuid
+RETURNING id, project_id, module_id, revision
+`
+
+type ClearIssuesFiledAtNodeParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	WorkItemID  pgtype.UUID `json:"work_item_id"`
+}
+
+type ClearIssuesFiledAtNodeRow struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+	ModuleID  pgtype.UUID `json:"module_id"`
+	Revision  int64       `json:"revision"`
+}
+
+// Deleting a work item unfiles the issues that sat in it; they keep their
+// project and module (the work item was the only thing withdrawn).
+func (q *Queries) ClearIssuesFiledAtNode(ctx context.Context, arg ClearIssuesFiledAtNodeParams) ([]ClearIssuesFiledAtNodeRow, error) {
+	rows, err := q.db.Query(ctx, clearIssuesFiledAtNode, arg.WorkspaceID, arg.WorkItemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ClearIssuesFiledAtNodeRow{}
+	for rows.Next() {
+		var i ClearIssuesFiledAtNodeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.ModuleID,
+			&i.Revision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createCockpitReconcileNode = `-- name: CreateCockpitReconcileNode :one
 INSERT INTO cockpit_node (id, workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position, directory_name)
 VALUES (

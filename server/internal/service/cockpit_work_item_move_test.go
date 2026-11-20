@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/testutil"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // Moving a work item into another module takes the issues filed under it: the
@@ -109,5 +110,28 @@ func TestRefileWorkItemScopeRefusesUnmappableStatus(t *testing.T) {
 	}
 	if _, err := f.issues.RefileWorkItemScope(ctx, f.q, f.ws, f.a); err == nil {
 		t.Fatal("a move onto an unlisted status was accepted")
+	}
+}
+
+// Deleting a work item unfiles its issues and leaves their project/module.
+func TestDeleteWorkItemClearsFiling(t *testing.T) {
+	f := newPlanningFixture(t)
+	ctx := context.Background()
+	issue := f.Issue(t, "被删工作项下的 issue", testutil.Cols{"project_id": f.project, "module_id": f.module, "work_item_id": f.a})
+	if _, err := f.Pool.Exec(ctx, `DELETE FROM cockpit_node WHERE workspace_id=$1 AND id=$2`, f.ws, f.a); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.issues.Queries.ClearIssuesFiledAtNode(ctx, db.ClearIssuesFiledAtNodeParams{WorkspaceID: f.ws, WorkItemID: f.a}); err != nil {
+		t.Fatal(err)
+	}
+	var workItem, project, module pgtype.UUID
+	if err := f.Pool.QueryRow(ctx, `SELECT work_item_id, project_id, module_id FROM issue WHERE workspace_id=$1 AND id=$2`, f.ws, issue).Scan(&workItem, &project, &module); err != nil {
+		t.Fatal(err)
+	}
+	if workItem.Valid {
+		t.Fatal("issue kept a work item that no longer exists")
+	}
+	if project != f.project || module != f.module {
+		t.Fatal("unfiling changed the issue's project or module")
 	}
 }

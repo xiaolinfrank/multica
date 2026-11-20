@@ -141,3 +141,14 @@ RETURNING id, number, status, revision, project_id, module_id, work_item_id;
 
 -- name: ListIssueIDsFiledAtNode :many
 SELECT id FROM issue WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND work_item_id = sqlc.arg('work_item_id')::uuid;
+
+-- name: ClearIssuesFiledAtNode :many
+-- Deleting a work item unfiles the issues that sat in it; they keep their
+-- project and module (the work item was the only thing withdrawn).
+UPDATE issue SET
+    work_item_id = NULL,
+    revision = revision + 1,
+    last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
+    updated_at = now()
+WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND work_item_id = sqlc.arg('work_item_id')::uuid
+RETURNING id, project_id, module_id, revision;
