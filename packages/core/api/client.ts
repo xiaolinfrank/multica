@@ -2912,8 +2912,9 @@ export class ApiClient {
 
   async getCockpitPlan(wsId: string, scope: CockpitScope, includeClosed = false, signal?: AbortSignal): Promise<CockpitPlanData | null> {
     // The server hides paused/finished/cancelled projects by default (S2);
-    // include_closed=1 opts into them.
-    const result = await this.readCockpitSurface(wsId, "/plan", scope, CockpitPlanDataSchema, includeClosed ? { include_closed: "1" } : {}, signal);
+    // include_closed=true opts into them — the handler compares the raw value
+    // with "true", so "1" would be silently ignored.
+    const result = await this.readCockpitSurface(wsId, "/plan", scope, CockpitPlanDataSchema, includeClosed ? { include_closed: "true" } : {}, signal);
     return result && result.nodes.length <= 5000 && result.payments.length <= 25000 && result.milestones.length <= 2000 && result.node_index.length <= 20000 ? result : null;
   }
   async getCockpitPlanExport(wsId: string, scope: CockpitScope, signal?: AbortSignal): Promise<CockpitPlanExportData | null> {
