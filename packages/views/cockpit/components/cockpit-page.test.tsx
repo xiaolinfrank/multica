@@ -525,7 +525,7 @@ describe("CockpitPage", () => {
     await waitFor(() => expect(api.updateCockpitNode).toHaveBeenCalledWith("task", { owner: "Li" }));
   });
 
-  it("opens a grouping panel and preserves its detailed fields and legacy reference chips", async () => {
+  it("opens a work item panel with its plan fields and instalments, not the money fields", async () => {
     useDetailedBoard(true);
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
@@ -536,7 +536,8 @@ describe("CockpitPage", () => {
 
     expect(await screen.findByText("Instalments")).toBeInTheDocument();
     expect(screen.getByText("Deliverable")).toBeInTheDocument();
-    expect(screen.getByText("Payment status")).toBeInTheDocument();
+    // Budget, vendor and payment status are edited in the finance grid.
+    expect(screen.queryByText("Payment status")).not.toBeInTheDocument();
     // The linked issue renders as the live issue, not as free text.
     expect((await screen.findAllByText("BIO-314")).length).toBeGreaterThan(0);
   });

@@ -321,6 +321,7 @@
     "deliverable_placeholder": "무엇을 만들어내는가",
     "dependencies": "의존 관계",
     "dependencies_placeholder": "무엇을 기다리는가",
+    "more": "추가 정보",
     "note": "비고",
     "note_placeholder": "기록해 둘 내용",
     "source": "출처: {{source}}",

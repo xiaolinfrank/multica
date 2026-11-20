@@ -321,6 +321,7 @@
     "deliverable_placeholder": "本任务产出什么",
     "dependencies": "依赖",
     "dependencies_placeholder": "在等什么",
+    "more": "更多信息",
     "note": "备注",
     "note_placeholder": "需要记录的信息",
     "source": "数据来源：{{source}}",

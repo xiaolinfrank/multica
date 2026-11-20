@@ -321,6 +321,7 @@
     "deliverable_placeholder": "何を生み出すか",
     "dependencies": "依存関係",
     "dependencies_placeholder": "何を待っているか",
+    "more": "詳細情報",
     "note": "備考",
     "note_placeholder": "記録しておくこと",
     "source": "出典: {{source}}",

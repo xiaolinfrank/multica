@@ -321,6 +321,7 @@
     "deliverable_placeholder": "What this produces",
     "dependencies": "Dependencies",
     "dependencies_placeholder": "What this waits on",
+    "more": "More",
     "note": "Note",
     "note_placeholder": "Anything worth knowing",
     "source": "Source: {{source}}",

@@ -10,7 +10,7 @@ import type {
   CockpitPaymentPatch,
 } from "@multica/core/types";
 import { useEffect, useRef, useState } from "react";
-import { cockpitMeetingSpan, splitCockpitVendors, type CockpitNodeView } from "@multica/core/cockpit";
+import { cockpitMeetingSpan, type CockpitNodeView } from "@multica/core/cockpit";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -36,10 +36,9 @@ import {
   EditableSuggest,
   EditableText,
   EditableTextArea,
-  EditableTokens,
   ProgressField,
 } from "./cockpit-fields";
-import { ExecStatusChip, StatusChip } from "./cockpit-status";
+import { StatusChip } from "./cockpit-status";
 import { formatAmount } from "./cockpit-table";
 
 export interface CockpitNodePanelProps {
@@ -53,10 +52,7 @@ export interface CockpitNodePanelProps {
   meetings: Pick<CockpitMeeting, "id" | "title" | "meet_date" | "time_range" | "start_time" | "end_time">[];
   isBranch: boolean;
   statusSuggestions: string[];
-  execStatusSuggestions: string[];
-  budgetCategorySuggestions: string[];
   ownerSuggestions: string[];
-  vendorSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
   notice?: React.ReactNode;
   taskWorkspace?: React.ReactNode;
@@ -93,10 +89,7 @@ export function CockpitNodePanel({
   meetings,
   isBranch,
   statusSuggestions,
-  execStatusSuggestions,
-  budgetCategorySuggestions,
   ownerSuggestions,
-  vendorSuggestions,
   onPatch,
   notice,
   taskWorkspace,
@@ -290,17 +283,6 @@ export function CockpitNodePanel({
             />
             {isBranch && <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.progress_branch_hint)}</p>}
           </CockpitField>
-          {taskDetails && (
-            <CockpitField label={t(($) => $.node.collaborators)} className="min-w-0 @min-[28rem]/node-panel:col-span-2">
-            <EditableText
-              value={node.collaborators}
-              onCommit={(collaborators) => onPatch({ collaborators })}
-              label={t(($) => $.node.collaborators)}
-              placeholder={t(($) => $.node.collaborators_placeholder)}
-              disabled={readOnly}
-            />
-            </CockpitField>
-          )}
         </div>
 
         <Separator className="my-4" />
@@ -334,72 +316,6 @@ export function CockpitNodePanel({
               ))}
             </ul>
           </CockpitField>
-        )}
-
-        {taskDetails && (
-          <>
-            <Separator className="my-4" />
-
-            <div className="grid min-w-0 grid-cols-1 gap-4 @min-[28rem]/node-panel:grid-cols-2">
-              <CockpitField label={t(($) => $.node.vendor)}>
-                <EditableTokens
-                  value={node.vendor}
-                  onCommit={(vendor) => onPatch({ vendor })}
-                  split={splitCockpitVendors}
-                  suggestions={vendorSuggestions}
-                  label={t(($) => $.node.vendor)}
-                  placeholder={unset}
-                  disabled={readOnly}
-                />
-              </CockpitField>
-              <CockpitField label={t(($) => $.node.budget_category)}>
-                <EditableSuggest
-                  value={node.budget_category}
-                  onCommit={(budget_category) => onPatch({ budget_category })}
-                  suggestions={budgetCategorySuggestions}
-                  label={t(($) => $.node.budget_category)}
-                  placeholder={unset}
-                  disabled={readOnly}
-                />
-              </CockpitField>
-              <CockpitField label={t(($) => $.node.budget)}>
-                <EditableNumber
-                  value={node.budget_amount}
-                  onCommit={(budget_amount) => onPatch({ budget_amount })}
-                  label={t(($) => $.node.budget)}
-                  placeholder={unset}
-                  disabled={readOnly}
-                />
-              </CockpitField>
-              <CockpitField label={t(($) => $.node.exec_status)}>
-                <EditableSuggest
-                  value={node.exec_status}
-                  onCommit={(exec_status) => onPatch({ exec_status })}
-                  suggestions={execStatusSuggestions}
-                  label={t(($) => $.node.exec_status)}
-                  placeholder={unset}
-                  disabled={readOnly}
-                  renderDisplay={(value) =>
-                    value ? (
-                      <ExecStatusChip status={value} />
-                    ) : (
-                      <span className="text-caption text-muted-foreground italic">{unset}</span>
-                    )
-                  }
-                />
-              </CockpitField>
-              <CockpitField label={t(($) => $.node.contract)} className="min-w-0 @min-[28rem]/node-panel:col-span-2">
-                <EditableText
-                  value={node.contract}
-                  onCommit={(contract) => onPatch({ contract })}
-                  label={t(($) => $.node.contract)}
-                  placeholder={unset}
-                  disabled={readOnly}
-                />
-              </CockpitField>
-            </div>
-
-          </>
         )}
 
         {(taskDetails || payments.length > 0 || paymentPaging) && (
@@ -494,16 +410,6 @@ export function CockpitNodePanel({
                   disabled={readOnly}
                 />
               </CockpitField>
-              <CockpitField label={t(($) => $.node.dependencies)}>
-                <EditableTextArea
-                  value={node.dependencies}
-                  onCommit={(dependencies) => onPatch({ dependencies })}
-                  label={t(($) => $.node.dependencies)}
-                  placeholder={t(($) => $.node.dependencies_placeholder)}
-                  disabled={readOnly}
-                  rows={2}
-                />
-              </CockpitField>
               <CockpitField label={t(($) => $.node.note)}>
                 <EditableTextArea
                   value={node.note}
@@ -518,10 +424,21 @@ export function CockpitNodePanel({
           </>
         )}
 
-        {node.source && (
-          <p className="mt-4 text-micro text-muted-foreground">
-            {t(($) => $.node.source, { source: node.source })}
-          </p>
+        {(node.collaborators || node.dependencies || node.source) && (
+          <details className="mt-4 border-t border-border pt-3">
+            <summary className="cursor-pointer text-caption text-muted-foreground">{t(($) => $.node.more)}</summary>
+            <dl className="mt-2 flex flex-col gap-2 text-caption">
+              {node.collaborators && (
+                <div><dt className="text-micro text-muted-foreground">{t(($) => $.node.collaborators)}</dt><dd className="whitespace-pre-wrap">{node.collaborators}</dd></div>
+              )}
+              {node.dependencies && (
+                <div><dt className="text-micro text-muted-foreground">{t(($) => $.node.dependencies)}</dt><dd className="whitespace-pre-wrap">{node.dependencies}</dd></div>
+              )}
+              {node.source && (
+                <div><dt className="text-micro text-muted-foreground">{t(($) => $.node.source, { source: "" }).trim()}</dt><dd className="whitespace-pre-wrap">{node.source}</dd></div>
+              )}
+            </dl>
+          </details>
         )}
         </TabsContent>
       </Tabs>
