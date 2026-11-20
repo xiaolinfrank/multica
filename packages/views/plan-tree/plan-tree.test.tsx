@@ -35,18 +35,24 @@ vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail:
 vi.mock("../navigation", () => ({ useNavigation: () => ({ push: vi.fn(), searchParams: new URLSearchParams() }), AppLink: (p: never) => p }));
 
 import { PlanTree } from "./plan-tree";
+import { useCockpitScopeViewStore } from "@multica/core/cockpit";
 
-function show() {
+function show(props: Partial<React.ComponentProps<typeof PlanTree>> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
       <QueryClientProvider client={qc}>
-        <PlanTree wsId="ws-1" scope={{ projectId: null, moduleId: null }} query="" readOnly={false} selectedId={null} onSelect={() => {}} />
+        <PlanTree wsId="ws-1" scope={{ projectId: null, moduleId: null }} query="" readOnly={false} selectedId={null} onSelect={() => {}} {...props} />
       </QueryClientProvider>
     </I18nProvider>,
   );
 }
-afterEach(() => { vi.clearAllMocks(); });
+afterEach(() => {
+  vi.clearAllMocks();
+  // The fold state lives in the shared view store; a test that expands a row
+  // must not hand the next one a different tree.
+  useCockpitScopeViewStore.getState().reset();
+});
 
 describe("PlanTree", () => {
   it("shows the unreconciled notice and disables the structure buttons", async () => {
@@ -85,5 +91,47 @@ describe("PlanTree", () => {
     fireEvent.change(field, { target: { value: "新模块" } });
     fireEvent.keyDown(field, { key: "Enter" });
     await waitFor(() => expect(apiMock.createModule).toHaveBeenCalledWith(expect.objectContaining({ title: "新模块", project_id: "proj-1" })));
+  });
+
+  it("moves a cursor with the arrow keys and hands the row over on Enter", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce({ ...plan, cockpit: { ...plan.cockpit, plan_reconciled_at: "2026-11-20T00:00:00Z" } });
+    const opened: string[] = [];
+    show({ onSelect: (id) => opened.push(id) });
+    const grid = await screen.findByRole("treegrid");
+    const rowOf = (kind: string) => screen.getAllByRole("row").find((row) => row.getAttribute("data-kind") === kind)!;
+    expect(rowOf("project")).toHaveAttribute("aria-level", "1");
+    // The cursor starts on the first row; one step down lands on the module.
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    await waitFor(() => expect(rowOf("module")).toHaveAttribute("data-active", "true"));
+    // Arrowing is navigation, not selection: the page is not told yet.
+    expect(opened).toEqual([]);
+    fireEvent.keyDown(rowOf("module"), { key: "Enter" });
+    expect(opened).toEqual(["m1"]);
+  });
+
+  it("expands and collapses the row under the cursor", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce({ ...plan, cockpit: { ...plan.cockpit, plan_reconciled_at: "2026-11-20T00:00:00Z" } });
+    show();
+    const grid = await screen.findByRole("treegrid");
+    const workItem = () => screen.getAllByRole("row").find((row) => row.getAttribute("data-kind") === "work_item")!;
+    await waitFor(() => expect(workItem()).toHaveAttribute("aria-expanded", "false"));
+    // Put the cursor on the work item (project → module → work item).
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    await waitFor(() => expect(workItem()).toHaveAttribute("data-active", "true"));
+    fireEvent.keyDown(workItem(), { key: "ArrowRight" });
+    expect(await screen.findByText(/首个任务/)).toBeInTheDocument();
+    fireEvent.keyDown(workItem(), { key: "ArrowLeft" });
+    await waitFor(() => expect(workItem()).toHaveAttribute("aria-expanded", "false"));
+  });
+
+  it("renders the plan's columns in table mode, with the issue tally", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce({ ...plan, cockpit: { ...plan.cockpit, plan_reconciled_at: "2026-11-20T00:00:00Z" } });
+    show({ variant: "table", onPatchNode: () => {}, ownerSuggestions: ["李林"] });
+    expect(await screen.findByRole("columnheader", { name: enCockpit.plan_tree.column_owner })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: enCockpit.plan_tree.column_dates })).toBeInTheDocument();
+    const workItem = screen.getAllByRole("row").find((row) => row.getAttribute("data-kind") === "work_item")!;
+    // 2 primary, 0 reference — the same tally the gantt and the finance grid quote.
+    expect(within(workItem).getByText("2 primary · 0 reference")).toBeInTheDocument();
   });
 });

@@ -54,4 +54,14 @@ describe("buildPlanRows", () => {
   it("lists modules in plan order for the move menu", () => {
     expect(planModules(nodes).map((m) => m.id)).toEqual(["m1", "m2"]);
   });
+
+  it("scopes to the picked branches and keeps their depth", () => {
+    const rows = buildPlanRows({ nodes, counts, expanded: planDefaultExpanded(nodes), rootIds: new Set(["m2"]) });
+    // The module still reads at level 2, not at the top of the list.
+    expect(rows.map((r) => [r.node.id, r.depth])).toEqual([["m2", 1], ["w3", 2]]);
+    // A branch the plan no longer has falls back to the whole plan, rather
+    // than rendering an empty grid after a scope switch.
+    const stale = buildPlanRows({ nodes, counts, expanded: planDefaultExpanded(nodes), rootIds: new Set(["gone"]) });
+    expect(stale).toHaveLength(6);
+  });
 });

@@ -95,6 +95,7 @@ import { CockpitMilestoneCreate } from "./cockpit-milestone-create";
 import { CockpitMilestones } from "./cockpit-milestones";
 import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
+import { PlanTree } from "../../plan-tree/plan-tree";
 import { CockpitCsvExport } from "./cockpit-csv-export";
 import { CockpitVersions } from "./cockpit-versions";
 
@@ -222,7 +223,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   const [dayAtMount] = useState(todayString);
   const today = suppliedToday ?? dayAtMount;
 
-  const planQuery = useQuery({ ...cockpitPlanOptions(wsId, scope), enabled: tab !== "meetings" && tab !== "changes" });
+  const planQuery = useQuery({ ...cockpitPlanOptions(wsId, scope, planState.includeClosedProjects), enabled: tab !== "meetings" && tab !== "changes" });
   const taskCounts = useMemo(() => new Map((planQuery.data?.task_counts ?? []).map((item) => [item.node_id, item])), [planQuery.data?.task_counts]);
   const contextNodeIds = useMemo(() => new Set(planQuery.data?.context_node_ids ?? []), [planQuery.data?.context_node_ids]);
   const context = useQuery(cockpitContextOptions(wsId, scope));
@@ -669,6 +670,13 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             </Button>
           )}
 
+          {tab === "gantt" && (
+            <label className="flex items-center gap-2 text-caption whitespace-nowrap">
+              <input type="checkbox" checked={planState.includeClosedProjects}
+                onChange={(event) => useCockpitScopeViewStore.getState().updatePlan(planKey, { includeClosedProjects: event.target.checked })} />
+              {t(($) => $.toolbar.include_closed)}
+            </label>
+          )}
           {board && tab !== "changes" && <CockpitCsvExport wsId={wsId} scope={scope} initialMode={planView === "finance" ? "finance" : "tasks"} />}
           {versionActions}
 
@@ -860,13 +868,28 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           {tab === "gantt" && planView === "milestones" && board && <CockpitMilestones wsId={wsId} query={query} rootIds={rootIds} readOnly={context.data?.actor.is_human !== true || planQuery.isError} nodes={nodes} milestones={board.milestones} displayCodes={displayCodes} scope={scope}
             today={today} goalDate={board.cockpit.goal_date} onCreate={() => setCreatingMilestone(true)}
             onPatch={patchMilestone} onDelete={(id) => requestDeletion("milestone", id)} />}
-          {(tab === "finance" || (tab === "gantt" && (planView === "table" || planView === "finance"))) && board && (
+          {tab === "gantt" && planView === "table" && board && (
+            <PlanTree
+              wsId={wsId}
+              scope={scope}
+              query={query}
+              readOnly={planQuery.isError || context.data?.actor.is_human !== true}
+              selectedId={selectedId}
+              onSelect={openTask}
+              variant="table"
+              onPatchNode={patchNode}
+              ownerSuggestions={ownerSuggestions}
+              statusSuggestions={statusSuggestions}
+              rootIds={rootIds}
+            />
+          )}
+          {(tab === "finance" || (tab === "gantt" && planView === "finance")) && board && (
             <CockpitTable
               board={board}
               displayCodes={displayCodes}
               contextNodeIds={contextNodeIds}
               taskCounts={taskCounts}
-              mode={planView === "table" ? "tasks" : "finance"}
+              mode="finance"
               query={query}
               rootIds={rootIds}
               onSelect={openTask}

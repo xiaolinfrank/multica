@@ -36,6 +36,18 @@ function kindOf(node: CockpitNode, depth: number): PlanKind {
   return depth === 0 ? "project" : depth === 1 ? "module" : "work_item";
 }
 
+/** One row, for a caller that has already resolved the visible shape (a
+ *  filtered or presentation tree): kind still comes from `node.kind` first,
+ *  so a presentation row can never relabel a work item as a module. */
+export function planRowFor(
+  node: CockpitNode,
+  depth: number,
+  counts: CockpitPlanTaskCount | null,
+  hasChildren: boolean,
+): PlanRow {
+  return { node, kind: kindOf(node, depth), depth, code: node.code, name: node.name, counts, hasChildren };
+}
+
 /** Depth by the parent chain, independent of any code format. */
 function depthOf(node: CockpitNode, byId: ReadonlyMap<string, CockpitNode>): number {
   let depth = 0;
@@ -57,11 +69,14 @@ export interface BuildPlanRowsInput {
   /** Search text. A match expands its ancestor path (the caller seeds
    *  `expanded`); matching rows stay visible even when a parent collapsed. */
   query?: string;
+  /** Restrict to these root branches; empty shows the whole plan. A branch
+   *  keeps its own depth, so a scoped view still reads at the right level. */
+  rootIds?: ReadonlySet<string>;
 }
 
 /** Flatten the plan into visible rows, parents before children, siblings in
  *  (position, code) order — the order the tree itself reads in. */
-export function buildPlanRows({ nodes, counts, expanded, query }: BuildPlanRowsInput): PlanRow[] {
+export function buildPlanRows({ nodes, counts, expanded, query, rootIds }: BuildPlanRowsInput): PlanRow[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const childrenOf = new Map<string | null, CockpitNode[]>();
   for (const node of nodes) {
@@ -92,24 +107,24 @@ export function buildPlanRows({ nodes, counts, expanded, query }: BuildPlanRowsI
   }
 
   const rows: PlanRow[] = [];
+  const roots = rootIds && rootIds.size > 0 ? nodes.filter((node) => rootIds.has(node.id)) : null;
   const walk = (parentId: string | null, depth: number) => {
     for (const node of childrenOf.get(parentId) ?? []) {
-      const kind = kindOf(node, depth);
       const children = childrenOf.get(node.id) ?? [];
-      rows.push({
-        node,
-        kind,
-        depth,
-        code: node.code,
-        name: node.name,
-        counts: countsById.get(node.id) ?? null,
-        hasChildren: children.length > 0,
-      });
+      rows.push(planRowFor(node, depth, countsById.get(node.id) ?? null, children.length > 0));
       const open = expanded.has(node.id) || pathToMatch.has(node.id);
       if (open) walk(node.id, depth + 1);
     }
   };
-  walk(null, 0);
+  if (roots && roots.length > 0) {
+    for (const root of [...roots].sort((a, b) => a.position - b.position || a.code.localeCompare(b.code))) {
+      const depth = depthOf(root, byId);
+      rows.push(planRowFor(root, depth, countsById.get(root.id) ?? null, (childrenOf.get(root.id) ?? []).length > 0));
+      if (expanded.has(root.id) || pathToMatch.has(root.id)) walk(root.id, depth + 1);
+    }
+  } else {
+    walk(null, 0);
+  }
   return rows;
 }
 
