@@ -18,7 +18,7 @@ UPDATE issue SET
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE workspace_id = $1::uuid AND work_item_id = $2::uuid
-RETURNING id, project_id, module_id, revision
+RETURNING id, number, status, project_id, module_id, revision
 `
 
 type ClearIssuesFiledAtNodeParams struct {
@@ -28,6 +28,8 @@ type ClearIssuesFiledAtNodeParams struct {
 
 type ClearIssuesFiledAtNodeRow struct {
 	ID        pgtype.UUID `json:"id"`
+	Number    int32       `json:"number"`
+	Status    string      `json:"status"`
 	ProjectID pgtype.UUID `json:"project_id"`
 	ModuleID  pgtype.UUID `json:"module_id"`
 	Revision  int64       `json:"revision"`
@@ -46,6 +48,8 @@ func (q *Queries) ClearIssuesFiledAtNode(ctx context.Context, arg ClearIssuesFil
 		var i ClearIssuesFiledAtNodeRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.Number,
+			&i.Status,
 			&i.ProjectID,
 			&i.ModuleID,
 			&i.Revision,
@@ -268,7 +272,7 @@ const listCockpitDirectChildren = `-- name: ListCockpitDirectChildren :many
 SELECT id, code, name, position, parent_id, project_id, module_id
 FROM cockpit_node
 WHERE workspace_id = $1::uuid AND parent_id = $2::uuid
-ORDER BY position, code
+ORDER BY position, id
 `
 
 type ListCockpitDirectChildrenParams struct {
@@ -286,6 +290,8 @@ type ListCockpitDirectChildrenRow struct {
 	ModuleID  pgtype.UUID `json:"module_id"`
 }
 
+// Ordered exactly like the plan surface (position, id): "renumber the children
+// to the order they are shown in" is only true if both orders agree.
 func (q *Queries) ListCockpitDirectChildren(ctx context.Context, arg ListCockpitDirectChildrenParams) ([]ListCockpitDirectChildrenRow, error) {
 	rows, err := q.db.Query(ctx, listCockpitDirectChildren, arg.WorkspaceID, arg.ParentID)
 	if err != nil {
@@ -383,6 +389,59 @@ func (q *Queries) ListCockpitNodeIssueLinks(ctx context.Context, workspaceID pgt
 			&i.IssueID,
 			&i.Position,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCockpitNodesByIDs = `-- name: ListCockpitNodesByIDs :many
+SELECT id, number, title, status, project_id, module_id, parent_issue_id, work_item_id
+FROM issue
+WHERE workspace_id = $1::uuid AND id = ANY($2::uuid[])
+`
+
+type ListCockpitNodesByIDsParams struct {
+	WorkspaceID pgtype.UUID   `json:"workspace_id"`
+	Ids         []pgtype.UUID `json:"ids"`
+}
+
+type ListCockpitNodesByIDsRow struct {
+	ID            pgtype.UUID `json:"id"`
+	Number        int32       `json:"number"`
+	Title         string      `json:"title"`
+	Status        string      `json:"status"`
+	ProjectID     pgtype.UUID `json:"project_id"`
+	ModuleID      pgtype.UUID `json:"module_id"`
+	ParentIssueID pgtype.UUID `json:"parent_issue_id"`
+	WorkItemID    pgtype.UUID `json:"work_item_id"`
+}
+
+// Reads only the rows a write touches (a work item's issues), instead of the
+// whole workspace's issue list.
+func (q *Queries) ListCockpitNodesByIDs(ctx context.Context, arg ListCockpitNodesByIDsParams) ([]ListCockpitNodesByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listCockpitNodesByIDs, arg.WorkspaceID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCockpitNodesByIDsRow{}
+	for rows.Next() {
+		var i ListCockpitNodesByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Title,
+			&i.Status,
+			&i.ProjectID,
+			&i.ModuleID,
+			&i.ParentIssueID,
+			&i.WorkItemID,
 		); err != nil {
 			return nil, err
 		}

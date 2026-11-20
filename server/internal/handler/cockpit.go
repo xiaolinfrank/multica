@@ -1359,7 +1359,9 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		UpdatedByID:     cc.member.UserID,
 	}
 
+	parentTouched := false
 	if _, touched := raw["parent_id"]; touched {
+		parentTouched = true
 		if req.ParentID == nil || strings.TrimSpace(*req.ParentID) == "" {
 			params.ClearParent = true
 		} else {
@@ -1423,6 +1425,19 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Crossing modules takes the destination's next number; the old one stays
+	// spent (§0 item 19). The number is allocated BEFORE the row moves, so the
+	// allocation cannot count the moving row itself as a child of the target.
+	if parentTouched && params.ParentID.Valid && params.ParentID != current.ParentID {
+		code, err := movedWorkItemCode(r.Context(), qtx, cc, params.ParentID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to renumber the moved work item")
+			return
+		}
+		if code != "" {
+			params.Code = pgtype.Text{String: code, Valid: true}
+		}
+	}
 	node, err := qtx.UpdateCockpitNode(r.Context(), params)
 	if err != nil {
 		if writeCockpitPrimaryIntegrityError(w, err) {
@@ -1435,7 +1450,6 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to update cockpit node")
 		return
 	}
-	_, parentTouched := raw["parent_id"]
 	if parentTouched || binding.projectSet || binding.moduleSet {
 		if err := checkCockpitBindingTree(r.Context(), qtx, cc.cockpit.ID); err != nil {
 			writeError(w, err.status, err.msg)
@@ -1448,9 +1462,25 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	// detail path does (S3).
 	var refiled []db.MoveFilingScopeRow
 	if parentTouched {
-		refiled, err = h.IssueService.RefileWorkItemScope(r.Context(), qtx, cc.workspaceID, node.ID)
+		// Only a work item may be reparented, and only under a module row: a
+		// project row or module row moving would break I1/I2, and a work item
+		// under anything but L2 loses its scope.
+		if err := h.requireWorkItemMove(r.Context(), qtx, cc, current, node); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		// Only a reconciled board has work items with filing to carry; on a
+		// legacy board the rows are still the pre-S3 grouping.
+		if board, e := qtx.GetCockpitByWorkspace(r.Context(), cc.workspaceID); e == nil && board.PlanReconciledAt.Valid {
+			refiled, err = h.IssueService.RefileWorkItemScope(r.Context(), qtx, cc.workspaceID, node.ID)
+		}
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to refile the issues under this work item")
+			var notIn *service.IssueStatusNotInWorkflowError
+			if errors.As(err, &notIn) && writeIssueWorkflowError(w, notIn.Err) {
+				return
+			}
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
@@ -1479,6 +1509,32 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 	node, ok := h.loadCockpitNode(w, r, cc, "id")
 	if !ok {
 		return
+	}
+	// S3: a reconciled board deletes structure through the module/project
+	// endpoints (they remove the whole subtree). Deleting an L1/L2 row here
+	// would leave its children behind and the next read would recreate the
+	// skeleton row (I1).
+	if cc.cockpit.PlanReconciledAt.Valid {
+		if _, isModuleRow, err := loadModuleRow(r.Context(), h.Queries, cc.workspaceID, node.ParentID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read the plan row")
+			return
+		} else if !isModuleRow {
+			writeError(w, http.StatusBadRequest, "delete the module or project instead: structural rows are removed with it")
+			return
+		}
+	}
+	// S3 §0 item 20: a machine credential may only delete a work item that
+	// files nothing — anything else is a human decision (or a proposal).
+	if isMachineCredentialActor(r) {
+		filed, err := h.Queries.ListIssueIDsFiledAtNode(r.Context(), db.ListIssueIDsFiledAtNodeParams{WorkspaceID: cc.workspaceID, WorkItemID: node.ID})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to check the work item's issues")
+			return
+		}
+		if len(filed) > 0 {
+			writeError(w, http.StatusForbidden, "this work item still files issues; a human must delete it or propose the change")
+			return
+		}
 	}
 
 	tx, err := h.TxStarter.Begin(r.Context())
@@ -1572,14 +1628,7 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 	}
 	h.publishCockpit(r, cc, "node", "deleted", map[string]any{"id": uuidToString(node.ID)})
 	for _, row := range unfiled {
-		h.publish(protocol.EventIssueUpdated, uuidToString(cc.workspaceID), "member", uuidToString(cc.member.UserID), map[string]any{
-			"issue": map[string]any{
-				"id": uuidToString(row.ID), "revision": row.Revision,
-				"project_id": uuidToPtr(row.ProjectID), "module_id": uuidToPtr(row.ModuleID),
-				"work_item_id": nil,
-			},
-			"work_item_changed": true,
-		})
+		h.publish(h.workItemChangedEvent(cc, row.ID, row.Number, row.Status, row.Revision, row.ProjectID, row.ModuleID, pgtype.UUID{}))
 	}
 	// Pending proposals against the node were system-withdrawn in the same
 	// transaction; open queues refresh on the same event.

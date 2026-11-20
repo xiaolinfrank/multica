@@ -2378,8 +2378,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Get("/nodes/next-code", h.GetCockpitNextNodeCode)
 				r.Post("/nodes", h.CreateCockpitNode)
 				// S3: a work item is created by naming its module; the server
-				// owns the code, parent and directory name.
-				r.With(handler.RequireHumanActor).Post("/work-items", h.CreateCockpitWorkItem)
+				// owns the code, parent and directory name. Agents may call it
+				// (§0 item 20), with an optional creation_key for retries.
+				r.Post("/work-items", h.CreateCockpitWorkItem)
 				r.Get("/issues/{issueId}/primary-node", h.GetCockpitIssuePrimaryNode)
 				r.Get("/issues/{issueId}/actions", h.ListCockpitIssueActionSources)
 				r.Get("/issues/{issueId}/artifacts", h.ListCockpitIssueArtifactContexts)

@@ -18,6 +18,10 @@ func workItemFixture(t *testing.T) (wsID, moduleID, l2ID string) {
 	moduleID = dbfx.Insert(t, "module", testutil.Cols{"workspace_id": wsID, "project_id": projectID, "title": "01.01 申报资料"})
 	root := createNode(t, wsID, map[string]any{"code": "01", "name": "出海注册项目", "project_id": projectID})
 	l2 := createNode(t, wsID, map[string]any{"code": "01.01", "name": "申报资料", "parent_id": root.ID, "module_id": moduleID})
+	// Structure writes are open from the reconcile on (S3 §11.2).
+	if _, err := testPool.Exec(context.Background(), `UPDATE cockpit SET plan_reconciled_at=now() WHERE workspace_id=$1`, wsID); err != nil {
+		t.Fatal(err)
+	}
 	return wsID, moduleID, l2.ID
 }
 

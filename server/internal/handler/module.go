@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/multica-ai/multica/server/internal/localpaths"
 	"github.com/multica-ai/multica/server/internal/service"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/util"
@@ -496,12 +498,22 @@ func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "This module is retained by artifact or acceptance facts; preserve its plan structure and use the formal workflow")
 		return
 	}
-	// Work items are the filing now, and detaching the module's issues clears
-	// them (DetachIssuesFromModule). The node rows themselves are removed by
-	// the structure writer in S3; this path must not refuse the delete.
-	if err := qtx.ClearCockpitNodeModuleBinding(r.Context(), db.ClearCockpitNodeModuleBindingParams{WorkspaceID: module.WorkspaceID, ModuleID: module.ID}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
-		return
+	// S3: the module's plan row and every work item under it go with the
+	// module, with the same dependency cleanup the node delete does (payments,
+	// milestones, meeting links, pending changes, issue links). Issues lose
+	// only their filing; DetachIssuesFromModule below drops the module.
+	var removedNodes []db.CockpitNode
+	if board, err := qtx.GetCockpitByWorkspace(r.Context(), module.WorkspaceID); err == nil {
+		if root, err := cockpitSubtreeForBinding(r.Context(), qtx, module.WorkspaceID, board.ID, pgtype.UUID{}, module.ID); err == nil {
+			removedNodes, err = deleteCockpitSubtree(r.Context(), qtx, module.WorkspaceID, root)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to delete the module's plan rows")
+				return
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "failed to locate the module's plan row")
+			return
+		}
 	}
 
 	// The issues survive: they fall back to sitting directly under the
@@ -534,5 +546,6 @@ func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
 		"module_id":  uuidToString(module.ID),
 		"project_id": uuidToString(module.ProjectID),
 	})
+	h.publishCockpitNodesDeleted(workspaceID, userID, removedNodes)
 	w.WriteHeader(http.StatusNoContent)
 }

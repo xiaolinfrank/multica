@@ -98,6 +98,11 @@ func TestCockpitChangeReviewRejectsMovedAncestorContext(t *testing.T) {
 	projectB := dbfx.Project(t, "Project B", testutil.Cols{"workspace_id": ws})
 	rootA := createNode(t, ws, map[string]any{"code": "PA", "project_id": projectA})
 	rootB := createNode(t, ws, map[string]any{"code": "PB", "project_id": projectB})
+	// A pre-reconcile board: the legacy grouping rows this test builds only
+	// exist before the reconcile, and the S3 hierarchy rules stay off there.
+	if _, err := testPool.Exec(t.Context(), `UPDATE cockpit SET plan_reconciled_at=NULL WHERE workspace_id=$1`, ws); err != nil {
+		t.Fatal(err)
+	}
 	group := createNode(t, ws, map[string]any{"code": "Group", "parent_id": rootA.ID})
 	leaf := createNode(t, ws, map[string]any{"code": "Leaf", "parent_id": group.ID, "progress": 40})
 	ingestChanges(t, ws, []map[string]any{{"node": leaf.ID, "field": "progress", "new_value": "80"}})

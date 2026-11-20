@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -19,19 +20,22 @@ import (
 // directory name.
 
 type CockpitWorkItemCreateRequest struct {
-	ModuleID string  `json:"module_id"`
-	Name     string  `json:"name"`
-	AfterID  *string `json:"after_id"`
+	ModuleID    string  `json:"module_id"`
+	Name        string  `json:"name"`
+	AfterID     *string `json:"after_id"`
+	CreationKey *string `json:"creation_key"`
 }
 
-// CreateCockpitWorkItem writes a work item under a module's plan row.
+// CreateCockpitWorkItem writes a work item under a module's plan row. A machine
+// credential may call it (§0 item 20) and may pass creation_key, so a retried
+// agent run reuses the row it already created instead of minting a second one.
 func (h *Handler) CreateCockpitWorkItem(w http.ResponseWriter, r *http.Request) {
-	cc, ok := h.requireCockpit(w, r)
-	if !ok {
-		return
-	}
 	var req CockpitWorkItemCreateRequest
 	if _, ok := decodeCockpitBody(w, r, &req); !ok {
+		return
+	}
+	cc, command, ok := h.prepareCockpitCreation(w, r, "work_item", req.CreationKey, req)
+	if !ok {
 		return
 	}
 	moduleID, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(req.ModuleID), "module_id")
@@ -52,50 +56,37 @@ func (h *Handler) CreateCockpitWorkItem(w http.ResponseWriter, r *http.Request) 
 	}
 
 	ctx := r.Context()
-	tx, err := h.TxStarter.Begin(ctx)
+	tx, qtx, board, replay, err := h.beginCockpitCreation(ctx, cc.workspaceID, pgtype.UUID{}, command)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create work item")
+		writeCockpitCreationError(w, err)
 		return
 	}
 	defer tx.Rollback(ctx)
-	qtx := h.Queries.WithTx(tx)
-	// Same serialization the reconcile and the skeleton use: code allocation
-	// must not interleave with another writer handing out the same number.
-	if _, err := qtx.LockCockpitForWorkspaceChanges(ctx, cc.workspaceID); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to lock the plan board")
+	if replay != nil {
+		writeJSON(w, http.StatusOK, replay)
 		return
 	}
-	board, err := qtx.GetCockpitByWorkspace(ctx, cc.workspaceID)
-	if err != nil {
-		writeError(w, http.StatusConflict, "workspace has no plan board")
+	cc.cockpit = board
+	// S3 §11.2: before the plan is reconciled its codes are still provisional,
+	// so structure writes wait for the reconcile.
+	if err := requireReconciledPlan(board); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	// The module's L2 row: the only place a work item can hang from.
+	// The module's L2 row: the only place a work item can hang from. This is
+	// GetCockpitNodeBindingConflict by name, but here the "conflict" IS the row
+	// the module already binds.
 	l2ID, err := qtx.GetCockpitNodeBindingConflict(ctx, db.GetCockpitNodeBindingConflictParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID, ModuleID: moduleID})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "module has no row on the plan board yet")
 		return
 	}
-	l2, err := qtx.GetCockpitNode(ctx, db.GetCockpitNodeParams{WorkspaceID: cc.workspaceID, ID: l2ID})
-	if err != nil || l2.CockpitID != board.ID {
-		writeError(w, http.StatusBadRequest, "module row no longer exists on this board")
-		return
-	}
-	code, err := service.ReadCockpitNextNodeCode(ctx, qtx, cc.workspaceID, l2.ID)
+	code, err := nextWorkItemCode(ctx, qtx, cc.workspaceID, board.ID, l2ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to allocate a code")
 		return
 	}
-	// A code is spent the moment it is handed out (migration 948): the ledger
-	// row and the node land together, so a deleted row never frees its number.
-	if spent, err := qtx.RecordCockpitUsedCode(ctx, db.RecordCockpitUsedCodeParams{WorkspaceID: cc.workspaceID, CockpitID: board.ID, Code: code}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to record the code")
-		return
-	} else if spent == 0 {
-		writeError(w, http.StatusConflict, "this code has been used before and stays spent")
-		return
-	}
-	position, err := cockpitWorkItemPosition(ctx, qtx, cc.workspaceID, l2.ID, afterID)
+	position, err := cockpitWorkItemPosition(ctx, qtx, cc.workspaceID, l2ID, afterID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "after_id does not name a work item of this module")
 		return
@@ -104,7 +95,7 @@ func (h *Handler) CreateCockpitWorkItem(w http.ResponseWriter, r *http.Request) 
 	// it hangs from, and a project-only binding here would collide with the L1
 	// row that owns that project (cockpit_node_project_binding_unique).
 	node, err := qtx.CreateCockpitNode(ctx, db.CreateCockpitNodeParams{
-		WorkspaceID: cc.workspaceID, CockpitID: board.ID, ParentID: l2.ID,
+		WorkspaceID: cc.workspaceID, CockpitID: board.ID, ParentID: l2ID,
 		Code: code, Name: name, Position: position,
 	})
 	if err != nil {
@@ -123,18 +114,39 @@ func (h *Handler) CreateCockpitWorkItem(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, "failed to set the directory name")
 		return
 	}
+	resp := CockpitNodeCreateResponse{CockpitNodeResponse: cockpitNodeToResponse(node), WorkspaceID: uuidToString(cc.workspaceID)}
+	if command != nil {
+		resp.CreationKey = uuidToString(command.Key)
+	}
+	if err := saveCockpitCreationReceipt(ctx, qtx, command, node.ID, resp); err != nil {
+		writeCockpitCreationError(w, err)
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create work item")
 		return
 	}
-	resp := cockpitNodeToResponse(node)
 	h.publishCockpit(r, cc, "node", "created", resp)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
-// cockpitWorkItemPosition places a new row after the named sibling, or at the
-// end. The name must belong to the same parent — a stale id from another
-// module would otherwise silently append instead of reordering.
+// nextWorkItemCode allocates the code and records it as spent in one step: a
+// code is spent the moment it is handed out (migration 948).
+func nextWorkItemCode(ctx context.Context, q *db.Queries, workspaceID, cockpitID, parentID pgtype.UUID) (string, error) {
+	code, err := service.ReadCockpitNextNodeCode(ctx, q, workspaceID, parentID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := q.RecordCockpitUsedCode(ctx, db.RecordCockpitUsedCodeParams{WorkspaceID: workspaceID, CockpitID: cockpitID, Code: code}); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// cockpitWorkItemPosition places a new row in the gap after the named sibling:
+// the midpoint between it and the next row, so inserting twice after the same
+// row yields two distinct positions. With no sibling named, or the last one
+// named, the row appends at the end.
 func cockpitWorkItemPosition(ctx context.Context, q *db.Queries, workspaceID, parentID, afterID pgtype.UUID) (float64, error) {
 	children, err := q.ListCockpitDirectChildren(ctx, db.ListCockpitDirectChildrenParams{WorkspaceID: workspaceID, ParentID: parentID})
 	if err != nil {
@@ -143,23 +155,37 @@ func cockpitWorkItemPosition(ctx context.Context, q *db.Queries, workspaceID, pa
 	if len(children) == 0 {
 		return 0, nil
 	}
-	max := children[len(children)-1].Position
 	if !afterID.Valid {
-		return max + 1, nil
+		return children[len(children)-1].Position + 1, nil
 	}
-	for _, child := range children {
-		if child.ID == afterID {
-			return child.Position + 0.5, nil
+	for i, child := range children {
+		if child.ID != afterID {
+			continue
 		}
+		if i == len(children)-1 {
+			return child.Position + 1, nil
+		}
+		if next := children[i+1].Position; next > child.Position {
+			return (child.Position + next) / 2, nil
+		}
+		// Same position (legacy import): step just past it.
+		return child.Position + 0.5, nil
 	}
 	return 0, fmt.Errorf("after_id %s is not a child of %s", uuidToString(afterID), uuidToString(parentID))
 }
 
+type cockpitCodeChange struct {
+	id   pgtype.UUID
+	from string
+	to   string
+}
+
 // RenumberCockpitChildren rewrites the children's codes to the order they are
-// shown in. Codes are unique per board, so the write is two-phase: every row
-// that changes takes a temporary code first, then its final one, otherwise a
-// swap collides with the unique index. The first child keeps a "…00" code —
-// the governance row that occupies no number in the parent's sequence.
+// shown in, and rewrites every descendant's prefix with it (a module moving
+// from 01.02 to 01.01 takes its work items 01.02.03 → 01.01.03). Codes are
+// unique per board, so the write is two-phase: every row that changes takes a
+// temporary code first, then its final one. The first child keeps a "…00" code
+// — the governance row that occupies no number in the parent's sequence.
 func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request) {
 	cc, ok := h.requireCockpit(w, r)
 	if !ok {
@@ -167,6 +193,10 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 	}
 	node, ok := h.loadCockpitNode(w, r, cc, "id")
 	if !ok {
+		return
+	}
+	if err := requireReconciledPlan(cc.cockpit); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	ctx := r.Context()
@@ -181,39 +211,64 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "failed to lock the plan board")
 		return
 	}
-	children, err := qtx.ListCockpitDirectChildren(ctx, db.ListCockpitDirectChildrenParams{WorkspaceID: cc.workspaceID, ParentID: node.ID})
+	// The whole board, because a child's renumber carries its subtree: reading
+	// only the children would leave the grandchildren's prefixes behind.
+	nodes, err := qtx.ListCockpitNodes(ctx, cc.cockpit.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read the children")
+		writeError(w, http.StatusInternalServerError, "failed to read the plan rows")
 		return
 	}
-	type change struct {
-		id       pgtype.UUID
-		from, to string
-	}
-	changes := make([]change, 0, len(children))
-	ordinal := 0
-	for _, child := range children {
-		ordinal++
-		code := fmt.Sprintf("%s.%02d", node.Code, ordinal)
-		if ordinal == 1 && strings.HasSuffix(child.Code, ".00") {
-			// The zero-segment row keeps its published code and the siblings
-			// after it number from 01, as the display layer has always shown.
-			code = child.Code
-			ordinal = 0
-		}
-		if code != child.Code {
-			changes = append(changes, change{id: child.ID, from: child.Code, to: code})
+	byParent := make(map[pgtype.UUID][]db.CockpitNode, len(nodes))
+	for _, n := range nodes {
+		if n.ParentID.Valid {
+			byParent[n.ParentID] = append(byParent[n.ParentID], n)
 		}
 	}
+	for parent := range byParent {
+		sort.SliceStable(byParent[parent], func(i, j int) bool {
+			a, b := byParent[parent][i], byParent[parent][j]
+			if a.Position != b.Position {
+				return a.Position < b.Position
+			}
+			return uuidToString(a.ID) < uuidToString(b.ID)
+		})
+	}
+	var changes []cockpitCodeChange
+	var walk func(parentID pgtype.UUID, parentCode string)
+	walk = func(parentID pgtype.UUID, parentCode string) {
+		ordinal := 0
+		for _, child := range byParent[parentID] {
+			ordinal++
+			code := fmt.Sprintf("%s.%02d", parentCode, ordinal)
+			if ordinal == 1 && strings.HasSuffix(child.Code, ".00") {
+				// The zero-segment row keeps its published code and the
+				// siblings after it number from 01.
+				code = child.Code
+				ordinal = 0
+			}
+			if code != child.Code {
+				changes = append(changes, cockpitCodeChange{id: child.ID, from: child.Code, to: code})
+				reprefixDescendants(child.ID, child.Code, code, byParent, &changes)
+			}
+			walk(child.ID, code)
+		}
+	}
+	walk(node.ID, node.Code)
 	for _, c := range changes {
-		if err := setCockpitNodeCode(ctx, qtx, cc.workspaceID, c.id, "~"+uuidToString(c.id), c.from); err != nil {
+		if err := qtx.SetCockpitNodeCode(ctx, db.SetCockpitNodeCodeParams{WorkspaceID: cc.workspaceID, ID: c.id, Code: "~" + uuidToString(c.id)}); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to renumber")
 			return
 		}
 	}
 	for _, c := range changes {
-		if err := setCockpitNodeCode(ctx, qtx, cc.workspaceID, c.id, c.to, c.from); err != nil {
+		if err := qtx.SetCockpitNodeCode(ctx, db.SetCockpitNodeCodeParams{WorkspaceID: cc.workspaceID, ID: c.id, Code: c.to}); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to renumber")
+			return
+		}
+		// New codes go into the ledger; a spent answer is expected here (a
+		// reorder reuses numbers this group already owns), so it is ignored.
+		if _, err := qtx.RecordCockpitUsedCode(ctx, db.RecordCockpitUsedCodeParams{WorkspaceID: cc.workspaceID, CockpitID: cc.cockpit.ID, Code: c.to}); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to record the code")
 			return
 		}
 	}
@@ -225,16 +280,15 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"id": uuidToString(node.ID), "changed": len(changes)})
 }
 
-// setCockpitNodeCode moves one row to a new code, leaving everything else as
-// it is (the two-phase write needs a code-only update).
-func setCockpitNodeCode(ctx context.Context, q *db.Queries, workspaceID, id pgtype.UUID, code, previous string) error {
-	err := q.SetCockpitNodeCode(ctx, db.SetCockpitNodeCodeParams{
-		WorkspaceID: workspaceID,
-		ID:          id,
-		Code:        code,
-	})
-	if err == nil {
-		return nil
+// reprefixDescendants appends a change for every descendant whose code starts
+// with the child's old code, keeping its own tail.
+func reprefixDescendants(id pgtype.UUID, oldCode, newCode string, byParent map[pgtype.UUID][]db.CockpitNode, changes *[]cockpitCodeChange) {
+	for _, child := range byParent[id] {
+		if !strings.HasPrefix(child.Code, oldCode+".") {
+			continue
+		}
+		to := newCode + strings.TrimPrefix(child.Code, oldCode)
+		*changes = append(*changes, cockpitCodeChange{id: child.ID, from: child.Code, to: to})
+		reprefixDescendants(child.ID, child.Code, to, byParent, changes)
 	}
-	return fmt.Errorf("set code of %s (%s → %s): %w", uuidToString(id), previous, code, err)
 }

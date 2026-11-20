@@ -26,18 +26,21 @@ func (h *Handler) ensurePlanSkeleton(ctx context.Context, workspaceID pgtype.UUI
 }
 
 // publishRefiledWorkItemIssue tells issue subscribers that a plan edit moved
-// their issue's filing scope (project/module/status), with the same payload
-// shape the subtree refile uses.
+// their issue's filing scope (project/module/status).
 func (h *Handler) publishRefiledWorkItemIssue(r *http.Request, cc cockpitContext, row db.MoveFilingScopeRow) {
-	if h.Bus == nil {
-		return
-	}
-	h.publish(protocol.EventIssueUpdated, uuidToString(cc.workspaceID), "member", uuidToString(cc.member.UserID), map[string]any{
+	h.publish(h.workItemChangedEvent(cc, row.ID, row.Number, row.Status, row.Revision, row.ProjectID, row.ModuleID, row.WorkItemID))
+}
+
+// workItemChangedEvent is the single payload shape for "your issue's filing
+// moved because of a plan edit". Caches key off number, status and revision, so
+// every producer must send them: the move and the work-item delete share this
+// constructor.
+func (h *Handler) workItemChangedEvent(cc cockpitContext, id pgtype.UUID, number int32, status string, revision int64, projectID, moduleID, workItemID pgtype.UUID) (string, string, string, string, any) {
+	return protocol.EventIssueUpdated, uuidToString(cc.workspaceID), "member", uuidToString(cc.member.UserID), map[string]any{
 		"issue": map[string]any{
-			"id": uuidToString(row.ID), "number": row.Number, "status": row.Status,
-			"revision": row.Revision, "project_id": uuidToPtr(row.ProjectID),
-			"module_id": uuidToPtr(row.ModuleID), "work_item_id": uuidToPtr(row.WorkItemID),
+			"id": uuidToString(id), "number": number, "status": status, "revision": revision,
+			"project_id": uuidToPtr(projectID), "module_id": uuidToPtr(moduleID), "work_item_id": uuidToPtr(workItemID),
 		},
-		"project_changed": true, "module_changed": true,
-	})
+		"work_item_changed": true,
+	}
 }

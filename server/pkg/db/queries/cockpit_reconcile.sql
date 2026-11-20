@@ -151,16 +151,25 @@ UPDATE issue SET
     last_activity_at = GREATEST(COALESCE(last_activity_at, updated_at), now()),
     updated_at = now()
 WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND work_item_id = sqlc.arg('work_item_id')::uuid
-RETURNING id, project_id, module_id, revision;
+RETURNING id, number, status, project_id, module_id, revision;
 
 -- name: ListCockpitDirectChildren :many
+-- Ordered exactly like the plan surface (position, id): "renumber the children
+-- to the order they are shown in" is only true if both orders agree.
 SELECT id, code, name, position, parent_id, project_id, module_id
 FROM cockpit_node
 WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND parent_id = sqlc.arg('parent_id')::uuid
-ORDER BY position, code;
+ORDER BY position, id;
 
 -- name: SetCockpitNodeCode :exec
 -- Code-only write: the renumber's two-phase update must not touch parent,
 -- binding, name or position.
 UPDATE cockpit_node SET code = sqlc.arg('code'), updated_at = now()
 WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND id = sqlc.arg('id')::uuid;
+
+-- name: ListCockpitNodesByIDs :many
+-- Reads only the rows a write touches (a work item's issues), instead of the
+-- whole workspace's issue list.
+SELECT id, number, title, status, project_id, module_id, parent_issue_id, work_item_id
+FROM issue
+WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND id = ANY(sqlc.arg('ids')::uuid[]);

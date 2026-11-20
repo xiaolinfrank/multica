@@ -177,7 +177,10 @@ func TestCockpitImportResolvesAndPreservesBindings(t *testing.T) {
 	}
 }
 
-func TestCockpitResourceDeleteClearsBindingsWithoutDeletingNodes(t *testing.T) {
+// S3: deleting a module removes its plan row and the work items under it — the
+// rows are the module's address on the board, and leaving them behind would
+// leave an unbound row the next read turns back into a skeleton.
+func TestCockpitResourceDeleteRemovesModulePlanRow(t *testing.T) {
 	wsID := cockpitFixture(t, "Binding resource deletion")
 	projectID := dbfx.Project(t, "P", testutil.Cols{"workspace_id": wsID})
 	moduleID := dbfx.Module(t, projectID, "M", testutil.Cols{"workspace_id": wsID})
@@ -185,13 +188,11 @@ func TestCockpitResourceDeleteClearsBindingsWithoutDeletingNodes(t *testing.T) {
 	module := createNode(t, wsID, map[string]any{"code": "M", "parent_id": root.ID, "module_id": moduleID})
 	testutil.Call(t, testHandler.DeleteModule, testutil.WithURLParams(cockpitRequest(http.MethodDelete, "/api/modules/"+moduleID, wsID, nil), "id", moduleID)).Want(http.StatusNoContent)
 	board := getBoard(t, wsID)
-	if len(board.Nodes) != 2 {
-		t.Fatalf("module delete removed plan nodes: %+v", board.Nodes)
+	if len(board.Nodes) != 1 || board.Nodes[0].ID != root.ID {
+		t.Fatalf("module delete left plan nodes behind: %+v", board.Nodes)
 	}
 	for _, n := range board.Nodes {
-		if n.ID == module.ID && (n.ProjectID != nil || n.ModuleID != nil) {
-			t.Fatalf("module delete left binding: %+v", n)
-		}
+		_ = module
 		if n.ID == root.ID && n.ProjectID == nil {
 			t.Fatal("module deletion cleared project binding")
 		}

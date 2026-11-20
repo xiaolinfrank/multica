@@ -735,11 +735,22 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "This project is retained by artifact or acceptance facts; preserve its plan structure and use the formal workflow")
 		return
 	}
-	// Work items are the filing now, and DetachProjectModuleIssues clears them
-	// with the module. The node rows are removed by the structure writer in S3.
-	if err := qtx.ClearCockpitNodeProjectBindings(r.Context(), db.ClearCockpitNodeProjectBindingsParams{WorkspaceID: project.WorkspaceID, ProjectID: project.ID}); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to clear cockpit bindings")
-		return
+	// S3: the project's plan row goes with it, and so does the whole subtree
+	// under that row (its modules and their work items), with the same
+	// dependency cleanup the node delete does. Issues keep their rows; the
+	// detach below clears the module with the project.
+	var removedNodes []db.CockpitNode
+	if board, err := qtx.GetCockpitByWorkspace(r.Context(), project.WorkspaceID); err == nil {
+		if root, err := cockpitSubtreeForBinding(r.Context(), qtx, project.WorkspaceID, board.ID, project.ID, pgtype.UUID{}); err == nil {
+			removedNodes, err = deleteCockpitSubtree(r.Context(), qtx, project.WorkspaceID, root)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to delete the project's plan rows")
+				return
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "failed to locate the project's plan row")
+			return
+		}
 	}
 
 	if _, err := qtx.LockProjectForDelete(r.Context(), db.LockProjectForDeleteParams{
@@ -799,6 +810,7 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.publish(protocol.EventProjectDeleted, workspaceID, "member", userID, map[string]any{"project_id": uuidToString(project.ID)})
+	h.publishCockpitNodesDeleted(workspaceID, userID, removedNodes)
 	w.WriteHeader(http.StatusNoContent)
 }
 
