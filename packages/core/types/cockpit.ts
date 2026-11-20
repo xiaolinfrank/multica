@@ -62,6 +62,11 @@ export interface CockpitNode {
    */
   kind?: "project" | "module" | "work_item";
   project_status?: string;
+  /**
+   * The node's collaboration directory name (code + title), set by the
+   * reconcile and by work-item writes. Empty until S7 provisions the folder.
+   */
+  directory_name?: string | null;
   name: string;
   position: number;
   /** Branch colour; empty means "inherit from the nearest ancestor that sets one". */
@@ -891,4 +896,58 @@ export interface CockpitImportResult {
   meetings: number;
   /** Issue references the frozen board names that no issue answers to now. */
   unresolved_issues: string[];
+}
+
+
+// ---------------------------------------------------------------------------
+// Work-item writes (S3) and the one-time reconcile (S2)
+
+/** POST /api/cockpit/work-items. The server owns the code, the parent and the
+ *  directory name; a retried create reuses the row it already made. */
+export interface CockpitWorkItemCreate {
+  module_id: string;
+  name: string;
+  after_id?: string;
+  /** Idempotency key; a retry must reuse the same key. */
+  creation_key?: string;
+}
+
+/** A move's response is the moved node plus what it carried. The server emits
+ *  these only when a reparent actually refiled issues. */
+export type CockpitNodeMoved = CockpitNode & {
+  refiled_issues?: number;
+  status_mapped?: number;
+};
+
+/** POST /api/cockpit/nodes/{id}/renumber. */
+export interface CockpitRenumberResult {
+  id: string;
+  changed: number;
+}
+
+/** POST /api/cockpit/plan/reconcile. A preview never writes; apply writes once. */
+export interface CockpitReconcileReport {
+  workspace_id: string;
+  apply: boolean;
+  generated_at: string;
+  blockers?: string[];
+  /** Totals a reviewer needs without reading the item lists. */
+  code_changes?: unknown[];
+  new_roots?: unknown[];
+  new_module_nodes?: unknown[];
+  issues?: unknown[];
+  unfiled_issues?: unknown[];
+  /** Issues left unfiled with no evidence at all (no links, no title code);
+   *  counted, not listed. */
+  unfiled_without_evidence?: number;
+  snapshot_id?: string;
+}
+
+/** Typed refusal the issue-detail path already produces, reused by a work-item
+ *  move whose status mapping lands outside the destination workflow (S3). */
+export interface CockpitStatusNotInWorkflow {
+  issue: string;
+  allowed_statuses: string[];
+  workflow_name: string;
+  message: string;
 }

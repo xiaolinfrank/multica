@@ -224,6 +224,13 @@ export interface Issue {
   // fallback) keep compiling without listing it; a current backend always
   // sends it (null = directly under the project).
   module_id?: string | null;
+  /**
+   * The plan work item this issue is filed under (S1). Null means the issue
+   * sits in a module without a work item of its own. Optional rather than
+   * `string | null` for the same compatibility reason as module_id: mobile's
+   * empty-issue fallback must keep compiling.
+   */
+  work_item_id?: string | null;
   position: number;
   // Ordered barrier group among sibling sub-issues (null = unstaged). The
   // parent assignee is woken when a stage closes while a later one waits;

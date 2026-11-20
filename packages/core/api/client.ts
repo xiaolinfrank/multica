@@ -27,7 +27,7 @@ import { parseIssueBatchReceipt, IssueBatchUnconfirmedError } from "./issue-batc
 import type { CockpitIssueArtifactContextPage } from "../types/cockpit-issue-artifacts";
 import { CockpitIssueArtifactContextPageSchema } from "./cockpit-issue-artifact-schemas";
 import { CockpitUnconfirmedReadError, CockpitUnconfirmedWriteError } from "../cockpit/errors";
-import type { CockpitNodeCreate, CockpitNodeCreated } from "../types/cockpit";
+import type { CockpitNodeCreate, CockpitNodeCreated, CockpitWorkItemCreate, CockpitNodeMoved, CockpitRenumberResult, CockpitReconcileReport } from "../types/cockpit";
 import type { CockpitDirectoryPage, CockpitDirectoryPageQuery, CockpitDirectoryReceipt, CockpitDirectoryWrite, CockpitDirectoryNaturalKey } from "../types/cockpit-directory";
 import { CockpitDirectoryPageSchema, CockpitDirectoryReceiptSchema } from "./cockpit-directory-schemas";
 import { normalizedCockpitDirectoryQuery, cockpitDirectoryNaturalKey, cockpitDirectoryWriteAcknowledged } from "../cockpit/directory-page";
@@ -46,7 +46,11 @@ import {
 import { CockpitChangePageSchema, CockpitSnapshotPageSchema, CockpitChangePreviewSchema, CockpitReviewedChangeResponseSchema } from "./cockpit-governance-schemas";
 import { CockpitIssueNodeReferencesSchema, CockpitIssueMeetingReferencesSchema, CockpitIssueReferenceRemovalSchema } from "./cockpit-issue-reference-schemas";
 import type { CockpitIssueNodeReference, CockpitIssueMeetingReference, CockpitIssueReferencePage, CockpitIssueReferenceQuery, CockpitIssueReferenceRemoval } from "../types/cockpit-issue-references";
-import { CockpitNodeCreateResponseSchema, CockpitMeetingCreateResponseSchema } from "./schemas";
+import { CockpitNodeCreateResponseSchema,
+  CockpitWorkItemCreateResponseSchema,
+  CockpitWorkItemMoveResponseSchema,
+  CockpitRenumberResultSchema,
+  CockpitReconcileReportSchema, CockpitMeetingCreateResponseSchema } from "./schemas";
 import type { CockpitAssigneeSelectorQuery, CockpitAssigneeChoicePage } from "../types/cockpit-scope-selectors";
 import { CockpitAssigneeChoicePageSchema } from "./cockpit-scope-selector-schemas";
 import { z, type ZodType } from "zod";
@@ -1575,6 +1579,9 @@ export class ApiClient {
     if (params?.include_no_project) search.set("include_no_project", "true");
     if (params?.module_id) search.set("module_id", params.module_id);
     if (params?.include_no_module) search.set("include_no_module", "true");
+    // Same openable-empty-list semantics as ids: present-but-empty means "no
+    // work items", absent means "no restriction" (S4).
+    if (params?.work_item_ids) search.set("work_item_ids", params.work_item_ids.join(","));
     if (params?.label_ids?.length) search.set("label_ids", params.label_ids.join(","));
     if (params?.top_level_only) search.set("top_level_only", "true");
     // No `.length` guard on purpose: an empty ids array must still send
@@ -1646,6 +1653,7 @@ export class ApiClient {
     if (params.include_no_project) search.set("include_no_project", "true");
     if (params.module_id) search.set("module_id", params.module_id);
     if (params.include_no_module) search.set("include_no_module", "true");
+    if (params.work_item_ids) search.set("work_item_ids", params.work_item_ids.join(","));
     if (params.label_ids?.length) search.set("label_ids", params.label_ids.join(","));
     if (params.group_assignee_type) search.set("group_assignee_type", params.group_assignee_type);
     if (params.group_assignee_id) search.set("group_assignee_id", params.group_assignee_id);
@@ -2161,6 +2169,66 @@ export class ApiClient {
       || (body.project_id !== undefined && result.project_id !== body.project_id)
       || (body.module_id !== undefined && result.module_id !== body.module_id)) throw new CockpitUnconfirmedWriteError();
     return result;
+  }
+
+  /** Create a work item by naming its module (S3). A creation_key retry returns
+   *  the row the first attempt created, with replayed=true. */
+  async createCockpitWorkItem(body: CockpitWorkItemCreate, wsId?: string): Promise<CockpitNodeCreated> {
+    const raw = await this.fetch<unknown>("/api/cockpit/work-items", {
+      method: "POST",
+      ...(wsId ? { headers: { "X-Workspace-ID": wsId } } : {}),
+      body: JSON.stringify(body),
+    });
+    const result = parseWithFallback<CockpitNodeCreated | null>(raw, CockpitWorkItemCreateResponseSchema, null, {
+      endpoint: "POST /api/cockpit/work-items",
+    });
+    if (!result || !result.id || result.name !== body.name.trim()) throw new CockpitUnconfirmedWriteError();
+    // A keyed create must answer for the key it was given; otherwise the row is
+    // unconfirmed and the caller must not treat it as created.
+    if (body.creation_key && (result.creation_key !== body.creation_key || typeof result.replayed !== "boolean")) {
+      throw new CockpitUnconfirmedWriteError();
+    }
+    return result;
+  }
+
+  /** Rename or move a work item through the node's PATCH. The response keeps
+   *  the refiled-issue and mapped-status counts the server reports. */
+  async moveCockpitWorkItem(id: string, patch: { parent_id: string | null; position?: number }): Promise<CockpitNodeMoved> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+    const result = parseWithFallback<CockpitNodeMoved | null>(raw, CockpitWorkItemMoveResponseSchema, null, {
+      endpoint: "PATCH /api/cockpit/nodes/:id (move)",
+    });
+    if (!result || result.id !== id) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  /** Renumber a node's children to the order they are shown in (S3). */
+  async renumberCockpitChildren(nodeId: string): Promise<CockpitRenumberResult | null> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/renumber`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    const result = parseWithFallback<CockpitRenumberResult | null>(raw, CockpitRenumberResultSchema, null, {
+      endpoint: "POST /api/cockpit/nodes/:id/renumber",
+    });
+    if (!result || result.id !== nodeId) throw new CockpitUnconfirmedWriteError();
+    return result;
+  }
+
+  /** Preview or apply the one-time plan reconcile (S2). A second apply is a
+   *  409 the caller must not confuse with a generic failure. */
+  async reconcileCockpitPlan(apply: boolean, wsId: string): Promise<CockpitReconcileReport | null> {
+    const raw = await this.fetch<unknown>("/api/cockpit/plan/reconcile", {
+      method: "POST",
+      headers: { "X-Workspace-ID": wsId },
+      body: JSON.stringify({ apply }),
+    });
+    return parseWithFallback<CockpitReconcileReport | null>(raw, CockpitReconcileReportSchema, null, {
+      endpoint: "POST /api/cockpit/plan/reconcile",
+    });
   }
 
   async updateCockpitNode(id: string, patch: CockpitNodePatch): Promise<CockpitNode> {
@@ -2832,8 +2900,10 @@ export class ApiClient {
     return value?.workspace_id === wsId ? value : null;
   }
 
-  async getCockpitPlan(wsId: string, scope: CockpitScope, signal?: AbortSignal): Promise<CockpitPlanData | null> {
-    const result = await this.readCockpitSurface(wsId, "/plan", scope, CockpitPlanDataSchema, {}, signal);
+  async getCockpitPlan(wsId: string, scope: CockpitScope, includeClosed = false, signal?: AbortSignal): Promise<CockpitPlanData | null> {
+    // The server hides paused/finished/cancelled projects by default (S2);
+    // include_closed=1 opts into them.
+    const result = await this.readCockpitSurface(wsId, "/plan", scope, CockpitPlanDataSchema, includeClosed ? { include_closed: "1" } : {}, signal);
     return result && result.nodes.length <= 5000 && result.payments.length <= 25000 && result.milestones.length <= 2000 && result.node_index.length <= 20000 ? result : null;
   }
   async getCockpitPlanExport(wsId: string, scope: CockpitScope, signal?: AbortSignal): Promise<CockpitPlanExportData | null> {

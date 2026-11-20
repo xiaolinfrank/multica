@@ -16,6 +16,9 @@ export interface CreateIssueRequest {
   /** Module to place the issue under; the module's project wins when
    *  project_id is omitted (server rejects a mismatching pair). */
   module_id?: string | null;
+  /** Plan work item to file under (S1); the work item's module and project
+   *  win, and a mismatching pair is rejected. */
+  work_item_id?: string | null;
   /** Ordered stage (>= 1) grouping this sub-issue under its parent. */
   stage?: number;
   start_date?: string;
@@ -76,6 +79,9 @@ export interface UpdateIssueRequest {
   /** Omit to keep the module; null clears it (issue sits directly under the
    *  project). Changing project_id without an explicit module_id clears it. */
   module_id?: string | null;
+  /** Omit to keep the work item; null clears the filing. Setting a work item
+   *  rewrites module and project with it. */
+  work_item_id?: string | null;
   /** Ordered stage (>= 1); null clears it (unstaged). */
   stage?: number | null;
   /** Attachment IDs to bind to this issue alongside the description update.
@@ -194,6 +200,9 @@ export interface ListIssuesParams {
   module_id?: string;
   /** Widen `module_id` to issues with no module (`include_no_module=1`). */
   include_no_module?: boolean;
+  /** Narrow to plan work items. OR within the field, same shape as
+   *  `module_ids` (S4). */
+  work_item_ids?: string[];
   label_ids?: string[];
   /** Restrict the window to root issues instead of filtering loaded pages. */
   top_level_only?: boolean;
@@ -285,6 +294,8 @@ export interface ListGroupedIssuesParams {
   module_id?: string;
   /** Widen `module_id` to issues with no module. */
   include_no_module?: boolean;
+  /** Narrow to plan work items (S4); same shape as the flat list's. */
+  work_item_ids?: string[];
   label_ids?: string[];
   group_assignee_type?: IssueAssigneeType | "none";
   group_assignee_id?: string;
@@ -376,6 +387,9 @@ export interface IssueTableFilters {
   include_no_project?: boolean;
   /** Module facets of the scope's projects (Project → Module → Issue). */
   module_ids?: string[];
+  /** Plan work-item facets. Same OR-within-the-field semantics as
+   *  `module_ids` (S4). */
+  work_item_ids?: string[];
   /** Widen `module_ids` to issues with no module. */
   include_no_module?: boolean;
   /** Lifecycle status of the parent project. A separate dimension from
@@ -457,10 +471,11 @@ export type IssueTableGroupSpec =
    *  matching issue is still a level of the project's hierarchy. Bounded by the
    *  query's own project/module narrowing; an older server ignores the flag. */
   | { kind: "module"; include_empty?: boolean }
+  | { kind: "work_item" }
   | { kind: "parent" }
   | {
       kind: "compound";
-      primary: "assignee" | "project" | "module" | "parent";
+      primary: "assignee" | "project" | "module" | "work_item" | "parent";
       /** `status_category` folds custom statuses into their category's cell. */
       secondary: "status" | "status_category";
       /** Omit for legacy seven-value category buckets; only for status_category. */
@@ -496,6 +511,7 @@ export type IssueTableGroupValue =
   | { kind: "assignee"; actor: IssueTableActorRef | null }
   | { kind: "project"; project_id: string | null }
   | { kind: "module"; module_id: string | null }
+  | { kind: "work_item"; work_item_id: string | null }
   | {
       kind: "parent";
       parent_id: string | null;

@@ -132,6 +132,10 @@ export interface IssueUpdatedPayload {
   // Same contract as project_changed, for module membership: moving an issue
   // between modules (or out of one) shifts each module's issue/done counts.
   module_changed?: boolean;
+  // A plan edit refiles issues through a work item (S3): project_changed and
+  // module_changed stay false for that path, so the realtime layer compares
+  // the ids in the payload rather than relying on those two flags.
+  work_item_changed?: boolean;
   // Both ends of a duplicate-mark change (MUL-7349). The mark is not on Issue,
   // so these tell the realtime layer whose duplicate relations to refresh.
   duplicate_of_issue_id?: string | null;

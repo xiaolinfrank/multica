@@ -306,6 +306,22 @@ export function onCockpitChanged(
     }
     case "node": {
       void qc.invalidateQueries({ queryKey: cockpitKeys.tasks(wsId) });
+      // The plan surface is a different projection of the same rows (S2/S4):
+      // a created/moved/renamed/deleted node must invalidate it too.
+      void qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      // A module/project delete removes a whole subtree in one frame
+      // (entity = { ids: [...] }), not one row per event.
+      if (isDeletion(action)) {
+        const ids = asRecord(entity)?.["ids"];
+        if (Array.isArray(ids)) {
+          apply((board) => {
+            let next = board;
+            for (const id of ids) if (typeof id === "string") next = removeCockpitNode(next, id);
+            return next;
+          });
+          return;
+        }
+      }
       const row = entityWithId(entity);
       if (!row) return;
       if (isDeletion(action)) {

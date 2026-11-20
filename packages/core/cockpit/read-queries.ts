@@ -8,7 +8,9 @@ import type { CockpitMeetingRegisterQuery, CockpitPlanMeetingMarkerQuery } from 
 export const cockpitReadKeys = {
   all: (wsId: string) => cockpitKeys.surfaces(wsId),
   context: (wsId: string, scope: CockpitScope) => [...cockpitReadKeys.all(wsId), "context", scope] as const,
-  plan: (wsId: string, scope: CockpitScope) => [...cockpitReadKeys.all(wsId), "plan", scope] as const,
+  // include_closed is part of the key: a tree that hides closed projects and
+  // one that shows them are different responses, not different views of one.
+  plan: (wsId: string, scope: CockpitScope, includeClosed = false) => [...cockpitReadKeys.all(wsId), "plan", scope, includeClosed] as const,
   scopes: (wsId: string, kind: string, projectId: string | null, q: string, cursor?: string) => [...cockpitReadKeys.all(wsId), "scopes", kind, projectId, q, cursor ?? ""] as const,
   meetings: (wsId: string, scope: CockpitScope, query: CockpitMeetingRegisterQuery) => [...cockpitReadKeys.all(wsId), "meetings", scope, query] as const,
   node: (wsId: string, nodeId: string, scope: CockpitScope) => [...cockpitReadKeys.all(wsId), "node", nodeId, scope] as const,
@@ -20,8 +22,13 @@ export function cockpitContextOptions(wsId: string, scope: CockpitScope) {
 export function cockpitNodeIndexOptions(wsId: string) {
   return queryOptions({ queryKey: [...cockpitReadKeys.all(wsId), "node-index"], queryFn: ({ signal }) => api.getCockpitNodeIndex(wsId, signal).then(requireCockpitReadResult), enabled: Boolean(wsId), staleTime: 30_000 });
 }
-export function cockpitPlanOptions(wsId: string, scope: CockpitScope) {
-  return queryOptions({ queryKey: cockpitReadKeys.plan(wsId, scope), queryFn: ({ signal }) => api.getCockpitPlan(wsId, scope, signal).then(requireCockpitReadResult), enabled: Boolean(wsId), staleTime: 15_000 });
+export function cockpitPlanOptions(wsId: string, scope: CockpitScope, includeClosed = false) {
+  return queryOptions({
+    queryKey: cockpitReadKeys.plan(wsId, scope, includeClosed),
+    queryFn: ({ signal }) => api.getCockpitPlan(wsId, scope, includeClosed, signal).then(requireCockpitReadResult),
+    enabled: Boolean(wsId),
+    staleTime: 15_000,
+  });
 }
 export function cockpitScopeProjectsOptions(wsId: string, q: string, cursor?: string) {
   return queryOptions({ queryKey: cockpitReadKeys.scopes(wsId, "projects", null, q, cursor), queryFn: ({ signal }) => api.searchCockpitScopes(wsId, "projects", { q, cursor }, signal).then(requireCockpitReadResult), enabled: Boolean(wsId) });

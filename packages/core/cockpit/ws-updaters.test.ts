@@ -8,6 +8,7 @@ import { cockpitArtifactKeys } from "./artifact-queries";
 import { cockpitPreparationKeys } from "./meeting-preparation-queries";
 import { cockpitLifecycleKeys } from "./meeting-lifecycle-queries";
 import { onCockpitChanged } from "./ws-updaters";
+import { CockpitBoardSchema } from "../api/schemas";
 
 const WS = "ws-1";
 
@@ -528,4 +529,31 @@ describe("onCockpitChanged", () => {
     onCockpitChanged(qc, WS, { scope: "node", action: "updated", entity: { id: "n1" } });
     expect(qc.getQueryData(cockpitKeys.board(WS))).toBeUndefined();
   });
+});
+
+// S4: the plan surface is a second projection of the node rows, so any node
+// frame (and the bulk frame a module/project delete sends) must invalidate it.
+it("invalidates the plan surface on node frames, including a subtree delete", () => {
+  const qc = new QueryClient();
+  const invalidate = vi.spyOn(qc, "invalidateQueries");
+  const planInvalidated = () =>
+    invalidate.mock.calls.some(([arg]) => JSON.stringify(arg?.queryKey) === JSON.stringify(cockpitReadKeys.all(WS)));
+
+  invalidate.mockClear();
+  onCockpitChanged(qc, WS, { scope: "node", action: "created", entity: { id: "w1", code: "01.01.01", name: "x" } });
+  expect(planInvalidated()).toBe(true);
+
+  invalidate.mockClear();
+  onCockpitChanged(qc, WS, { scope: "node", action: "deleted", entity: { id: "w1" } });
+  expect(planInvalidated()).toBe(true);
+
+  // A module/project delete carries the whole subtree in one frame.
+  invalidate.mockClear();
+  qc.setQueryData(cockpitKeys.board(WS), CockpitBoardSchema.parse({
+    cockpit: { id: "cp" }, nodes: [{ id: "l2" }, { id: "w1" }, { id: "w2" }, { id: "keep" }],
+  }));
+  onCockpitChanged(qc, WS, { scope: "node", action: "deleted", entity: { ids: ["l2", "w1", "w2"], count: 3 } });
+  expect(planInvalidated()).toBe(true);
+  const board = qc.getQueryData<CockpitBoard>(cockpitKeys.board(WS));
+  expect(board?.nodes.map((n) => n.id)).toEqual(["keep"]);
 });

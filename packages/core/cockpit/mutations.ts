@@ -2,13 +2,14 @@
 
 import { invalidateCockpitDirectoryProjections } from "./meeting-directory-queries";
 
-import type { CockpitNodeCreate } from "../types/cockpit";
+import type { CockpitWorkItemCreate, CockpitNodeCreate } from "../types/cockpit";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { cockpitReadKeys } from "./read-queries";
 import { issueKeys } from "../issues/queries";
 import { CockpitUnconfirmedWriteError } from "./errors";
+import { cockpitWriteError } from "./write-errors";
 import type {
   CockpitBoard,
   CockpitDirectoryEntry,
@@ -626,6 +627,139 @@ export function useDeleteCockpitMeetingNode(wsId: string) {
       patchCockpitBoard(queryClient, wsId, (board) =>
         removeCockpitMeetingNode(board, meetingId, nodeId),
       );
+    },
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// Work items and the one-time reconcile (S3/S4)
+
+/** Create a work item by naming its module. The server answers with the row it
+ *  created (or the row a keyed retry already created); no optimistic insert. */
+export function useCreateCockpitWorkItem(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: CockpitWorkItemCreate) => {
+      try {
+        return await api.createCockpitWorkItem(body, wsId);
+      } catch (error) {
+        throw cockpitWriteError(error);
+      }
+    },
+    onSuccess: (node) => {
+      patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+    },
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
+  });
+}
+
+/** Rename is a predictable field edit: optimistic, rolled back on refusal. */
+export function useRenameCockpitWorkItem(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      try {
+        return await api.updateCockpitNode(id, { name });
+      } catch (error) {
+        throw cockpitWriteError(error);
+      }
+    },
+    onMutate: async ({ id, name }) => {
+      await queryClient.cancelQueries({ queryKey: cockpitKeys.board(wsId) });
+      const previous = queryClient.getQueryData<CockpitBoard>(cockpitKeys.board(wsId));
+      patchCockpitBoard(queryClient, wsId, (board) => ({
+        ...board,
+        nodes: board.nodes.map((n) => (n.id === id ? { ...n, name } : n)),
+      }));
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(cockpitKeys.board(wsId), context.previous);
+    },
+    onSuccess: (node) => {
+      patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
+    },
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
+  });
+}
+
+/** Move a work item under another module row. Not optimistic: the move rewrites
+ *  its issues' scope and may be refused for a workflow, so the server decides
+ *  the outcome before any cache changes. */
+export function useMoveCockpitWorkItem(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, parent_id, position }: { id: string; parent_id: string; position?: number }) => {
+      try {
+        return await api.moveCockpitWorkItem(id, { parent_id, position });
+      } catch (error) {
+        throw cockpitWriteError(error);
+      }
+    },
+    onSuccess: (node) => {
+      patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    },
+  });
+}
+
+/** Delete a work item: confirmed by the server, then the cache loses the row.
+ *  No optimistic delete — a refused delete must not leave a phantom gap. */
+export function useDeleteCockpitWorkItem(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      try {
+        await api.deleteCockpitNode(id);
+      } catch (error) {
+        throw cockpitWriteError(error);
+      }
+    },
+    onSuccess: (_result, id) => {
+      patchCockpitBoard(queryClient, wsId, (board) => removeCockpitNode(board, id));
+    },
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
+  });
+}
+
+/** Renumber children (and rewrite descendants' prefixes). Server-owned codes. */
+export function useRenumberCockpitChildren(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (nodeId: string) => {
+      try {
+        return await api.renumberCockpitChildren(nodeId);
+      } catch (error) {
+        throw cockpitWriteError(error);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+    },
+  });
+}
+
+/** Preview or apply the one-time plan reconcile. Apply is human-only and runs
+ *  once; the report it returns is what a reviewer reads before applying. */
+export function useReconcileCockpitPlan(wsId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ apply }: { apply: boolean }) => {
+      try {
+        return await api.reconcileCockpitPlan(apply, wsId);
+      } catch (error) {
+        throw cockpitWriteError(error);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
     },
   });
 }

@@ -1554,6 +1554,9 @@ export const IssueSchema = z.object({
   // Older backends predate modules; default to null so a missing field parses
   // into the optional Issue.module_id (string | null) without failing the row.
   module_id: z.string().nullable().default(null),
+  // Same compatibility reasoning as module_id: a server that predates the
+  // work-item filing omits the field entirely (S1/S4).
+  work_item_id: z.string().nullable().default(null),
   position: z.number(),
   // Older backends predate `stage`; default to null so a missing field parses
   // cleanly into the non-optional Issue.stage (number | null).
@@ -2055,8 +2058,14 @@ export const CockpitNodeSchema = z.object({
   project_id: z.string().nullable().catch(null).default(null),
   module_id: z.string().nullable().catch(null).default(null),
   code: z.string().default(""),
-  kind: z.enum(["project", "module", "work_item"]).optional(),
-  project_status: z.string().optional(),
+  // A server newer than this client may introduce a level we do not know; an
+  // unknown level must not take the whole tree through parseWithFallback's
+  // empty fallback, so an unrecognized kind degrades to absent.
+  kind: z.enum(["project", "module", "work_item"]).optional().catch(undefined),
+  project_status: z.string().optional().catch(undefined),
+  // The node's collaboration directory name (code + title). Empty until the
+  // folder is provisioned in S7; older backends omit it.
+  directory_name: z.string().nullable().default(null),
   name: z.string().default(""),
   position: z.number().default(0),
   color: z.string().default(""),
@@ -5273,3 +5282,52 @@ export const EMPTY_LIST_LARK_INSTALLATIONS_RESPONSE: ListLarkInstallationsRespon
   installations: [],
   configured: false,
 };
+
+
+/** POST /api/cockpit/work-items: the created row plus the replay marker. The
+ *  response shares the node create's shape (replayed must stay readable so a
+ *  retry can be told apart from a fresh create). */
+export const CockpitWorkItemCreateResponseSchema = CockpitNodeCreateResponseSchema.extend({
+  refiled_issues: z.number().optional(),
+  status_mapped: z.number().optional(),
+}).loose();
+
+/** A move answers with the node plus the counts it carried; it is not a create
+ *  response, so none of the create-only fields (creation_key, replayed) apply. */
+export const CockpitWorkItemMoveResponseSchema = CockpitNodeSchema.extend({
+  refiled_issues: z.number().optional(),
+  status_mapped: z.number().optional(),
+}).loose();
+
+/** POST /api/cockpit/nodes/{id}/renumber. */
+export const CockpitRenumberResultSchema = z.object({
+  id: z.string(),
+  changed: z.number().default(0),
+}).loose();
+
+/** POST /api/cockpit/plan/reconcile. Lists stay opaque: the report is reviewed
+ *  item by item in the plan UI, and a schema that refines them here would make
+ *  one malformed row hide the whole report. */
+export const CockpitReconcileReportSchema = z.object({
+  workspace_id: z.string(),
+  apply: z.boolean().default(false),
+  generated_at: z.string().default(""),
+  blockers: z.array(z.string()).optional().catch(undefined),
+  code_changes: z.array(z.unknown()).optional().catch(undefined),
+  new_roots: z.array(z.unknown()).optional().catch(undefined),
+  new_module_nodes: z.array(z.unknown()).optional().catch(undefined),
+  issues: z.array(z.unknown()).optional().catch(undefined),
+  unfiled_issues: z.array(z.unknown()).optional().catch(undefined),
+  unfiled_without_evidence: z.number().optional().catch(undefined),
+  snapshot_id: z.string().optional().catch(undefined),
+}).loose();
+
+/** The status-mapping refusal a work-item move shares with the issue detail
+ *  path. Missing fields degrade to empty so the UI can still show something. */
+export const CockpitStatusNotInWorkflowBodySchema = z.object({
+  error: z.string().default(""),
+  code: z.literal("status_not_in_workflow"),
+  workflow_name: z.string().default(""),
+  allowed_statuses: z.array(z.string()).default([]),
+  issue: z.string().default(""),
+}).loose();

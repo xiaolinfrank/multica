@@ -21,6 +21,7 @@ import { refreshSubscribedIssues, subscribedIssueKeys } from "../issues/subscrib
 import { projectKeys } from "../projects/queries";
 import { moduleKeys } from "../modules/queries";
 import { cockpitKeys, invalidateCockpitTaskFlow, invalidateCockpitWorkflowsForIssue } from "../cockpit/queries";
+import { cockpitReadKeys } from "../cockpit/read-queries";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
 import { runtimeKeys } from "../runtimes/queries";
@@ -1173,7 +1174,12 @@ export function useRealtimeSync(
       }
       if (msg.type === "project:deleted") {
         const wsId = getCurrentWsId();
-        if (wsId) qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+        if (wsId) {
+          // The project's plan rows went with it (S3): re-read the board AND
+          // the plan surface, which holds a different projection of them.
+          qc.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+          qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+        }
       }
       const prefix = msg.type.split(":")[0] ?? "";
       if (prefix === "agent" || (prefix === "task" && msg.type !== "task:progress")) {
@@ -1212,6 +1218,16 @@ export function useRealtimeSync(
           projectChanged: payload.project_changed,
           moduleChanged: payload.module_changed,
         });
+        // S4: a plan edit refiles issues without setting project_changed or
+        // module_changed — only work_item_changed is set — so the ids in the
+        // payload decide what must be re-read, not the flags. Invalidate the
+        // work item's issue pages (and the plan's per-work-item counts).
+        if (issue.work_item_id) {
+          void qc.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, issue.work_item_id) });
+        }
+        if (payload.work_item_changed || payload.module_changed || payload.project_changed) {
+          void qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+        }
         onIssueDuplicateMarkChanged(
           qc,
           wsId,

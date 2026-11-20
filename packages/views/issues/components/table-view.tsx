@@ -1983,6 +1983,11 @@ export function TableView({
         }
         return value.parent?.title ?? t(($) => $.table.value_unavailable);
       }
+      if (value.kind === "work_item") {
+        // S4 adds the work-item dimension; its label is the work item's name,
+        // which this table has no reader for yet (S5 wires the surface).
+        return t(($) => $.table.value_unavailable);
+      }
       if (value.value_state === "unset") return t(($) => $.table.no_value);
       if (value.value_state === "unavailable") {
         return t(($) => $.table.value_unavailable);
