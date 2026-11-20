@@ -2041,6 +2041,9 @@ export const EMPTY_ISSUE_GRAPH: IssueGraphResponse = { nodes: [], edges: [], mee
 export const CockpitSchema = z.object({
   id: z.string(),
   workspace_id: z.string().default(""),
+  // Set once the one-time plan reconcile has run (S2). The server serializes
+  // db.Cockpit straight onto the plan read; the schema used to drop it.
+  plan_reconciled_at: z.string().nullable().default(null),
   title: z.string().default(""),
   goal_title: z.string().default(""),
   goal_date: z.string().nullable().default(null),

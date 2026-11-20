@@ -131,3 +131,13 @@ describe("work-item facets on the issue list (S4)", () => {
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({ group: { kind: "work_item" }, filters: { work_item_ids: ["w1"] } });
   });
 });
+
+
+describe("plan reconcile marker on the board (S5)", () => {
+  it("keeps plan_reconciled_at and defaults it to null on older backends", async () => {
+    const { CockpitSchema } = await import("./schemas");
+    expect(CockpitSchema.parse({ id: "cp" }).plan_reconciled_at).toBeNull();
+    expect(CockpitSchema.parse({ id: "cp", plan_reconciled_at: "2026-11-20T08:00:00Z" }).plan_reconciled_at)
+      .toBe("2026-11-20T08:00:00Z");
+  });
+});

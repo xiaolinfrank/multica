@@ -8,6 +8,9 @@
 export interface Cockpit {
   id: string;
   workspace_id: string;
+  /** Null until the one-time plan reconcile ran (S2); structural writes are
+   *  refused before it, so the plan UI disables them with an explanation. */
+  plan_reconciled_at?: string | null;
   title: string;
   /** The annual objective shown in the banner, and its target date. */
   goal_title: string;
