@@ -13,11 +13,15 @@ export interface CockpitPlanContext {
   showFinance: boolean;
   toolsOpen: boolean;
   includeArchivedMeetings: boolean;
+  /** "Show paused, finished and cancelled projects" — the plan read's
+   *  include_closed flag, remembered per scope like the other toolbar
+   *  switches (S5). */
+  includeClosedProjects: boolean;
   scrollTop: number;
   scrollLeft: number;
 }
 export const EMPTY_COCKPIT_PLAN_CONTEXT: CockpitPlanContext = {
-  seeded: false, query: "", zoom: "month", collapsedIds: [], rootIds: [], showFinance: false, toolsOpen: true, includeArchivedMeetings: false, scrollTop: 0, scrollLeft: 0,
+  seeded: false, query: "", zoom: "month", collapsedIds: [], rootIds: [], showFinance: false, toolsOpen: true, includeArchivedMeetings: false, includeClosedProjects: false, scrollTop: 0, scrollLeft: 0,
 };
 export interface CockpitMeetingContext {
   archive: CockpitMeetingArchiveFilter;
