@@ -150,6 +150,8 @@ func ensureCockpitPlanSkeletonTx(ctx context.Context, q *db.Queries, workspaceID
 			Code:        code,
 			Name:        module.Title,
 			Position:    position,
+			// S3: a new module's row carries the directory name it will own.
+			DirectoryName: pgtype.Text{String: code + module.Title, Valid: true},
 		}); err != nil {
 			return 0, err
 		}

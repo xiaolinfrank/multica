@@ -732,7 +732,7 @@ func (q *Queries) CreateCockpitPendingChange(ctx context.Context, arg CreateCock
 
 const createCockpitSkeletonNode = `-- name: CreateCockpitSkeletonNode :one
 INSERT INTO cockpit_node (
-    workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position
+    workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position, directory_name
 ) VALUES (
     $1::uuid,
     $2::uuid,
@@ -741,25 +741,29 @@ INSERT INTO cockpit_node (
     $5::uuid,
     $6::text,
     $7::text,
-    $8::double precision
+    $8::double precision,
+    $9::text
 )
 RETURNING id, workspace_id, cockpit_id, parent_id, code, name, position, color, owner, collaborators, start_date, end_date, status, progress, deliverable, dependencies, note, current_progress, vendor, budget_category, budget_amount, exec_status, contract, source, updated_by_type, updated_by_id, created_at, updated_at, project_id, module_id, directory_name
 `
 
 type CreateCockpitSkeletonNodeParams struct {
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-	CockpitID   pgtype.UUID `json:"cockpit_id"`
-	ParentID    pgtype.UUID `json:"parent_id"`
-	ProjectID   pgtype.UUID `json:"project_id"`
-	ModuleID    pgtype.UUID `json:"module_id"`
-	Code        string      `json:"code"`
-	Name        string      `json:"name"`
-	Position    float64     `json:"position"`
+	WorkspaceID   pgtype.UUID `json:"workspace_id"`
+	CockpitID     pgtype.UUID `json:"cockpit_id"`
+	ParentID      pgtype.UUID `json:"parent_id"`
+	ProjectID     pgtype.UUID `json:"project_id"`
+	ModuleID      pgtype.UUID `json:"module_id"`
+	Code          string      `json:"code"`
+	Name          string      `json:"name"`
+	Position      float64     `json:"position"`
+	DirectoryName pgtype.Text `json:"directory_name"`
 }
 
 // The L1/L2 row a skeleton pass adds: identity only (code, binding, position),
 // name mirrors the project/module title but is never read back — I5 keeps
-// names on project.title / module.title.
+// names on project.title / module.title. directory_name is set for a module
+// row (its address plus title, the shape the reconcile writes) and stays empty
+// for a project row, which owns no folder of its own.
 func (q *Queries) CreateCockpitSkeletonNode(ctx context.Context, arg CreateCockpitSkeletonNodeParams) (CockpitNode, error) {
 	row := q.db.QueryRow(ctx, createCockpitSkeletonNode,
 		arg.WorkspaceID,
@@ -770,6 +774,7 @@ func (q *Queries) CreateCockpitSkeletonNode(ctx context.Context, arg CreateCockp
 		arg.Code,
 		arg.Name,
 		arg.Position,
+		arg.DirectoryName,
 	)
 	var i CockpitNode
 	err := row.Scan(

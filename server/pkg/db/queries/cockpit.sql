@@ -836,9 +836,11 @@ ORDER BY m.created_at, m.id;
 -- name: CreateCockpitSkeletonNode :one
 -- The L1/L2 row a skeleton pass adds: identity only (code, binding, position),
 -- name mirrors the project/module title but is never read back — I5 keeps
--- names on project.title / module.title.
+-- names on project.title / module.title. directory_name is set for a module
+-- row (its address plus title, the shape the reconcile writes) and stays empty
+-- for a project row, which owns no folder of its own.
 INSERT INTO cockpit_node (
-    workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position
+    workspace_id, cockpit_id, parent_id, project_id, module_id, code, name, position, directory_name
 ) VALUES (
     sqlc.arg('workspace_id')::uuid,
     sqlc.arg('cockpit_id')::uuid,
@@ -847,6 +849,7 @@ INSERT INTO cockpit_node (
     sqlc.narg('module_id')::uuid,
     sqlc.arg('code')::text,
     sqlc.arg('name')::text,
-    sqlc.arg('position')::double precision
+    sqlc.arg('position')::double precision,
+    sqlc.narg('directory_name')::text
 )
 RETURNING *;
