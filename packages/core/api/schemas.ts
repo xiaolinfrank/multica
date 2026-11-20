@@ -1864,6 +1864,13 @@ const IssueTableGroupValueSchema = z.discriminatedUnion("kind", [
     module_id: z.string().nullable().optional().default(null),
   }).loose(),
   z.object({
+    kind: z.literal("work_item"),
+    // Same omitempty rule as module: the "work_item:none" bucket omits the
+    // field (S4). Without this arm the whole groups response fell to the
+    // empty fallback — 0 groups, 0 total — for one unsupported bucket.
+    work_item_id: z.string().nullable().optional().default(null),
+  }).loose(),
+  z.object({
     kind: z.literal("parent"),
     parent_id: z.string().nullable().optional().default(null),
     parent: IssueTableParentRefSchema.nullable().optional().default(null),
@@ -5313,6 +5320,15 @@ export const CockpitReconcileReportSchema = z.object({
   apply: z.boolean().default(false),
   generated_at: z.string().default(""),
   blockers: z.array(z.string()).optional().catch(undefined),
+  groups: z.array(z.unknown()).optional().catch(undefined),
+  projects: z.array(z.unknown()).optional().catch(undefined),
+  new_projects: z.array(z.unknown()).optional().catch(undefined),
+  modules: z.array(z.unknown()).optional().catch(undefined),
+  new_modules: z.array(z.unknown()).optional().catch(undefined),
+  reflows: z.array(z.unknown()).optional().catch(undefined),
+  title_splits: z.array(z.unknown()).optional().catch(undefined),
+  directory_names: z.array(z.unknown()).optional().catch(undefined),
+  dangling_links: z.array(z.unknown()).optional().catch(undefined),
   code_changes: z.array(z.unknown()).optional().catch(undefined),
   new_roots: z.array(z.unknown()).optional().catch(undefined),
   new_module_nodes: z.array(z.unknown()).optional().catch(undefined),

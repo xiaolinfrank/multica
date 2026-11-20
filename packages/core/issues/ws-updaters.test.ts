@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import {
   agentActivityKeys,
@@ -17,6 +17,8 @@ import {
   patchIssueProperties,
 } from "./ws-updaters";
 import { issueKeys } from "./queries";
+import { moduleKeys } from "../modules/queries";
+
 import { labelKeys } from "../labels/queries";
 import { projectKeys } from "../projects/queries";
 import type {
@@ -1173,5 +1175,77 @@ describe("sidebar issue lists", () => {
     qc.setQueryData(otherKey, { issues: [], total: 0 });
     onIssueDeleted(qc, WS_ID, ISSUE_ID);
     expect(invalidated(otherKey)).toBe(true);
+  });
+});
+
+// S4 review: a filing move must refresh scope aggregates and both work items'
+// pages even when project_changed/module_changed are false (the issue-edit
+// path) or absent (the plan-edit path).
+describe("onIssueUpdated — filing moves (S4)", () => {
+  const WS = "ws-f";
+  function filingSetup() {
+    const qc = new QueryClient();
+    qc.setQueryData(issueKeys.list(WS), makeListCache({ ...baseIssue, workspace_id: WS, project_id: "p1", module_id: "m1", work_item_id: "wA" } as Issue));
+    return { qc };
+  }
+
+  it("diffs the ids when the flags are false but work_item_changed is set (issue-edit form)", () => {
+    const { qc } = filingSetup();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    onIssueUpdated(qc, WS, { ...baseIssue, project_id: "p2", module_id: "m2", work_item_id: "wB" }, {
+      projectChanged: false, moduleChanged: false, workItemChanged: true,
+    });
+    // Module aggregates refresh (a literal false must not short-circuit the
+    // diff). The tasks/surfaces prefixes are invalidated by
+    // invalidateIssueFiling (the realtime handler calls it beside this); its
+    // own test covers that half.
+    const invalidatedKeys = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey));
+    expect(invalidatedKeys).toContain(JSON.stringify(moduleKeys.all(WS)));
+    // The issue left the old module's filtered surface (rebucketed/removed by
+    // the coordinator, not patched in place as a mere field edit).
+    const cache = qc.getQueryData<ListIssuesCache>(issueKeys.list(WS));
+    const stillInOldModule = cache?.byStatus.unstarted?.issues.some((i) => i.id === ISSUE_ID && (i.module_id ?? null) === "m1");
+    expect(stillInOldModule).toBeFalsy();
+  });
+
+  it("refreshes from a bare plan-edit event without wiping cached fields", () => {
+    const { qc } = filingSetup();
+    const detail = issueKeys.detail(WS, ISSUE_ID);
+    qc.setQueryData(detail, { ...baseIssue, project_id: "p1", module_id: "m1", work_item_id: "wA", title: "原始标题" });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    // The plan edit's payload: ids and bookkeeping only, no flags.
+    onIssueUpdated(qc, WS, {
+      id: ISSUE_ID, status: "todo", revision: 2, project_id: "p2", module_id: "m2", work_item_id: "wB",
+    }, { workItemChanged: true });
+    const invalidatedKeys = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey));
+    expect(invalidatedKeys).toContain(JSON.stringify(moduleKeys.all(WS)));
+    // The partial row must not blank the title the detail cache already had.
+    expect(qc.getQueryData<Issue>(detail)?.title).toBe("原始标题");
+  });
+});
+
+
+// The realtime handler calls this beside onIssueUpdated: the tasks prefix
+// covers the OLD work item's page (unreadable from the payload alone) and the
+// plan surface holds the per-work-item counts.
+describe("invalidateIssueFiling (S4)", () => {
+  it("invalidates the tasks prefix and the plan surface for both event forms", async () => {
+    const { invalidateIssueFiling } = await import("../cockpit/issue-filing-invalidation");
+    const { cockpitKeys } = await import("../cockpit/queries");
+    const { cockpitReadKeys } = await import("../cockpit/read-queries");
+    const qc = new QueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const keys = () => invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey));
+    invalidate.mockClear();
+    invalidateIssueFiling(qc, "ws-f", { issue: { id: "i1" }, workItemChanged: true });
+    expect(keys()).toContain(JSON.stringify(cockpitKeys.tasks("ws-f")));
+    expect(keys()).toContain(JSON.stringify(cockpitReadKeys.all("ws-f")));
+    invalidate.mockClear();
+    // Bare plan-edit row: same prefixes, and a row without an id does nothing.
+    invalidateIssueFiling(qc, "ws-f", { issue: { id: "i1", work_item_id: null } });
+    expect(keys().length).toBeGreaterThan(0);
+    invalidate.mockClear();
+    invalidateIssueFiling(qc, "ws-f", { issue: { id: "" } });
+    expect(keys()).toHaveLength(0);
   });
 });

@@ -1827,6 +1827,28 @@ describe("Module schemas", () => {
     expect(parsed.groups[1]?.value).toEqual({ kind: "module", module_id: "m-1" });
   });
 
+  // Same omitempty rule for the work-item arm (S4): the "work_item:none"
+  // bucket omits the id, and one unsupported bucket must not degrade the
+  // whole groups response to zero.
+  it("parses work-item group values, defaulting the omitted none bucket", () => {
+    const parsed = parseWithFallback(
+      {
+        query_fingerprint: "fp",
+        total: 2,
+        groups: [
+          { key: "work_item:none", value: { kind: "work_item" }, count: 1 },
+          { key: "work_item:w-1", value: { kind: "work_item", work_item_id: "w-1" }, count: 1 },
+        ],
+      },
+      IssueTableGroupsResponseSchema,
+      EMPTY_ISSUE_TABLE_GROUPS_RESPONSE,
+      { endpoint: "POST /api/issues/table/groups" },
+    );
+    expect(parsed.groups).toHaveLength(2);
+    expect(parsed.groups[0]?.value).toEqual({ kind: "work_item", work_item_id: null });
+    expect(parsed.groups[1]?.value).toEqual({ kind: "work_item", work_item_id: "w-1" });
+  });
+
   // Single-module endpoints (GET/POST/PUT /api/modules[...]) wrap the row as
   // {"module": {...}}; the client unwraps after parsing, so the envelope must
   // parse with the row-level leniency above and degrade to the empty

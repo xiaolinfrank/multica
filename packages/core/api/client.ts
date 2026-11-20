@@ -2188,6 +2188,11 @@ export class ApiClient {
     if (body.creation_key && (result.creation_key !== body.creation_key || typeof result.replayed !== "boolean")) {
       throw new CockpitUnconfirmedWriteError();
     }
+    // Same workspace check the node create performs: a report from another
+    // workspace is not this workspace's row.
+    if (wsId && result.workspace_id && result.workspace_id !== wsId) {
+      throw new CockpitUnconfirmedWriteError();
+    }
     return result;
   }
 
@@ -2226,9 +2231,14 @@ export class ApiClient {
       headers: { "X-Workspace-ID": wsId },
       body: JSON.stringify({ apply }),
     });
-    return parseWithFallback<CockpitReconcileReport | null>(raw, CockpitReconcileReportSchema, null, {
+    const result = parseWithFallback<CockpitReconcileReport | null>(raw, CockpitReconcileReportSchema, null, {
       endpoint: "POST /api/cockpit/plan/reconcile",
     });
+    // A report that will not parse, or one from another workspace, is not a
+    // confirmation — least of all for an apply whose whole contract is "runs
+    // once". The caller cannot distinguish "done" from "not done" otherwise.
+    if (!result || result.workspace_id !== wsId) throw new CockpitUnconfirmedWriteError();
+    return result;
   }
 
   async updateCockpitNode(id: string, patch: CockpitNodePatch): Promise<CockpitNode> {

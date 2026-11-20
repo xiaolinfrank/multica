@@ -433,6 +433,10 @@ export function onIssueUpdated(
     statusChanged?: boolean;
     projectChanged?: boolean;
     moduleChanged?: boolean;
+    /** A plan edit refiled this issue (S4). project_changed/module_changed
+     *  stay FALSE on that path, so the flags alone cannot answer "did the
+     *  scope move"; when this is set the ids are diffed regardless. */
+    workItemChanged?: boolean;
   } = {},
 ) {
   // Look up the OLD parent + cached entity before mutating cache state, so we
@@ -473,9 +477,16 @@ export function onIssueUpdated(
   // Same flag contract as project, for module membership: module rows carry
   // issue_count/done_count aggregates an entity patch cannot recompute.
   const oldModuleId = detailData?.module_id ?? cachedIssue?.module_id ?? null;
+  // A plan-driven refile (work_item_changed) sets neither project_changed nor
+  // module_changed, so a literal false from those flags must not short-circuit
+  // the diff — the ids decide (S4 review).
+  const flagOrDiff = (flag: boolean | undefined, moved: boolean) =>
+    // flag false + workItemChanged: the false came from the wire but the ids
+    // moved — the diff wins. flag false without workItemChanged: the wire's
+    // authoritative false stands.
+    flag === true ? true : meta.workItemChanged ? moved : flag ?? moved;
   const moduleChanged =
-    meta.moduleChanged ??
-    (issue.module_id !== undefined && (issue.module_id ?? null) !== oldModuleId);
+    flagOrDiff(meta.moduleChanged, issue.module_id !== undefined && (issue.module_id ?? null) !== oldModuleId) ?? false;
   const changed = {
     assignee:
       meta.assigneeChanged ??
@@ -485,8 +496,7 @@ export function onIssueUpdated(
           (issue.assignee_type !== undefined &&
             issue.assignee_type !== cachedIssue.assignee_type))),
     project:
-      meta.projectChanged ??
-      (issue.project_id !== undefined && (issue.project_id ?? null) !== oldProjectId),
+      flagOrDiff(meta.projectChanged, issue.project_id !== undefined && (issue.project_id ?? null) !== oldProjectId) ?? false,
     module: moduleChanged,
     status:
       meta.statusChanged ??

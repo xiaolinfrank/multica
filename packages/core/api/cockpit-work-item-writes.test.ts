@@ -36,6 +36,23 @@ describe("work-item write contracts (S4)", () => {
       .resolves.toMatchObject({ code: "02.01.01", refiled_issues: 3, status_mapped: 1 });
   });
 
+  it("refuses a malformed create: no id, a different name, or a foreign workspace", async () => {
+    const keyed = { ...node, workspace_id: "ws-1", creation_key: key, replayed: false };
+    await expect(reply({ ...keyed, id: "" }).client.createCockpitWorkItem({ module_id: "m1", name: "注册路径设计" }, "ws-1"))
+      .rejects.toThrow("cockpit_write_not_confirmed");
+    await expect(reply({ ...keyed, name: "别的名称" }).client.createCockpitWorkItem({ module_id: "m1", name: "注册路径设计" }, "ws-1"))
+      .rejects.toThrow("cockpit_write_not_confirmed");
+    await expect(reply({ ...keyed, workspace_id: "ws-2" }).client.createCockpitWorkItem({ module_id: "m1", name: "注册路径设计" }, "ws-1"))
+      .rejects.toThrow("cockpit_write_not_confirmed");
+  });
+
+  it("refuses a malformed move: no id, or a row that is not the one asked for", async () => {
+    await expect(reply({ ...node, id: "" }).client.moveCockpitWorkItem("w1", { parent_id: "m2" }))
+      .rejects.toThrow("cockpit_write_not_confirmed");
+    await expect(reply({ ...node, id: "w9" }).client.moveCockpitWorkItem("w1", { parent_id: "m2" }))
+      .rejects.toThrow("cockpit_write_not_confirmed");
+  });
+
   it("reads the renumber receipt by its changed count", async () => {
     const { client } = reply({ id: "m1", changed: 2 });
     await expect(client.renumberCockpitChildren("m1")).resolves.toEqual({ id: "m1", changed: 2 });
@@ -45,9 +62,17 @@ describe("work-item write contracts (S4)", () => {
 
   it("posts the reconcile with its apply flag and survives a report with unknown rows", async () => {
     const { client, fetchMock } = reply({ workspace_id: "ws-1", apply: true, generated_at: "2026-11-20T00:00:00Z",
-      new_roots: [{ future: "shape" }], blockers: [] });
+      new_roots: [{ future: "shape" }], blockers: [], groups: [], projects: [], reflows: [], title_splits: [],
+      directory_names: [], dangling_links: [] });
     await expect(client.reconcileCockpitPlan(true, "ws-1")).resolves.toMatchObject({ apply: true, blockers: [] });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ apply: true });
+  });
+
+  it("refuses an unconfirmable reconcile: a body that will not parse, or another workspace's report", async () => {
+    await expect(reply({ apply: true }).client.reconcileCockpitPlan(true, "ws-1"))
+      .rejects.toThrow("cockpit_write_not_confirmed");
+    await expect(reply({ workspace_id: "ws-2", apply: true }).client.reconcileCockpitPlan(true, "ws-1"))
+      .rejects.toThrow("cockpit_write_not_confirmed");
   });
 
   it("asks for closed projects only when include_closed is set", async () => {

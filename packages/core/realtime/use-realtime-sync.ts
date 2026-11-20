@@ -22,6 +22,7 @@ import { projectKeys } from "../projects/queries";
 import { moduleKeys } from "../modules/queries";
 import { cockpitKeys, invalidateCockpitTaskFlow, invalidateCockpitWorkflowsForIssue } from "../cockpit/queries";
 import { cockpitReadKeys } from "../cockpit/read-queries";
+import { invalidateIssueFiling } from "../cockpit/issue-filing-invalidation";
 import { pinKeys } from "../pins/queries";
 import { autopilotKeys } from "../autopilots/queries";
 import { runtimeKeys } from "../runtimes/queries";
@@ -1212,21 +1213,21 @@ export function useRealtimeSync(
       if (wsId) {
         invalidateCockpitWorkflowsForIssue(qc, wsId, issue.id);
         invalidateIssueOperationBasis(qc, wsId);
+        const filingChanged = payload.work_item_changed === true
+          || payload.module_changed === true
+          || payload.project_changed === true;
         onIssueUpdated(qc, wsId, issue, {
           assigneeChanged: payload.assignee_changed,
           statusChanged: payload.status_changed,
           projectChanged: payload.project_changed,
           moduleChanged: payload.module_changed,
+          workItemChanged: payload.work_item_changed,
         });
-        // S4: a plan edit refiles issues without setting project_changed or
-        // module_changed — only work_item_changed is set — so the ids in the
-        // payload decide what must be re-read, not the flags. Invalidate the
-        // work item's issue pages (and the plan's per-work-item counts).
-        if (issue.work_item_id) {
-          void qc.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, issue.work_item_id) });
-        }
-        if (payload.work_item_changed || payload.module_changed || payload.project_changed) {
-          void qc.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+        // S4: a filing move refreshes the plan's counts and EVERY work-item
+        // issue page (the old work item's included). See
+        // cockpit/issue-filing-invalidation.ts.
+        if (filingChanged || payload.work_item_changed) {
+          invalidateIssueFiling(qc, wsId, { issue, workItemChanged: payload.work_item_changed });
         }
         onIssueDuplicateMarkChanged(
           qc,

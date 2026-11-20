@@ -10,7 +10,10 @@ export const cockpitReadKeys = {
   context: (wsId: string, scope: CockpitScope) => [...cockpitReadKeys.all(wsId), "context", scope] as const,
   // include_closed is part of the key: a tree that hides closed projects and
   // one that shows them are different responses, not different views of one.
-  plan: (wsId: string, scope: CockpitScope, includeClosed = false) => [...cockpitReadKeys.all(wsId), "plan", scope, includeClosed] as const,
+  // The plan prefix (scope- and include_closed-less) is what cache writers
+  // snapshot/restore; the scope-bearing form below names one query.
+  planAll: (wsId: string) => [...cockpitReadKeys.all(wsId), "plan"] as const,
+  plan: (wsId: string, scope: CockpitScope, includeClosed = false) => [...cockpitReadKeys.planAll(wsId), scope, includeClosed] as const,
   scopes: (wsId: string, kind: string, projectId: string | null, q: string, cursor?: string) => [...cockpitReadKeys.all(wsId), "scopes", kind, projectId, q, cursor ?? ""] as const,
   meetings: (wsId: string, scope: CockpitScope, query: CockpitMeetingRegisterQuery) => [...cockpitReadKeys.all(wsId), "meetings", scope, query] as const,
   node: (wsId: string, nodeId: string, scope: CockpitScope) => [...cockpitReadKeys.all(wsId), "node", nodeId, scope] as const,

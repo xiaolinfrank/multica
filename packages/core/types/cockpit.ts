@@ -931,7 +931,20 @@ export interface CockpitReconcileReport {
   apply: boolean;
   generated_at: string;
   blockers?: string[];
-  /** Totals a reviewer needs without reading the item lists. */
+  /** Summary groups the report folds changes into (title + totals). */
+  groups?: unknown[];
+  projects?: unknown[];
+  new_projects?: unknown[];
+  modules?: unknown[];
+  new_modules?: unknown[];
+  /** Merged display groups taking a root's number. */
+  reflows?: unknown[];
+  /** Projects split out of a title-prefixed root. */
+  title_splits?: unknown[];
+  /** Directory names assigned to module rows. */
+  directory_names?: unknown[];
+  /** Links that pointed at a row the plan no longer has. */
+  dangling_links?: unknown[];
   code_changes?: unknown[];
   new_roots?: unknown[];
   new_module_nodes?: unknown[];

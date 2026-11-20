@@ -649,40 +649,52 @@ export function useCreateCockpitWorkItem(wsId: string) {
     },
     onSuccess: (node) => {
       patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
-      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
     },
     onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
   });
 }
 
-/** Rename is a predictable field edit: optimistic, rolled back on refusal. */
+/** Rename is a predictable field edit, so it IS optimistic — on the cache the
+ *  plan surface actually reads (cockpitReadKeys.plan), not the board blob no
+ *  view consumes. Snapshots every plan key and restores them on refusal. */
 export function useRenameCockpitWorkItem(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
       try {
-        return await api.updateCockpitNode(id, { name });
+        const node = await api.updateCockpitNode(id, { name });
+        // A malformed response parses to the empty node; a rename that does
+        // not confirm the row and the name is not a rename.
+        if (node.id !== id || node.name !== name.trim()) throw new CockpitUnconfirmedWriteError();
+        return node;
       } catch (error) {
         throw cockpitWriteError(error);
       }
     },
     onMutate: async ({ id, name }) => {
-      await queryClient.cancelQueries({ queryKey: cockpitKeys.board(wsId) });
-      const previous = queryClient.getQueryData<CockpitBoard>(cockpitKeys.board(wsId));
-      patchCockpitBoard(queryClient, wsId, (board) => ({
-        ...board,
-        nodes: board.nodes.map((n) => (n.id === id ? { ...n, name } : n)),
-      }));
-      return { previous };
+      await queryClient.cancelQueries({ queryKey: cockpitReadKeys.planAll(wsId) });
+      const snapshots = queryClient.getQueriesData({ queryKey: cockpitReadKeys.planAll(wsId) });
+      for (const [key, data] of snapshots) {
+        queryClient.setQueryData(key, renamePlanNode(data, id, name));
+      }
+      return { snapshots };
     },
     onError: (_error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(cockpitKeys.board(wsId), context.previous);
+      for (const [key, data] of context?.snapshots ?? []) queryClient.setQueryData(key, data);
     },
     onSuccess: (node) => {
       patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
     },
     onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
   });
+}
+
+/** One plan cache entry with a row renamed in place (any shape that holds a
+ *  nodes array; unknown shapes pass through untouched). */
+function renamePlanNode(data: unknown, id: string, name: string): unknown {
+  if (data == null || typeof data !== "object" || !Array.isArray((data as { nodes?: unknown }).nodes)) return data;
+  const board = data as { nodes: Array<{ id: string; name?: string }> };
+  return { ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, name } : n)) };
 }
 
 /** Move a work item under another module row. Not optimistic: the move rewrites
