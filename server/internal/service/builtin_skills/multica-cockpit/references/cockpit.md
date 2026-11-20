@@ -315,6 +315,17 @@ folder is always the board's own; the endpoint takes no path. `POST
 resolves outside the archive folder is reported in `skipped` rather than
 failing the batch. `create_task` defaults to false there: those meetings have
 already been held.
+## Meeting archive path on this workspace
+
+The board's `meeting_dir` and each meeting's `nas_dir` are authoritative for
+where meeting material lives; never reconstruct a path from the platform
+module's display name. The canonical archive for this workspace is under
+`/Volumes/人机协作空间/AI医药联合创新平台/06项目管理与规划/06.06多方协同与会议/06.06.03会议纪要与素材`
+— `06.06多方协同与会议` has no space. The spaced `06.06 多方协同与会议`
+look-alike was a historical duplicate and must not be written, recreated, or
+used as an alternative delivery location. Check the actual binding before
+provisioning or filing material, and reconcile any disagreement first.
+
 Directory root boundaries and partial outcomes: [directory-operations.md](directory-operations.md). Persistent meeting directory preparation uses [meeting-directory.md](meeting-directory.md).
 
 ## Project, module and work-item rows

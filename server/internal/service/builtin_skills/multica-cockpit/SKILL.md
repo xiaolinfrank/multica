@@ -110,6 +110,7 @@ multica cockpit meeting add --title "20260908-01 工作组周例会" --code 2026
 ```
 
 Each kind has `update <id> --flag value` and `remove <id>`; milestones and meetings also have `list`. A payment has no `list` — read it from its node. Meeting associations have focused commands — see [meeting tasks](references/meeting-tasks.md); folder preparation and recovery use `meeting directory`, never an invented shell copy.
+For this workspace, use `meeting_dir`/`nas_dir`: `06.06多方协同与会议` (no space), never the spaced duplicate.
 
 ## Meeting minutes workflow
 
