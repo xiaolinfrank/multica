@@ -870,17 +870,14 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               board={board}
               contextNodeIds={contextNodeIds}
               taskCounts={taskCounts}
-              mode="finance"
               query={query}
               rootIds={rootIds}
               onSelect={openTask}
               selectedId={selectedId}
               onPatchNode={patchNode}
               readOnly={planQuery.isError || context.data?.actor.is_human !== true}
-              statusSuggestions={statusSuggestions}
               execStatusSuggestions={execStatusSuggestions}
               budgetCategorySuggestions={budgetCategorySuggestions}
-              ownerSuggestions={ownerSuggestions}
               vendorSuggestions={vendorSuggestions}
             />
           )}
@@ -891,7 +888,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
         {tab !== "meetings" && selectedId && <CockpitSelectedNode key={selectedId} wsId={wsId} nodeId={selectedId} scope={scope} planView={planView}
           section={destination.nodeView ?? "tasks"} onClose={() => navigation.push(cockpitSurfacePath(navigation.pathname, "plan", scope, planView))}
-          onOpenNode={openTask} onOpenMeeting={openMeeting} />}
+          onOpenMeeting={openMeeting} />}
 
       </div>
       <CockpitMilestoneCreate wsId={wsId} scope={scope} open={creatingMilestone} onOpenChange={setCreatingMilestone} initialNodeId={selectedId && nodes.some((node) => node.id === selectedId) && !contextNodeIds.has(selectedId) ? selectedId : null} disabled={context.data?.actor.is_human !== true} />

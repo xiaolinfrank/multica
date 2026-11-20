@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cockpitNodeDetailOptions, cockpitNodePaymentsOptions, cockpitNodeMeetingsOptions, cockpitObjectPath,
   cockpitRelationViewKey, EMPTY_COCKPIT_RELATION_PAGE, useCockpitScopeViewStore, useAppendCockpitNodeIssue, useDeleteCockpitNode,
-  useCreateCockpitPayment, useUpdateCockpitNode, useUpdateCockpitPayment, useDeleteCockpitPayment, useSetCockpitNodeBinding,
+  useCreateCockpitPayment, useUpdateCockpitNode, useUpdateCockpitPayment, useDeleteCockpitPayment,
   type CockpitScope, type CockpitNodeView, type CockpitPlanView } from "@multica/core/cockpit";
 import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
 import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
@@ -19,7 +19,6 @@ import { AppLink, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitNodeTasks } from "./cockpit-node-tasks";
-import { CockpitNodeBindingField } from "./cockpit-node-binding";
 import { CockpitArtifacts } from "./cockpit-artifacts";
 import { CockpitArtifactCreate } from "./cockpit-artifact-create";
 import { CockpitAcceptance } from "./cockpit-acceptance";
@@ -27,9 +26,9 @@ import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 
-export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, onClose, onOpenNode, onOpenMeeting }: {
+export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, onClose, onOpenMeeting }: {
   wsId: string; nodeId: string; scope: CockpitScope; planView: CockpitPlanView; section: CockpitNodeView;
-  onClose: () => void; onOpenNode: (id: string) => void; onOpenMeeting: (id: string) => void;
+  onClose: () => void; onOpenMeeting: (id: string) => void;
 }) {
   const { t } = useT("cockpit"); const navigation = useNavigation();
   const captureContext = useCockpitCommandContext(JSON.stringify([wsId, nodeId]));
@@ -46,7 +45,7 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
   const meetingQuery = useQuery({ ...cockpitNodeMeetingsOptions(wsId, nodeId, meetingCursors.at(-1) || undefined), enabled: meetingCursors.length > 1 && Boolean(detail) });
   const payments = paymentCursors.length === 1 ? detail?.payments : paymentQuery.data;
   const meetings = meetingCursors.length === 1 ? detail?.meetings : meetingQuery.data;
-  const updateNode = useUpdateCockpitNode(wsId); const deleteNode = useDeleteCockpitNode(wsId); const setBinding = useSetCockpitNodeBinding(wsId);
+  const updateNode = useUpdateCockpitNode(wsId); const deleteNode = useDeleteCockpitNode(wsId); 
   const appendIssue = useAppendCockpitNodeIssue(wsId); const createPayment = useCreateCockpitPayment(wsId); const patchPayment = useUpdateCockpitPayment(wsId); const deletePayment = useDeleteCockpitPayment(wsId);
   const [removingPayment, setRemovingPayment] = useState<{ id: string; label: string } | null>(null); const deletionLock = useRef(false); const [deleteError, setDeleteError] = useState("");
   const fail = (cause: unknown) => toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
@@ -88,7 +87,6 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
       registration={filingProjectId && filingModuleId && binding.eligible ? <CockpitArtifactCreate wsId={wsId} nodeId={nodeId} nodeLabel={nodeLabel} projectId={filingProjectId} moduleId={filingModuleId} scope={scope} disabled={readonly} />
         : <AppLink href={cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view: "details", planView }, scope)} className="text-caption text-primary hover:underline">{t(($) => $.binding.configure)}</AppLink>} /> : undefined}
     acceptanceWorkspace={executionSurface && detail.capabilities?.acceptance === true ? <CockpitAcceptance wsId={wsId} nodeId={nodeId} scope={scope} currentUserId={detail.actor.user_id} readOnly={readonly} /> : undefined}
-    binding={<CockpitNodeBindingField wsId={wsId} node={node} ancestors={detail.ancestors} binding={binding} onSave={(next) => setBinding.mutateAsync({ id: nodeId, ...next })} onOpenNode={onOpenNode} readOnly={readonly} />}
     notice={!detail.scope_match ? <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.shell.scope_outside)}</p><AppLink href={cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view: section, planView }, { projectId: binding.project_id, moduleId: binding.module_id })} className="text-primary hover:underline">{t(($) => $.shell.show_object_scope)}</AppLink></div>
       : query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`node:${nodeId}`} onRetry={() => void query.refetch()} /> : undefined}
     statusSuggestions={[node.status].filter(Boolean)} execStatusSuggestions={[node.exec_status].filter(Boolean)} budgetCategorySuggestions={[node.budget_category].filter(Boolean)} ownerSuggestions={[node.owner].filter(Boolean)} vendorSuggestions={[node.vendor].filter(Boolean)}

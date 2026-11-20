@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitGanttLayout, cockpitTableLayout } from "./cockpit-layout";
+import { cockpitGanttLayout } from "./cockpit-layout";
 
 describe("cockpit viewport geometry", () => {
   it.each([320, 480, 768, 960])("leaves a usable date window at %ipx, including finance", (width) => {
@@ -30,14 +30,5 @@ describe("cockpit viewport geometry", () => {
 
   it("does not start with an oversized sticky tree before measurement", () => {
     expect(cockpitGanttLayout(0, true)).toEqual({ compact: true, treeWidth: 160 });
-  });
-
-  it("only freezes the name when business columns have room beside the identity", () => {
-    const narrow = cockpitTableLayout(320);
-    expect(narrow).toEqual({ codeWidth: 100, nameWidth: 260, pinName: false });
-    expect(320 - narrow.codeWidth).toBe(220);
-    expect(cockpitTableLayout(679).pinName).toBe(false);
-    expect(cockpitTableLayout(680).pinName).toBe(true);
-    expect(cockpitTableLayout(1440).pinName).toBe(true);
   });
 });

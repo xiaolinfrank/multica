@@ -9,10 +9,9 @@
 // chart and drifted from it. Here they are the same rows, one source, edited
 // where they are read.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Table2, Wallet } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Wallet } from "lucide-react";
 import { CockpitViewHeading } from "./cockpit-view-heading";
-import { useReducedMotion } from "motion/react";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useNavigation } from "../../navigation";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
@@ -26,40 +25,28 @@ import type {
 import {
   cockpitScope, cockpitScopeViewKey,
   buildCockpitTree,
-  cockpitMissingFields,
   cockpitPaymentTone,
   cockpitPaymentToneColor,
   computeCockpitFinanceRows,
-  flattenCockpitTree,
-  groupPaymentsByNode,
   splitCockpitVendors,
-  type CockpitCheckField,
-  type CockpitTreeNode,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
-import { EditableDate, EditableNumber, EditableSuggest, EditableText, EditableTokens } from "./cockpit-fields";
-import { ExecStatusChip, StatusChip } from "./cockpit-status";
-import { cockpitTableLayout } from "./cockpit-layout";
-
-/** Which grid is showing. Both read the same rows; they differ in the columns. */
-export type CockpitTableMode = "tasks" | "finance";
+import { EditableNumber, EditableSuggest, EditableText, EditableTokens } from "./cockpit-fields";
+import { ExecStatusChip } from "./cockpit-status";
 
 export interface CockpitTableProps {
   board: Pick<CockpitBoard, "nodes" | "payments">;
   contextNodeIds: ReadonlySet<string>;
   taskCounts: ReadonlyMap<string, CockpitPlanTaskCount>;
-  mode: CockpitTableMode;
   query: string;
   /** Restrict to these root branches; empty shows the whole board. */
   rootIds: Set<string>;
   onSelect: (nodeId: string) => void;
   selectedId: string | null;
   onPatchNode: (nodeId: string, patch: CockpitNodePatch) => void;
-  statusSuggestions: string[];
   execStatusSuggestions: string[];
   budgetCategorySuggestions: string[];
-  ownerSuggestions: string[];
   vendorSuggestions: string[];
   readOnly?: boolean;
 }
@@ -108,42 +95,6 @@ function Derived({ value }: { value: string }) {
   );
 }
 
-/**
- * The prototype's field-integrity verdict: green "OK" when every core field
- * carries a value, amber "remind N" naming what is missing on hover.
- */
-function CheckBadge({ missing, node, onSelect, linkCount }: { missing: CockpitCheckField[]; node: CockpitNode; onSelect: () => void; linkCount: number | undefined }) {
-  const { t } = useT("cockpit");
-  const suggested = (["collaborators", "vendor", "budget_category", "exec_status", "dependencies", "deliverable", "note", "current_progress"] as const)
-    .filter((field) => !node[field].trim());
-  const suggestedLabels = [
-    ...suggested.map((field) => t(($) => $.node[field])),
-    ...(node.budget_amount == null ? [t(($) => $.node.budget)] : []),
-    ...(linkCount === 0 ? [t(($) => $.node.linked_issues)] : []),
-  ];
-  const title = [
-    ...(missing.length ? [`${t(($) => $.table.core_missing, { count: missing.length })}: ${missing.map((field) => t(($) => $.node[field])).join(" / ")}`] : []),
-    ...(suggestedLabels.length ? [`${t(($) => $.table.suggested_fields, { count: suggestedLabels.length })}: ${suggestedLabels.join(" / ")}`] : []),
-  ].join("; ");
-  if (missing.length === 0) {
-    return (
-      <button type="button" onClick={onSelect} title={title || undefined} className="whitespace-nowrap rounded-sm text-micro font-medium text-success">
-        {t(($) => $.table.check_ok)}
-      </button>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      title={title}
-      className="inline-flex items-center whitespace-nowrap rounded-full border border-warning/40 bg-warning/10 px-1.5 py-px text-micro font-medium text-warning"
-    >
-      {t(($) => $.table.check_warn, { n: missing.length })}
-    </button>
-  );
-}
-
 function IssueCell({ count, onOpen }: { count: CockpitPlanTaskCount | undefined; onOpen: () => void }) {
   const { t } = useT("cockpit");
   if (!count) return <span className="text-caption text-faint-foreground">—</span>;
@@ -156,59 +107,29 @@ export function CockpitTable({
   board,
   contextNodeIds,
   taskCounts,
-  mode,
   query,
   rootIds,
   onSelect,
   selectedId,
   onPatchNode,
-  statusSuggestions,
   execStatusSuggestions,
   budgetCategorySuggestions,
-  ownerSuggestions,
   vendorSuggestions,
   readOnly,
 }: CockpitTableProps) {
   const { t } = useT("cockpit");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [viewportWidth, setViewportWidth] = useState(0);
-  const reduceMotion = useReducedMotion() === true;
-  const { codeWidth, nameWidth, pinName } = cockpitTableLayout(viewportWidth);
-  const hasNodes = board.nodes.length > 0;
 
   const tableRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    const read = () => setViewportWidth(element.clientWidth);
-    const observer = new ResizeObserver(read);
-    observer.observe(element); read();
-    return () => observer.disconnect();
-  }, [hasNodes, mode]);
   const wsId = useWorkspaceId(); const navigation = useNavigation();
-  useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, cockpitScope(navigation.searchParams)), mode]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
+  useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, cockpitScope(navigation.searchParams)), "finance"]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  const ancestors = useMemo(() => {
-    const result = new Map<string, { root: CockpitTreeNode; parent: CockpitTreeNode | null }>();
-    const walk = (entry: CockpitTreeNode, root: CockpitTreeNode, parent: CockpitTreeNode | null) => {
-      result.set(entry.node.id, { root, parent });
-      entry.children.forEach((child) => walk(child, root, entry));
-    };
-    tree.forEach((root) => walk(root, root, null));
-    return result;
-  }, [tree]);
   const scopedTree = useMemo(() => {
     if (rootIds.size === 0) return tree;
     return tree.filter((entry) => rootIds.has(entry.node.id));
   }, [tree, rootIds]);
 
-  const paymentsByNode = useMemo(() => groupPaymentsByNode(board.payments), [board.payments]);
-
-  const taskRows = useMemo(
-    () => flattenCockpitTree(scopedTree).filter((e) => e.children.length === 0 && matches(e.node, query, e.node.code)),
-    [scopedTree, query],
-  );
   const financeRows = useMemo(
     () =>
       computeCockpitFinanceRows(scopedTree, board.payments, contextNodeIds).filter((row) =>
@@ -217,29 +138,13 @@ export function CockpitTable({
     [scopedTree, board.payments, query, contextNodeIds],
   );
 
-  const visibleCount = mode === "finance" ? financeRows.length : taskRows.length;
+  const visibleCount = financeRows.length;
   const rowVirtualizer = useVirtualizer({ count: visibleCount, getScrollElement: () => scrollRef.current,
     estimateSize: () => 56, overscan: 6, scrollMargin: 36, initialRect: { width: 1200, height: 700 },
-    getItemKey: (index) => mode === "finance" ? financeRows[index]!.node.id : taskRows[index]!.node.id });
+    getItemKey: (index) => financeRows[index]!.node.id });
   const virtualRows = rowVirtualizer.getVirtualItems();
   const topSpace = Math.max(0, (virtualRows[0]?.start ?? 36) - 36);
   const bottomSpace = Math.max(0, rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 36) + 36);
-
-  const searchLabel = t(($) => $.toolbar.search);
-  useEffect(() => {
-    const locate = (event: KeyboardEvent) => {
-      if (event.key !== "Enter" || event.isComposing || !query.trim()) return;
-      const target = event.target;
-      if (!(target instanceof HTMLInputElement) || target.getAttribute("aria-label") !== searchLabel) return;
-      const first = tableRef.current?.querySelector<HTMLTableRowElement>("tbody tr[data-node-id]");
-      if (!first) return;
-      event.preventDefault();
-      first.scrollIntoView?.({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
-      onSelect(first.dataset.nodeId!);
-    };
-    document.addEventListener("keydown", locate);
-    return () => document.removeEventListener("keydown", locate);
-  }, [query, searchLabel, onSelect, mode, reduceMotion]);
 
   const emptyLabel = t(($) => $.common.unset);
 
@@ -258,363 +163,122 @@ export function CockpitTable({
     );
   }
 
-  if (mode === "finance") {
-    const totalBudget = [
-      ...new Map(financeRows.map((row) => [row.node.id, row.budget])).values(),
-    ].reduce((sum, budget) => sum + budget, 0);
-    const totalActual = financeRows.reduce((sum, row) => sum + row.amount, 0);
-    return (
-      <div ref={tableRef} className="cockpit-ledger flex min-h-0 min-w-0 flex-1 flex-col">
-        <CockpitViewHeading title={t(($) => $.plan_views.finance)} icon={Wallet} description={t(($) => $.finance.actual_basis)}>
-          <span className="text-caption text-muted-foreground" role="status">{query.trim() ? t(($) => $.table.search_matches, { count: financeRows.length }) : t(($) => $.finance.line_count, { n: financeRows.length })}</span>
-        </CockpitViewHeading>
-        <dl className="cockpit-ledger-totals">
-          <div><dt>{t(($) => $.finance.budget)}</dt><dd><span tabIndex={0} className="cockpit-finance-value">{formatAmount(totalBudget)}</span><span className="cockpit-currency-unit">{t(($) => $.finance.amount_unit)}</span></dd></div>
-          <div><dt>{t(($) => $.finance.actual)}</dt><dd><span tabIndex={0} className="cockpit-finance-value">{formatAmount(totalActual)}</span><span className="cockpit-currency-unit">{t(($) => $.finance.amount_unit)}</span></dd></div>
-        </dl>
-        <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
-          <table aria-rowcount={visibleCount + 1} className="w-max min-w-full border-collapse">
-            <thead>
-              <tr>
-                <Th>{t(($) => $.table.module)}</Th>
-                <Th>{t(($) => $.node.code)}</Th>
-                <Th>{t(($) => $.node.linked_issues)}</Th>
-                <Th>{t(($) => $.table.item)}</Th>
-                <Th>{t(($) => $.node.payments)}</Th>
-                <Th>{t(($) => $.node.contract)}</Th>
-                <Th>{t(($) => $.table.planned_date)}</Th>
-                <Th>{t(($) => $.table.actual_date)}</Th>
-                <Th className="text-right">{t(($) => $.table.planned_amount)}</Th>
-                <Th className="text-right">{t(($) => $.table.actual_amount)}</Th>
-                <Th>{t(($) => $.node.vendor)}</Th>
-                <Th>{t(($) => $.node.budget_category)}</Th>
-                <Th>{t(($) => $.node.exec_status)}</Th>
-                <Th>{t(($) => $.node.payments)}</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {topSpace > 0 && <tr aria-hidden><td colSpan={13} style={{ height: topSpace, padding: 0 }} /></tr>}
-              {virtualRows.map((virtual) => {
-                const row = financeRows[virtual.index]!;
-                const node = row.node;
-                return (
-                  <tr
-                    key={row.payment.id}
-                    ref={rowVirtualizer.measureElement}
-                    data-index={virtual.index}
-                    aria-rowindex={virtual.index + 2}
-                    data-node-id={node.id}
-                    onMouseEnter={() => setHoveredId(node.id)}
-                    onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
-                    className={rowClass(node.id)}
-                  >
-                    <Td>
-                      <span className="flex items-center gap-1 text-caption whitespace-nowrap">
-                        <span
-                          className="size-2 shrink-0 rounded-full"
-                          style={{ backgroundColor: row.rootColor || "var(--muted-foreground)" }}
-                          aria-hidden
-                        />
-                        {row.rootCode}
-                      </span>
-                    </Td>
-                    <Td>
-                      <button
-                        type="button"
-                        onClick={() => onSelect(node.id)}
-                        aria-label={t(($) => $.gantt.open_node, { code: node.code })}
-                        className="rounded-sm px-1 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
-                      >
-                        {node.code}
-                      </button>
-                    </Td>
-                    <Td>
-                      <IssueCell count={taskCounts.get(node.id)} onOpen={() => onSelect(node.id)} />
-                    </Td>
-                    <Td className="max-w-72">
-                      <EditableText
-                        value={node.name}
-                        onCommit={(name) => onPatchNode(node.id, { name })}
-                        label={t(($) => $.node.name)}
-                        placeholder={t(($) => $.node.name_placeholder)}
-                        disabled={readOnly || contextNodeIds.has(node.id)}
-                        displayClassName="line-clamp-2 text-caption"
-                      />
-                    </Td>
-                    <Td>
-                      <Derived value={row.payment.label} />
-                    </Td>
-                    <Td className="max-w-64">
-                      <EditableText
-                        value={node.contract}
-                        onCommit={(contract) => onPatchNode(node.id, { contract })}
-                        label={t(($) => $.node.contract)}
-                        placeholder={emptyLabel}
-                        disabled={readOnly || contextNodeIds.has(node.id)}
-                        displayClassName="line-clamp-2 text-caption"
-                      />
-                    </Td>
-                    {/* This instalment's date, not the task's first payment. */}
-                    <Td>
-                      <Derived value={row.payment.pay_date ?? ""} />
-                    </Td>
-                    <Td>
-                      <Derived value={row.paid ? (row.payment.pay_date ?? "") : ""} />
-                    </Td>
-                    <Td className="text-right">
-                      <EditableNumber
-                        value={node.budget_amount}
-                        onCommit={(budget_amount) => onPatchNode(node.id, { budget_amount })}
-                        label={t(($) => $.node.budget)}
-                        placeholder={emptyLabel}
-                        disabled={readOnly || contextNodeIds.has(node.id)}
-                        className="text-right"
-                      />
-                    </Td>
-                    <Td className="text-right">
-                      <Derived
-                        value={formatAmount(row.amount)}
-                      />
-                    </Td>
-                    <Td>
-                      <EditableTokens
-                        value={node.vendor}
-                        onCommit={(vendor) => onPatchNode(node.id, { vendor })}
-                        split={splitCockpitVendors}
-                        suggestions={vendorSuggestions}
-                        label={t(($) => $.node.vendor)}
-                        placeholder={emptyLabel}
-                        disabled={readOnly || contextNodeIds.has(node.id)}
-                      />
-                    </Td>
-                    <Td>
-                      <EditableSuggest
-                        value={node.budget_category}
-                        onCommit={(budget_category) => onPatchNode(node.id, { budget_category })}
-                        suggestions={budgetCategorySuggestions}
-                        label={t(($) => $.node.budget_category)}
-                        placeholder={emptyLabel}
-                        disabled={readOnly || contextNodeIds.has(node.id)}
-                      />
-                    </Td>
-                    <Td>
-                      <EditableSuggest
-                        value={node.exec_status}
-                        onCommit={(exec_status) => onPatchNode(node.id, { exec_status })}
-                        suggestions={execStatusSuggestions}
-                        label={t(($) => $.node.exec_status)}
-                        placeholder={emptyLabel}
-                        disabled={readOnly || contextNodeIds.has(node.id)}
-                        renderDisplay={(value) =>
-                          value ? (
-                            <ExecStatusChip status={value} />
-                          ) : (
-                            <span className="text-caption text-muted-foreground">{emptyLabel}</span>
-                          )
-                        }
-                      />
-                    </Td>
-                    <Td>
-                      <span
-                        className="inline-flex whitespace-nowrap rounded-full border px-1.5 py-px text-micro font-medium"
-                        style={{
-                          color: cockpitPaymentToneColor(cockpitPaymentTone(node.exec_status)),
-                          borderColor: "color-mix(in srgb, currentColor 35%, transparent)",
-                          backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
-                        }}
-                      >
-                        {row.paid ? t(($) => $.finance.payment_paid) : t(($) => $.finance.payment_planned)}
-                      </span>
-                    </Td>
-                  </tr>
-                );
-              })}
-              {bottomSpace > 0 && <tr aria-hidden><td colSpan={13} style={{ height: bottomSpace, padding: 0 }} /></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
-
+  const totalBudget = [
+    ...new Map(financeRows.map((row) => [row.node.id, row.budget])).values(),
+  ].reduce((sum, budget) => sum + budget, 0);
+  const totalActual = financeRows.reduce((sum, row) => sum + row.amount, 0);
   return (
-    <div ref={tableRef} className="cockpit-plan-table flex min-h-0 min-w-0 flex-1 flex-col">
-      <CockpitViewHeading title={t(($) => $.plan_views.table)} icon={Table2} description={<p role="status">{query.trim() ? t(($) => $.table.search_matches, { count: taskRows.length }) : t(($) => $.table.tasks_hint, { rows: taskRows.length })}</p>} />
+    <div ref={tableRef} className="cockpit-ledger flex min-h-0 min-w-0 flex-1 flex-col">
+      <CockpitViewHeading title={t(($) => $.plan_views.finance)} icon={Wallet} description={t(($) => $.finance.actual_basis)}>
+        <span className="text-caption text-muted-foreground" role="status">{query.trim() ? t(($) => $.table.search_matches, { count: financeRows.length }) : t(($) => $.finance.line_count, { n: financeRows.length })}</span>
+      </CockpitViewHeading>
+      <dl className="cockpit-ledger-totals">
+        <div><dt>{t(($) => $.finance.budget)}</dt><dd><span tabIndex={0} className="cockpit-finance-value">{formatAmount(totalBudget)}</span><span className="cockpit-currency-unit">{t(($) => $.finance.amount_unit)}</span></dd></div>
+        <div><dt>{t(($) => $.finance.actual)}</dt><dd><span tabIndex={0} className="cockpit-finance-value">{formatAmount(totalActual)}</span><span className="cockpit-currency-unit">{t(($) => $.finance.amount_unit)}</span></dd></div>
+      </dl>
       <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
         <table aria-rowcount={visibleCount + 1} className="w-max min-w-full border-collapse">
           <thead>
             <tr>
-              <Th className="left-0 z-30" style={{ width: codeWidth, minWidth: codeWidth }}>{t(($) => $.node.code)}</Th>
-              <Th className={cn(pinName && "z-30")} style={{ left: pinName ? codeWidth : undefined, minWidth: nameWidth }}>{t(($) => $.node.name)}</Th>
-              <Th>{"L1"}</Th>
-              <Th>{"L2"}</Th>
-              <Th>{t(($) => $.node.owner)}</Th>
-              <Th>{t(($) => $.node.start_date)}</Th>
-              <Th>{t(($) => $.node.end_date)}</Th>
-              <Th>{t(($) => $.node.status)}</Th>
-              <Th>{t(($) => $.node.progress)}</Th>
-              <Th>{t(($) => $.table.check)}</Th>
-              <Th>{t(($) => $.node.collaborators)}</Th>
-              <Th>{t(($) => $.node.deliverable)}</Th>
-              <Th>{t(($) => $.node.current_progress)}</Th>
-              <Th>{t(($) => $.node.dependencies)}</Th>
+              <Th>{t(($) => $.table.module)}</Th>
+              <Th>{t(($) => $.node.code)}</Th>
               <Th>{t(($) => $.node.linked_issues)}</Th>
+              <Th>{t(($) => $.table.item)}</Th>
+              <Th>{t(($) => $.node.payments)}</Th>
+              <Th>{t(($) => $.node.contract)}</Th>
+              <Th>{t(($) => $.table.planned_date)}</Th>
+              <Th>{t(($) => $.table.actual_date)}</Th>
+              <Th className="text-right">{t(($) => $.table.planned_amount)}</Th>
+              <Th className="text-right">{t(($) => $.table.actual_amount)}</Th>
               <Th>{t(($) => $.node.vendor)}</Th>
-              <Th>{t(($) => $.node.budget)}</Th>
               <Th>{t(($) => $.node.budget_category)}</Th>
               <Th>{t(($) => $.node.exec_status)}</Th>
               <Th>{t(($) => $.node.payments)}</Th>
-              <Th>{t(($) => $.node.note)}</Th>
             </tr>
           </thead>
           <tbody>
-            {topSpace > 0 && <tr aria-hidden><td colSpan={21} style={{ height: topSpace, padding: 0 }} /></tr>}
+            {topSpace > 0 && <tr aria-hidden><td colSpan={13} style={{ height: topSpace, padding: 0 }} /></tr>}
             {virtualRows.map((virtual) => {
-              const entry = taskRows[virtual.index]!;
-              const node = entry.node;
-              const isBranch = entry.children.length > 0;
-              const payments = paymentsByNode.get(node.id) ?? [];
+              const row = financeRows[virtual.index]!;
+              const node = row.node;
               return (
                 <tr
-                  key={node.id}
-                    ref={rowVirtualizer.measureElement}
-                    data-index={virtual.index}
-                    aria-rowindex={virtual.index + 2}
-                    data-node-id={node.id}
+                  key={row.payment.id}
+                  ref={rowVirtualizer.measureElement}
+                  data-index={virtual.index}
+                  aria-rowindex={virtual.index + 2}
+                  data-node-id={node.id}
                   onMouseEnter={() => setHoveredId(node.id)}
                   onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                   className={rowClass(node.id)}
                 >
-                  <Td style={{ width: codeWidth, minWidth: codeWidth, maxWidth: codeWidth }} className={cn("sticky left-0 z-10", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
-                    <span
-                      className="flex items-center gap-1 whitespace-nowrap"
-                      title={node.code}
-                    >
-                      <span className="font-mono text-micro text-faint-foreground">
-                        L{entry.depth + 1}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => onSelect(node.id)}
-                        aria-label={t(($) => $.gantt.open_node, { code: node.code })}
-                        className="rounded-sm px-1 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
-                        style={entry.color ? { color: entry.color } : undefined}
-                      >
-                        {node.code}
-                      </button>
+                  <Td>
+                    <span className="flex items-center gap-1 text-caption whitespace-nowrap">
+                      <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: row.rootColor || "var(--muted-foreground)" }}
+                        aria-hidden
+                      />
+                      {row.rootCode}
                     </span>
                   </Td>
-                  <Td style={{ left: pinName ? codeWidth : undefined, width: nameWidth, minWidth: nameWidth, maxWidth: nameWidth }} className={cn(pinName && "sticky z-10", selectedId === node.id ? "bg-accent" : hoveredId === node.id ? "bg-accent/50" : "bg-background")}>
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={() => onSelect(node.id)}
+                      aria-label={t(($) => $.gantt.open_node, { code: node.code })}
+                      className="rounded-sm px-1 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      {node.code}
+                    </button>
+                  </Td>
+                  <Td>
+                    <IssueCell count={taskCounts.get(node.id)} onOpen={() => onSelect(node.id)} />
+                  </Td>
+                  <Td className="max-w-72">
                     <EditableText
                       value={node.name}
                       onCommit={(name) => onPatchNode(node.id, { name })}
                       label={t(($) => $.node.name)}
                       placeholder={t(($) => $.node.name_placeholder)}
                       disabled={readOnly || contextNodeIds.has(node.id)}
-                      displayClassName={cn("text-caption", isBranch && "font-medium")}
-                    />
-                  </Td>
-                  <Td><span className="text-caption" title={ancestors.get(node.id)?.root.node.name}>{ancestors.get(node.id)?.root.node.code ?? "—"}</span></Td>
-                  <Td className="max-w-48"><span className="text-caption" title={ancestors.get(node.id)?.parent?.node.name}>{ancestors.get(node.id)?.parent?.node.name ?? "—"}</span></Td>
-                  <Td>
-                    <EditableSuggest
-                      value={node.owner}
-                      onCommit={(owner) => onPatchNode(node.id, { owner })}
-                      suggestions={ownerSuggestions}
-                      label={t(($) => $.node.owner)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
                   <Td>
-                    <EditableDate
-                      value={node.start_date}
-                      onCommit={(start_date) => onPatchNode(node.id, { start_date })}
-                      label={t(($) => $.node.start_date)}
+                    <Derived value={row.payment.label} />
+                  </Td>
+                  <Td className="max-w-64">
+                    <EditableText
+                      value={node.contract}
+                      onCommit={(contract) => onPatchNode(node.id, { contract })}
+                      label={t(($) => $.node.contract)}
                       placeholder={emptyLabel}
                       disabled={readOnly || contextNodeIds.has(node.id)}
+                      displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
+                  {/* This instalment's date, not the task's first payment. */}
                   <Td>
-                    <EditableDate
-                      value={node.end_date}
-                      onCommit={(end_date) => onPatchNode(node.id, { end_date })}
-                      label={t(($) => $.node.end_date)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
-                    />
+                    <Derived value={row.payment.pay_date ?? ""} />
                   </Td>
                   <Td>
-                    <EditableSuggest
-                      value={node.status}
-                      onCommit={(status) => onPatchNode(node.id, { status })}
-                      suggestions={statusSuggestions}
-                      clearLabel={t(($) => $.node.status_unscheduled)}
-                      label={t(($) => $.node.status)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
-                      renderDisplay={(value) => <StatusChip status={value} />}
-                    />
+                    <Derived value={row.paid ? (row.payment.pay_date ?? "") : ""} />
                   </Td>
                   <Td className="text-right">
-                    <div role="progressbar" aria-label={t(($) => $.node.progress)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.max(0, Math.min(100, node.progress))} className="mb-1 h-1 w-20 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-brand" style={{ width: `${Math.max(0, Math.min(100, node.progress))}%` }} />
-                    </div>
                     <EditableNumber
-                      value={node.progress}
-                      onCommit={(progress) => onPatchNode(node.id, { progress: progress ?? 0 })}
-                      label={t(($) => $.node.progress)}
-                      placeholder="0"
-                      suffix="%"
-                      min={0}
-                      max={100}
-                      disabled={readOnly || isBranch}
+                      value={node.budget_amount}
+                      onCommit={(budget_amount) => onPatchNode(node.id, { budget_amount })}
+                      label={t(($) => $.node.budget)}
+                      placeholder={emptyLabel}
+                      disabled={readOnly || contextNodeIds.has(node.id)}
                       className="text-right"
                     />
                   </Td>
-                  <Td><CheckBadge missing={cockpitMissingFields(node)} node={node} onSelect={() => onSelect(node.id)} linkCount={taskCounts.get(node.id) ? taskCounts.get(node.id)!.primary_total + taskCounts.get(node.id)!.reference_total : undefined} /></Td>
-                  <Td className="max-w-64">
-                    <EditableText
-                      value={node.collaborators}
-                      onCommit={(collaborators) => onPatchNode(node.id, { collaborators })}
-                      label={t(($) => $.node.collaborators)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
-                      displayClassName="line-clamp-2 text-caption"
+                  <Td className="text-right">
+                    <Derived
+                      value={formatAmount(row.amount)}
                     />
-                  </Td>
-                  <Td className="max-w-96">
-                    <EditableText
-                      value={node.deliverable}
-                      onCommit={(deliverable) => onPatchNode(node.id, { deliverable })}
-                      label={t(($) => $.node.deliverable)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
-                      displayClassName="line-clamp-2 text-caption"
-                    />
-                  </Td>
-                  <Td className="max-w-80">
-                    <EditableText
-                      value={node.current_progress}
-                      onCommit={(current_progress) => onPatchNode(node.id, { current_progress })}
-                      label={t(($) => $.node.current_progress)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
-                      displayClassName="line-clamp-2 text-caption"
-                    />
-                  </Td>
-                  <Td className="max-w-64">
-                    <EditableText
-                      value={node.dependencies}
-                      onCommit={(dependencies) => onPatchNode(node.id, { dependencies })}
-                      label={t(($) => $.node.dependencies)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
-                      displayClassName="line-clamp-2 text-caption"
-                    />
-                  </Td>
-                  <Td>
-                    <IssueCell count={taskCounts.get(node.id)} onOpen={() => onSelect(node.id)} />
                   </Td>
                   <Td>
                     <EditableTokens
@@ -625,16 +289,6 @@ export function CockpitTable({
                       label={t(($) => $.node.vendor)}
                       placeholder={emptyLabel}
                       disabled={readOnly || contextNodeIds.has(node.id)}
-                    />
-                  </Td>
-                  <Td className="text-right">
-                    <EditableNumber
-                      value={node.budget_amount}
-                      onCommit={(budget_amount) => onPatchNode(node.id, { budget_amount })}
-                      label={t(($) => $.node.budget)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
-                      className="text-right"
                     />
                   </Td>
                   <Td>
@@ -664,34 +318,22 @@ export function CockpitTable({
                       }
                     />
                   </Td>
-                  <Td className="max-w-80">
+                  <Td>
                     <span
-                      className={cn(
-                        "text-caption",
-                        payments.length === 0 ? "text-faint-foreground" : "text-muted-foreground",
-                      )}
+                      className="inline-flex whitespace-nowrap rounded-full border px-1.5 py-px text-micro font-medium"
+                      style={{
+                        color: cockpitPaymentToneColor(cockpitPaymentTone(node.exec_status)),
+                        borderColor: "color-mix(in srgb, currentColor 35%, transparent)",
+                        backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
+                      }}
                     >
-                      {payments.length === 0
-                        ? emptyLabel
-                        : payments
-                            .map((p) => `${p.label} ${p.pay_date ?? "—"}：${formatAmount(p.amount)}`)
-                            .join("；")}
+                      {row.paid ? t(($) => $.finance.payment_paid) : t(($) => $.finance.payment_planned)}
                     </span>
-                  </Td>
-                  <Td className="max-w-96">
-                    <EditableText
-                      value={node.note}
-                      onCommit={(note) => onPatchNode(node.id, { note })}
-                      label={t(($) => $.node.note)}
-                      placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
-                      displayClassName="line-clamp-2 text-caption"
-                    />
                   </Td>
                 </tr>
               );
             })}
-            {bottomSpace > 0 && <tr aria-hidden><td colSpan={21} style={{ height: bottomSpace, padding: 0 }} /></tr>}
+            {bottomSpace > 0 && <tr aria-hidden><td colSpan={13} style={{ height: bottomSpace, padding: 0 }} /></tr>}
           </tbody>
         </table>
       </div>

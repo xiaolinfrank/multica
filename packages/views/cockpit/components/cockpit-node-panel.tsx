@@ -58,7 +58,6 @@ export interface CockpitNodePanelProps {
   ownerSuggestions: string[];
   vendorSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
-  binding?: React.ReactNode;
   notice?: React.ReactNode;
   taskWorkspace?: React.ReactNode;
   artifactWorkspace?: React.ReactNode;
@@ -99,7 +98,6 @@ export function CockpitNodePanel({
   ownerSuggestions,
   vendorSuggestions,
   onPatch,
-  binding,
   notice,
   taskWorkspace,
   artifactWorkspace,
@@ -240,7 +238,6 @@ export function CockpitNodePanel({
         {artifactWorkspace && <TabsContent value="artifacts" className="flex min-h-0 flex-1 flex-col overflow-hidden [&[hidden]]:hidden">{artifactWorkspace}</TabsContent>}
         {acceptanceWorkspace && <TabsContent value="acceptance" className="min-h-0 overflow-y-auto p-4">{acceptanceWorkspace}</TabsContent>}
         <TabsContent value="details" className="min-h-0 min-w-0 overflow-y-auto overscroll-contain p-4">
-        {binding && <div className="mb-4">{binding}</div>}
         <div className="grid min-w-0 grid-cols-1 gap-4 @min-[28rem]/node-panel:grid-cols-2">
           <CockpitField label={t(($) => $.node.owner)}>
             <EditableSuggest

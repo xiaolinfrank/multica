@@ -10,8 +10,8 @@ vi.mock("@tanstack/react-virtual", () => ({
     return { getVirtualItems: () => items, getTotalSize: () => options.count * size, measureElement: () => undefined };
   },
 }));
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { CockpitBoard, CockpitNode } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
@@ -39,9 +39,9 @@ function show(overrides: Partial<Omit<CockpitTableProps, "board">> & { board?: C
     nodes, payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
   };
   const onSelect = vi.fn();
-  const props: CockpitTableProps = { board, contextNodeIds: new Set(), taskCounts: new Map(), mode: "tasks", query: "", rootIds: new Set(), selectedId: null,
-    onSelect, onPatchNode: vi.fn(), statusSuggestions: [], execStatusSuggestions: [],
-    budgetCategorySuggestions: [], ownerSuggestions: [], vendorSuggestions: [], ...overrides };
+  const props: CockpitTableProps = { board, contextNodeIds: new Set(), taskCounts: new Map(), query: "", rootIds: new Set(), selectedId: null,
+    onSelect, onPatchNode: vi.fn(), execStatusSuggestions: [],
+    budgetCategorySuggestions: [], vendorSuggestions: [], ...overrides };
   const view = render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
     <input aria-label="Search the board" />
     <CockpitTable {...props} />
@@ -50,61 +50,8 @@ function show(overrides: Partial<Omit<CockpitTableProps, "board">> & { board?: C
 }
 
 describe("CockpitTable execution rows", () => {
-  it("shows only leaves with their stored codes and aligned review columns", () => {
-    show();
-    const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("row")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: /historic-task-18/ })).toBeInTheDocument();
-    const headers = within(table).getAllByRole("columnheader");
-    expect(headers.slice(0, 10).map((h) => h.textContent)).toEqual([
-      "Code", "Name", "L1", "L2", "Owner", "Start", "End", "Status", "Progress", "Check",
-    ]);
-    expect(headers).toHaveLength(within(table).getAllByRole("row")[1]!.children.length);
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "40");
-  });
-
-  it("finds hidden fields and Enter locates the first execution match once", () => {
-    const { onSelect } = show({ query: "diagnostic needle" });
-    expect(screen.getByRole("status")).toHaveTextContent("1 matches");
-    expect(screen.getByRole("button", { name: /historic-task-18/ })).toBeInTheDocument();
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search the board" }), { key: "Enter" });
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("leaf");
-  });
-
-  it("searches the stored row address", () => {
-    show({ query: "historic-task-18" });
-    expect(screen.getByRole("button", { name: /historic-task-18/ })).toBeInTheDocument();
-  });
-
-  it("does not treat optional missing fields or zero progress as core warnings", () => {
-    show({ board: {
-      cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
-        summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "", meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
-      nodes: [node({ id: "leaf", code: "01", name: "Complete core fields", progress: 0 })],
-      payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
-    } });
-    // Nine suggestions: the eight soft fields plus the unset budget. Linked
-    // issues are suggested only when the server positively reports zero
-    // links — an unknown count (empty taskCounts map) must not nag.
-    expect(screen.getByRole("button", { name: "OK" })).toHaveAttribute("title", expect.stringContaining("Suggested additions: 9"));
-    expect(screen.getByRole("button", { name: "OK" }).title).not.toContain("Required fields missing");
-    expect(screen.queryByText(/Remind/)).not.toBeInTheDocument();
-  });
-
-  it("labels core gaps separately from suggested additions", () => {
-    show({ board: {
-      cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
-        summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "", meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
-      nodes: [node({ id: "leaf", code: "01", owner: "" })],
-      payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
-    } });
-    const badge = screen.getByRole("button", { name: /Remind/ });
-    expect(badge.title).toContain("Required fields missing: 1: Owner");
-    expect(badge.title).toContain("Suggested additions: 9:");
-  });
-
   it("keeps six-decimal monetary precision and a visible unit in the ledger totals", () => {
-    const { container } = show({ mode: "finance", board: {
+    const { container } = show({ board: {
       cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
         summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "", meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
       nodes: [node({ id: "paid", code: "01", budget_amount: 50.068608, exec_status: "paid" }), node({ id: "planned", code: "02", budget_amount: 1.000001 })],
@@ -131,52 +78,6 @@ describe("CockpitTable execution rows", () => {
   });
 });
 
-const motion = vi.hoisted(() => ({ reduced: false }));
-vi.mock("motion/react", () => ({ useReducedMotion: () => motion.reduced }));
-vi.mock("./use-cockpit-scroll-memory", () => ({ useCockpitScrollMemory: () => {} }));
-
-describe("CockpitTable narrow containers and motion", () => {
-  let width = 320;
-  let resize: () => void;
-  beforeEach(() => {
-    width = 320; motion.reduced = false;
-    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => width);
-    vi.stubGlobal("ResizeObserver", class {
-      constructor(read: () => void) { resize = read; }
-      observe() {} disconnect() {}
-    });
-  });
-  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-
-  it("lets names and all business columns scroll while retaining the code address", () => {
-    const { onSelect } = show();
-    const headers = screen.getAllByRole("columnheader");
-    const row = screen.getAllByRole("row")[1]!;
-    expect(headers).toHaveLength(21);
-    expect(headers[1]!.style.left).toBe("");
-    expect((row.children[0] as HTMLElement).style.width).toBe("100px");
-    expect((row.children[1] as HTMLElement).style.left).toBe("");
-    expect(screen.getByRole("columnheader", { name: "Deliverable" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Budget" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open historic-task-18" }));
-    expect(onSelect).toHaveBeenCalledWith("leaf");
-    width = 1440;
-    act(() => resize());
-    expect(headers[1]!.style.left).toBe("100px");
-    expect((row.children[1] as HTMLElement).style.left).toBe("100px");
-    expect(screen.getAllByRole("columnheader")).toHaveLength(21);
-  });
-
-  it.each([false, true])("locates search results with reduced motion=%s without changing the action", (reduced) => {
-    motion.reduced = reduced;
-    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
-    const { onSelect } = show({ query: "diagnostic needle" });
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search the board" }), { key: "Enter" });
-    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: "center", behavior: reduced ? "auto" : "smooth" });
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("leaf");
-  });
-});
-
 describe("CockpitTable instalment rows", () => {
   it("shows every instalment, including unpaid ones, with its own date and status", () => {
     const paidNode = node({ id: "paid", code: "01.01", name: "Paid task", budget_amount: 100, exec_status: "完全支付" });
@@ -192,7 +93,7 @@ describe("CockpitTable instalment rows", () => {
       ],
       issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
     };
-    show({ board, mode: "finance" });
+    show({ board });
     const rows = within(screen.getByRole("table")).getAllByRole("row");
     expect(rows).toHaveLength(4);
     expect(within(rows[1]!).getByText("First")).toBeInTheDocument();

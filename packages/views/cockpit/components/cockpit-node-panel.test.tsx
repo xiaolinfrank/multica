@@ -45,8 +45,7 @@ async function openConfirmation(branch = false) {
 
 describe("CockpitNodePanel", () => {
   it("opens the URL-selected repair section and exposes a return to the task list", () => {
-    const { props } = setup({ section: "details", taskWorkspace: <p>Task workspace</p>, binding: <p>Repair binding here</p> });
-    expect(screen.getByText("Repair binding here")).toBeVisible();
+    const { props } = setup({ section: "details", taskWorkspace: <p>Task workspace</p> });
     expect(screen.getByRole("tab", { name: "Plan details" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "Tasks" }));
     expect(props.onSectionChange).toHaveBeenCalledWith("tasks");
