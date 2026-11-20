@@ -231,9 +231,17 @@ export function useUpdateIssue() {
       // change moves it off a filtered surface, stale-key bookkeeping where
       // the server result may have drifted (invalidated on settle, not here —
       // a mid-flight refetch would stomp the optimistic state).
+      // A work-item filing rewrites module and project on the server (the
+      // work item carries them); the target ids are unknown until the server
+      // answers, so a module-filtered list's membership is undecidable in the
+      // optimistic pass — issueChangedDims marks project/module changed, and
+      // the unknown membership turns those caches into stale keys (refreshed
+      // on settle) instead of wrong patches.
+      const filingTouched = Object.prototype.hasOwnProperty.call(patch, "work_item_id");
       const change = applyIssueChange(qc, wsId, id, patch as Partial<Issue>, {
         changed: issueChangedDims(patch, prevDetail),
         baseIssue: prevDetail,
+        membershipUnknown: filingTouched,
       });
 
       // Resolve parent_issue_id from the freshest source so we can keep the
@@ -332,8 +340,14 @@ export function useUpdateIssue() {
       // property write resolves would otherwise overwrite the newer bag
       // (clean-room review F3 response-ordering race).
       const { properties: _staleBag, ...reconcilable } = serverIssue;
+      // A work-item filing moves module/project on the SERVER, so against the
+      // post-write entity the dims read "unchanged" while the cached card
+      // still carries the old module. Diff against no base in that case: the
+      // patch then re-judges membership and lifts the card out of the old
+      // module's filtered list instead of patching it in place.
+      const filingTouchedAtSettle = Object.prototype.hasOwnProperty.call(intent, "work_item_id");
       const reconcile = applyIssueChange(qc, wsId, serverIssue.id, reconcilable as typeof serverIssue, {
-        changed: issueChangedDims(intent, serverIssue),
+        changed: issueChangedDims(intent, filingTouchedAtSettle ? undefined : serverIssue),
         baseIssue: serverIssue,
         // The HTTP response can arrive after a newer WS event. Reconcile the
         // committed snapshot only into projections that have not already

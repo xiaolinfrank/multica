@@ -931,20 +931,25 @@ export interface CockpitReconcileReport {
   apply: boolean;
   generated_at: string;
   blockers?: string[];
-  /** Summary groups the report folds changes into (title + totals). */
+  /** The reconcile's summary-group outcomes (id, name, kept, kept_code,
+   *  moved, removed) — one entry per display group it folded. */
   groups?: unknown[];
   projects?: unknown[];
   new_projects?: unknown[];
   modules?: unknown[];
   new_modules?: unknown[];
-  /** Merged display groups taking a root's number. */
+  /** Projects migrated out of a merged old root (old_root_id, old_code,
+   *  projects, milestones_moved). */
   reflows?: unknown[];
-  /** Projects split out of a title-prefixed root. */
+  /** Title-prefix splits, project or module (kind, old_title, new_title,
+   *  code). */
   title_splits?: unknown[];
-  /** Directory names assigned to module rows. */
+  /** Directory names assigned per node (node_id, code, name,
+   *  directory_name, source). */
   directory_names?: unknown[];
-  /** Links that pointed at a row the plan no longer has. */
-  dangling_links?: unknown[];
+  /** Count of links that pointed at a row the plan no longer has (the
+   *  server reports a number, not a list). */
+  dangling_links?: number;
   code_changes?: unknown[];
   new_roots?: unknown[];
   new_module_nodes?: unknown[];

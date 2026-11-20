@@ -234,6 +234,17 @@ describe("useUpdateIssue — optimistic move keeps every bucketed board in sync"
     }
   });
 
+  it("moves the issue out of the old module's filtered list when only the work item changes (S4)", async () => {
+    const oldModuleKey = issueKeys.myListSorted(WS_ID, "module:m1", { module_id: "m1" }, sort);
+    qc.setQueryData<ListIssuesCache>(oldModuleKey, makeBucketed());
+    updateIssue.mockResolvedValue({ ...makeIssue(1), module_id: "m2", project_id: "p2", work_item_id: "w-2" } as Issue);
+    const { result } = renderHook(() => useUpdateIssue(), { wrapper: createWrapper(qc) });
+    await act(async () => {
+      await result.current.mutateAsync({ id: "issue-1", work_item_id: "w-2" });
+    });
+    expect(bucketIds(oldModuleKey, "unstarted")).not.toContain("issue-1");
+  });
+
   it("does not couple a field update to the cached aggregate revision", async () => {
     qc.setQueryData(
       issueKeys.detail(WS_ID, "issue-1"),

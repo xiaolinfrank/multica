@@ -39,12 +39,15 @@ export function issueChangedDims(
   const has = (field: string) =>
     Object.prototype.hasOwnProperty.call(patch, field);
   const p = patch as Partial<Issue>;
+  // Filing a work item rewrites module and project server-side; without a base
+  // (or with a different value) both dims count as changed.
+  const filingMoved = has("work_item_id") && (!base || base.work_item_id !== p.work_item_id);
   return {
     assignee:
       (has("assignee_id") && (!base || base.assignee_id !== p.assignee_id)) ||
       (has("assignee_type") && (!base || base.assignee_type !== p.assignee_type)),
-    project: has("project_id") && (!base || base.project_id !== p.project_id),
-    module: has("module_id") && (!base || base.module_id !== p.module_id),
+    project: (has("project_id") && (!base || base.project_id !== p.project_id)) || filingMoved,
+    module: (has("module_id") && (!base || base.module_id !== p.module_id)) || filingMoved,
     status: has("status") && p.status !== undefined && (!base || base.status !== p.status),
   };
 }

@@ -63,7 +63,7 @@ describe("work-item write contracts (S4)", () => {
   it("posts the reconcile with its apply flag and survives a report with unknown rows", async () => {
     const { client, fetchMock } = reply({ workspace_id: "ws-1", apply: true, generated_at: "2026-11-20T00:00:00Z",
       new_roots: [{ future: "shape" }], blockers: [], groups: [], projects: [], reflows: [], title_splits: [],
-      directory_names: [], dangling_links: [] });
+      directory_names: [], dangling_links: 3 });
     await expect(client.reconcileCockpitPlan(true, "ws-1")).resolves.toMatchObject({ apply: true, blockers: [] });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ apply: true });
   });

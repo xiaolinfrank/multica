@@ -5328,7 +5328,7 @@ export const CockpitReconcileReportSchema = z.object({
   reflows: z.array(z.unknown()).optional().catch(undefined),
   title_splits: z.array(z.unknown()).optional().catch(undefined),
   directory_names: z.array(z.unknown()).optional().catch(undefined),
-  dangling_links: z.array(z.unknown()).optional().catch(undefined),
+  dangling_links: z.number().optional().catch(undefined),
   code_changes: z.array(z.unknown()).optional().catch(undefined),
   new_roots: z.array(z.unknown()).optional().catch(undefined),
   new_module_nodes: z.array(z.unknown()).optional().catch(undefined),

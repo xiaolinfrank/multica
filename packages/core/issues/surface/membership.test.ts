@@ -170,6 +170,15 @@ describe("issueChangedDims", () => {
     });
   });
 
+  it("counts a work-item filing as a project and module change (S4)", () => {
+    // The server rewrites module and project with the filing, so the dims must
+    // say both moved even though the patch names neither — otherwise the
+    // writer's own tab keeps the issue in the old module's filtered list.
+    expect(issueChangedDims({ work_item_id: "w-2" })).toMatchObject({ project: true, module: true });
+    expect(issueChangedDims({ work_item_id: "w-1" }, { ...makeIssue(), work_item_id: "w-1" })).toMatchObject({ project: false, module: false });
+    expect(issueChangedDims({ work_item_id: null }, { ...makeIssue(), work_item_id: "w-1" })).toMatchObject({ project: true, module: true });
+  });
+
   it("sharpens against a base entity — writing the same value changes nothing", () => {
     const base = makeIssue();
     expect(issueChangedDims({ assignee_id: "me", assignee_type: "member" }, base)).toEqual({

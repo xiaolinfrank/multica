@@ -1213,9 +1213,6 @@ export function useRealtimeSync(
       if (wsId) {
         invalidateCockpitWorkflowsForIssue(qc, wsId, issue.id);
         invalidateIssueOperationBasis(qc, wsId);
-        const filingChanged = payload.work_item_changed === true
-          || payload.module_changed === true
-          || payload.project_changed === true;
         onIssueUpdated(qc, wsId, issue, {
           assigneeChanged: payload.assignee_changed,
           statusChanged: payload.status_changed,
@@ -1224,11 +1221,14 @@ export function useRealtimeSync(
           workItemChanged: payload.work_item_changed,
         });
         // S4: a filing move refreshes the plan's counts and EVERY work-item
-        // issue page (the old work item's included). See
-        // cockpit/issue-filing-invalidation.ts.
-        if (filingChanged || payload.work_item_changed) {
-          invalidateIssueFiling(qc, wsId, { issue, workItemChanged: payload.work_item_changed });
-        }
+        // issue page (the old work item's included). Whether this event is one
+        // is decided inside invalidateIssueFiling from the three flags.
+        invalidateIssueFiling(qc, wsId, {
+          issue,
+          workItemChanged: payload.work_item_changed,
+          moduleChanged: payload.module_changed,
+          projectChanged: payload.project_changed,
+        });
         onIssueDuplicateMarkChanged(
           qc,
           wsId,

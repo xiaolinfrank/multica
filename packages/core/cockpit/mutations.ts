@@ -674,8 +674,10 @@ export function useRenameCockpitWorkItem(wsId: string) {
     onMutate: async ({ id, name }) => {
       await queryClient.cancelQueries({ queryKey: cockpitReadKeys.planAll(wsId) });
       const snapshots = queryClient.getQueriesData({ queryKey: cockpitReadKeys.planAll(wsId) });
+      // The optimistic value is the one the server will keep (trimmed), so the
+      // card does not show trailing spaces until the refetch lands.
       for (const [key, data] of snapshots) {
-        queryClient.setQueryData(key, renamePlanNode(data, id, name));
+        queryClient.setQueryData(key, renamePlanNode(data, id, name.trim()));
       }
       return { snapshots };
     },

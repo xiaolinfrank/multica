@@ -316,6 +316,11 @@ export function applyIssueChange(
      *  where the card is not loaded. Omitting it degrades those judgments to
      *  "unknown" → a deferred refetch, never a wrong patch. */
     baseIssue?: Issue;
+    /** The change's effect on a filter's membership cannot be judged yet
+     *  (a work-item filing rewrites module/project server-side; the target
+     *  ids are not in the patch). Filtered caches become stale keys rather
+     *  than wrong patches. */
+    membershipUnknown?: boolean;
     /** Optional per-cache admission guard. Realtime uses this to reject a
      *  non-increasing revision in a fresh cache while still healing another
      *  loaded projection that holds an older revision of the same issue. */
@@ -368,11 +373,9 @@ export function applyIssueChange(
       if (patchNeedsInvalidation(patch)) staleKeys.push(key);
       let next: ListIssuesCache;
       if (filterTouched) {
-        const membership = issueMatchesListFilter(
-          { ...loc.issue, ...patch },
-          scope,
-          filter,
-        );
+        const membership = opts.membershipUnknown
+          ? ("unknown" as const)
+          : issueMatchesListFilter({ ...loc.issue, ...patch }, scope, filter);
         if (membership === false) {
           next = removeIssueFromBuckets(data, id);
         } else {

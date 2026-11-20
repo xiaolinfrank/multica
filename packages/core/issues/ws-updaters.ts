@@ -481,10 +481,12 @@ export function onIssueUpdated(
   // module_changed, so a literal false from those flags must not short-circuit
   // the diff — the ids decide (S4 review).
   const flagOrDiff = (flag: boolean | undefined, moved: boolean) =>
-    // flag false + workItemChanged: the false came from the wire but the ids
-    // moved — the diff wins. flag false without workItemChanged: the wire's
-    // authoritative false stands.
-    flag === true ? true : meta.workItemChanged ? moved : flag ?? moved;
+    // flag false + workItemChanged: the false came from the wire, but the
+    // writer's own tab may have already applied the server row (onSuccess
+    // writes it before the echo arrives), so the diff sees nothing to do.
+    // Treat both dims as changed outright — an intra-module work-item move
+    // costs one extra aggregate refresh.
+    flag === true || meta.workItemChanged ? true : flag ?? moved;
   const moduleChanged =
     flagOrDiff(meta.moduleChanged, issue.module_id !== undefined && (issue.module_id ?? null) !== oldModuleId) ?? false;
   const changed = {

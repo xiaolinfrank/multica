@@ -2188,9 +2188,9 @@ export class ApiClient {
     if (body.creation_key && (result.creation_key !== body.creation_key || typeof result.replayed !== "boolean")) {
       throw new CockpitUnconfirmedWriteError();
     }
-    // Same workspace check the node create performs: a report from another
-    // workspace is not this workspace's row.
-    if (wsId && result.workspace_id && result.workspace_id !== wsId) {
+    // Same workspace check the node create performs: a row that does not say
+    // which workspace it belongs to is unconfirmed, not "ours by default".
+    if (wsId && result.workspace_id !== wsId) {
       throw new CockpitUnconfirmedWriteError();
     }
     return result;

@@ -1189,8 +1189,18 @@ describe("onIssueUpdated — filing moves (S4)", () => {
     return { qc };
   }
 
+  // A list whose server contract narrows to module m1 — the "my" keyed form
+  // the coordinator reads a filter from. The issue must LEAVE it; a field
+  // patch in place would not prove that (S4 review #3).
+  function oldModuleList(qc: QueryClient) {
+    const key = ["issues", WS, "my", "assigned", { module_id: "m1" }] as const;
+    qc.setQueryData(key, makeListCache({ ...baseIssue, workspace_id: WS, project_id: "p1", module_id: "m1", work_item_id: "wA" } as Issue));
+    return key;
+  }
+
   it("diffs the ids when the flags are false but work_item_changed is set (issue-edit form)", () => {
     const { qc } = filingSetup();
+    const filteredKey = oldModuleList(qc);
     const invalidate = vi.spyOn(qc, "invalidateQueries");
     onIssueUpdated(qc, WS, { ...baseIssue, project_id: "p2", module_id: "m2", work_item_id: "wB" }, {
       projectChanged: false, moduleChanged: false, workItemChanged: true,
@@ -1201,11 +1211,25 @@ describe("onIssueUpdated — filing moves (S4)", () => {
     // own test covers that half.
     const invalidatedKeys = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey));
     expect(invalidatedKeys).toContain(JSON.stringify(moduleKeys.all(WS)));
-    // The issue left the old module's filtered surface (rebucketed/removed by
-    // the coordinator, not patched in place as a mere field edit).
-    const cache = qc.getQueryData<ListIssuesCache>(issueKeys.list(WS));
-    const stillInOldModule = cache?.byStatus.unstarted?.issues.some((i) => i.id === ISSUE_ID && (i.module_id ?? null) === "m1");
+    // The issue left the m1-filtered surface: the coordinator removed it (a
+    // field patch would have kept it, whatever module_id it now carries).
+    const cache = qc.getQueryData<ListIssuesCache>(filteredKey);
+    const stillInOldModule = cache?.byStatus.unstarted?.issues.some((i) => i.id === ISSUE_ID);
     expect(stillInOldModule).toBeFalsy();
+  });
+
+  it("still refreshes when the writer's own tab already applied the row (echo after onSuccess)", () => {
+    // The writer's onSuccess wrote the server row first; the echo carries the
+    // SAME ids and both flags false. The diff has nothing to diff, so the
+    // flags alone must not close the question (S4 review #1).
+    const { qc } = filingSetup();
+    qc.setQueryData(issueKeys.list(WS), makeListCache({ ...baseIssue, workspace_id: WS, project_id: "p2", module_id: "m2", work_item_id: "wB", revision: 2 } as Issue));
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    onIssueUpdated(qc, WS, { ...baseIssue, project_id: "p2", module_id: "m2", work_item_id: "wB", revision: 2 }, {
+      projectChanged: false, moduleChanged: false, workItemChanged: true,
+    });
+    const invalidatedKeys = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey));
+    expect(invalidatedKeys).toContain(JSON.stringify(moduleKeys.all(WS)));
   });
 
   it("refreshes from a bare plan-edit event without wiping cached fields", () => {
@@ -1241,11 +1265,15 @@ describe("invalidateIssueFiling (S4)", () => {
     expect(keys()).toContain(JSON.stringify(cockpitKeys.tasks("ws-f")));
     expect(keys()).toContain(JSON.stringify(cockpitReadKeys.all("ws-f")));
     invalidate.mockClear();
-    // Bare plan-edit row: same prefixes, and a row without an id does nothing.
-    invalidateIssueFiling(qc, "ws-f", { issue: { id: "i1", work_item_id: null } });
+    // Bare plan-edit row: same prefixes when it carries the flag...
+    invalidateIssueFiling(qc, "ws-f", { issue: { id: "i1", work_item_id: null }, workItemChanged: true });
     expect(keys().length).toBeGreaterThan(0);
+    // ...and nothing at all for a plain field edit (title/status/priority).
     invalidate.mockClear();
-    invalidateIssueFiling(qc, "ws-f", { issue: { id: "" } });
+    invalidateIssueFiling(qc, "ws-f", { issue: { id: "i1", title: "新标题", status: "done" } });
+    expect(keys()).toHaveLength(0);
+    invalidate.mockClear();
+    invalidateIssueFiling(qc, "ws-f", { issue: { id: "" }, workItemChanged: true });
     expect(keys()).toHaveLength(0);
   });
 });
