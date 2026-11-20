@@ -919,8 +919,8 @@ func TestCockpitPlanReconcileNumbersRootsAfterReleaseAtProductionShape(t *testin
 func TestCockpitPlanReconcileReportsFinalCodesForNewRows(t *testing.T) {
 	f := newCockpitWorkflowFixture(t)
 	ctx := context.Background()
-	// A project with no L1 row at all: the reconcile creates one, and an
-	// earlier module merge renumbers the siblings after it.
+	// A project with no L1 row at all: the reconcile creates one from the
+	// project's own number (title_prefix), then a module row beneath it.
 	project := f.Project(t, "07 海外注册")
 	f.Module(t, project, "07.01 申报资料")
 	report, err := f.issues.ReconcileCockpitPlan(ctx, CockpitReconcileInput{WorkspaceID: f.ws, ActorID: f.owner}, nil)
@@ -930,11 +930,11 @@ func TestCockpitPlanReconcileReportsFinalCodesForNewRows(t *testing.T) {
 	if len(report.NewRoots) != 1 || len(report.NewModuleNodes) == 0 {
 		t.Fatalf("report new roots=%d modules=%d", len(report.NewRoots), len(report.NewModuleNodes))
 	}
-	if report.NewRoots[0].Code != "01" {
-		t.Fatalf("new root code = %q, want 01 (only free number)", report.NewRoots[0].Code)
+	if report.NewRoots[0].Code != "07" || report.NewRoots[0].Source != "title_prefix" {
+		t.Fatalf("new root = %q/%q, want 07/title_prefix", report.NewRoots[0].Code, report.NewRoots[0].Source)
 	}
-	if report.NewModuleNodes[0].Code != "01.01" {
-		t.Fatalf("new module row code = %q, want 01.01", report.NewModuleNodes[0].Code)
+	if report.NewModuleNodes[0].Code != "07.01" {
+		t.Fatalf("new module row code = %q, want 07.01", report.NewModuleNodes[0].Code)
 	}
 }
 
@@ -1040,5 +1040,87 @@ func TestCockpitPlanReconcileBlocksSecondClaimOnPreBoundModule(t *testing.T) {
 	}
 	if got := f.Count(t, "SELECT count(*) FROM cockpit_node WHERE workspace_id=$1 AND module_id=$2", f.ws, module); got != 1 {
 		t.Fatalf("module holders in the fixture = %d", got)
+	}
+}
+
+// A project whose title carries its own number keeps it (§3.2 item 3, §0 item
+// 16): the deferred root pass must not renumber a title_prefix root away. The
+// board also reflows, so the deferred pass runs and rebuilds the claim set —
+// which is where the number used to be lost.
+func TestCockpitPlanReconcileKeepsTitlePrefixRootNumber(t *testing.T) {
+	f := newCockpitWorkflowFixture(t)
+	ctx := context.Background()
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 00 has no L1 row and must get one numbered 00 from its title.
+	team := f.Project(t, "00团队资料管理（基础支撑）")
+	f.Module(t, team, "团队资料模块")
+	// A workstream board that reflows, so assignDeferredRootCodes runs.
+	flow := f.Project(t, "流程项目")
+	f.Module(t, flow, "流程模块")
+	node := func(position float64, code, name string, parent pgtype.UUID) pgtype.UUID {
+		cols := testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": code, "name": name, "position": position}
+		if parent.Valid {
+			cols["parent_id"] = parent
+		}
+		return parseTestUUID(t, f.Insert(t, "cockpit_node", cols))
+	}
+	l1 := node(0, "L1-05", "职能行", pgtype.UUID{})
+	node(0, "05.01", "流程模块", l1)
+
+	report, err := f.issues.ReconcileCockpitPlan(ctx, CockpitReconcileInput{WorkspaceID: f.ws, ActorID: f.owner, Apply: true},
+		func(context.Context, *db.Queries, db.Cockpit) (string, error) { return "snap", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Blockers) != 0 {
+		t.Fatalf("blockers: %v", report.Blockers)
+	}
+	var teamRoot *CockpitReconcileNewRoot
+	for i := range report.NewRoots {
+		if report.NewRoots[i].ProjectID == team {
+			teamRoot = &report.NewRoots[i]
+		}
+	}
+	if teamRoot == nil {
+		t.Fatalf("no root reported for the 00 project: %+v", report.NewRoots)
+	}
+	if teamRoot.Code != "00" || teamRoot.Source != "title_prefix" {
+		t.Fatalf("00 root = code %q source %q, want 00/title_prefix", teamRoot.Code, teamRoot.Source)
+	}
+	// The stored row and the title split agree with it.
+	var stored string
+	if err := f.Pool.QueryRow(ctx, "SELECT code FROM cockpit_node WHERE workspace_id=$1 AND id=$2", f.ws, teamRoot.NodeID).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "00" {
+		t.Fatalf("stored root code = %q, want 00", stored)
+	}
+	var splitCode string
+	if err := f.Pool.QueryRow(ctx, "SELECT title FROM project WHERE workspace_id=$1 AND id=$2", f.ws, team).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "团队资料管理（基础支撑）" {
+		t.Fatalf("project title = %q, want the code stripped", stored)
+	}
+	for _, split := range report.TitleSplits {
+		if split.Kind == "project" && split.ID == team {
+			splitCode = split.Code
+		}
+	}
+	if splitCode != "00" {
+		t.Fatalf("title split code = %q, want 00", splitCode)
+	}
+	// The reflow root took the next free number, not 00 and not 01-over-00.
+	var reflowCode string
+	for _, root := range report.NewRoots {
+		if root.ProjectID == flow {
+			reflowCode = root.Code
+		}
+	}
+	if reflowCode == "" || reflowCode == "00" {
+		t.Fatalf("reflow root code = %q", reflowCode)
 	}
 }

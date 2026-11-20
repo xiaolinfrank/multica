@@ -718,12 +718,14 @@ func (st *cockpitReconciler) assignDeferredRootCodes() {
 	if len(deferred) == 0 {
 		return
 	}
-	// Rebuild the claim set from SURVIVING rows only: a deferred root may hold
-	// a provisional number another surviving row also carries, and deleting it
-	// by code would strip that row's claim.
+	// Rebuild the claim set from every surviving row that already owns a
+	// number — existing roots AND the created title_prefix roots, whose number
+	// is theirs by title. A deferred root's provisional number is left out: it
+	// may coincide with a claim above, and deleting by code would strip that
+	// claim rather than the deferred row's own.
 	st.usedL1 = make(map[string]bool)
 	for _, id := range st.roots {
-		if n := st.nodes[id]; n != nil && !n.deleted && !n.pendingCode && !n.created {
+		if n := st.nodes[id]; n != nil && !n.deleted && !n.pendingCode {
 			st.usedL1[trailingDigits(n.code)] = true
 		}
 	}
@@ -832,28 +834,34 @@ func (st *cockpitReconciler) createProjectForRoot(l1 *reconcileNode) {
 func (st *cockpitReconciler) createRootForProject(project db.Project) {
 	code, name := splitReconcileTitle(project.Title)
 	source := "title_prefix"
+	pending := false
 	if code == "" || len(code) > 2 || st.usedL1[code] {
 		// The title's number is unusable or already held by a surviving row:
-		// leave the code empty so the deferred pass assigns a free one. Keeping
-		// the colliding number here would only be cleared later, and clearing
-		// it from usedL1 would strip the surviving row's own claim.
+		// leave the code empty so the deferred pass assigns a free one.
 		source, code = "next", ""
+		pending = true
 	}
 	st.stripProjectTitle(project)
 	if name == "" {
 		name = project.Title
 	}
+	if !pending {
+		// A usable title number is the row's own and is kept as-is (§3.2 item 3,
+		// §0 item 16): claim it now so the deferred pass cannot hand it away.
+		st.usedL1[code] = true
+	}
 	id := dbid.NewV7()
 	node := &reconcileNode{
 		id: id, projectID: project.ID, code: code, name: name,
 		position: st.maxRootPosition() + 1, created: true,
-		// The final L1 number is assigned after reflowed rows release theirs
-		// (assignDeferredRootCodes), so this code is provisional.
-		pendingCode: true, rootSource: source,
+		pendingCode: pending, rootSource: source,
 	}
 	st.nodes[id] = node
 	st.order = append(st.order, id)
 	st.roots = append(st.roots, id)
+	if !pending {
+		st.report.NewRoots = append(st.report.NewRoots, CockpitReconcileNewRoot{ProjectID: util.UUIDToString(project.ID), NodeID: util.UUIDToString(id), Code: code, Title: name, Source: source})
+	}
 	if st.projectTitles[project.ID] == "" {
 		st.projectTitles[project.ID] = name
 	}
@@ -1228,15 +1236,18 @@ type milestoneMove struct{ from, to pgtype.UUID }
 // cannot follow would break I4 on the very first write after the migration.
 func (st *cockpitReconciler) checkCrossProjectStatus(ctx context.Context, q *db.Queries) error {
 	defs := make(map[pgtype.UUID]*issueworkflow.Definition)
-	allows := func(filing reconcileFiling, issue *db.ListCockpitReconcileIssuesRow) bool {
+	allows := func(filing reconcileFiling, issue *db.ListCockpitReconcileIssuesRow) (bool, error) {
 		if filing.project == issue.ProjectID {
-			return true
+			return true, nil
 		}
 		def := defs[filing.project]
 		if def == nil {
 			loaded, _, err := issueworkflow.ForProject(ctx, q, st.ws, filing.project)
 			if err != nil {
-				return false
+				// A failed lookup is not a decision: reporting it as "held"
+				// would hide the error, and inside apply the transaction is
+				// already aborted by then.
+				return false, err
 			}
 			// A default workflow accepts every status; only a named one limits.
 			// The empty Definition marks "no restriction" via its nil Steps.
@@ -1246,7 +1257,7 @@ func (st *cockpitReconciler) checkCrossProjectStatus(ctx context.Context, q *db.
 			}
 			defs[filing.project] = def
 		}
-		return def.Steps == nil || def.Has(issue.Status)
+		return def.Steps == nil || def.Has(issue.Status), nil
 	}
 	held := make(map[pgtype.UUID]bool)
 	// Families: hold the ROOT first so descendants follow for the reason of
@@ -1281,7 +1292,11 @@ func (st *cockpitReconciler) checkCrossProjectStatus(ctx context.Context, q *db.
 		if !filing.valid || held[issue.ID] {
 			continue
 		}
-		if allows(filing, issue) {
+		ok, err := allows(filing, issue)
+		if err != nil {
+			return err
+		}
+		if ok {
 			continue
 		}
 		// Hold the whole family: the parent's filing cannot strand children
@@ -1473,8 +1488,10 @@ func (st *cockpitReconciler) backfillIssues() {
 				case len(linksByIssue[issue.ID]) == 0 && issueTitleCode(issue.Title) != "":
 					reason = "title_code_unmatched"
 				case len(linksByIssue[issue.ID]) == 0:
+					// Counted once the filings are final (buildIssueReports): a
+					// child with no evidence still gets filed by its parent, so
+					// incrementing here would overcount.
 					reason = ""
-					st.report.UnfiledWithoutEvidence++
 				case len(workItemLinks(linksByIssue[issue.ID], workItems)) == 0:
 					reason = "only_structural_links"
 				default:
@@ -1496,6 +1513,7 @@ func (st *cockpitReconciler) backfillIssues() {
 func (st *cockpitReconciler) buildIssueReports() {
 	st.report.Issues = nil
 	st.report.Unfiled = nil
+	st.report.UnfiledWithoutEvidence = 0
 	for _, issue := range st.issues {
 		filing := st.filings[issue.ID]
 		if !filing.valid {
@@ -1503,6 +1521,9 @@ func (st *cockpitReconciler) buildIssueReports() {
 			// with no reason would read as "nothing to do" anyway.
 			reason := st.unfiled[issue.ID]
 			if reason == "" {
+				// No evidence (no links, no title code): never a candidate, so
+				// not listed; the total still has to be visible.
+				st.report.UnfiledWithoutEvidence++
 				continue
 			}
 			st.report.Unfiled = append(st.report.Unfiled, CockpitReconcileUnfiled{

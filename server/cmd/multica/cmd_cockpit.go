@@ -1228,9 +1228,7 @@ func runCockpitReconcile(cmd *cobra.Command, _ []string) error {
 func reconcileChangeCount(report map[string]any) int {
 	total := 0
 	// directory_names is informational: every row has one after apply, so it
-	// would otherwise always read as outstanding work. "bound" project rows
-	// likewise describe existing bindings, not changes: after apply they are
-	// all that is left, and counting them would make "no changes" unreachable.
+	// would otherwise always read as outstanding work.
 	for _, key := range []string{"groups", "code_changes", "projects", "new_projects", "new_roots",
 		"modules", "new_modules", "new_module_nodes", "reflows", "title_splits", "issues", "unfiled_issues"} {
 		total += len(mapList(report, key))
