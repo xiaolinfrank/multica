@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/issueworkflow"
+	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/service"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
@@ -85,4 +89,37 @@ func movedWorkItemCode(ctx context.Context, q *db.Queries, cc cockpitContext, ne
 		return "", fmt.Errorf("record code %s: %w", code, err)
 	}
 	return code, nil
+}
+
+// writeWorkItemMoveError answers a refused refile. A status the destination
+// workflow does not list is the caller's problem (400) and must name the issue,
+// exactly like the issue detail path; anything else is ours (500) and says so
+// without echoing the database error.
+func (h *Handler) writeWorkItemMoveError(w http.ResponseWriter, r *http.Request, cc cockpitContext, err error) bool {
+	var notIn *service.IssueStatusNotInWorkflowError
+	if errors.As(err, &notIn) {
+		var inner *issueworkflow.NotInWorkflowError
+		if errors.As(err, &inner) {
+			prefix := h.getIssuePrefix(r.Context(), cc.workspaceID)
+			label := fmt.Sprintf("#%d", notIn.IssueNumber)
+			if prefix != "" {
+				label = fmt.Sprintf("%s-%d", prefix, notIn.IssueNumber)
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error":            label + ": " + inner.Error(),
+				"code":             "status_not_in_workflow",
+				"workflow_name":    inner.WorkflowName,
+				"allowed_statuses": inner.Allowed,
+				"issue":            label,
+			})
+			return true
+		}
+	}
+	if errors.Is(err, service.ErrCockpitWorkflowInput) {
+		writeError(w, http.StatusBadRequest, "this row cannot be moved to that parent")
+		return true
+	}
+	slog.Error("work item move failed", append(logger.RequestAttrs(r), "error", err)...)
+	writeError(w, http.StatusInternalServerError, "cockpit operation could not be confirmed; reload before retrying")
+	return true
 }

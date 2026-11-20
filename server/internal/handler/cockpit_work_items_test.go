@@ -112,3 +112,54 @@ func TestRenumberCockpitChildren(t *testing.T) {
 		}
 	}
 }
+
+// A work item created with creation_key: the intent table only allows
+// resource_kind node/meeting, so the endpoint must use "node" — otherwise every
+// keyed create fails with 500 and the skill's advice is unusable. A retry with
+// the same key replays the first row instead of creating a second.
+func TestCreateCockpitWorkItemWithCreationKey(t *testing.T) {
+	wsID, moduleID, _ := workItemFixture(t)
+	key := uuid.NewString()
+	create := func(credential, key string) (CockpitNodeCreateResponse, int) {
+		t.Helper()
+		r := cockpitRequest(http.MethodPost, "/api/cockpit/work-items", wsID, map[string]any{
+			"module_id": moduleID, "name": "带 key 的工作项", "creation_key": key,
+		})
+		if credential != "" {
+			r.Header.Set("X-Actor-Source", credential)
+		}
+		var out CockpitNodeCreateResponse
+		resp := testutil.Call(t, cockpitHandler(testHandler.CreateCockpitWorkItem), r)
+		if resp.Code != http.StatusCreated && resp.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", resp.Code, resp.Body.String())
+		}
+		resp.JSON(&out)
+		return out, resp.Code
+	}
+	first, status := create("", key)
+	if status != http.StatusCreated {
+		t.Fatalf("first create status = %d", status)
+	}
+	second, status := create("", key)
+	if status != http.StatusOK {
+		t.Fatalf("replay status = %d, want 200", status)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("replay id = %s, want %s", second.ID, first.ID)
+	}
+	// A machine credential may create work items too (§0 item 20).
+	// A machine credential may create work items too (§0 item 20); it uses its
+	// own key, because a replay is keyed on the key alone.
+	machine, status := create("task_token", uuid.NewString())
+	if status != http.StatusCreated {
+		t.Fatalf("machine create status = %d", status)
+	}
+	var rows int
+	if err := testPool.QueryRow(context.Background(), `SELECT count(*) FROM cockpit_node WHERE workspace_id=$1 AND name='带 key 的工作项'`, wsID).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 2 { // the keyed row (replayed once) + the machine's own row
+		t.Fatalf("rows = %d, want 2", rows)
+	}
+	_ = machine
+}

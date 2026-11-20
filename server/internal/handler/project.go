@@ -740,16 +740,23 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	// dependency cleanup the node delete does. Issues keep their rows; the
 	// detach below clears the module with the project.
 	var removedNodes []db.CockpitNode
-	if board, err := qtx.GetCockpitByWorkspace(r.Context(), project.WorkspaceID); err == nil {
-		if root, err := cockpitSubtreeForBinding(r.Context(), qtx, project.WorkspaceID, board.ID, project.ID, pgtype.UUID{}); err == nil {
+	projectBoard, boardErr := qtx.GetCockpitByWorkspace(r.Context(), project.WorkspaceID)
+	if boardErr != nil && !errors.Is(boardErr, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "failed to read the plan board")
+		return
+	}
+	if boardErr == nil {
+		root, err := cockpitSubtreeForBinding(r.Context(), qtx, project.WorkspaceID, projectBoard.ID, project.ID, pgtype.UUID{})
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "failed to locate the project's plan row")
+			return
+		}
+		if err == nil {
 			removedNodes, err = deleteCockpitSubtree(r.Context(), qtx, project.WorkspaceID, root)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to delete the project's plan rows")
 				return
 			}
-		} else if !errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusInternalServerError, "failed to locate the project's plan row")
-			return
 		}
 	}
 

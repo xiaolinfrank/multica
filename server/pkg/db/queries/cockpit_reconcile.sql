@@ -167,9 +167,9 @@ ORDER BY position, id;
 UPDATE cockpit_node SET code = sqlc.arg('code'), updated_at = now()
 WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND id = sqlc.arg('id')::uuid;
 
--- name: ListCockpitNodesByIDs :many
--- Reads only the rows a write touches (a work item's issues), instead of the
--- whole workspace's issue list.
+-- name: ListIssuesByIDsForRefile :many
+-- Reads only the issue rows a refile touches, instead of the whole workspace's
+-- issue list. (Named for the caller: these are issues, not plan nodes.)
 SELECT id, number, title, status, project_id, module_id, parent_issue_id, work_item_id
 FROM issue
 WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND id = ANY(sqlc.arg('ids')::uuid[]);

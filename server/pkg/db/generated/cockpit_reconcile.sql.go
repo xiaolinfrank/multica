@@ -400,59 +400,6 @@ func (q *Queries) ListCockpitNodeIssueLinks(ctx context.Context, workspaceID pgt
 	return items, nil
 }
 
-const listCockpitNodesByIDs = `-- name: ListCockpitNodesByIDs :many
-SELECT id, number, title, status, project_id, module_id, parent_issue_id, work_item_id
-FROM issue
-WHERE workspace_id = $1::uuid AND id = ANY($2::uuid[])
-`
-
-type ListCockpitNodesByIDsParams struct {
-	WorkspaceID pgtype.UUID   `json:"workspace_id"`
-	Ids         []pgtype.UUID `json:"ids"`
-}
-
-type ListCockpitNodesByIDsRow struct {
-	ID            pgtype.UUID `json:"id"`
-	Number        int32       `json:"number"`
-	Title         string      `json:"title"`
-	Status        string      `json:"status"`
-	ProjectID     pgtype.UUID `json:"project_id"`
-	ModuleID      pgtype.UUID `json:"module_id"`
-	ParentIssueID pgtype.UUID `json:"parent_issue_id"`
-	WorkItemID    pgtype.UUID `json:"work_item_id"`
-}
-
-// Reads only the rows a write touches (a work item's issues), instead of the
-// whole workspace's issue list.
-func (q *Queries) ListCockpitNodesByIDs(ctx context.Context, arg ListCockpitNodesByIDsParams) ([]ListCockpitNodesByIDsRow, error) {
-	rows, err := q.db.Query(ctx, listCockpitNodesByIDs, arg.WorkspaceID, arg.Ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListCockpitNodesByIDsRow{}
-	for rows.Next() {
-		var i ListCockpitNodesByIDsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Number,
-			&i.Title,
-			&i.Status,
-			&i.ProjectID,
-			&i.ModuleID,
-			&i.ParentIssueID,
-			&i.WorkItemID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listCockpitReconcileIssues = `-- name: ListCockpitReconcileIssues :many
 
 SELECT i.id,i.number,i.title,i.status,i.project_id,i.module_id,i.work_item_id,i.parent_issue_id
@@ -526,6 +473,59 @@ func (q *Queries) ListIssueIDsFiledAtNode(ctx context.Context, arg ListIssueIDsF
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIssuesByIDsForRefile = `-- name: ListIssuesByIDsForRefile :many
+SELECT id, number, title, status, project_id, module_id, parent_issue_id, work_item_id
+FROM issue
+WHERE workspace_id = $1::uuid AND id = ANY($2::uuid[])
+`
+
+type ListIssuesByIDsForRefileParams struct {
+	WorkspaceID pgtype.UUID   `json:"workspace_id"`
+	Ids         []pgtype.UUID `json:"ids"`
+}
+
+type ListIssuesByIDsForRefileRow struct {
+	ID            pgtype.UUID `json:"id"`
+	Number        int32       `json:"number"`
+	Title         string      `json:"title"`
+	Status        string      `json:"status"`
+	ProjectID     pgtype.UUID `json:"project_id"`
+	ModuleID      pgtype.UUID `json:"module_id"`
+	ParentIssueID pgtype.UUID `json:"parent_issue_id"`
+	WorkItemID    pgtype.UUID `json:"work_item_id"`
+}
+
+// Reads only the issue rows a refile touches, instead of the whole workspace's
+// issue list. (Named for the caller: these are issues, not plan nodes.)
+func (q *Queries) ListIssuesByIDsForRefile(ctx context.Context, arg ListIssuesByIDsForRefileParams) ([]ListIssuesByIDsForRefileRow, error) {
+	rows, err := q.db.Query(ctx, listIssuesByIDsForRefile, arg.WorkspaceID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssuesByIDsForRefileRow{}
+	for rows.Next() {
+		var i ListIssuesByIDsForRefileRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Title,
+			&i.Status,
+			&i.ProjectID,
+			&i.ModuleID,
+			&i.ParentIssueID,
+			&i.WorkItemID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

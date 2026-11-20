@@ -331,6 +331,12 @@ WHERE id = sqlc.arg('id')::uuid
 -- name: DeleteCockpitMilestones :exec
 DELETE FROM cockpit_milestone WHERE cockpit_id = sqlc.arg('cockpit_id')::uuid;
 
+-- name: DeleteCockpitMilestonesByNode :exec
+-- A milestone is anchored to one row: when that row goes, its milestone goes
+-- with it, exactly like a payment (S3, implementation plan §2.3).
+DELETE FROM cockpit_milestone
+WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND node_id = sqlc.arg('node_id')::uuid;
+
 -- name: ListCockpitMeetings :many
 -- Newest first, which is what a register reads as. start_time orders the
 -- meetings of one day; time_range is the tiebreak for rows that only ever

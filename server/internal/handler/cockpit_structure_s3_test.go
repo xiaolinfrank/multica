@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -96,15 +97,29 @@ func TestWorkItemMoveReportsStatusNotInWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	moduleC := dbfx.Insert(t, "module", testutil.Cols{"workspace_id": wsID, "project_id": restricted, "title": "02.01 受限模块"})
-	rootC := createNode(t, wsID, map[string]any{"code": "02", "name": "受限项目", "project_id": restricted})
-	l2C := createNode(t, wsID, map[string]any{"code": "02.01", "name": "受限模块", "parent_id": rootC.ID, "module_id": moduleC})
+	// Structure rows are inserted directly: the generic create refuses a
+	// reconciled board (S3).
+	var rootC, l2C string
+	if err := testPool.QueryRow(context.Background(), `INSERT INTO cockpit_node (workspace_id, cockpit_id, code, name, position, project_id)
+		SELECT $1, id, '02', '受限项目', 99, $2 FROM cockpit WHERE workspace_id=$1 RETURNING id::text`, wsID, restricted).Scan(&rootC); err != nil {
+		t.Fatal(err)
+	}
+	if err := testPool.QueryRow(context.Background(), `INSERT INTO cockpit_node (workspace_id, cockpit_id, parent_id, code, name, position, project_id, module_id)
+		SELECT workspace_id, cockpit_id, id, '02.01', '受限模块', 0, $2::uuid, $3::uuid FROM cockpit_node WHERE id=$1::uuid RETURNING id::text`, rootC, restricted, moduleC).Scan(&l2C); err != nil {
+		t.Fatal(err)
+	}
 	dbfx.Issue(t, "进行中", testutil.Cols{"workspace_id": wsID, "module_id": moduleA, "work_item_id": work, "status": "in_progress"})
 	resp := testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode), testutil.WithURLParams(
-		cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+work, wsID, map[string]any{"parent_id": l2C.ID}), "id", work)).Want(http.StatusBadRequest)
+		cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+work, wsID, map[string]any{"parent_id": l2C}), "id", work)).Want(http.StatusBadRequest)
 	var body map[string]any
 	resp.JSON(&body)
 	if body["code"] != "status_not_in_workflow" || body["allowed_statuses"] == nil {
 		t.Fatalf("body = %v, want the issue-detail refusal shape", body)
+	}
+	// The message must name the issue: "which one?" is the first question a
+	// reviewer asks when a move is refused.
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "TES-") && !strings.Contains(msg, "#") {
+		t.Fatalf("error does not name the issue: %q", msg)
 	}
 }
 
@@ -226,9 +241,11 @@ func TestRenumberRewritesDescendantPrefixes(t *testing.T) {
 	moduleZ := dbfx.Insert(t, "module", testutil.Cols{"workspace_id": wsID, "project_id": dbfx.Project(t, "占位"), "title": "Z"})
 	_ = moduleZ
 	_ = moduleA
-	front := createNode(t, wsID, map[string]any{"code": "01.03", "name": "前置模块", "parent_id": rootID})
-	testutil.Call(t, cockpitHandler(testHandler.UpdateCockpitNode), testutil.WithURLParams(
-		cockpitRequest(http.MethodPatch, "/api/cockpit/nodes/"+front.ID, wsID, map[string]any{"position": float64(-1)}), "id", front.ID)).Want(http.StatusOK)
+	// Inserted directly: a reconciled board's generic create refuses structure.
+	if _, err := testPool.Exec(context.Background(), `INSERT INTO cockpit_node (workspace_id, cockpit_id, parent_id, code, name, position)
+		SELECT workspace_id, cockpit_id, parent_id, '01.03', '前置模块', -1 FROM cockpit_node WHERE id=$1`, l2A); err != nil {
+		t.Fatal(err)
+	}
 	testutil.Call(t, cockpitHandler(testHandler.RenumberCockpitChildren), testutil.WithURLParams(
 		cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+rootID+"/renumber", wsID, nil), "id", rootID)).Want(http.StatusOK)
 
@@ -245,4 +262,106 @@ func TestRenumberRewritesDescendantPrefixes(t *testing.T) {
 	if workCode != moduleCode+".01" {
 		t.Fatalf("work item code = %q, want its module's new prefix %s.01", workCode, moduleCode)
 	}
+}
+
+// Renumbering renumbers the DIRECT children; a descendant only takes the new
+// prefix and keeps its own tail. With a gap (.01, .03) a recursive renumber
+// would compress it to .01, .02 and spend a number no row wears.
+func TestRenumberKeepsDescendantTails(t *testing.T) {
+	wsID, _, moduleA, _, l2A, _, work := reconciledFixture(t)
+	ctx := context.Background()
+	// A second work item with a non-contiguous code (.03 after .01), inserted
+	// directly: the generic create no longer adds rows to a reconciled board.
+	var tailID string
+	if err := testPool.QueryRow(ctx, `INSERT INTO cockpit_node (workspace_id, cockpit_id, parent_id, code, name, position)
+		SELECT $1, cockpit_id, $2, '01.01.03', '第三项', 5 FROM cockpit_node WHERE id=$2 RETURNING id::text`, wsID, l2A).Scan(&tailID); err != nil {
+		t.Fatal(err)
+	}
+	// A module row ahead of module A in display order, so A moves 01.01 → 01.02.
+	var rootID string
+	if err := testPool.QueryRow(ctx, `SELECT parent_id::text FROM cockpit_node WHERE id=$1`, l2A).Scan(&rootID); err != nil {
+		t.Fatal(err)
+	}
+	var frontID string
+	if err := testPool.QueryRow(ctx, `INSERT INTO cockpit_node (workspace_id, cockpit_id, parent_id, code, name, position)
+		SELECT $1, cockpit_id, $2, '01.09', '前置', -1 FROM cockpit_node WHERE id=$2 RETURNING id::text`, wsID, rootID).Scan(&frontID); err != nil {
+		t.Fatal(err)
+	}
+	testutil.Call(t, cockpitHandler(testHandler.RenumberCockpitChildren), testutil.WithURLParams(
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes/"+rootID+"/renumber", wsID, nil), "id", rootID)).Want(http.StatusOK)
+
+	var moduleCode, firstCode, thirdCode string
+	_ = testPool.QueryRow(ctx, `SELECT code FROM cockpit_node WHERE id=$1`, l2A).Scan(&moduleCode)
+	_ = testPool.QueryRow(ctx, `SELECT code FROM cockpit_node WHERE id=$1`, work).Scan(&firstCode)
+	_ = testPool.QueryRow(ctx, `SELECT code FROM cockpit_node WHERE id=$1`, tailID).Scan(&thirdCode)
+	if moduleCode != "01.02" {
+		t.Fatalf("module code = %q, want 01.02", moduleCode)
+	}
+	if firstCode != "01.02.01" || thirdCode != "01.02.03" {
+		t.Fatalf("descendant codes = %q/%q, want 01.02.01/01.02.03 (tails kept)", firstCode, thirdCode)
+	}
+	// No intermediate number was spent: the next create continues after .03.
+	var created CockpitNodeResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitWorkItem),
+		cockpitRequest(http.MethodPost, "/api/cockpit/work-items", wsID, map[string]any{"module_id": moduleA, "name": "下一项"})).Want(http.StatusCreated).JSON(&created)
+	if created.Code != "01.02.04" {
+		t.Fatalf("next code = %q, want 01.02.04 (no gaps spent)", created.Code)
+	}
+}
+
+// Milestones are anchored to a row and go with it, like payments.
+func TestDeletePlanRowsClearsMilestones(t *testing.T) {
+	wsID, projectID, moduleA, _, l2A, _, work := reconciledFixture(t)
+	ctx := context.Background()
+	for _, nodeID := range []string{l2A, work} {
+		dbfx.Exec(t, `INSERT INTO cockpit_milestone (workspace_id, cockpit_id, node_id, name, plan_date, position, created_at, updated_at)
+			SELECT $1, cockpit_id, $2, 'm', '2026-12-01', 0, now(), now() FROM cockpit_node WHERE id=$2`, wsID, nodeID)
+	}
+	testutil.Call(t, cockpitHandler(testHandler.DeleteModule), testutil.WithURLParams(
+		cockpitRequest(http.MethodDelete, "/api/modules/"+moduleA, wsID, nil), "id", moduleA)).Want(http.StatusNoContent)
+	var left int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM cockpit_milestone WHERE node_id IN ($1,$2)`, l2A, work).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 0 {
+		t.Fatalf("milestones survived the module delete: %d", left)
+	}
+	// Project delete clears a milestone hanging on the L1 row too.
+	var rootID string
+	if err := testPool.QueryRow(ctx, `SELECT id::text FROM cockpit_node WHERE workspace_id=$1 AND project_id=$2 AND module_id IS NULL`, wsID, projectID).Scan(&rootID); err != nil {
+		t.Fatal(err)
+	}
+	dbfx.Exec(t, `INSERT INTO cockpit_milestone (workspace_id, cockpit_id, node_id, name, plan_date, position, created_at, updated_at)
+		SELECT $1, cockpit_id, $2, 'm', '2026-12-01', 0, now(), now() FROM cockpit_node WHERE id=$2`, wsID, rootID)
+	testutil.Call(t, cockpitHandler(testHandler.DeleteProject), testutil.WithURLParams(
+		cockpitRequest(http.MethodDelete, "/api/projects/"+projectID, wsID, nil), "id", projectID)).Want(http.StatusNoContent)
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM cockpit_milestone WHERE node_id=$1`, rootID).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 0 {
+		t.Fatalf("milestone survived the project delete")
+	}
+	var rows int
+	if err := testPool.QueryRow(ctx, `SELECT count(*) FROM cockpit_node WHERE workspace_id=$1 AND id=$2`, wsID, rootID).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatal("the L1 row survived the project delete")
+	}
+}
+
+// The generic node create may no longer reshape a reconciled board.
+func TestGenericNodeCreateIsWorkItemShapedOnReconciledBoard(t *testing.T) {
+	wsID, projectID, _, _, l2A, _, work := reconciledFixture(t)
+	// A fourth level under a work item.
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID, map[string]any{"code": "deep", "name": "deep", "parent_id": work})).Want(http.StatusBadRequest)
+	// An unbound root.
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID, map[string]any{"code": "root2", "name": "root2"})).Want(http.StatusBadRequest)
+	// A row that binds the project again.
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID, map[string]any{"code": "bind2", "name": "bind2", "parent_id": l2A, "project_id": projectID})).Want(http.StatusBadRequest)
+	// Editing a binding is structure work too.
+	patchNode(t, wsID, work, map[string]any{"module_id": dbfx.Insert(t, "module", testutil.Cols{"workspace_id": wsID, "project_id": projectID, "title": "另一个模块"})}, http.StatusBadRequest)
 }

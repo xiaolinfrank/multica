@@ -64,7 +64,7 @@ func (s *IssueService) RefileWorkItemScope(ctx context.Context, q *db.Queries, w
 	}
 	// Only the rows this write touches, and one workflow lookup per distinct
 	// destination — not the whole workspace's issue list per issue.
-	issues, err := q.ListCockpitNodesByIDs(ctx, db.ListCockpitNodesByIDsParams{WorkspaceID: workspaceID, Ids: ids})
+	issues, err := q.ListIssuesByIDsForRefile(ctx, db.ListIssuesByIDsForRefileParams{WorkspaceID: workspaceID, Ids: ids})
 	if err != nil {
 		return nil, 0, err
 	}

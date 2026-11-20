@@ -336,15 +336,16 @@ Once the plan is reconciled, structure writes go through the level they belong t
 | action | endpoint / CLI | who |
 | --- | --- | --- |
 | create a work item | `POST /api/cockpit/work-items` · `work-item create --module <code-or-id> --name ... [--after] [--creation-key]` | human and machine |
+| create structure | module/project APIs only; the generic node create accepts work-item-shaped rows only on a reconciled board | human |
 | rename a work item | `PATCH /api/cockpit/nodes/{id}` · `work-item rename` | human only |
 | move a work item | same PATCH with `parent_id` · `work-item move --to <module-row>` | human only |
 | delete a work item | `DELETE /api/cockpit/nodes/{id}` · `work-item delete` | human; a machine only when nothing is filed under it |
-| renumber children | `POST /api/cockpit/nodes/{id}/renumber` · `work-item renumber` | human only |
+| renumber children | `POST /api/cockpit/nodes/{id}/renumber` · `work-item renumber` | human only; direct children are renumbered, descendants only take the new prefix |
 | delete a module / project | `DELETE /api/modules/{id}` · `DELETE /api/projects/{id}` | owner/admin; removes the plan rows under it |
 
 A work item's parent must be a module row; project and module rows cannot change parent, and the node delete refuses them. Moving across modules gives the work item the destination's next number, and the old number is never handed out again. Before the reconcile these writes return 409 — its codes are still provisional.
 
-Project and module deletion removes the plan rows (the L2 row and its work items; the L1 row and its whole subtree) together with their payments, milestones, meeting links and pending changes. Issues keep their rows: they lose only the filing.
+Project and module deletion removes the plan rows (the L2 row and its work items; the L1 row and its whole subtree) together with their payments, milestones, meeting links and pending changes. A single work-item delete clears its payments and milestones too. Issues keep their rows: they lose only the filing.
 
 Once a board has bound nodes, whole-board import and snapshot restore return 409: those operations rebuild node UUIDs and would break stable references. Edit existing nodes instead; snapshots can still be saved and inspected. Importing a binding document into a currently unbound board validates the resources and final tree before committing. There is no name-based migration.
 

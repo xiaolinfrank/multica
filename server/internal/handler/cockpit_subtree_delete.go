@@ -47,6 +47,9 @@ func deleteCockpitSubtree(ctx context.Context, q *db.Queries, workspaceID, rootI
 		if err := q.DeleteCockpitPaymentsByNode(ctx, db.DeleteCockpitPaymentsByNodeParams{NodeID: node.ID, WorkspaceID: workspaceID}); err != nil {
 			return nil, err
 		}
+		if err := q.DeleteCockpitMilestonesByNode(ctx, db.DeleteCockpitMilestonesByNodeParams{NodeID: node.ID, WorkspaceID: workspaceID}); err != nil {
+			return nil, err
+		}
 		if err := q.DeleteCockpitNodeIssuesByNode(ctx, db.DeleteCockpitNodeIssuesByNodeParams{NodeID: node.ID, WorkspaceID: workspaceID}); err != nil {
 			return nil, err
 		}

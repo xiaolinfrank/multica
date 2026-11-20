@@ -57,7 +57,7 @@ You may create work items and you may delete one that files nothing (with a `--c
 ```bash
 multica cockpit work-item rename 03.02.11 --name "EDC 变量字典定稿（v2）"   # human credential
 multica cockpit work-item move 03.02.11 --to 04.01          # human; crossing modules renumbers it
-multica cockpit work-item renumber 03.02                     # human; rewrites children + descendants
+multica cockpit work-item renumber 03.02                     # human; renumbers direct children, descendants keep their tail
 ```
 
 A cross-module move takes the destination's next number (the old one is never reused) and reports how many issues it refiled and how many needed their status mapped. Project rows and module rows are structure, not places issues sit: they cannot be created through `node create`, moved between parents, or deleted through the node endpoint — a module or project delete removes the rows under it through its own endpoint.

@@ -34,7 +34,10 @@ func (h *Handler) CreateCockpitWorkItem(w http.ResponseWriter, r *http.Request) 
 	if _, ok := decodeCockpitBody(w, r, &req); !ok {
 		return
 	}
-	cc, command, ok := h.prepareCockpitCreation(w, r, "work_item", req.CreationKey, req)
+	// resource_kind stays "node": a work item IS a node row, and the intent
+	// table's CHECK only allows node/meeting (migration 992). The request hash
+	// still separates a retry from a different body under the same key.
+	cc, command, ok := h.prepareCockpitCreation(w, r, "node", req.CreationKey, req)
 	if !ok {
 		return
 	}
@@ -233,27 +236,35 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 			return uuidToString(a.ID) < uuidToString(b.ID)
 		})
 	}
+	// Only the DIRECT children are renumbered to the shown order; a descendant
+	// keeps its own tail and only takes the new prefix. Recursing here would
+	// renumber a grandchild whose sibling was deleted (01.02.03 → 01.01.02),
+	// and the ledger would then spend a number no row uses.
 	var changes []cockpitCodeChange
-	var walk func(parentID pgtype.UUID, parentCode string)
-	walk = func(parentID pgtype.UUID, parentCode string) {
-		ordinal := 0
-		for _, child := range byParent[parentID] {
-			ordinal++
-			code := fmt.Sprintf("%s.%02d", parentCode, ordinal)
-			if ordinal == 1 && strings.HasSuffix(child.Code, ".00") {
-				// The zero-segment row keeps its published code and the
-				// siblings after it number from 01.
-				code = child.Code
-				ordinal = 0
-			}
-			if code != child.Code {
-				changes = append(changes, cockpitCodeChange{id: child.ID, from: child.Code, to: code})
-				reprefixDescendants(child.ID, child.Code, code, byParent, &changes)
-			}
-			walk(child.ID, code)
+	seen := make(map[pgtype.UUID]bool, len(nodes))
+	add := func(c cockpitCodeChange) {
+		if seen[c.id] {
+			return
 		}
+		seen[c.id] = true
+		changes = append(changes, c)
 	}
-	walk(node.ID, node.Code)
+	ordinal := 0
+	for _, child := range byParent[node.ID] {
+		ordinal++
+		code := fmt.Sprintf("%s.%02d", node.Code, ordinal)
+		if ordinal == 1 && strings.HasSuffix(child.Code, ".00") {
+			// The zero-segment row keeps its published code and the siblings
+			// after it number from 01.
+			code = child.Code
+			ordinal = 0
+		}
+		if code == child.Code {
+			continue
+		}
+		add(cockpitCodeChange{id: child.ID, from: child.Code, to: code})
+		collectReprefixed(child.ID, child.Code, code, byParent, add)
+	}
 	for _, c := range changes {
 		if err := qtx.SetCockpitNodeCode(ctx, db.SetCockpitNodeCodeParams{WorkspaceID: cc.workspaceID, ID: c.id, Code: "~" + uuidToString(c.id)}); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to renumber")
@@ -280,15 +291,16 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"id": uuidToString(node.ID), "changed": len(changes)})
 }
 
-// reprefixDescendants appends a change for every descendant whose code starts
-// with the child's old code, keeping its own tail.
-func reprefixDescendants(id pgtype.UUID, oldCode, newCode string, byParent map[pgtype.UUID][]db.CockpitNode, changes *[]cockpitCodeChange) {
+// collectReprefixed records a change for every descendant whose code starts
+// with the child's old code, keeping its own tail. Deduplicated by the caller:
+// a row can be reached through one path only, but the map is shared.
+func collectReprefixed(id pgtype.UUID, oldCode, newCode string, byParent map[pgtype.UUID][]db.CockpitNode, add func(cockpitCodeChange)) {
 	for _, child := range byParent[id] {
 		if !strings.HasPrefix(child.Code, oldCode+".") {
 			continue
 		}
 		to := newCode + strings.TrimPrefix(child.Code, oldCode)
-		*changes = append(*changes, cockpitCodeChange{id: child.ID, from: child.Code, to: to})
-		reprefixDescendants(child.ID, child.Code, to, byParent, changes)
+		add(cockpitCodeChange{id: child.ID, from: child.Code, to: to})
+		collectReprefixed(child.ID, child.Code, to, byParent, add)
 	}
 }

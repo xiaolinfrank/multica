@@ -1110,6 +1110,23 @@ func (q *Queries) DeleteCockpitMilestones(ctx context.Context, cockpitID pgtype.
 	return err
 }
 
+const deleteCockpitMilestonesByNode = `-- name: DeleteCockpitMilestonesByNode :exec
+DELETE FROM cockpit_milestone
+WHERE workspace_id = $1::uuid AND node_id = $2::uuid
+`
+
+type DeleteCockpitMilestonesByNodeParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	NodeID      pgtype.UUID `json:"node_id"`
+}
+
+// A milestone is anchored to one row: when that row goes, its milestone goes
+// with it, exactly like a payment (S3, implementation plan §2.3).
+func (q *Queries) DeleteCockpitMilestonesByNode(ctx context.Context, arg DeleteCockpitMilestonesByNodeParams) error {
+	_, err := q.db.Exec(ctx, deleteCockpitMilestonesByNode, arg.WorkspaceID, arg.NodeID)
+	return err
+}
+
 const deleteCockpitNode = `-- name: DeleteCockpitNode :exec
 DELETE FROM cockpit_node
 WHERE id = $1::uuid

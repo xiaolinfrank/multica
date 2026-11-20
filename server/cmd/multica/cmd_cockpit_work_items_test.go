@@ -79,10 +79,21 @@ func TestCockpitWorkItemCLIMoveReportsWhatItCarried(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"01.02.01", "issues refiled: 3", "statuses mapped: 1"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("move output missing %q:\n%s", want, out)
-		}
+	var node map[string]any
+	if err := json.Unmarshal([]byte(out), &node); err != nil {
+		t.Fatalf("move must print JSON by default: %v (%q)", err, out)
+	}
+	if node["code"] != "01.02.01" || node["refiled_issues"] != float64(3) || node["status_mapped"] != float64(1) {
+		t.Fatalf("move json = %v", node)
+	}
+	// The prose summary is opt-in.
+	rootCmd.SetArgs([]string{"cockpit", "work-item", "move", "01.01.01", "--to", target, "--output", "table"})
+	table, err := captureStdout(t, rootCmd.Execute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(table, "issues refiled: 3") {
+		t.Fatalf("table output = %q", table)
 	}
 }
 
@@ -96,8 +107,12 @@ func TestCockpitWorkItemCLIDeleteExplains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "unfiled") || !strings.Contains(out, "directory was kept") {
-		t.Fatalf("delete output = %q", out)
+	var deleted map[string]any
+	if err := json.Unmarshal([]byte(out), &deleted); err != nil {
+		t.Fatalf("delete must print JSON by default: %v (%q)", err, out)
+	}
+	if deleted["deleted"] != true || deleted["directory_kept"] != true {
+		t.Fatalf("delete json = %v", deleted)
 	}
 }
 
@@ -110,7 +125,11 @@ func TestCockpitWorkItemCLIRenumber(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "2 row(s) changed") {
-		t.Fatalf("renumber output = %q", out)
+	var renumbered map[string]any
+	if err := json.Unmarshal([]byte(out), &renumbered); err != nil {
+		t.Fatalf("renumber must print JSON by default: %v (%q)", err, out)
+	}
+	if renumbered["changed"] != float64(2) {
+		t.Fatalf("renumber json = %v", renumbered)
 	}
 }

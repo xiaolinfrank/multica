@@ -503,16 +503,23 @@ func (h *Handler) DeleteModule(w http.ResponseWriter, r *http.Request) {
 	// milestones, meeting links, pending changes, issue links). Issues lose
 	// only their filing; DetachIssuesFromModule below drops the module.
 	var removedNodes []db.CockpitNode
-	if board, err := qtx.GetCockpitByWorkspace(r.Context(), module.WorkspaceID); err == nil {
-		if root, err := cockpitSubtreeForBinding(r.Context(), qtx, module.WorkspaceID, board.ID, pgtype.UUID{}, module.ID); err == nil {
+	board, boardErr := qtx.GetCockpitByWorkspace(r.Context(), module.WorkspaceID)
+	if boardErr != nil && !errors.Is(boardErr, pgx.ErrNoRows) {
+		writeError(w, http.StatusInternalServerError, "failed to read the plan board")
+		return
+	}
+	if boardErr == nil {
+		root, err := cockpitSubtreeForBinding(r.Context(), qtx, module.WorkspaceID, board.ID, pgtype.UUID{}, module.ID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusInternalServerError, "failed to locate the module's plan row")
+			return
+		}
+		if err == nil {
 			removedNodes, err = deleteCockpitSubtree(r.Context(), qtx, module.WorkspaceID, root)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to delete the module's plan rows")
 				return
 			}
-		} else if !errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusInternalServerError, "failed to locate the module's plan row")
-			return
 		}
 	}
 

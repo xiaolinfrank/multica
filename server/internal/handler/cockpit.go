@@ -1170,6 +1170,21 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// S3: on a reconciled board the generic create may only do what creating a
+	// work item does — a row under a module row, binding nothing. Anything else
+	// (a fourth level, an unbound root, a row that binds a project) would break
+	// I1/I2 from a path the skill no longer teaches.
+	if cc.cockpit.PlanReconciledAt.Valid {
+		_, isModuleParent, e := loadModuleRow(r.Context(), qtx, cc.workspaceID, parentID)
+		if e != nil {
+			writeError(w, http.StatusInternalServerError, "failed to read the parent row")
+			return
+		}
+		if !isModuleParent || binding.projectSet || binding.moduleSet {
+			writeError(w, http.StatusBadRequest, "a reconciled board only accepts work items here: use work-item create, or the module/project endpoints for structure")
+			return
+		}
+	}
 	projectID, moduleID, bindErr := resolveCockpitNodeBinding(r.Context(), qtx, cc.workspaceID, db.CockpitNode{}, binding)
 	if bindErr != nil {
 		writeError(w, bindErr.status, bindErr.msg)
@@ -1310,6 +1325,13 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 
 	binding, ok := parseCockpitNodeBinding(w, req.ProjectID, req.ModuleID, raw)
 	if !ok {
+		return
+	}
+	// S3: on a reconciled board the bindings are the structure. A node's
+	// project/module come from the row it hangs from, so editing them here
+	// would let a caller reshape the tree around I1/I2.
+	if cc.cockpit.PlanReconciledAt.Valid && (binding.projectSet || binding.moduleSet) {
+		writeError(w, http.StatusBadRequest, "bindings are set by the module and project endpoints; use work-item create or the module/project APIs")
 		return
 	}
 	tx, err := h.TxStarter.Begin(r.Context())
@@ -1476,15 +1498,11 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 
 		// Only a reconciled board has work items with filing to carry; on a
 		// legacy board the rows are still the pre-S3 grouping.
-		if board, e := qtx.GetCockpitByWorkspace(r.Context(), cc.workspaceID); e == nil && board.PlanReconciledAt.Valid {
+		if cc.cockpit.PlanReconciledAt.Valid {
 			refiled, statusChanged, err = h.IssueService.RefileWorkItemScope(r.Context(), qtx, cc.workspaceID, node.ID)
 		}
 		if err != nil {
-			var notIn *service.IssueStatusNotInWorkflowError
-			if errors.As(err, &notIn) && writeIssueWorkflowError(w, notIn.Err) {
-				return
-			}
-			writeError(w, http.StatusBadRequest, err.Error())
+			h.writeWorkItemMoveError(w, r, cc, err)
 			return
 		}
 	}
@@ -1590,6 +1608,14 @@ func (h *Handler) DeleteCockpitNode(w http.ResponseWriter, r *http.Request) {
 	})
 	if unfilErr != nil {
 		slog.Warn("ClearIssuesFiledAtNode failed", append(logger.RequestAttrs(r), "error", unfilErr)...)
+		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
+		return
+	}
+	if err := qtx.DeleteCockpitMilestonesByNode(ctx, db.DeleteCockpitMilestonesByNodeParams{
+		NodeID:      node.ID,
+		WorkspaceID: cc.workspaceID,
+	}); err != nil {
+		slog.Warn("DeleteCockpitMilestonesByNode failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to delete cockpit node")
 		return
 	}

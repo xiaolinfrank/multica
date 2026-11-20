@@ -68,6 +68,7 @@ func cockpitWorkItemFlags(cmd *cobra.Command) {
 	cmd.Flags().String("after", "", "work item code or id to insert after")
 	cmd.Flags().String("creation-key", "", "idempotency key: a retried create reuses the row it already made")
 	cmd.Flags().String("to", "", "destination module row (code or id) for move")
+	cmd.Flags().String("output", "json", "json (default) or table")
 }
 
 func init() {
@@ -105,8 +106,17 @@ func runCockpitWorkItemCreate(cmd *cobra.Command, _ []string) error {
 	}
 	// --module takes the module's plan row (code or id); its module_id is what
 	// the endpoint wants, so a code is resolved through the node it names.
+	// --module takes a module id or the module row's code/id. A UUID is tried
+	// as a row first: if it names a module row, its module_id wins; otherwise
+	// it is the module id itself.
 	moduleID := module
-	if !isUUIDString(module) {
+	if isUUIDString(module) {
+		if node, err := resolvePlanNode(ctx, client, module); err == nil {
+			if rowModule, _ := node["module_id"].(string); rowModule != "" {
+				moduleID = rowModule
+			}
+		}
+	} else {
 		node, err := resolvePlanNode(ctx, client, module)
 		if err != nil {
 			return err
@@ -178,10 +188,13 @@ func runCockpitWorkItemMove(cmd *cobra.Command, args []string) error {
 	if err := client.PatchJSON(ctx, "/api/cockpit/nodes/"+url.PathEscape(args[0]), map[string]any{"parent_id": parentID}, &node); err != nil {
 		return fmt.Errorf("move work item: %w", err)
 	}
-	// Say what the move carried: the new code, how many issues changed scope
-	// and how many needed their status mapped.
-	fmt.Fprintf(os.Stdout, "Moved to %s (code %s); issues refiled: %v, statuses mapped: %v\n",
-		strVal(node, "parent_id"), strVal(node, "code"), node["refiled_issues"], node["status_mapped"])
+	// JSON is the machine-readable answer; the summary is opt-in, so a caller
+	// parsing stdout never trips over a prose line.
+	if output, _ := cmd.Flags().GetString("output"); output == "table" {
+		fmt.Fprintf(os.Stdout, "code %s | issues refiled: %v | statuses mapped: %v\n",
+			strVal(node, "code"), node["refiled_issues"], node["status_mapped"])
+		return nil
+	}
 	return cli.PrintJSON(os.Stdout, node)
 }
 
@@ -195,8 +208,11 @@ func runCockpitWorkItemDelete(cmd *cobra.Command, args []string) error {
 	if err := client.DeleteJSON(ctx, "/api/cockpit/nodes/"+url.PathEscape(args[0])); err != nil {
 		return fmt.Errorf("delete work item: %w", err)
 	}
-	fmt.Fprintf(os.Stdout, "Deleted %s; its issues were unfiled (project and module kept), the directory was kept.\n", args[0])
-	return nil
+	if output, _ := cmd.Flags().GetString("output"); output == "table" {
+		fmt.Fprintf(os.Stdout, "deleted %s | issues unfiled (project and module kept) | directory kept\n", args[0])
+		return nil
+	}
+	return cli.PrintJSON(os.Stdout, map[string]any{"id": args[0], "deleted": true, "directory_kept": true})
 }
 
 func runCockpitWorkItemRenumber(cmd *cobra.Command, args []string) error {
@@ -210,6 +226,9 @@ func runCockpitWorkItemRenumber(cmd *cobra.Command, args []string) error {
 	if err := client.PostJSON(ctx, "/api/cockpit/nodes/"+url.PathEscape(args[0])+"/renumber", map[string]any{}, &out); err != nil {
 		return fmt.Errorf("renumber: %w", err)
 	}
-	fmt.Fprintf(os.Stdout, "Renumbered children of %s: %v row(s) changed.\n", args[0], out["changed"])
+	if output, _ := cmd.Flags().GetString("output"); output == "table" {
+		fmt.Fprintf(os.Stdout, "renumbered children of %s | %v row(s) changed\n", args[0], out["changed"])
+		return nil
+	}
 	return cli.PrintJSON(os.Stdout, out)
 }
