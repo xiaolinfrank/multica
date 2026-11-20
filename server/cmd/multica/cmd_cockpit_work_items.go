@@ -68,13 +68,14 @@ func cockpitWorkItemFlags(cmd *cobra.Command) {
 	cmd.Flags().String("after", "", "work item code or id to insert after")
 	cmd.Flags().String("creation-key", "", "idempotency key: a retried create reuses the row it already made")
 	cmd.Flags().String("to", "", "destination module row (code or id) for move")
-	cmd.Flags().String("output", "json", "json (default) or table")
+	cmd.Flags().String("output", "json", "json (default) or table; table prints one summary line")
 }
 
 func init() {
-	cockpitWorkItemFlags(cockpitWorkItemCreateCmd)
-	cockpitWorkItemFlags(cockpitWorkItemRenameCmd)
-	cockpitWorkItemFlags(cockpitWorkItemMoveCmd)
+	for _, cmd := range []*cobra.Command{cockpitWorkItemCreateCmd, cockpitWorkItemRenameCmd,
+		cockpitWorkItemMoveCmd, cockpitWorkItemDeleteCmd, cockpitWorkItemRenumberCmd} {
+		cockpitWorkItemFlags(cmd)
+	}
 	cockpitWorkItemCmd.AddCommand(cockpitWorkItemCreateCmd, cockpitWorkItemRenameCmd,
 		cockpitWorkItemMoveCmd, cockpitWorkItemDeleteCmd, cockpitWorkItemRenumberCmd)
 }
@@ -144,6 +145,10 @@ func runCockpitWorkItemCreate(cmd *cobra.Command, _ []string) error {
 	if err := client.PostJSON(ctx, "/api/cockpit/work-items", body, &node); err != nil {
 		return fmt.Errorf("create work item: %w", err)
 	}
+	if output, _ := cmd.Flags().GetString("output"); output == "table" {
+		fmt.Fprintf(os.Stdout, "%s %s\n", strVal(node, "code"), strVal(node, "name"))
+		return nil
+	}
 	return cli.PrintJSON(os.Stdout, node)
 }
 
@@ -161,6 +166,10 @@ func runCockpitWorkItemRename(cmd *cobra.Command, args []string) error {
 	var node map[string]any
 	if err := client.PatchJSON(ctx, "/api/cockpit/nodes/"+url.PathEscape(args[0]), map[string]any{"name": name}, &node); err != nil {
 		return fmt.Errorf("rename work item: %w", err)
+	}
+	if output, _ := cmd.Flags().GetString("output"); output == "table" {
+		fmt.Fprintf(os.Stdout, "%s renamed to %s\n", strVal(node, "code"), strVal(node, "name"))
+		return nil
 	}
 	return cli.PrintJSON(os.Stdout, node)
 }
@@ -212,7 +221,7 @@ func runCockpitWorkItemDelete(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stdout, "deleted %s | issues unfiled (project and module kept) | directory kept\n", args[0])
 		return nil
 	}
-	return cli.PrintJSON(os.Stdout, map[string]any{"id": args[0], "deleted": true, "directory_kept": true})
+	return cli.PrintJSON(os.Stdout, map[string]any{"ref": args[0], "deleted": true})
 }
 
 func runCockpitWorkItemRenumber(cmd *cobra.Command, args []string) error {

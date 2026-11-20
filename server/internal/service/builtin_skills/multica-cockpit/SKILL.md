@@ -60,7 +60,7 @@ multica cockpit work-item move 03.02.11 --to 04.01          # human; crossing mo
 multica cockpit work-item renumber 03.02                     # human; renumbers direct children, descendants keep their tail
 ```
 
-A cross-module move takes the destination's next number (the old one is never reused) and reports how many issues it refiled and how many needed their status mapped. Project rows and module rows are structure, not places issues sit: they cannot be created through `node create`, moved between parents, or deleted through the node endpoint — a module or project delete removes the rows under it through its own endpoint.
+A cross-module move takes the destination's next number (the old one is never reused) and reports how many issues it refiled and how many needed their status mapped. On a reconciled board a code only ever changes through a cross-module move or a renumber: node create accepts a hand-written code only in the parent's `prefix.NN` shape, and a direct code edit is refused. Project rows and module rows are structure, not places issues sit: they cannot be created through `node create`, moved between parents, or deleted through the node endpoint — a module or project delete removes the rows under it through its own endpoint.
 
 `multica cockpit node create --code --parent` still works during the transition, but it is not the way to add work: it lets the caller pick a level and a binding, which is how legacy boards drifted.
 

@@ -147,12 +147,14 @@ func TestCreateCockpitWorkItemWithCreationKey(t *testing.T) {
 	if second.ID != first.ID {
 		t.Fatalf("replay id = %s, want %s", second.ID, first.ID)
 	}
-	// A machine credential may create work items too (§0 item 20).
 	// A machine credential may create work items too (§0 item 20); it uses its
 	// own key, because a replay is keyed on the key alone.
 	machine, status := create("task_token", uuid.NewString())
 	if status != http.StatusCreated {
 		t.Fatalf("machine create status = %d", status)
+	}
+	if machine.ID == "" {
+		t.Fatal("machine create returned no row")
 	}
 	var rows int
 	if err := testPool.QueryRow(context.Background(), `SELECT count(*) FROM cockpit_node WHERE workspace_id=$1 AND name='带 key 的工作项'`, wsID).Scan(&rows); err != nil {
@@ -161,5 +163,4 @@ func TestCreateCockpitWorkItemWithCreationKey(t *testing.T) {
 	if rows != 2 { // the keyed row (replayed once) + the machine's own row
 		t.Fatalf("rows = %d, want 2", rows)
 	}
-	_ = machine
 }

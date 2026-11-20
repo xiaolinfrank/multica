@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -1173,16 +1174,28 @@ func (h *Handler) CreateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	// S3: on a reconciled board the generic create may only do what creating a
 	// work item does — a row under a module row, binding nothing. Anything else
 	// (a fourth level, an unbound root, a row that binds a project) would break
-	// I1/I2 from a path the skill no longer teaches.
+	// I1/I2 from a path the skill no longer teaches. "Binding nothing" means by
+	// VALUE: the installed frontend sends project_id/module_id as null, which
+	// must stay accepted for the one-release compatibility window (§7).
 	if cc.cockpit.PlanReconciledAt.Valid {
-		_, isModuleParent, e := loadModuleRow(r.Context(), qtx, cc.workspaceID, parentID)
+		parentRow, isModuleParent, e := loadModuleRow(r.Context(), qtx, cc.workspaceID, parentID)
 		if e != nil {
 			writeError(w, http.StatusInternalServerError, "failed to read the parent row")
 			return
 		}
-		if !isModuleParent || binding.projectSet || binding.moduleSet {
+		if !isModuleParent || binding.project.Valid || binding.module.Valid {
 			writeError(w, http.StatusBadRequest, "a reconciled board only accepts work items here: use work-item create, or the module/project endpoints for structure")
 			return
+		}
+		// A hand-written code must be the parent's code plus a two-digit tail
+		// (§2.5: numbers are allocated by the parent); the frontend's
+		// next-code preview already fits that shape.
+		if !autoCode && code != "" {
+			want := regexp.MustCompile(`^` + regexp.QuoteMeta(parentRow.Code) + `\.[0-9]{2}$`)
+			if !want.MatchString(code) {
+				writeError(w, http.StatusBadRequest, "code must be the parent's code plus a two-digit tail (e.g. "+parentRow.Code+".11) on a reconciled board")
+				return
+			}
 		}
 	}
 	projectID, moduleID, bindErr := resolveCockpitNodeBinding(r.Context(), qtx, cc.workspaceID, db.CockpitNode{}, binding)
@@ -1430,6 +1443,14 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		code := strings.TrimSpace(*req.Code)
 		if code == "" || len([]rune(code)) > 64 {
 			writeError(w, http.StatusBadRequest, "code must be 1-64 characters")
+			return
+		}
+		if cc.cockpit.PlanReconciledAt.Valid && code != current.Code {
+			// §2.5: a number is fixed once allocated. It changes through a
+			// cross-module move or an explicit renumber, never a direct edit —
+			// a hand-edited code would break the prefix invariants the
+			// reconcile fixed (S2 rehearsed them at zero).
+			writeError(w, http.StatusBadRequest, "codes are fixed on a reconciled board; renumber the parent or move the work item instead")
 			return
 		}
 		params.Code = pgtype.Text{String: code, Valid: true}

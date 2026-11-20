@@ -111,8 +111,17 @@ func TestCockpitWorkItemCLIDeleteExplains(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &deleted); err != nil {
 		t.Fatalf("delete must print JSON by default: %v (%q)", err, out)
 	}
-	if deleted["deleted"] != true || deleted["directory_kept"] != true {
+	if deleted["deleted"] != true || deleted["ref"] != "01.01.01" || deleted["directory_kept"] != nil {
 		t.Fatalf("delete json = %v", deleted)
+	}
+	// --output is registered on every subcommand.
+	rootCmd.SetArgs([]string{"cockpit", "work-item", "delete", "01.01.01", "--output", "table"})
+	table, err := captureStdout(t, rootCmd.Execute)
+	if err != nil {
+		t.Fatalf("delete --output table: %v (unknown flag?)", err)
+	}
+	if !strings.Contains(table, "deleted 01.01.01") {
+		t.Fatalf("delete table = %q", table)
 	}
 }
 
@@ -131,5 +140,13 @@ func TestCockpitWorkItemCLIRenumber(t *testing.T) {
 	}
 	if renumbered["changed"] != float64(2) {
 		t.Fatalf("renumber json = %v", renumbered)
+	}
+	rootCmd.SetArgs([]string{"cockpit", "work-item", "renumber", "01.01", "--output", "table"})
+	table, err := captureStdout(t, rootCmd.Execute)
+	if err != nil {
+		t.Fatalf("renumber --output table: %v (unknown flag?)", err)
+	}
+	if !strings.Contains(table, "2 row(s) changed") {
+		t.Fatalf("renumber table = %q", table)
 	}
 }

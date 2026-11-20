@@ -116,10 +116,14 @@ func TestWorkItemMoveReportsStatusNotInWorkflow(t *testing.T) {
 	if body["code"] != "status_not_in_workflow" || body["allowed_statuses"] == nil {
 		t.Fatalf("body = %v, want the issue-detail refusal shape", body)
 	}
-	// The message must name the issue: "which one?" is the first question a
-	// reviewer asks when a move is refused.
-	if msg, _ := body["error"].(string); !strings.Contains(msg, "TES-") && !strings.Contains(msg, "#") {
-		t.Fatalf("error does not name the issue: %q", msg)
+	// The message must name the issue exactly: "which one?" is the first
+	// question a reviewer asks when a move is refused. The fixture prefix is
+	// TES, and this is the workspace's first issue.
+	if msg, _ := body["error"].(string); !strings.Contains(msg, "TES-1") {
+		t.Fatalf("error does not name TES-1: %q", msg)
+	}
+	if body["issue"] != "TES-1" {
+		t.Fatalf("issue field = %v, want TES-1", body["issue"])
 	}
 }
 
@@ -364,4 +368,59 @@ func TestGenericNodeCreateIsWorkItemShapedOnReconciledBoard(t *testing.T) {
 		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID, map[string]any{"code": "bind2", "name": "bind2", "parent_id": l2A, "project_id": projectID})).Want(http.StatusBadRequest)
 	// Editing a binding is structure work too.
 	patchNode(t, wsID, work, map[string]any{"module_id": dbfx.Insert(t, "module", testutil.Cols{"workspace_id": wsID, "project_id": projectID, "title": "另一个模块"})}, http.StatusBadRequest)
+}
+
+// The installed frontend's "new work item" dialog sends project_id/module_id
+// as null alongside creation_key + auto_code + parent_id. Null is NOT a
+// binding: refusing it would break every installed desktop client the moment
+// its board is reconciled (§7 keeps the old endpoint one release).
+func TestGenericNodeCreateAcceptsFrontendNullBindings(t *testing.T) {
+	wsID, moduleA, _, _, l2A, _, _ := reconciledFixture(t)
+	var out CockpitNodeCreateResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID, map[string]any{
+			"creation_key": uuid.NewString(), "auto_code": true,
+			"parent_id": l2A, "project_id": nil, "module_id": nil,
+			"name": "前端对话框建的工作项",
+		})).Want(http.StatusCreated).JSON(&out)
+	if out.ParentID == nil || *out.ParentID != l2A {
+		t.Fatalf("parent = %v, want the module row", out.ParentID)
+	}
+	if out.Code == "" || !strings.HasPrefix(out.Code, "01.01.") {
+		t.Fatalf("code = %q, want the module's next number", out.Code)
+	}
+	_ = moduleA
+}
+
+// A hand-written code on a reconciled board must be the parent's code plus a
+// two-digit tail; a made-up string is refused.
+func TestGenericNodeCreateValidatesCodeShape(t *testing.T) {
+	wsID, _, _, _, l2A, _, _ := reconciledFixture(t)
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID, map[string]any{
+			"parent_id": l2A, "code": "随便写", "name": "x",
+		})).Want(http.StatusBadRequest)
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID, map[string]any{
+			"parent_id": l2A, "code": "02.99.01", "name": "x",
+		})).Want(http.StatusBadRequest)
+	// The right shape still works — the legacy task-create dialog previews
+	// exactly this number.
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNode),
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes", wsID, map[string]any{
+			"parent_id": l2A, "code": "01.01.09", "name": "合法编号",
+		})).Want(http.StatusCreated)
+}
+
+// Codes are fixed once allocated (§2.5): a direct edit is refused on a
+// reconciled board; the number moves only through renumber or a cross-module
+// move.
+func TestPatchCannotEditCodeOnReconciledBoard(t *testing.T) {
+	wsID, _, _, _, _, _, work := reconciledFixture(t)
+	patchNode(t, wsID, work, map[string]any{"code": "05.99"}, http.StatusBadRequest)
+	patchNode(t, wsID, work, map[string]any{"code": "abc"}, http.StatusBadRequest)
+	// The same value is a no-op, not a refusal.
+	var current string
+	_ = testPool.QueryRow(context.Background(), `SELECT code FROM cockpit_node WHERE id=$1`, work).Scan(&current)
+	patchNode(t, wsID, work, map[string]any{"code": current}, http.StatusOK)
 }

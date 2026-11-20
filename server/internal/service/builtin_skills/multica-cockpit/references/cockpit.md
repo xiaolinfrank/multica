@@ -343,7 +343,7 @@ Once the plan is reconciled, structure writes go through the level they belong t
 | renumber children | `POST /api/cockpit/nodes/{id}/renumber` · `work-item renumber` | human only; direct children are renumbered, descendants only take the new prefix |
 | delete a module / project | `DELETE /api/modules/{id}` · `DELETE /api/projects/{id}` | owner/admin; removes the plan rows under it |
 
-A work item's parent must be a module row; project and module rows cannot change parent, and the node delete refuses them. Moving across modules gives the work item the destination's next number, and the old number is never handed out again. Before the reconcile these writes return 409 — its codes are still provisional.
+A work item's parent must be a module row; project and module rows cannot change parent, and the node delete refuses them. A code only changes through a cross-module move or a renumber: a hand-written code on node create must be the parent's code plus a two-digit tail, and PATCHing a code returns 400. Moving across modules gives the work item the destination's next number, and the old number is never handed out again. Before the reconcile these writes return 409 — its codes are still provisional.
 
 Project and module deletion removes the plan rows (the L2 row and its work items; the L1 row and its whole subtree) together with their payments, milestones, meeting links and pending changes. A single work-item delete clears its payments and milestones too. Issues keep their rows: they lose only the filing.
 
