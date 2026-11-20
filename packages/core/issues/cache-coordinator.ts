@@ -399,11 +399,13 @@ export function applyIssueChange(
     const wasMember = baseIssue
       ? issueMatchesListFilter(baseIssue, scope, filter)
       : "unknown";
-    const isMember = issueMatchesListFilter(
-      { ...baseIssue, ...patch },
-      scope,
-      filter,
-    );
+    // A filing rewrites module/project on the server and the patch cannot
+    // name them, so the card may be ENTERING this filtered list without the
+    // merged entity showing it — stay unknown and let the refetch decide,
+    // instead of "false → false, nothing to do".
+    const isMember = opts.membershipUnknown
+      ? ("unknown" as const)
+      : issueMatchesListFilter({ ...baseIssue, ...patch }, scope, filter);
     // Neither before nor after the change does this issue belong to the
     // list — its pages and counts are untouched.
     if (wasMember === false && isMember === false) continue;

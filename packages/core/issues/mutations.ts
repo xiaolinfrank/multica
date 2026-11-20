@@ -551,9 +551,14 @@ export function useBatchUpdateIssues() {
       const staleKeys: QueryKey[] = [];
       for (const id of ids) {
         const base = qc.getQueryData<Issue>(issueKeys.detail(wsId, id));
+        // Same filing caveat as the single update: a work-item patch rewrites
+        // module/project on the server, and the target ids are not in the
+        // patch — membership of a module-filtered list is undecidable here.
+        const batchFilingTouched = Object.prototype.hasOwnProperty.call(patch, "work_item_id");
         const change = applyIssueChange(qc, wsId, id, patch as Partial<Issue>, {
           changed: issueChangedDims(patch, base),
           baseIssue: base,
+          membershipUnknown: batchFilingTouched,
         });
         for (const [key, snapshot] of change.prevLists) {
           const hash = hashKey(key);

@@ -31,10 +31,10 @@ export function isFilingChange(event: IssueFilingEvent): boolean {
   return event.workItemChanged === true || event.moduleChanged === true || event.projectChanged === true;
 }
 
-/** Invalidate the caches a filing change touches. The event is carried for
- *  documentation and future per-id precision (reading the OLD work item
- *  requires the pre-write cache); today both producers refresh the same two
- *  prefixes. */
+/** Invalidate the caches a filing change touches. The prefix-wide sweep is
+ *  deliberate: the OLD work item's page is not in the event (the server sends
+ *  only the new ids), and reading it from the cache would race the writer's
+ *  own onSuccess. A field edit that names no filing dim does nothing. */
 export function invalidateIssueFiling(qc: QueryClient, wsId: string, event: IssueFilingEvent): void {
   if (!event.issue.id || !isFilingChange(event)) return;
   // The whole tasks prefix: the new work item's page, the old one's, and the

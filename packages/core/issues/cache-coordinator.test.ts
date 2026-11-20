@@ -195,6 +195,33 @@ describe("applyIssueChange", () => {
     qc.clear();
   });
 
+  it("an undecidable filing membership refetches the list instead of patching or dropping the card", () => {
+    // The batch path and the optimistic single-update pass share this: the
+    // patch names only the work item, the server will move module/project.
+    const moduleKey = issueKeys.myListSorted(WS_ID, "module:m1", { module_id: "m1" }, sort);
+    qc.setQueryData<ListIssuesCache>(moduleKey, bucketed([issue()]));
+    const patch = { work_item_id: "w-2" };
+    const result = applyIssueChange(qc, WS_ID, "issue-1", patch, {
+      changed: issueChangedDims(patch, issue()),
+      baseIssue: issue(),
+      membershipUnknown: true,
+    });
+    // Present until the refetch answers — neither removed nor silently kept.
+    expect(qc.getQueryData<ListIssuesCache>(moduleKey)?.byStatus.unstarted?.issues).toHaveLength(1);
+    expect(result.staleKeys.length).toBeGreaterThan(0);
+  });
+
+  it("a filing with the target ids present leaves the old module's list outright", () => {
+    const moduleKey = issueKeys.myListSorted(WS_ID, "module:m1", { module_id: "m1" }, sort);
+    qc.setQueryData<ListIssuesCache>(moduleKey, bucketed([issue()]));
+    const serverRow = { ...issue(), module_id: "m2", project_id: "p2", work_item_id: "w-2" };
+    applyIssueChange(qc, WS_ID, "issue-1", serverRow, {
+      changed: issueChangedDims({ work_item_id: "w-2" }),
+      baseIssue: serverRow,
+    });
+    expect(qc.getQueryData<ListIssuesCache>(moduleKey)?.byStatus.unstarted?.issues).toHaveLength(0);
+  });
+
   it("plain field change: patches in place everywhere, no removals, no stale keys", () => {
     qc.setQueryData<ListIssuesCache>(wsKey, bucketed([issue()]));
     qc.setQueryData<ListIssuesCache>(myAssignedKey, bucketed([issue()]));

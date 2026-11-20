@@ -266,3 +266,16 @@ describe("listFilterDependsOn", () => {
     ).toBe(false);
   });
 });
+
+describe("filing membership (S4 self-check)", () => {
+  it("treats a work-item patch as a project and module move so filtered lists re-judge", () => {
+    const base = makeIssue();
+    const dims = issueChangedDims({ work_item_id: "w-2" }, base);
+    // The coordinator only re-judges membership (and refetches an unloaded
+    // window the card may be ENTERING) when listFilterDependsOn says yes.
+    expect(listFilterDependsOn(undefined, { module_id: "m1" }, dims)).toBe(true);
+    expect(listFilterDependsOn(undefined, { project_id: "p1" }, dims)).toBe(true);
+    // A title-only edit still depends on nothing.
+    expect(listFilterDependsOn(undefined, { module_id: "m1" }, issueChangedDims({ title: "x" }, base))).toBe(false);
+  });
+});
