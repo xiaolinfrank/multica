@@ -995,3 +995,50 @@ func TestCockpitPlanReconcileHoldsWholeFamilyAcrossProjectMove(t *testing.T) {
 		}
 	}
 }
+
+// A pre-bound L2 row is the authority on its module: a later row that
+// name-matches the same module must surface as a blocker, whichever order the
+// two rows appear in. The pre-bound row keeps its binding.
+func TestCockpitPlanReconcileBlocksSecondClaimOnPreBoundModule(t *testing.T) {
+	f := newCockpitWorkflowFixture(t)
+	ctx := context.Background()
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := f.Project(t, "P 项目")
+	module := f.Module(t, project, "01.01 甲模块")
+	node := func(position float64, code, name string, parent pgtype.UUID, moduleID pgtype.UUID) pgtype.UUID {
+		// The project row binds the project. An unbound L2 resolves its scope
+		// through the parent, so it carries neither binding; a bound L2 carries
+		// project+module (the module check requires the project, and the
+		// project-only index is partial so the two never collide).
+		cols := testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": code, "name": name, "position": position}
+		if parent.Valid {
+			cols["parent_id"] = parent
+		} else {
+			cols["project_id"] = project
+		}
+		if moduleID.Valid {
+			cols["module_id"] = moduleID
+			cols["project_id"] = project
+		}
+		return parseTestUUID(t, f.Insert(t, "cockpit_node", cols))
+	}
+	l1 := node(0, "L1-01", "P 项目", pgtype.UUID{}, pgtype.UUID{})
+	// Position 0: a plain row named like the module (would match by name).
+	node(0, "01.01", "甲模块", l1, pgtype.UUID{})
+	// Position 1: the pre-bound row, appearing AFTER the name match.
+	node(1, "01.02", "旧名", l1, parseTestUUID(t, module))
+
+	report, err := f.issues.ReconcileCockpitPlan(ctx, CockpitReconcileInput{WorkspaceID: f.ws, ActorID: f.owner}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Blockers) == 0 {
+		t.Fatal("two rows claiming one module was not blocked")
+	}
+	if got := f.Count(t, "SELECT count(*) FROM cockpit_node WHERE workspace_id=$1 AND module_id=$2", f.ws, module); got != 1 {
+		t.Fatalf("module holders in the fixture = %d", got)
+	}
+}

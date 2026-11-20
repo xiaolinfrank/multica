@@ -931,6 +931,26 @@ func (st *cockpitReconciler) projectPathSuggestion(code, name string) string {
 
 func (st *cockpitReconciler) assignModules() {
 	bound := make(map[pgtype.UUID]pgtype.UUID) // module id -> the L2 row that holds it
+	// Pre-bound rows claim their modules BEFORE any matching runs: a row that
+	// already holds a binding is the authority, and a later name match on the
+	// same module must be the one reported, not the reverse.
+	for _, rootID := range append([]pgtype.UUID(nil), st.roots...) {
+		root := st.nodes[rootID]
+		if root == nil || root.deleted || !root.projectID.Valid {
+			continue
+		}
+		for _, l2ID := range st.children[rootID] {
+			l2 := st.nodes[l2ID]
+			if l2 == nil || l2.deleted || !l2.projectID.Valid || !l2.moduleID.Valid {
+				continue
+			}
+			if holder, clash := bound[l2.moduleID]; clash {
+				st.report.Blockers = append(st.report.Blockers, fmt.Sprintf("module %q (%s) already bound to %s and %s; resolve before apply", st.moduleIdx[l2.moduleID].module.Title, util.UUIDToString(l2.moduleID), st.nodes[holder].oldCode, l2.oldCode))
+				continue
+			}
+			bound[l2.moduleID] = l2ID
+		}
+	}
 	for _, rootID := range append([]pgtype.UUID(nil), st.roots...) {
 		root := st.nodes[rootID]
 		if root == nil || root.deleted || !root.projectID.Valid {
@@ -942,14 +962,6 @@ func (st *cockpitReconciler) assignModules() {
 				continue
 			}
 			if l2.projectID.Valid && l2.moduleID.Valid {
-				// Pre-bound rows register FIRST, in one pass: a later row that
-				// name-matches an already-held module must surface as a
-				// blocker here, not as a unique-index failure at apply.
-				if holder, clash := bound[l2.moduleID]; clash {
-					st.report.Blockers = append(st.report.Blockers, fmt.Sprintf("module %q (%s) already bound to %s and %s; resolve before apply", st.moduleIdx[l2.moduleID].module.Title, util.UUIDToString(l2.moduleID), st.nodes[holder].oldCode, l2.oldCode))
-					continue
-				}
-				bound[l2.moduleID] = l2ID
 				continue
 			}
 			module, method, confirm, ok := st.matchModule(root.projectID, l2)
