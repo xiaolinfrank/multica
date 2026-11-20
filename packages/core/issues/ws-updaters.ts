@@ -477,9 +477,6 @@ export function onIssueUpdated(
   // Same flag contract as project, for module membership: module rows carry
   // issue_count/done_count aggregates an entity patch cannot recompute.
   const oldModuleId = detailData?.module_id ?? cachedIssue?.module_id ?? null;
-  // A plan-driven refile (work_item_changed) sets neither project_changed nor
-  // module_changed, so a literal false from those flags must not short-circuit
-  // the diff — the ids decide (S4 review).
   // A work-item change marks BOTH dims changed outright and does not consult
   // the wire flags: on this path the flags are false by contract, and the
   // writer's own tab may have applied the server row already, so a diff would
