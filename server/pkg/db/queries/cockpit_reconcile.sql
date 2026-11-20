@@ -152,3 +152,15 @@ UPDATE issue SET
     updated_at = now()
 WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND work_item_id = sqlc.arg('work_item_id')::uuid
 RETURNING id, project_id, module_id, revision;
+
+-- name: ListCockpitDirectChildren :many
+SELECT id, code, name, position, parent_id, project_id, module_id
+FROM cockpit_node
+WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND parent_id = sqlc.arg('parent_id')::uuid
+ORDER BY position, code;
+
+-- name: SetCockpitNodeCode :exec
+-- Code-only write: the renumber's two-phase update must not touch parent,
+-- binding, name or position.
+UPDATE cockpit_node SET code = sqlc.arg('code'), updated_at = now()
+WHERE workspace_id = sqlc.arg('workspace_id')::uuid AND id = sqlc.arg('id')::uuid;

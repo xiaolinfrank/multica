@@ -264,6 +264,56 @@ func (q *Queries) DeleteDanglingCockpitNodeIssue(ctx context.Context, workspaceI
 	return err
 }
 
+const listCockpitDirectChildren = `-- name: ListCockpitDirectChildren :many
+SELECT id, code, name, position, parent_id, project_id, module_id
+FROM cockpit_node
+WHERE workspace_id = $1::uuid AND parent_id = $2::uuid
+ORDER BY position, code
+`
+
+type ListCockpitDirectChildrenParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	ParentID    pgtype.UUID `json:"parent_id"`
+}
+
+type ListCockpitDirectChildrenRow struct {
+	ID        pgtype.UUID `json:"id"`
+	Code      string      `json:"code"`
+	Name      string      `json:"name"`
+	Position  float64     `json:"position"`
+	ParentID  pgtype.UUID `json:"parent_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+	ModuleID  pgtype.UUID `json:"module_id"`
+}
+
+func (q *Queries) ListCockpitDirectChildren(ctx context.Context, arg ListCockpitDirectChildrenParams) ([]ListCockpitDirectChildrenRow, error) {
+	rows, err := q.db.Query(ctx, listCockpitDirectChildren, arg.WorkspaceID, arg.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCockpitDirectChildrenRow{}
+	for rows.Next() {
+		var i ListCockpitDirectChildrenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Position,
+			&i.ParentID,
+			&i.ProjectID,
+			&i.ModuleID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCockpitNodeDependents = `-- name: ListCockpitNodeDependents :many
 SELECT n.id AS node_id,
  (SELECT count(*) FROM cockpit_payment p WHERE p.node_id=n.id)::bigint AS payments,
@@ -520,6 +570,24 @@ type SaveCockpitReconcileReportParams struct {
 // structure only, so filings, title splits and created rows live here.
 func (q *Queries) SaveCockpitReconcileReport(ctx context.Context, arg SaveCockpitReconcileReportParams) error {
 	_, err := q.db.Exec(ctx, saveCockpitReconcileReport, arg.Report, arg.WorkspaceID)
+	return err
+}
+
+const setCockpitNodeCode = `-- name: SetCockpitNodeCode :exec
+UPDATE cockpit_node SET code = $1, updated_at = now()
+WHERE workspace_id = $2::uuid AND id = $3::uuid
+`
+
+type SetCockpitNodeCodeParams struct {
+	Code        string      `json:"code"`
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	ID          pgtype.UUID `json:"id"`
+}
+
+// Code-only write: the renumber's two-phase update must not touch parent,
+// binding, name or position.
+func (q *Queries) SetCockpitNodeCode(ctx context.Context, arg SetCockpitNodeCodeParams) error {
+	_, err := q.db.Exec(ctx, setCockpitNodeCode, arg.Code, arg.WorkspaceID, arg.ID)
 	return err
 }
 

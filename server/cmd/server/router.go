@@ -2377,6 +2377,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// regardless of registration order.
 				r.Get("/nodes/next-code", h.GetCockpitNextNodeCode)
 				r.Post("/nodes", h.CreateCockpitNode)
+				// S3: a work item is created by naming its module; the server
+				// owns the code, parent and directory name.
+				r.With(handler.RequireHumanActor).Post("/work-items", h.CreateCockpitWorkItem)
 				r.Get("/issues/{issueId}/primary-node", h.GetCockpitIssuePrimaryNode)
 				r.Get("/issues/{issueId}/actions", h.ListCockpitIssueActionSources)
 				r.Get("/issues/{issueId}/artifacts", h.ListCockpitIssueArtifactContexts)
@@ -2400,6 +2403,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Get("/payments", h.ListCockpitNodePayments)
 					r.Get("/meetings", h.ListCockpitNodeMeetings)
 					r.Patch("/", h.UpdateCockpitNode)
+					// S3: renumber the children to the order they are shown in.
+					r.With(handler.RequireHumanActor).Post("/renumber", h.RenumberCockpitChildren)
 					r.Get("/operation-basis", h.GetNodeOperationBasis)
 					r.Delete("/", h.DeleteCockpitNode)
 					r.Put("/issues", h.SetCockpitNodeIssues)
