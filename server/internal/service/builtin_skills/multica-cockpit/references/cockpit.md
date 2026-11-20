@@ -329,7 +329,22 @@ For node create/update, an omitted field keeps its value on update; null or an e
 
 Within a board, one project-only row may bind each project, and one module row may bind each module. An explicit project/module binding cannot sit below another module binding. Reparenting checks all bound descendants through any unbound grouping rows; conflicting ancestry returns 400 and rolls back the whole edit.
 
-CLI node create/update accept `--project-id <uuid>` and `--module-id <uuid>`; `--project-id "" --module-id ""` removes the explicit binding. Project/module deletion clears affected bindings in that workspace, retaining the plan nodes and their UUIDs but clearing the work item on their issues.
+CLI node create/update accept `--project-id <uuid>` and `--module-id <uuid>`; `--project-id "" --module-id ""` removes the explicit binding.
+
+Once the plan is reconciled, structure writes go through the level they belong to:
+
+| action | endpoint / CLI | who |
+| --- | --- | --- |
+| create a work item | `POST /api/cockpit/work-items` · `work-item create --module <code-or-id> --name ... [--after] [--creation-key]` | human and machine |
+| rename a work item | `PATCH /api/cockpit/nodes/{id}` · `work-item rename` | human only |
+| move a work item | same PATCH with `parent_id` · `work-item move --to <module-row>` | human only |
+| delete a work item | `DELETE /api/cockpit/nodes/{id}` · `work-item delete` | human; a machine only when nothing is filed under it |
+| renumber children | `POST /api/cockpit/nodes/{id}/renumber` · `work-item renumber` | human only |
+| delete a module / project | `DELETE /api/modules/{id}` · `DELETE /api/projects/{id}` | owner/admin; removes the plan rows under it |
+
+A work item's parent must be a module row; project and module rows cannot change parent, and the node delete refuses them. Moving across modules gives the work item the destination's next number, and the old number is never handed out again. Before the reconcile these writes return 409 — its codes are still provisional.
+
+Project and module deletion removes the plan rows (the L2 row and its work items; the L1 row and its whole subtree) together with their payments, milestones, meeting links and pending changes. Issues keep their rows: they lose only the filing.
 
 Once a board has bound nodes, whole-board import and snapshot restore return 409: those operations rebuild node UUIDs and would break stable references. Edit existing nodes instead; snapshots can still be saved and inspected. Importing a binding document into a currently unbound board validates the resources and final tree before committing. There is no name-based migration.
 

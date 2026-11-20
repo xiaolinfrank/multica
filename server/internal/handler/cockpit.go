@@ -71,7 +71,10 @@ type CockpitResponse struct {
 }
 
 type CockpitNodeResponse struct {
-	ID              string   `json:"id"`
+	ID string `json:"id"`
+	// Set by a reparent: what the move carried with it (§4.3).
+	RefiledIssues   int      `json:"refiled_issues,omitempty"`
+	StatusMapped    int      `json:"status_mapped,omitempty"`
 	CockpitID       string   `json:"cockpit_id"`
 	ParentID        *string  `json:"parent_id"`
 	ProjectID       *string  `json:"project_id"`
@@ -1461,6 +1464,7 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	// transaction. Crossing projects maps the status the same way the issue
 	// detail path does (S3).
 	var refiled []db.MoveFilingScopeRow
+	statusChanged := 0
 	if parentTouched {
 		// Only a work item may be reparented, and only under a module row: a
 		// project row or module row moving would break I1/I2, and a work item
@@ -1473,7 +1477,7 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 		// Only a reconciled board has work items with filing to carry; on a
 		// legacy board the rows are still the pre-S3 grouping.
 		if board, e := qtx.GetCockpitByWorkspace(r.Context(), cc.workspaceID); e == nil && board.PlanReconciledAt.Valid {
-			refiled, err = h.IssueService.RefileWorkItemScope(r.Context(), qtx, cc.workspaceID, node.ID)
+			refiled, statusChanged, err = h.IssueService.RefileWorkItemScope(r.Context(), qtx, cc.workspaceID, node.ID)
 		}
 		if err != nil {
 			var notIn *service.IssueStatusNotInWorkflowError
@@ -1490,6 +1494,10 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := cockpitNodeToResponse(node)
+	// A move reports what it carried: how many issues changed scope and how
+	// many needed their status mapped, so the CLI can say so (S3).
+	resp.RefiledIssues = len(refiled)
+	resp.StatusMapped = statusChanged
 	h.publishCockpit(r, cc, "node", "updated", resp)
 	for _, row := range refiled {
 		h.publishRefiledWorkItemIssue(r, cc, row)

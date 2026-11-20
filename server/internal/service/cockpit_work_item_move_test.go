@@ -49,12 +49,17 @@ func TestRefileWorkItemScopeFollowsMove(t *testing.T) {
 	if _, err := f.Pool.Exec(ctx, `UPDATE cockpit_node SET parent_id=$2 WHERE workspace_id=$1 AND id=$3`, f.ws, moduleNode, f.a); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := f.issues.RefileWorkItemScope(ctx, f.q, f.ws, f.a)
+	rows, statusMapped, err := f.issues.RefileWorkItemScope(ctx, f.q, f.ws, f.a)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(rows) != 2 {
 		t.Fatalf("refiled rows = %d, want 2", len(rows))
+	}
+	// The child's "todo" maps onto the destination's "backlog" (same lifecycle
+	// category, different key), so exactly one status changed.
+	if statusMapped != 1 {
+		t.Fatalf("status mapped = %d, want 1", statusMapped)
 	}
 	for _, want := range []struct {
 		id     pgtype.UUID
@@ -108,7 +113,7 @@ func TestRefileWorkItemScopeRefusesUnmappableStatus(t *testing.T) {
 	if _, err := f.Pool.Exec(ctx, `UPDATE cockpit_node SET parent_id=$2 WHERE workspace_id=$1 AND id=$3`, f.ws, moduleNode, f.a); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.issues.RefileWorkItemScope(ctx, f.q, f.ws, f.a); err == nil {
+	if _, _, err := f.issues.RefileWorkItemScope(ctx, f.q, f.ws, f.a); err == nil {
 		t.Fatal("a move onto an unlisted status was accepted")
 	}
 }

@@ -232,7 +232,7 @@ func init() {
 	cockpitReconcileCmd.Flags().Bool("apply", false, "Write the reconciliation (a plan snapshot is taken first)")
 	cockpitReconcileCmd.Flags().Bool("json", false, "Print the full report as JSON")
 	cockpitCmd.AddCommand(cockpitReconcileCmd)
-	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd,
+	cockpitCmd.AddCommand(cockpitShowCmd, cockpitUpdateCmd, cockpitNodeCmd, cockpitWorkItemCmd,
 		cockpitPaymentCmd, cockpitMilestoneCmd, cockpitMeetingCmd, cockpitImportCmd,
 		cockpitVersionCmd, newCockpitIssueCommand(), newCockpitOverviewCommand(), newCockpitSurfaceCommand("context"), newCockpitSurfaceCommand("plan"), newCockpitChangeCommand(), newCockpitArtifactCommand(), newCockpitAcceptanceCommand(), newCockpitInputCommand())
 	cockpitVersionCmd.AddCommand(cockpitVersionListCmd, cockpitVersionSaveCmd,

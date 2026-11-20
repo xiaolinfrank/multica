@@ -50,33 +50,34 @@ func (s *IssueService) workItemScope(ctx context.Context, q *db.Queries, workspa
 //
 // Runs inside the caller's transaction: the node update and the issue rewrite
 // commit together. Returns the changed rows for event publishing.
-func (s *IssueService) RefileWorkItemScope(ctx context.Context, q *db.Queries, workspaceID, nodeID pgtype.UUID) ([]db.MoveFilingScopeRow, error) {
+func (s *IssueService) RefileWorkItemScope(ctx context.Context, q *db.Queries, workspaceID, nodeID pgtype.UUID) ([]db.MoveFilingScopeRow, int, error) {
 	projectID, moduleID, err := s.workItemScope(ctx, q, workspaceID, nodeID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	ids, err := q.ListIssueIDsFiledAtNode(ctx, db.ListIssueIDsFiledAtNodeParams{WorkspaceID: workspaceID, WorkItemID: nodeID})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if len(ids) == 0 {
-		return nil, nil
+		return nil, 0, nil
 	}
 	// Only the rows this write touches, and one workflow lookup per distinct
 	// destination — not the whole workspace's issue list per issue.
 	issues, err := q.ListCockpitNodesByIDs(ctx, db.ListCockpitNodesByIDsParams{WorkspaceID: workspaceID, Ids: ids})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var def *issueworkflow.Definition
 	changed := make([]db.MoveFilingScopeRow, 0, len(issues))
+	statusChanged := 0
 	for _, issue := range issues {
 		status := issue.Status
 		if issue.ProjectID != projectID {
 			if def == nil {
 				loaded, _, err := issueworkflow.ForProject(ctx, q, workspaceID, projectID)
 				if err != nil {
-					return nil, err
+					return nil, 0, err
 				}
 				def = loaded
 				if def == nil {
@@ -91,7 +92,10 @@ func (s *IssueService) RefileWorkItemScope(ctx context.Context, q *db.Queries, w
 				// has to accept what lands on it; the issue detail path rejects
 				// the same case, so a move cannot do better than refuse.
 				if err := issueworkflow.CheckStatus(def, mapped); err != nil {
-					return nil, &IssueStatusNotInWorkflowError{IssueNumber: issue.Number, Err: err}
+					return nil, 0, &IssueStatusNotInWorkflowError{IssueNumber: issue.Number, Err: err}
+				}
+				if mapped != issue.Status {
+					statusChanged++
 				}
 				status = mapped
 			}
@@ -104,11 +108,11 @@ func (s *IssueService) RefileWorkItemScope(ctx context.Context, q *db.Queries, w
 			ProjectID: projectID, ModuleID: moduleID, Status: status,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("refile issue %s: %w", util.UUIDToString(issue.ID), err)
+			return nil, 0, fmt.Errorf("refile issue %s: %w", util.UUIDToString(issue.ID), err)
 		}
 		changed = append(changed, row)
 	}
-	return changed, nil
+	return changed, statusChanged, nil
 }
 
 // IssueStatusNotInWorkflowError carries the issue a refused move was about, so

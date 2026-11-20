@@ -45,14 +45,24 @@ Prefer bounded pages ([overview queues](references/overview.md), `node tasks`, `
 A new project or module gets its plan row automatically — do not create one by hand while a row already binds it (duplicate bindings return 409).
 `multica cockpit reconcile` previews the one-time plan migration (display structure, bindings, work-item filings, directory names); `--apply` writes it in one transaction after a snapshot, is human-only, and is accepted **once** — after that only a preview runs. Read `--json` before applying: a blocked group means money, milestones or links still sit on a row the merge would delete, and every unfiled issue is listed with its reason for a human to file by hand.
 
-Rows that are real new work are created, not proposed:
+A work item (the row issues are filed under) is created by naming its module — you do not pick a level, a code or a parent:
 
 ```bash
-multica cockpit node create --code 03.02.11 --parent 03.02 \
-  --name "EDC 变量字典定稿" --owner 李青娇 \
-  --start-date 2026-09-10 --end-date 2026-09-30 --status 未开始
-multica cockpit node delete 03.02.11   # leaves only; a row with children is refused
+multica cockpit work-item create --module 03.02 --name "EDC 变量字典定稿" --creation-key <uuid>
+multica cockpit work-item delete 03.02.11   # unfiles its issues, keeps project/module and the directory
 ```
+
+You may create work items and you may delete one that files nothing (with a `--creation-key`, a retried create returns the row it already made instead of a second one). Deleting a work item that still files issues is refused — a person does it, or you propose the change. Renaming, moving and renumbering are human-only as well:
+
+```bash
+multica cockpit work-item rename 03.02.11 --name "EDC 变量字典定稿（v2）"   # human credential
+multica cockpit work-item move 03.02.11 --to 04.01          # human; crossing modules renumbers it
+multica cockpit work-item renumber 03.02                     # human; rewrites children + descendants
+```
+
+A cross-module move takes the destination's next number (the old one is never reused) and reports how many issues it refiled and how many needed their status mapped. Project rows and module rows are structure, not places issues sit: they cannot be created through `node create`, moved between parents, or deleted through the node endpoint — a module or project delete removes the rows under it through its own endpoint.
+
+`multica cockpit node create --code --parent` still works during the transition, but it is not the way to add work: it lets the caller pick a level and a binding, which is how legacy boards drifted.
 
 ## Reporting board drift
 
