@@ -38,7 +38,7 @@ Row status/category are free text; match existing values such as `进行中`. Wo
 
 Start with `multica cockpit context` and the scoped `plan`/`overview` reads; never guess IDs or values. Pass the chat's actual `--project-id` and `--module-id` (a module requires its project) to every supporting read.
 The workspace tree hides paused, completed and cancelled projects and their subtrees; `--include-closed` shows them. A project- or module-scoped read always names its subject, so its own page keeps working after it closes.
-Prefer bounded pages ([overview queues](references/overview.md), `node tasks`, `meeting page`) over repeatedly downloading the whole board. The dotted row number in the UI is a projection of the stored code before reconcile; resolve the real code or UUID before writing.
+Prefer bounded pages ([overview queues](references/overview.md), `node tasks`, `meeting page`) over repeatedly downloading the whole board. The plan quotes each row's stored code in the tree, the table and the chart alike — a pre-reconcile legacy row shows that legacy code as-is — so resolve the code to its UUID before writing.
 
 ## Structural changes
 

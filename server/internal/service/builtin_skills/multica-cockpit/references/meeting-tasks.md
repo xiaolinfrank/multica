@@ -58,7 +58,7 @@ and release are not prerequisites. Review/publication remain explicit human acts
 
 ## Plan editing and review proposals
 
-Use stored UUID/code from the scoped plan, not a projected dotted row label:
+Use the stored UUID/code from the scoped plan, not a label you rebuild from the tree:
 
 ```sh
 multica cockpit plan --project-id <project-uuid> --module-id <module-uuid> --output json

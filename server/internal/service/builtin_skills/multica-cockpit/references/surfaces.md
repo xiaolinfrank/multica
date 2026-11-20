@@ -74,8 +74,9 @@ The workspace tree hides paused, completed and cancelled projects and their subt
 unless `include_closed=true`; a project/module-scoped read always keeps its own subject.
 
 Plan `context_node_ids` identifies ancestors included only to explain the tree.
-Their own payments are outside a narrower scope. Use `node_index` to preserve
-workspace display codes rather than renumbering a filtered tree. `complete` is
+Their own payments are outside a narrower scope. `node_index` is the whole board's
+(id, code, parent, position) index, so a filtered tree can still name a parent's
+address; it does not renumber anything. `complete` is
 true only for a full supported plan; limits are 5,000 nodes, 25,000 payments and
 2,000 milestones. HTTP 413 `scope_limit` requires a smaller project/module.
 The separate 20,000-row global index limit returns `display_index_limit`; merely
