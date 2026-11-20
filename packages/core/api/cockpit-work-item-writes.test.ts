@@ -88,7 +88,8 @@ describe("work-item write contracts (S4)", () => {
     expect(String(open.fetchMock.mock.calls[0]?.[0])).not.toContain("include_closed");
     const closed = reply(planBody);
     await closed.client.getCockpitPlan("ws-1", { projectId: null, moduleId: null }, true);
-    expect(new URL(String(closed.fetchMock.mock.calls[0]?.[0])).searchParams.get("include_closed")).toBe("1");
+    // The handler compares the raw value with "true"; "1" is silently ignored.
+    expect(new URL(String(closed.fetchMock.mock.calls[0]?.[0])).searchParams.get("include_closed")).toBe("true");
   });
 });
 

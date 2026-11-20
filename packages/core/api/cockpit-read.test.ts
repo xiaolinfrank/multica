@@ -47,17 +47,6 @@ describe("cockpit scoped read contracts", () => {
       await expect(reply(invalid).client.getCockpitPlan("ws-1", scope)).resolves.toBeNull();
     }
   });
-  it("asks for closed projects with the flag the server actually reads", async () => {
-    const plan = { ...header, complete: true, nodes: [], payments: [], milestones: [], node_index: [], context_node_ids: [], task_counts: [], counts: { nodes: 0, payments: 0, milestones: 0, index_nodes: 0 } };
-    // The handler compares the raw query value with "true"; a "1" here made the
-    // toolbar switch look wired while the server kept filtering the project out.
-    const { client, fetchMock } = reply(plan);
-    await client.getCockpitPlan("ws-1", scope, true);
-    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get("include_closed")).toBe("true");
-    const off = reply(plan);
-    await off.client.getCockpitPlan("ws-1", scope, false);
-    expect(new URL(String(off.fetchMock.mock.calls[0]?.[0])).searchParams.has("include_closed")).toBe(false);
-  });
   it("preserves repeated filter values and an empty unfiled track, and checks calendar identity", async () => {
     const page = { workspace_id: "ws-1", scope: header.scope, node_id: "node-1", node_ids: [], items: [], total: 0, next_cursor: null, day_counts: [], date_from: "2026-10-01", date_to: "2026-10-31" };
     const query = { node_id: "node-1", tracks: ["", "Clinical"], parties: ["集团（研发、临床）"], date_from: page.date_from, date_to: page.date_to };
