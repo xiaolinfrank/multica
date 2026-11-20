@@ -160,10 +160,14 @@ type CockpitReconcileReport struct {
 	TitleSplits    []CockpitReconcileTitleSplit    `json:"title_splits,omitempty"`
 	Issues         []CockpitReconcileIssue         `json:"issues,omitempty"`
 	Unfiled        []CockpitReconcileUnfiled       `json:"unfiled_issues,omitempty"`
-	DanglingLinks  int64                           `json:"dangling_links"`
-	DirectoryNames []CockpitReconcileDirectory     `json:"directory_names,omitempty"`
-	Blockers       []string                        `json:"blockers,omitempty"`
-	SnapshotID     string                          `json:"snapshot_id,omitempty"`
+	// UnfiledWithoutEvidence counts issues left unfiled that carry NO evidence
+	// (no links, no title code) and are therefore not listed one by one: the
+	// total is what a reviewer still needs to see.
+	UnfiledWithoutEvidence int64                       `json:"unfiled_without_evidence"`
+	DanglingLinks          int64                       `json:"dangling_links"`
+	DirectoryNames         []CockpitReconcileDirectory `json:"directory_names,omitempty"`
+	Blockers               []string                    `json:"blockers,omitempty"`
+	SnapshotID             string                      `json:"snapshot_id,omitempty"`
 }
 
 // CockpitReconcileSnapshot writes the pre-apply backup inside the apply
@@ -209,6 +213,11 @@ type reconcileNode struct {
 	directory pgtype.Text
 	created   bool
 	deleted   bool
+	// pendingCode marks a created root whose L1 number is provisional:
+	// assignDeferredRootCodes re-numbers every pending root in position order
+	// once reflowed rows release theirs. rootSource keeps the report label.
+	pendingCode bool
+	rootSource  string
 	// original values, for the code/directory report and diffing
 	oldCode      string
 	oldName      string
@@ -297,7 +306,7 @@ func (s *IssueService) ReconcileCockpitPlan(ctx context.Context, in CockpitRecon
 	if in.Apply && board.PlanReconciledAt.Valid {
 		// Codes are fixed once the plan is reconciled (§2.5); re-applying
 		// would renumber rows users have reordered since. Preview stays open.
-		return report, fmt.Errorf("%w: this board's plan was already reconciled; only a dry run is available", ErrCockpitWorkflowConflict)
+		return report, ErrCockpitPlanAlreadyReconciled
 	}
 	if !in.Apply {
 		st, err := newCockpitReconciler(ctx, s.Queries, in.WorkspaceID, board)
@@ -518,9 +527,37 @@ func (st *cockpitReconciler) run() error {
 	st.applyCodes(true)
 	st.assignModules()
 	st.applyCodes(true)
+	// Backfilled rows keep the provisional numbers their sections recorded
+	// them with; the report is what a human reviews before apply, so it must
+	// show the FINAL numbers. Refresh in place, keeping each entry's source.
+	st.refreshReportCodes()
 	st.backfillIssues()
 	st.computeDirectoryNames()
 	return nil
+}
+
+// refreshReportCodes rewrites the code fields of the new-module-node and
+// new-root sections after the final applyCodes pass, so a report read before
+// apply shows the codes that will actually be written.
+func (st *cockpitReconciler) refreshReportCodes() {
+	for i := range st.report.NewModuleNodes {
+		if n := st.nodes[parseUUIDLenient(st.report.NewModuleNodes[i].NodeID)]; n != nil {
+			st.report.NewModuleNodes[i].Code = n.code
+		}
+	}
+	for i := range st.report.NewRoots {
+		if n := st.nodes[parseUUIDLenient(st.report.NewRoots[i].NodeID)]; n != nil {
+			st.report.NewRoots[i].Code = n.code
+		}
+	}
+}
+
+func parseUUIDLenient(id string) pgtype.UUID {
+	parsed, err := util.ParseUUID(id)
+	if err != nil {
+		return pgtype.UUID{}
+	}
+	return parsed
 }
 
 // ---------------------------------------------------------------------------
@@ -659,8 +696,55 @@ func (st *cockpitReconciler) assignProjects() {
 		}
 		st.createRootForProject(project)
 	}
+	// Number every new root AFTER the reflowed rows release theirs, in root
+	// position order: pmo-showcase's L1-01..L1-08 held 01–08 until now, so an
+	// earlier nextL1Code() handed 09 to a project that should own 01. The
+	// freed numbers go to the earliest-position new roots (§3.2 item 7).
 	st.releaseReflowCodes()
+	st.assignDeferredRootCodes()
 	st.rebuildTree()
+}
+
+// assignDeferredRootCodes gives every created root its final L1 number, in
+// root position order, taking the smallest free number each time. Called once,
+// after reflowed rows released theirs, so a reflowed board numbers from 01.
+func (st *cockpitReconciler) assignDeferredRootCodes() {
+	deferred := make([]*reconcileNode, 0)
+	for _, id := range st.roots {
+		if n := st.nodes[id]; n != nil && n.created && n.pendingCode {
+			deferred = append(deferred, n)
+		}
+	}
+	if len(deferred) == 0 {
+		return
+	}
+	// Rebuild the claim set from SURVIVING rows only: a deferred root may hold
+	// a provisional number another surviving row also carries, and deleting it
+	// by code would strip that row's claim.
+	st.usedL1 = make(map[string]bool)
+	for _, id := range st.roots {
+		if n := st.nodes[id]; n != nil && !n.deleted && !n.pendingCode && !n.created {
+			st.usedL1[trailingDigits(n.code)] = true
+		}
+	}
+	for _, n := range deferred {
+		n.code = ""
+	}
+	next := 1
+	for _, n := range deferred {
+		var code string
+		for {
+			candidate := fmt.Sprintf("%02d", next)
+			next++
+			if !st.usedL1[candidate] {
+				code = candidate
+				break
+			}
+		}
+		st.usedL1[code] = true
+		n.code = code
+		st.report.NewRoots = append(st.report.NewRoots, CockpitReconcileNewRoot{ProjectID: util.UUIDToString(n.projectID), NodeID: util.UUIDToString(n.id), Code: code, Title: n.name, Source: n.rootSource})
+	}
 }
 
 func (st *cockpitReconciler) matchProject(l1 *reconcileNode, matched map[pgtype.UUID]bool) (db.Project, string, []string, bool) {
@@ -749,10 +833,12 @@ func (st *cockpitReconciler) createRootForProject(project db.Project) {
 	code, name := splitReconcileTitle(project.Title)
 	source := "title_prefix"
 	if code == "" || len(code) > 2 || st.usedL1[code] {
-		code = st.nextL1Code()
-		source = "next"
+		// The title's number is unusable or already held by a surviving row:
+		// leave the code empty so the deferred pass assigns a free one. Keeping
+		// the colliding number here would only be cleared later, and clearing
+		// it from usedL1 would strip the surviving row's own claim.
+		source, code = "next", ""
 	}
-	st.usedL1[code] = true
 	st.stripProjectTitle(project)
 	if name == "" {
 		name = project.Title
@@ -761,11 +847,13 @@ func (st *cockpitReconciler) createRootForProject(project db.Project) {
 	node := &reconcileNode{
 		id: id, projectID: project.ID, code: code, name: name,
 		position: st.maxRootPosition() + 1, created: true,
+		// The final L1 number is assigned after reflowed rows release theirs
+		// (assignDeferredRootCodes), so this code is provisional.
+		pendingCode: true, rootSource: source,
 	}
 	st.nodes[id] = node
 	st.order = append(st.order, id)
 	st.roots = append(st.roots, id)
-	st.report.NewRoots = append(st.report.NewRoots, CockpitReconcileNewRoot{ProjectID: util.UUIDToString(project.ID), NodeID: util.UUIDToString(id), Code: code, Title: name, Source: source})
 	if st.projectTitles[project.ID] == "" {
 		st.projectTitles[project.ID] = name
 	}
@@ -854,6 +942,13 @@ func (st *cockpitReconciler) assignModules() {
 				continue
 			}
 			if l2.projectID.Valid && l2.moduleID.Valid {
+				// Pre-bound rows register FIRST, in one pass: a later row that
+				// name-matches an already-held module must surface as a
+				// blocker here, not as a unique-index failure at apply.
+				if holder, clash := bound[l2.moduleID]; clash {
+					st.report.Blockers = append(st.report.Blockers, fmt.Sprintf("module %q (%s) already bound to %s and %s; resolve before apply", st.moduleIdx[l2.moduleID].module.Title, util.UUIDToString(l2.moduleID), st.nodes[holder].oldCode, l2.oldCode))
+					continue
+				}
 				bound[l2.moduleID] = l2ID
 				continue
 			}
@@ -907,7 +1002,8 @@ func (st *cockpitReconciler) assignModules() {
 // matchModule binds an L2 row to a module of its project, in the order the
 // plan fixes: code AND name, then name alone (flagged for review), then code.
 // l2.code is the DISPLAY code (applyCodes ran first), which is the numbering
-// module titles carry. A module another row already bound is never returned.
+// module titles carry. A module another row already holds is still returned;
+// assignModules turns the second claim into a blocker.
 func (st *cockpitReconciler) matchModule(projectID pgtype.UUID, l2 *reconcileNode) (db.Module, string, bool, bool) {
 	_, name := splitReconcileTitle(l2.name)
 	normalized := normalizeReconcileName(name)
@@ -932,11 +1028,11 @@ func (st *cockpitReconciler) matchModule(projectID pgtype.UUID, l2 *reconcileNod
 			return m, "code_name", false, true
 		}
 	}
-	if len(byCode) == 1 {
-		return byCode[0], "code", true, true
-	}
 	if len(byName) == 1 {
 		return byName[0], "name", true, true
+	}
+	if len(byCode) == 1 {
+		return byCode[0], "code", true, true
 	}
 	return db.Module{}, "", false, false
 }
@@ -1049,32 +1145,20 @@ func (st *cockpitReconciler) tryReflow(l1 *reconcileNode) bool {
 		return false
 	}
 	reflow := CockpitReconcileReflow{OldRootID: util.UUIDToString(l1.id), OldCode: l1.oldCode, OldName: l1.name}
-	// Projects take the L1 numbers in the original tree order of their first
-	// L2 row (§3.2 item 7); usedL1 still holds the old row's code, freed later
-	// by releaseReflowCodes, so numbers are assigned by order, not by lookup.
-	seen := 1
 	rootsByProject := make(map[pgtype.UUID]pgtype.UUID, len(order))
 	for _, projectID := range order {
 		g := groups[projectID]
 		root := st.rootForProject(projectID)
 		if root == nil {
-			code := ""
-			for {
-				candidate := fmt.Sprintf("%02d", seen)
-				seen++
-				if !st.usedL1[candidate] {
-					code = candidate
-					break
-				}
-			}
-			st.usedL1[code] = true
+			// A provisional code: assignDeferredRootCodes numbers every new
+			// root in position order once reflowed rows release theirs, so a
+			// board whose old L1s held 01–08 still numbers its projects 01+.
 			id := dbid.NewV7()
-			root = &reconcileNode{id: id, projectID: projectID, code: code, name: splitName(g.project.Title), position: st.maxRootPosition() + 1, created: true}
+			root = &reconcileNode{id: id, projectID: projectID, code: st.nextL1Code(), name: splitName(g.project.Title), position: st.maxRootPosition() + 1, created: true, pendingCode: true, rootSource: "reflow"}
 			st.nodes[id] = root
 			st.order = append(st.order, id)
 			st.roots = append(st.roots, id)
 			st.stripProjectTitle(g.project)
-			st.report.NewRoots = append(st.report.NewRoots, CockpitReconcileNewRoot{ProjectID: util.UUIDToString(projectID), NodeID: util.UUIDToString(id), Code: code, Title: root.name, Source: "reflow"})
 		} else if !root.projectID.Valid {
 			root.projectID = projectID
 		}
@@ -1125,18 +1209,22 @@ type milestoneMove struct{ from, to pgtype.UUID }
 // on the issue update path); instead, an issue whose filing moves it into a
 // project with a NAMED workflow that does not list its current status is left
 // unfiled and reported, so nothing lands on a status the project forbids.
+// "Moves" includes an issue with no project gaining one — the update path
+// counts that as a project move too (projectMoving).
+// When one member of an issue family is held, the whole family is held and
+// each row is listed with its own reason: a parent filing that its child
+// cannot follow would break I4 on the very first write after the migration.
 func (st *cockpitReconciler) checkCrossProjectStatus(ctx context.Context, q *db.Queries) error {
 	defs := make(map[pgtype.UUID]*issueworkflow.Definition)
-	for _, issue := range st.issues {
-		filing := st.filings[issue.ID]
-		if !filing.valid || !issue.ProjectID.Valid || filing.project == issue.ProjectID {
-			continue
+	allows := func(filing reconcileFiling, issue *db.ListCockpitReconcileIssuesRow) bool {
+		if filing.project == issue.ProjectID {
+			return true
 		}
 		def := defs[filing.project]
 		if def == nil {
 			loaded, _, err := issueworkflow.ForProject(ctx, q, st.ws, filing.project)
 			if err != nil {
-				return err
+				return false
 			}
 			// A default workflow accepts every status; only a named one limits.
 			// The empty Definition marks "no restriction" via its nil Steps.
@@ -1146,14 +1234,61 @@ func (st *cockpitReconciler) checkCrossProjectStatus(ctx context.Context, q *db.
 			}
 			defs[filing.project] = def
 		}
-		if def.Steps == nil || def.Has(issue.Status) {
-			// Default or unrestricted: any current status survives the move.
+		return def.Steps == nil || def.Has(issue.Status)
+	}
+	held := make(map[pgtype.UUID]bool)
+	// Families: hold the ROOT first so descendants follow for the reason of
+	// their own filing, not a blanket one.
+	familyRoot := func(id pgtype.UUID) pgtype.UUID {
+		seen := map[pgtype.UUID]bool{id: true}
+		for issue := st.issueIdx[id]; issue != nil && issue.ParentIssueID.Valid; {
+			parent := st.issueIdx[issue.ParentIssueID]
+			if parent == nil || seen[parent.ID] {
+				break
+			}
+			seen[parent.ID] = true
+			id = parent.ID
+			issue = parent
+		}
+		return id
+	}
+	members := func(root pgtype.UUID) []pgtype.UUID {
+		out := []pgtype.UUID{root}
+		for i := 0; i < len(out); i++ {
+			for _, issue := range st.issues {
+				if issue.ParentIssueID == out[i] {
+					out = append(out, issue.ID)
+				}
+			}
+		}
+		return out
+	}
+	for i := range st.issues {
+		issue := &st.issues[i]
+		filing := st.filings[issue.ID]
+		if !filing.valid || held[issue.ID] {
 			continue
 		}
-		filing.valid = false
-		filing.note = "cross_project_status_not_in_workflow"
-		st.filings[issue.ID] = filing
-		st.unfiled[issue.ID] = "cross_project_status_not_in_workflow"
+		if allows(filing, issue) {
+			continue
+		}
+		// Hold the whole family: the parent's filing cannot strand children
+		// (I4), and a child cannot move where its parent stays.
+		root := familyRoot(issue.ID)
+		for _, member := range members(root) {
+			memberFiling := st.filings[member]
+			if memberFiling.valid {
+				reason := "family_cross_project_status"
+				if member == issue.ID {
+					reason = "cross_project_status_not_in_workflow"
+				}
+				memberFiling.valid = false
+				memberFiling.note = reason
+				st.filings[member] = memberFiling
+				st.unfiled[member] = reason
+			}
+			held[member] = true
+		}
 	}
 	st.buildIssueReports()
 	return nil
@@ -1318,7 +1453,8 @@ func (st *cockpitReconciler) backfillIssues() {
 			// Only issues that carried evidence are reported: a link set or a
 			// title code the backfill could not resolve. An issue with neither
 			// was never a candidate, and listing every one of them (over a
-			// thousand in production) would bury the ones a human must decide.
+			// thousand in production) would bury the ones a human must decide;
+			// they are counted instead.
 			reason := st.unfiled[issue.ID]
 			if reason == "" {
 				switch {
@@ -1326,6 +1462,7 @@ func (st *cockpitReconciler) backfillIssues() {
 					reason = "title_code_unmatched"
 				case len(linksByIssue[issue.ID]) == 0:
 					reason = ""
+					st.report.UnfiledWithoutEvidence++
 				case len(workItemLinks(linksByIssue[issue.ID], workItems)) == 0:
 					reason = "only_structural_links"
 				default:
@@ -1506,12 +1643,15 @@ func (st *cockpitReconciler) apply() error {
 		}
 	}
 	sort.SliceStable(created, func(i, j int) bool { return st.depth(created[i].id) < st.depth(created[j].id) })
-	// New rows are created with their FINAL code: their old codes never existed
-	// in the table, so they cannot collide with a surviving row's old code.
+	// New rows are created with a TEMPORARY code ("~<id>"): a created row's
+	// final code can equal an old row's code that the merge deletes below
+	// (fosun-bio: a module backfilled as 03.04 while the merged-away 03.04
+	// still exists). They take their final codes with every other changed row
+	// in phase 2.
 	for _, n := range created {
 		if _, err := st.q.CreateCockpitReconcileNode(st.ctx, db.CreateCockpitReconcileNodeParams{
 			ID: n.id, WorkspaceID: st.ws, CockpitID: st.board.ID, ParentID: n.parentID,
-			ProjectID: n.projectID, ModuleID: n.moduleID, Code: n.code, Name: n.name,
+			ProjectID: n.projectID, ModuleID: n.moduleID, Code: "~" + util.UUIDToString(n.id), Name: n.name,
 			Position: n.position, DirectoryName: n.directory,
 		}); err != nil {
 			return err
@@ -1558,8 +1698,19 @@ func (st *cockpitReconciler) apply() error {
 			return err
 		}
 	}
-	// Phase 2: final codes. No two surviving rows share one.
+	// Phase 2: final codes, for changed existing rows AND the created rows
+	// still on their temporary codes. No two surviving rows share one.
 	for _, n := range changed {
+		if err := st.q.UpdateCockpitNodeStructure(st.ctx, structure(n, n.code)); err != nil {
+			return err
+		}
+		if n.directory.Valid && n.directory.String != "" {
+			if err := st.q.SetCockpitNodeDirectoryName(st.ctx, db.SetCockpitNodeDirectoryNameParams{WorkspaceID: st.ws, ID: n.id, DirectoryName: n.directory.String}); err != nil {
+				return err
+			}
+		}
+	}
+	for _, n := range created {
 		if err := st.q.UpdateCockpitNodeStructure(st.ctx, structure(n, n.code)); err != nil {
 			return err
 		}

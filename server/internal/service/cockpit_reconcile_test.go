@@ -789,3 +789,209 @@ func (f planningFixture) issueRevision(t *testing.T, issue string) int64 {
 	}
 	return row.Revision
 }
+
+// A backfilled L2 can take the exact number a merged-away member row still
+// holds (fosun-bio: modules「03.04/03.05 对外汇报材料」backfilled as 03.04/03.05
+// while the old 03.04/03.05 members are only deleted in the same transaction).
+// Created rows enter with a temporary code and join the same two-phase
+// renumbering, so the merge and the backfill commit together.
+func TestCockpitPlanReconcileCreatesModuleRowsOntoDeletedCodes(t *testing.T) {
+	f := newCockpitWorkflowFixture(t)
+	ctx := context.Background()
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := f.Project(t, "03药研智能体及应用案例")
+	// Two modules of this project have no L2 row yet; their titles carry the
+	// display numbers the backfilled rows will take.
+	f.Module(t, project, "03.04 对外汇报材料")
+	f.Module(t, project, "03.05 对外汇报材料二")
+	node := func(position float64, code, name string, parent pgtype.UUID) pgtype.UUID {
+		cols := testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": code, "name": name, "position": position}
+		if parent.Valid {
+			cols["parent_id"] = parent
+		}
+		return parseTestUUID(t, f.Insert(t, "cockpit_node", cols))
+	}
+	l1 := node(0, "L1-03", "药研智能体及应用案例", pgtype.UUID{})
+	// 03.01–03.02 merge into 03.01; 03.03–03.05 merge into 03.03, so the
+	// surviving children are 03.01, 03.03, 03.06/03.07 → renumbered 03.01,
+	// 03.02, 03.03, 03.04. The deleted members 03.04/03.05 hold the numbers
+	// the backfilled module rows need.
+	for i := 1; i <= 7; i++ {
+		node(float64(i-1), fmt.Sprintf("03.%02d", i), fmt.Sprintf("方向 %d", i), l1)
+	}
+	report, err := f.issues.ReconcileCockpitPlan(ctx, CockpitReconcileInput{WorkspaceID: f.ws, ActorID: f.owner, Apply: true},
+		func(context.Context, *db.Queries, db.Cockpit) (string, error) { return "snap", nil })
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if len(report.Blockers) != 0 {
+		t.Fatalf("blockers: %v", report.Blockers)
+	}
+	if len(report.NewModuleNodes) == 0 {
+		t.Fatal("the fixtures produced no backfilled module row")
+	}
+	// The backfilled rows took the deleted members' numbers, and no code
+	// appears twice under the project.
+	if got := f.Count(t, "SELECT count(DISTINCT code) FROM cockpit_node WHERE workspace_id=$1 AND parent_id=$2", f.ws, l1); got != f.Count(t, "SELECT count(*) FROM cockpit_node WHERE workspace_id=$1 AND parent_id=$2", f.ws, l1) {
+		t.Fatal("duplicate codes after merge+backfill")
+	}
+	// The report shows the FINAL code of every backfilled row.
+	for _, entry := range report.NewModuleNodes {
+		var actual string
+		if err := f.Pool.QueryRow(ctx, "SELECT code FROM cockpit_node WHERE workspace_id=$1 AND id=$2", f.ws, entry.NodeID).Scan(&actual); err != nil {
+			t.Fatal(err)
+		}
+		if entry.Code != actual {
+			t.Fatalf("report code %q for %s, row holds %q", entry.Code, entry.Title, actual)
+		}
+	}
+}
+
+// Production numbering: the workstream rows are L1-01 and L1-04..L1-08 (not
+// 01..06), and one project has no old L2 at all. All new roots must number
+// 01/02/03 by position after the old rows release theirs — an eager
+// nextL1Code() handed the no-L2 project 09 because L1-04..08 still held
+// their numbers at that moment.
+func TestCockpitPlanReconcileNumbersRootsAfterReleaseAtProductionShape(t *testing.T) {
+	f := newCockpitWorkflowFixture(t)
+	ctx := context.Background()
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projects := []string{"HLX22", "FS-501", "PMO 数字化建设（内部）"}
+	for _, title := range projects {
+		projectID := f.Project(t, title)
+		f.Module(t, projectID, title+"模块")
+	}
+	node := func(position float64, code, name string, parent pgtype.UUID) pgtype.UUID {
+		cols := testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": code, "name": name, "position": position}
+		if parent.Valid {
+			cols["parent_id"] = parent
+		}
+		return parseTestUUID(t, f.Insert(t, "cockpit_node", cols))
+	}
+	// Production numbering: the workstream rows are L1-01 and L1-04 (01–03 and
+	// 05–08 do not exist), each carrying one L2 that maps to a module. The
+	// third project has no row at all and gets a root from createRootForProject
+	// — the "next" source that used to land on 09.
+	for i, code := range []string{"L1-01", "L1-04"} {
+		l1 := node(float64(i), code, fmt.Sprintf("职能-%d", i), pgtype.UUID{})
+		node(0, fmt.Sprintf("%02d.01", i+1), projects[i]+"模块", l1)
+	}
+	report, err := f.issues.ReconcileCockpitPlan(ctx, CockpitReconcileInput{WorkspaceID: f.ws, ActorID: f.owner, Apply: true},
+		func(context.Context, *db.Queries, db.Cockpit) (string, error) { return "snap", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Blockers) != 0 {
+		t.Fatalf("blockers: %v", report.Blockers)
+	}
+	roots := map[string]string{}
+	rows, err := f.Pool.Query(ctx, "SELECT code, name FROM cockpit_node WHERE workspace_id=$1 AND parent_id IS NULL ORDER BY position", f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var code, name string
+		if err := rows.Scan(&code, &name); err != nil {
+			t.Fatal(err)
+		}
+		roots[code] = name
+	}
+	if len(roots) != 3 || roots["01"] == "" || roots["02"] == "" || roots["03"] == "" {
+		t.Fatalf("root codes = %v, want 01/02/03", roots)
+	}
+	// The no-L2 project is the third one, and it got 03, not 09.
+	if roots["03"] != "PMO 数字化建设（内部）" {
+		t.Fatalf("root 03 = %q", roots["03"])
+	}
+	if _, ok := roots["09"]; ok {
+		t.Fatal("a root was numbered 09")
+	}
+}
+
+// A created row's report entry shows its final code, not a provisional one.
+func TestCockpitPlanReconcileReportsFinalCodesForNewRows(t *testing.T) {
+	f := newCockpitWorkflowFixture(t)
+	ctx := context.Background()
+	// A project with no L1 row at all: the reconcile creates one, and an
+	// earlier module merge renumbers the siblings after it.
+	project := f.Project(t, "07 海外注册")
+	f.Module(t, project, "07.01 申报资料")
+	report, err := f.issues.ReconcileCockpitPlan(ctx, CockpitReconcileInput{WorkspaceID: f.ws, ActorID: f.owner}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.NewRoots) != 1 || len(report.NewModuleNodes) == 0 {
+		t.Fatalf("report new roots=%d modules=%d", len(report.NewRoots), len(report.NewModuleNodes))
+	}
+	if report.NewRoots[0].Code != "01" {
+		t.Fatalf("new root code = %q, want 01 (only free number)", report.NewRoots[0].Code)
+	}
+	if report.NewModuleNodes[0].Code != "01.01" {
+		t.Fatalf("new module row code = %q, want 01.01", report.NewModuleNodes[0].Code)
+	}
+}
+
+// Two shapes the per-issue check missed: an issue with NO project gaining one
+// counts as a project move (the update path treats null → project that way),
+// and holding only the parent would let its children follow it into a project
+// whose workflow rejects them — so the whole family is held and each row is
+// listed with its own reason.
+func TestCockpitPlanReconcileHoldsWholeFamilyAcrossProjectMove(t *testing.T) {
+	f := newCockpitWorkflowFixture(t)
+	ctx := context.Background()
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowID := f.Insert(t, "issue_workflow", testutil.Cols{
+		"workspace_id": f.WorkspaceID, "name": "受限工作流", "initial_status_key": "backlog",
+		"steps": `[{"status_key":"backlog"},{"status_key":"done"}]`,
+	})
+	project := f.Project(t, "B 项目", testutil.Cols{"workflow_id": workflowID})
+	f.Module(t, project, "B 模块")
+	node := func(position float64, code, name string, parent pgtype.UUID) pgtype.UUID {
+		cols := testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": code, "name": name, "position": position}
+		if parent.Valid {
+			cols["parent_id"] = parent
+		}
+		return parseTestUUID(t, f.Insert(t, "cockpit_node", cols))
+	}
+	l1 := node(0, "L1-02", "B 项目", pgtype.UUID{})
+	l2 := node(0, "02.01", "B 模块", l1)
+	work := node(0, "02.01.01", "B 工作项", l2)
+
+	// Parent lives OUTSIDE any project on a status the workflow rejects; its
+	// child sits in a permissive project. The child's link is the same work
+	// item, so it would follow the parent into the restricted project.
+	parent := f.Issue(t, "无项目父 issue", testutil.Cols{"status": "in_progress"})
+	child := f.Issue(t, "子 issue", testutil.Cols{"project_id": project, "module_id": parseTestUUID(t, f.Insert(t, "module", testutil.Cols{"workspace_id": f.WorkspaceID, "project_id": project, "title": "B 子模块"})), "parent_issue_id": parent})
+	f.Insert(t, "cockpit_node_issue", testutil.Cols{"workspace_id": f.WorkspaceID, "node_id": util.UUIDToString(work), "issue_id": parent})
+	f.Insert(t, "cockpit_node_issue", testutil.Cols{"workspace_id": f.WorkspaceID, "node_id": util.UUIDToString(work), "issue_id": child})
+
+	report, err := f.issues.ReconcileCockpitPlan(ctx, CockpitReconcileInput{WorkspaceID: f.ws, ActorID: f.owner}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reasons := map[string]string{}
+	for _, entry := range report.Unfiled {
+		reasons[entry.IssueID] = entry.Reason
+	}
+	if got := reasons[parent]; got != "cross_project_status_not_in_workflow" {
+		t.Fatalf("parent reason = %q (all: %v)", got, reasons)
+	}
+	if got := reasons[child]; got != "family_cross_project_status" {
+		t.Fatalf("child reason = %q, want family_cross_project_status (all: %v)", got, reasons)
+	}
+	for _, filed := range report.Issues {
+		if filed.IssueID == parent || filed.IssueID == child {
+			t.Fatalf("a held family member was still scheduled to move: %+v", filed)
+		}
+	}
+}

@@ -26,7 +26,7 @@ func writeCockpitActionError(w http.ResponseWriter, r *http.Request, err error) 
 	switch {
 	case errors.Is(err, service.ErrCockpitWorkflowInput), errors.Is(err, service.ErrProjectNotFound), errors.Is(err, service.ErrModuleNotFound), errors.Is(err, service.ErrModuleNotInProject):
 		status = http.StatusBadRequest
-	case errors.Is(err, service.ErrCockpitWorkflowConflict), errors.Is(err, service.ErrCockpitWorkflowExecutionBlocked):
+	case errors.Is(err, service.ErrCockpitWorkflowConflict), errors.Is(err, service.ErrCockpitWorkflowExecutionBlocked), errors.Is(err, service.ErrCockpitPlanAlreadyReconciled):
 		status = http.StatusConflict
 	case errors.Is(err, service.ErrCockpitWorkflowForbidden):
 		status = http.StatusForbidden

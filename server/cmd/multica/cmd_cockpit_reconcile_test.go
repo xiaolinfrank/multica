@@ -131,3 +131,24 @@ func TestCockpitReconcileCLIDryRunApplyAndEmptyReport(t *testing.T) {
 		t.Fatalf("empty report output = %s", out)
 	}
 }
+
+// After apply every project row reads "bound": those describe existing
+// bindings, not pending work, so a preview that finds nothing else must say so
+// instead of printing a change count.
+func TestCockpitReconcileCLITreatsBoundProjectsAsNoChange(t *testing.T) {
+	srv, _ := reconcileCLIServer(t, map[string]any{
+		"projects": []any{
+			map[string]any{"node_id": "node-a", "l1_code": "01", "project_id": "project-1", "title": "P", "method": "bound"},
+			map[string]any{"node_id": "node-b", "l1_code": "02", "project_id": "project-2", "title": "Q", "method": "bound"},
+		},
+		"unfiled_without_evidence": 3,
+	})
+	defer srv.Close()
+	configureWorkflowCLIEnv(t, srv.URL)
+	out := runReconcileCLI(t)
+	for _, want := range []string{"no structure, binding, or filing changes", "another 3 issue(s) have no links or title code"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q:\n%s", want, out)
+		}
+	}
+}

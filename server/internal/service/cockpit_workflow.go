@@ -18,8 +18,12 @@ import (
 )
 
 var (
-	ErrCockpitWorkflowInput            = errors.New("invalid meeting workflow input")
-	ErrCockpitWorkflowConflict         = errors.New("meeting workflow changed; refresh and retry")
+	ErrCockpitWorkflowInput    = errors.New("invalid meeting workflow input")
+	ErrCockpitWorkflowConflict = errors.New("meeting workflow changed; refresh and retry")
+	// ErrCockpitPlanAlreadyReconciled: the one-time plan migration ran; codes
+	// are fixed afterwards and a second apply would renumber rows users have
+	// reordered since. Previews stay open.
+	ErrCockpitPlanAlreadyReconciled    = errors.New("this board's plan was already reconciled; only a preview is available")
 	ErrCockpitWorkflowForbidden        = errors.New("meeting workflow permission denied")
 	ErrCockpitWorkflowNotFound         = errors.New("meeting workflow not found")
 	ErrCockpitWorkflowExecutionBlocked = errors.New("meeting workflow issue is not available for agent execution")

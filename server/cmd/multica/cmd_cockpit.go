@@ -1187,6 +1187,9 @@ func runCockpitReconcile(cmd *cobra.Command, _ []string) error {
 	// an operator never mistakes "no filings section" for "everything filed".
 	unfiled := mapList(report, "unfiled_issues")
 	fmt.Printf("unfiled issues: %d\n", len(unfiled))
+	if withoutEvidence, ok := report["unfiled_without_evidence"].(float64); ok && withoutEvidence > 0 {
+		fmt.Printf("  (another %.0f issue(s) have no links or title code; not listed, they stay unfiled)\n", withoutEvidence)
+	}
 	limit := len(unfiled)
 	if limit > 20 {
 		limit = 20
@@ -1225,10 +1228,20 @@ func runCockpitReconcile(cmd *cobra.Command, _ []string) error {
 func reconcileChangeCount(report map[string]any) int {
 	total := 0
 	// directory_names is informational: every row has one after apply, so it
-	// would otherwise always read as outstanding work.
+	// would otherwise always read as outstanding work. "bound" project rows
+	// likewise describe existing bindings, not changes: after apply they are
+	// all that is left, and counting them would make "no changes" unreachable.
 	for _, key := range []string{"groups", "code_changes", "projects", "new_projects", "new_roots",
 		"modules", "new_modules", "new_module_nodes", "reflows", "title_splits", "issues", "unfiled_issues"} {
 		total += len(mapList(report, key))
+	}
+	// "bound" project rows describe existing bindings, not changes: after
+	// apply they are all that is left, and counting them would make
+	// "no changes" unreachable.
+	for _, item := range mapList(report, "projects") {
+		if strVal(item, "method") == "bound" {
+			total--
+		}
 	}
 	return total
 }
