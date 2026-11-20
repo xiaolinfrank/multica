@@ -674,6 +674,24 @@ describe("useBatchUpdateIssues — confirmed writes across filtered boards", () 
     expect(batchUpdateIssues).toHaveBeenCalledWith(WS_ID, ["issue-1"], { status: "in_progress" }, { expected_revisions: undefined });
   });
 
+  it("flags the old module's list for a refetch when a batch only files a work item (S4)", async () => {
+    // The batch patch names no module, so without the undecidable-membership
+    // mark the m1 list would be patched in place and keep the card forever.
+    const m1Key = issueKeys.myListSorted(WS_ID, "module:m1", { module_id: "m1" }, sort);
+    // The card must carry the filtered module: with no module_id the match is
+    // already "unknown" and the test would pass without the fix.
+    qc.setQueryData<ListIssuesCache>(m1Key, {
+      byStatus: { unstarted: { issues: [makeIssue(1, { module_id: "m1" })], total: 1 }, started: { issues: [], total: 0 } },
+    });
+    qc.setQueryData(issueKeys.detail(WS_ID, "issue-1"), makeIssue(1, { module_id: "m1" }));
+    batchUpdateIssues.mockResolvedValue(receipt);
+    const { result } = renderHook(() => useBatchUpdateIssues(), { wrapper: createWrapper(qc) });
+    await act(async () => {
+      await result.current.mutateAsync({ ids: ["issue-1"], updates: { work_item_id: "w-2" } });
+    });
+    expect(qc.getQueryState(m1Key)?.isInvalidated).toBe(true);
+  });
+
   it("preserves description merge bases and passes explicit revision guards", async () => {
     batchUpdateIssues.mockResolvedValue(receipt);
     const detail = makeIssue(1, { description: "base with marker" });

@@ -480,13 +480,14 @@ export function onIssueUpdated(
   // A plan-driven refile (work_item_changed) sets neither project_changed nor
   // module_changed, so a literal false from those flags must not short-circuit
   // the diff — the ids decide (S4 review).
+  // A work-item change marks BOTH dims changed outright and does not consult
+  // the wire flags: on this path the flags are false by contract, and the
+  // writer's own tab may have applied the server row already, so a diff would
+  // see nothing. An intra-module move costs one extra aggregate refresh.
+  // Otherwise the flag wins when present, and the diff is the older-backend
+  // fallback.
   const flagOrDiff = (flag: boolean | undefined, moved: boolean) =>
-    // flag false + workItemChanged: the false came from the wire, but the
-    // writer's own tab may have already applied the server row (onSuccess
-    // writes it before the echo arrives), so the diff sees nothing to do.
-    // Treat both dims as changed outright — an intra-module work-item move
-    // costs one extra aggregate refresh.
-    flag === true || meta.workItemChanged ? true : flag ?? moved;
+    meta.workItemChanged === true ? true : (flag ?? moved);
   const moduleChanged =
     flagOrDiff(meta.moduleChanged, issue.module_id !== undefined && (issue.module_id ?? null) !== oldModuleId) ?? false;
   const changed = {

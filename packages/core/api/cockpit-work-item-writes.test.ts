@@ -44,6 +44,10 @@ describe("work-item write contracts (S4)", () => {
       .rejects.toThrow("cockpit_write_not_confirmed");
     await expect(reply({ ...keyed, workspace_id: "ws-2" }).client.createCockpitWorkItem({ module_id: "m1", name: "注册路径设计" }, "ws-1"))
       .rejects.toThrow("cockpit_write_not_confirmed");
+    // No workspace_id at all is unconfirmed too, not "ours by default".
+    const { workspace_id: _omitted, ...withoutWorkspace } = keyed;
+    await expect(reply(withoutWorkspace).client.createCockpitWorkItem({ module_id: "m1", name: "注册路径设计" }, "ws-1"))
+      .rejects.toThrow("cockpit_write_not_confirmed");
   });
 
   it("refuses a malformed move: no id, or a row that is not the one asked for", async () => {
@@ -64,7 +68,7 @@ describe("work-item write contracts (S4)", () => {
     const { client, fetchMock } = reply({ workspace_id: "ws-1", apply: true, generated_at: "2026-11-20T00:00:00Z",
       new_roots: [{ future: "shape" }], blockers: [], groups: [], projects: [], reflows: [], title_splits: [],
       directory_names: [], dangling_links: 3 });
-    await expect(client.reconcileCockpitPlan(true, "ws-1")).resolves.toMatchObject({ apply: true, blockers: [] });
+    await expect(client.reconcileCockpitPlan(true, "ws-1")).resolves.toMatchObject({ apply: true, blockers: [], dangling_links: 3 });
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ apply: true });
   });
 

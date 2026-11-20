@@ -198,17 +198,22 @@ describe("applyIssueChange", () => {
   it("an undecidable filing membership refetches the list instead of patching or dropping the card", () => {
     // The batch path and the optimistic single-update pass share this: the
     // patch names only the work item, the server will move module/project.
+    // The card MUST carry the filtered module, or the list would be
+    // undecidable anyway and the flag would prove nothing.
     const moduleKey = issueKeys.myListSorted(WS_ID, "module:m1", { module_id: "m1" }, sort);
-    qc.setQueryData<ListIssuesCache>(moduleKey, bucketed([issue()]));
+    qc.setQueryData<ListIssuesCache>(moduleKey, bucketed([makeIssue(1, { module_id: "m1" })]));
     const patch = { work_item_id: "w-2" };
+    const base = makeIssue(1, { module_id: "m1" });
     const result = applyIssueChange(qc, WS_ID, "issue-1", patch, {
-      changed: issueChangedDims(patch, issue()),
-      baseIssue: issue(),
+      changed: issueChangedDims(patch, base),
+      baseIssue: base,
       membershipUnknown: true,
     });
     // Present until the refetch answers — neither removed nor silently kept.
     expect(qc.getQueryData<ListIssuesCache>(moduleKey)?.byStatus.unstarted?.issues).toHaveLength(1);
-    expect(result.staleKeys.length).toBeGreaterThan(0);
+    // Without the flag the merged entity still reads m1 → membership true →
+    // patch in place and NO stale key, which is exactly the bug.
+    expect(result.staleKeys.map((key) => JSON.stringify(key))).toContain(JSON.stringify(moduleKey));
   });
 
   it("a filing with the target ids present leaves the old module's list outright", () => {
@@ -823,5 +828,27 @@ describe("invalidateLastActivitySortedIssueLists", () => {
     expect(qc.getQueryState(wsUpdatedKey)?.isInvalidated).toBe(false);
     expect(qc.getQueryState(wsKey)?.isInvalidated).toBe(false);
     qc.clear();
+  });
+});
+
+describe("applyIssueChange — filing into a list the card is not in (S4)", () => {
+  let qc: QueryClient;
+  beforeEach(() => { qc = new QueryClient({ defaultOptions: { queries: { retry: false } } }); });
+  afterEach(() => { qc.clear(); });
+
+  it("flags the destination list for a refetch instead of concluding 'not a member, nothing to do'", () => {
+    // The card lives in m1; the open list narrows to m2 and does not hold it.
+    // A work-item patch cannot say the card is arriving, so the branch must
+    // not short-circuit on "false → false".
+    const destination = issueKeys.myListSorted(WS_ID, "module:m2", { module_id: "m2" }, sort);
+    qc.setQueryData<ListIssuesCache>(destination, bucketed([]));
+    const base = makeIssue(1, { module_id: "m1" });
+    const patch = { work_item_id: "w-2" };
+    const result = applyIssueChange(qc, WS_ID, "issue-1", patch, {
+      changed: issueChangedDims(patch, base),
+      baseIssue: base,
+      membershipUnknown: true,
+    });
+    expect(result.staleKeys.map((key) => JSON.stringify(key))).toContain(JSON.stringify(destination));
   });
 });

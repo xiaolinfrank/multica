@@ -55,6 +55,24 @@ describe("work-item mutations (S4)", () => {
     unmount();
   });
 
+  it("writes the trimmed name optimistically, so the card never shows padding", async () => {
+    const { client, wrapper } = setup();
+    const planKey = cockpitReadKeys.plan("ws-1", { projectId: null, moduleId: null });
+    client.setQueryData(planKey, { nodes: [{ id: "w1", name: "旧名称" }] });
+    let resolve!: (node: unknown) => void;
+    vi.mocked(api.updateCockpitNode).mockReturnValue(new Promise((r) => { resolve = r; }) as never);
+    const { result, unmount } = renderHook(() => useRenameCockpitWorkItem("ws-1"), { wrapper });
+    let pending!: Promise<unknown>;
+    await act(async () => {
+      pending = result.current.mutateAsync({ id: "w1", name: "  新名称  " });
+      await Promise.resolve();
+    });
+    // While in flight the cache already carries the value the server will keep.
+    expect(client.getQueryData<{ nodes: Array<{ name: string }> }>(planKey)?.nodes[0]?.name).toBe("新名称");
+    await act(async () => { resolve({ id: "w1", name: "新名称", code: "01.01.01" }); await pending; });
+    unmount();
+  });
+
   it("refuses to confirm a rename whose response does not name the row", async () => {
     const { client, wrapper } = setup();
     const planKey = cockpitReadKeys.plan("ws-1", { projectId: null, moduleId: null });
