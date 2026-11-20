@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { buildCockpitDisplayCodesFromIndex, cockpitNodeDetailOptions, cockpitScope, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
+import { cockpitNodeDetailOptions, cockpitScope, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
 import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
 import { useT } from "../../i18n";
 import { useNavigation } from "../../navigation";
@@ -19,7 +19,7 @@ export function useCockpitSelectedNodeIssueOption(nodeId: string) {
   const option = useMemo(() => {
     const data = query.data;
     if (!data || !data.binding.eligible || !data.binding.project_id || !data.binding.module_id) return null;
-    const code = buildCockpitDisplayCodesFromIndex(data.node_index).get(data.node.id) ?? data.node.code;
+    const code = data.node.code;
     return { node_id: data.node.id, code, label: `${code} ${data.node.name}`.trim(), project_id: data.binding.project_id, module_id: data.binding.module_id };
   }, [query.data]);
   return { option, isPending: Boolean(nodeId) && query.isPending, isFetching: query.isFetching, isError: query.isError || (query.isSuccess && !query.data), refetch: query.refetch };

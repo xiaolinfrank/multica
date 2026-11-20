@@ -5,7 +5,6 @@ beforeLayout(() => { restoreLayout = installCockpitTestLayout(); });
 afterLayout(() => restoreLayout());
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
-import { buildCockpitDisplayCodesFromIndex } from "@multica/core/cockpit";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -31,15 +30,15 @@ function provider(children: React.ReactNode) {
 }
 function table(query = "") {
   const onSelect = vi.fn();
-  provider(<><input aria-label="Search the board" defaultValue={query} /><CockpitTable board={{ nodes, payments: [] }} displayCodes={buildCockpitDisplayCodesFromIndex(nodes)} contextNodeIds={new Set()} taskCounts={new Map()} mode="tasks" query={query} rootIds={new Set()} selectedId={null} onSelect={onSelect} onPatchNode={vi.fn()} statusSuggestions={[]} execStatusSuggestions={[]} budgetCategorySuggestions={[]} ownerSuggestions={[]} vendorSuggestions={[]} /></>);
+  provider(<><input aria-label="Search the board" defaultValue={query} /><CockpitTable board={{ nodes, payments: [] }} contextNodeIds={new Set()} taskCounts={new Map()} mode="tasks" query={query} rootIds={new Set()} selectedId={null} onSelect={onSelect} onPatchNode={vi.fn()} statusSuggestions={[]} execStatusSuggestions={[]} budgetCategorySuggestions={[]} ownerSuggestions={[]} vendorSuggestions={[]} /></>);
   return onSelect;
 }
 describe("cockpit task table", () => {
-  it("shows execution leaves with positional codes and ordered sticky scan columns", () => {
+  it("shows execution leaves with their stored codes and ordered sticky scan columns", () => {
     table();
     const body = document.querySelector("tbody")!;
     expect(within(body).getAllByRole("row")).toHaveLength(1);
-    expect(within(body).getByRole("button", { name: "Open 03.01.01" })).toBeInTheDocument();
+    expect(within(body).getByRole("button", { name: "Open leaf" })).toBeInTheDocument();
     expect(screen.getAllByRole("columnheader").slice(0, 10).map((cell) => cell.textContent)).toEqual(["Code", "Name", "L1", "L2", "Owner", "Start", "End", "Status", "Progress", "Check"]);
     expect(screen.getByRole("button", { name: "OK" })).toHaveAttribute("title", expect.stringContaining("Deliverable"));
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");

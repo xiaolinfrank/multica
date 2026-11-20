@@ -11,7 +11,7 @@ function setup(readOnly = false) {
   const board = { cockpit: CockpitSchema.parse({ id: "board", title: "Programme", goal_title: goal }), nodes: [], payments: [], milestones: [] };
   render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitOverview
     board={board} today="2026-10-14" readOnly={readOnly} ownerSuggestions={[]}
-    contextNodeIds={new Set()} displayCodes={new Map()} meetingsSlot={null}
+    contextNodeIds={new Set()} meetingsSlot={null}
     onPatchBoard={onPatchBoard} onPatchNode={vi.fn()} onPatchMilestone={vi.fn()}
     onCreateMilestone={vi.fn()} onDeleteMilestone={vi.fn()} onOpenBranch={vi.fn()}
   /></I18nProvider>);

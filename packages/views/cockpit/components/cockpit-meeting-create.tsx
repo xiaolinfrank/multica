@@ -23,7 +23,7 @@ import {
   cockpitMeetingFolderName,
   cockpitMeetingPeopleOptions,
   cockpitMeetingVocabulary,
-  buildCockpitDisplayCodesFromIndex, cockpitMeetingNextCodeOptions, cockpitContextOptions, cockpitSelectedMemberOptions, useCockpitAssigneeAvailability, cockpitNodeDetailOptions, cockpitSurfacePath, cockpitMeetingContextPath, type CockpitScope,
+  cockpitMeetingNextCodeOptions, cockpitContextOptions, cockpitSelectedMemberOptions, useCockpitAssigneeAvailability, cockpitNodeDetailOptions, cockpitSurfacePath, cockpitMeetingContextPath, type CockpitScope,
   splitCockpitMeetingParties,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
@@ -498,7 +498,7 @@ export function CockpitMeetingCreate({
             {withDir && projectId && (destination.isPending || selectedScope.isPending) && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
             <div className="col-span-2 space-y-1"><Label>{t(($) => $.meetings.destination_node)}</Label>
               <CockpitNodeChoicePicker wsId={wsId} scope={{ projectId: projectId || null, moduleId: moduleId || null }} eligible={false}
-                value={selectedNode.data ? `${buildCockpitDisplayCodesFromIndex(selectedNode.data.node_index).get(selectedNode.data.node.id) ?? selectedNode.data.node.code} ${selectedNode.data.node.name}` : nodeId || t(($) => $.meetings.destination_node_none)}
+                value={selectedNode.data ? `${selectedNode.data.node.code} ${selectedNode.data.node.name}` : nodeId || t(($) => $.meetings.destination_node_none)}
                 label={t(($) => $.meetings.destination_node)} allowClear={!requireNode} onClear={() => setNodeId("")}
                 disabled={submitting || workflowCreated || Boolean(savedMeetingId)} onSelect={(node) => { setNodeId(node.id); if (!projectId && node.project_id) setProjectId(node.project_id); if (!moduleId && node.module_id) setModuleId(node.module_id); }} />
               {nodeId && selectedNode.isError && <CockpitFlowError onRetry={() => void selectedNode.refetch()} />}

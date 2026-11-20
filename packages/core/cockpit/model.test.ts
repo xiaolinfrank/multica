@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { CockpitBoard, CockpitMilestone, CockpitNode } from "../types";
 import {
   axisMonths,
-  buildCockpitDisplayCodes,
-  buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitAggStatusColor,
   cockpitCoreNodes,
@@ -16,7 +14,6 @@ import {
   cockpitPaymentTone,
   cockpitStatusColor,
   cockpitSubtreeAverage,
-  cockpitSummaryCollapseIds,
   computeCockpitAxis,
   computeCockpitDigest,
   computeCockpitFinance,
@@ -31,7 +28,6 @@ import {
   isCockpitNodeDrifting,
   isCockpitNodeLate,
   isCockpitNodeUnscheduled,
-  isCockpitSummaryGroup,
   sortCockpitMilestones,
 } from "./model";
 
@@ -716,38 +712,6 @@ describe("cockpitModuleHighlights", () => {
   });
 });
 
-describe("buildCockpitDisplayCodes", () => {
-  it("uses root ordinals and gap-free sibling positions without changing stored addresses", () => {
-    const nodes = [
-      node({ id: "r", code: "L1-3" }),
-      node({ id: "b", code: "AI-99", parent_id: "r", position: 2 }),
-      node({ id: "a", code: "L3-06-13", parent_id: "r", position: 1 }),
-      node({ id: "g", code: "01.03", parent_id: "a" }),
-      node({ id: "fallback", code: "MODULE", position: 1 }),
-    ];
-    expect([...buildCockpitDisplayCodes(buildCockpitTree(nodes))]).toEqual([
-      ["r", "03"], ["a", "03.01"], ["g", "03.01.01"], ["b", "03.02"], ["fallback", "02"],
-    ]);
-    expect(nodes.map((n) => n.code)).toEqual(["L1-3", "AI-99", "L3-06-13", "01.03", "MODULE"]);
-    expect(buildCockpitDisplayCodes([]).size).toBe(0);
-  });
-
-  it("keeps a stored zero-segment line code like 06.00 while other dotted codes stay positional", () => {
-    const tree = buildCockpitTree([
-      node({ id: "r", code: "L1-06" }),
-      node({ id: "gov", code: "06.00", parent_id: "r", position: 1 }),
-      node({ id: "t0", code: "06.00.01", parent_id: "gov", position: 1 }),
-      node({ id: "d1", code: "06.01", parent_id: "r", position: 2 }),
-      // Reordered dotted lines still number by position, not stored code.
-      node({ id: "d9", code: "02.10", parent_id: "r", position: 3 }),
-    ]);
-    expect([...buildCockpitDisplayCodes(tree)]).toEqual([
-      ["r", "06"], ["gov", "06.00"], ["t0", "06.00.01"],
-      ["d1", "06.01"], ["d9", "06.02"],
-    ]);
-  });
-});
-
 describe("isCockpitExecNode", () => {
   it("reads structure rows by their stored codes, everything else as work", () => {
     expect(isCockpitExecNode("L1-02")).toBe(false);
@@ -758,78 +722,6 @@ describe("isCockpitExecNode", () => {
     expect(isCockpitExecNode("L3-02-03-01")).toBe(true);
     expect(isCockpitExecNode("（后续年度）")).toBe(true);
     expect(isCockpitExecNode("04.04-01")).toBe(true);
-  });
-});
-
-describe("isCockpitSummaryGroup", () => {
-  it("recognises the merged-direction group ids and nothing shaped like them", () => {
-    for (const id of ["02.02-09", "03.01-02", "03.03-05", "03.06-07"]) {
-      expect(isCockpitSummaryGroup(id)).toBe(true);
-    }
-    // A member's own code and a task's hyphenated code are not group ids.
-    for (const code of ["02.02", "02.09", "L1-02", "L3-02-02", "04.04-01", ""]) {
-      expect(isCockpitSummaryGroup(code)).toBe(false);
-    }
-  });
-});
-
-describe("buildCockpitSummaryTree", () => {
-  it("folds the merged directions into one row with their tasks flattened and renumbered", () => {
-    const nodes = [
-      node({ id: "l1", code: "L1-02", name: "Platform" }),
-      node({ id: "d1", code: "02.01", parent_id: "l1", name: "Needs" }),
-      node({ id: "t1", code: "L3-02-01-01", parent_id: "d1", name: "Spec" }),
-      node({ id: "m1", code: "02.02", parent_id: "l1", name: "Old A" }),
-      node({ id: "m2", code: "02.03", parent_id: "l1", name: "Old B" }),
-      node({ id: "t2", code: "L3-02-02-01", parent_id: "m1", name: "Build" }),
-      node({ id: "t3", code: "L3-02-03-01", parent_id: "m2", name: "Ship" }),
-      node({ id: "d9", code: "02.10", parent_id: "l1", name: "Boxes" }),
-    ];
-    const tree = buildCockpitSummaryTree(buildCockpitTree(nodes));
-    const rows = flattenCockpitTree(tree);
-    // The group takes the first member's slot; members' tasks follow in
-    // member order; the untouched directions keep their places.
-    expect(rows.map((e) => [e.node.id, e.depth])).toEqual([
-      ["l1", 0], ["d1", 1], ["t1", 2], ["02.02-09", 1], ["t2", 2], ["t3", 2], ["d9", 1],
-    ]);
-    // The rename is a display alias: the stored row keeps its own name.
-    expect(rows.find((e) => e.node.id === "d9")!.node.name).toBe("院端一体机与部署");
-    expect(nodes.find((n) => n.id === "d9")!.name).toBe("Boxes");
-    // Positional codes over the summary shape: the group is one direction.
-    expect([...buildCockpitDisplayCodes(tree)]).toEqual([
-      ["l1", "02"], ["d1", "02.01"], ["t1", "02.01.01"],
-      ["02.02-09", "02.02"], ["t2", "02.02.01"], ["t3", "02.02.02"], ["d9", "02.03"],
-    ]);
-    // First paint folds at the direction rows, tasks one click away.
-    expect(new Set(cockpitSummaryCollapseIds(tree))).toEqual(new Set(["d1", "02.02-09"]));
-  });
-
-  it("carries the merged directions' instalments on the group row like a direction's own", () => {
-    const nodes = [
-      node({ id: "l1", code: "L1-02" }),
-      node({ id: "m1", code: "02.02", parent_id: "l1" }),
-      node({ id: "m2", code: "02.03", parent_id: "l1" }),
-      node({ id: "t2", code: "L3-02-02-01", parent_id: "m1" }),
-      node({ id: "t3", code: "L3-02-03-01", parent_id: "m2" }),
-    ];
-    const payments = [
-      { id: "p1", node_id: "t2", label: "第1笔", pay_date: "2026-10-08", amount: 10, position: 0 },
-      { id: "p2", node_id: "t3", label: "1次", pay_date: "2026-10-15", amount: 5, position: 0 },
-      { id: "p3", node_id: "t3", label: "尾款", pay_date: "2026-12-15", amount: 7, position: 1 },
-    ];
-    const tree = buildCockpitSummaryTree(buildCockpitTree(nodes));
-    const group = flattenCockpitTree(tree).find((e) => e.node.id === "02.02-09")!;
-    const groups = groupSubtreePayments(
-      group,
-      groupPaymentsByNode(payments),
-      new Map(nodes.map((n) => [n.id, n])),
-    );
-    // Both members' instalments roll up: October buckets onto the month's
-    // last instalment, December on its own.
-    expect(groups.map((g) => [g.date, g.month, g.paid, g.total])).toEqual([
-      ["2026-10-15", "2026-10", false, 15],
-      ["2026-12-15", "2026-12", false, 7],
-    ]);
   });
 });
 

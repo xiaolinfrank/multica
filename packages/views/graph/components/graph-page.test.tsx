@@ -336,15 +336,14 @@ describe("GraphPage", () => {
     expect(preview).toHaveTextContent("1 linked issue");
   });
 
-  it("finds an execution row by its positional row code", async () => {
+  it("finds an execution row by its stored code", async () => {
     vi.mocked(api.getIssueGraph).mockResolvedValue(graphEntityFixture);
     renderPage();
     await screen.findByTestId("graph-counts");
 
-    // The gantt's row code (not the stored "L3-…" code) is what a reader
-    // types; both resolve to the same row.
+    // The row's stored code is the address the gantt quotes too.
     const input = screen.getByLabelText("Search issues…");
-    fireEvent.change(input, { target: { value: "01.01.01" } });
+    fireEvent.change(input, { target: { value: "L3-01-01" } });
     fireEvent.mouseDown(await screen.findByText("Site initiation"));
 
     const menu = await screen.findByTestId("graph-node-menu");

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core";
 import { useWorkspacePaths } from "@multica/core/paths";
-import { buildCockpitDisplayCodesFromIndex, cockpitIssueNodeReferencesOptions, cockpitNodeIndexOptions, cockpitObjectPath,
+import { cockpitIssueNodeReferencesOptions, cockpitObjectPath,
   cockpitPrimaryNodeOptions, useSetCockpitPrimaryNode, useRemoveCockpitIssueNodeReference, useAppendCockpitNodeIssue } from "@multica/core/cockpit";
 import { issueOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
 import { ChevronRight, X } from "lucide-react";
@@ -60,8 +60,6 @@ function CockpitNodeReferences({ wsId, issueId }: { wsId: string; issueId: strin
   const query = useQuery({ ...cockpitIssueNodeReferencesOptions(wsId, issueId, { cursor: cursors.at(-1) || undefined }), enabled: open });
   const primary = useQuery(cockpitPrimaryNodeOptions(wsId, issueId));
   const primaryNode = primary.data?.issue_id === issueId ? primary.data : null;
-  const index = useQuery({ ...cockpitNodeIndexOptions(wsId), enabled: open && Boolean(query.data?.items.length || primaryNode?.node_id) });
-  const codes = useMemo(() => buildCockpitDisplayCodesFromIndex(index.data?.items ?? []), [index.data]);
   const link = useAppendCockpitNodeIssue(wsId); const unlink = useRemoveCockpitIssueNodeReference(wsId);
   const busy = link.isPending || unlink.isPending;
   const fail = (error: unknown) => toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
@@ -73,12 +71,12 @@ function CockpitNodeReferences({ wsId, issueId }: { wsId: string; issueId: strin
     {open && <div className="space-y-2 pl-2">
       {primaryNode?.node_id && <div><p className="text-micro text-muted-foreground">{t(($) => $.meeting_actions.primary_node)}</p>
         <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primaryNode.node_id })} newTabTitle={primaryNode.node_name || primaryNode.node_code}
-          className="block break-words py-1 text-caption hover:underline">{codes.get(primaryNode.node_id) ?? primaryNode.node_code} {primaryNode.node_name || t(($) => $.issue_detail.untitled)}</AppLink><CockpitClearPrimaryNode issueId={issueId} /></div>}
+          className="block break-words py-1 text-caption hover:underline">{primaryNode.node_code} {primaryNode.node_name || t(($) => $.issue_detail.untitled)}</AppLink><CockpitClearPrimaryNode issueId={issueId} /></div>}
       {primary.isError && <CockpitFlowError onRetry={() => void primary.refetch()} />}
       {query.isError ? <CockpitFlowError onRetry={() => void query.refetch()} /> : query.isPending ? <p role="status" className="text-caption">{t(($) => $.workflow.loading)}</p> : <>
         {query.data.items.length === 0 && !primaryNode?.node_id && <p className="text-caption text-muted-foreground">{t(($) => $.issue_detail.none)}</p>}
         <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">{query.data.items.map((row) => {
-          const code = codes.get(row.node_id) ?? row.code;
+          const code = row.code;
           const label = row.available ? `${code} ${row.title || t(($) => $.issue_detail.untitled)}`.trim() : t(($) => $.issue_detail.unavailable);
           return <li key={row.node_id} className="flex min-w-0 items-center gap-1 rounded-sm px-1 hover:bg-accent/50">
             {row.available ? <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: row.node_id })} newTabTitle={label} className="min-w-0 flex-1 truncate py-1 text-caption hover:underline" title={label}>{label}</AppLink>

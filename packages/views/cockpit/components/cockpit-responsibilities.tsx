@@ -11,8 +11,8 @@ import { useT } from "../../i18n";
 import { CockpitViewHeading } from "./cockpit-view-heading";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 
-export function CockpitResponsibilities({ wsId, nodes, displayCodes, scope, query, rootIds }: {
-  wsId: string; nodes: CockpitNode[]; displayCodes: ReadonlyMap<string, string>; scope: CockpitScope; query: string; rootIds: ReadonlySet<string>;
+export function CockpitResponsibilities({ wsId, nodes, scope, query, rootIds }: {
+  wsId: string; nodes: CockpitNode[]; scope: CockpitScope; query: string; rootIds: ReadonlySet<string>;
 }) {
   const { t } = useT("cockpit");
   const paths = useWorkspacePaths();
@@ -20,8 +20,8 @@ export function CockpitResponsibilities({ wsId, nodes, displayCodes, scope, quer
   const rows = useMemo(() => {
     const tree = buildCockpitTree(nodes).filter((entry) => rootIds.size === 0 || rootIds.has(entry.node.id));
     const needle = query.trim().toLowerCase();
-    return flattenCockpitTree(tree).filter(({ node }) => !needle || [displayCodes.get(node.id), node.code, node.name, node.owner, node.collaborators].join(" ").toLowerCase().includes(needle));
-  }, [nodes, rootIds, query, displayCodes]);
+    return flattenCockpitTree(tree).filter(({ node }) => !needle || [node.code, node.name, node.owner, node.collaborators].join(" ").toLowerCase().includes(needle));
+  }, [nodes, rootIds, query]);
   useCockpitScrollMemory(scroll, JSON.stringify([cockpitScopeViewKey(wsId, scope), "cockpit-responsibilities.tsx"]), rows.length > 0, JSON.stringify([query, [...rootIds].sort()]));
   const virtual = useVirtualizer({ count: rows.length, getScrollElement: () => scroll.current, estimateSize: () => 76, overscan: 5,
     getItemKey: (index) => rows[index]!.node.id, initialRect: { width: 900, height: 480 } });
@@ -39,7 +39,7 @@ export function CockpitResponsibilities({ wsId, nodes, displayCodes, scope, quer
               style={{ transform: `translateY(${row.start}px)` }}>
               <div role="cell" className="min-w-0" style={{ paddingLeft: Math.min(entry.depth, 4) * 12 }}>
                 <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id, view: "details", planView: "responsibility" }, scope)} className="group inline-flex max-w-full items-start gap-2">
-                  <span className="line-clamp-2 min-w-0 break-words group-hover:underline" title={node.name}><span className="cockpit-matrix-code mr-2 font-mono text-caption text-muted-foreground">{displayCodes.get(node.id) ?? node.code}</span>{node.name}</span>
+                  <span className="line-clamp-2 min-w-0 break-words group-hover:underline" title={node.name}><span className="cockpit-matrix-code mr-2 font-mono text-caption text-muted-foreground">{node.code}</span>{node.name}</span>
                   <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                 </AppLink>
               </div>

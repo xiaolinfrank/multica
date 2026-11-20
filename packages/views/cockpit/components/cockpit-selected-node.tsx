@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { buildCockpitDisplayCodesFromIndex, cockpitNodeDetailOptions, cockpitNodePaymentsOptions, cockpitNodeMeetingsOptions, cockpitObjectPath,
+import { cockpitNodeDetailOptions, cockpitNodePaymentsOptions, cockpitNodeMeetingsOptions, cockpitObjectPath,
   cockpitRelationViewKey, EMPTY_COCKPIT_RELATION_PAGE, useCockpitScopeViewStore, useAppendCockpitNodeIssue, useDeleteCockpitNode,
   useCreateCockpitPayment, useUpdateCockpitNode, useUpdateCockpitPayment, useDeleteCockpitPayment, useSetCockpitNodeBinding,
   type CockpitScope, type CockpitNodeView, type CockpitPlanView } from "@multica/core/cockpit";
@@ -46,7 +46,6 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
   const meetingQuery = useQuery({ ...cockpitNodeMeetingsOptions(wsId, nodeId, meetingCursors.at(-1) || undefined), enabled: meetingCursors.length > 1 && Boolean(detail) });
   const payments = paymentCursors.length === 1 ? detail?.payments : paymentQuery.data;
   const meetings = meetingCursors.length === 1 ? detail?.meetings : meetingQuery.data;
-  const codes = useMemo(() => buildCockpitDisplayCodesFromIndex(detail?.node_index ?? []), [detail?.node_index]);
   const updateNode = useUpdateCockpitNode(wsId); const deleteNode = useDeleteCockpitNode(wsId); const setBinding = useSetCockpitNodeBinding(wsId);
   const appendIssue = useAppendCockpitNodeIssue(wsId); const createPayment = useCreateCockpitPayment(wsId); const patchPayment = useUpdateCockpitPayment(wsId); const deletePayment = useDeleteCockpitPayment(wsId);
   const [removingPayment, setRemovingPayment] = useState<{ id: string; label: string } | null>(null); const deletionLock = useRef(false); const [deleteError, setDeleteError] = useState("");
@@ -58,13 +57,13 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
       : <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`node:${nodeId}`} onRetry={() => void query.refetch()} />}
   </aside>;
   const node = detail.node; const binding = detail.binding;
-  const nodeLabel = `${codes.get(node.id) ?? node.code} ${node.name}`.trim();
+  const nodeLabel = `${node.code} ${node.name}`.trim();
   const executionSurface = detail.children_count === 0 && !node.project_id && !node.module_id;
   const canFile = Boolean(binding.project_id && binding.module_id);
   const filingProjectId = binding.project_id; const filingModuleId = binding.module_id;
   const createReference = canFile && !node.project_id && !node.module_id ? () => {
-    useModalStore.getState().open("create-issue", { title: codes.get(node.id) ?? node.code, project_id: filingProjectId, module_id: filingModuleId,
-      cockpit_node: { node_id: node.id, code: codes.get(node.id) ?? node.code, label: nodeLabel, project_id: filingProjectId, module_id: filingModuleId },
+    useModalStore.getState().open("create-issue", { title: node.code, project_id: filingProjectId, module_id: filingModuleId,
+      cockpit_node: { node_id: node.id, code: node.code, label: nodeLabel, project_id: filingProjectId, module_id: filingModuleId },
       on_created: (issue: Issue, state: { cockpit_node_id: string | null }) => { if (state.cockpit_node_id) void appendIssue.mutateAsync({ nodeId: state.cockpit_node_id, issueId: issue.id }).catch(fail); } });
   } : undefined;
   const relationPager = (kind: "payments" | "meetings") => {
@@ -78,9 +77,9 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
   // The breadcrumb quotes the parent's display code like every other surface;
   // the stored code only names parents the summary tree does not ship.
   const treeParent = detail.ancestors.find((entry) => entry.id === node.parent_id);
-  const parent = treeParent ? { ...treeParent, code: codes.get(treeParent.id) ?? treeParent.code } : undefined;
+  const parent = treeParent;
   return <><CockpitNodePanel node={node} section={section} onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view, planView }, scope))}
-    displayCode={codes.get(node.id)} parent={parent} isBranch={detail.children_count > 0} depth={detail.ancestors.length}
+    displayCode={node.code} parent={parent} isBranch={detail.children_count > 0} depth={detail.ancestors.length}
     payments={payments?.items ?? []} paymentTotal={paymentCursors.length === 1 ? detail.payment_total : paymentQuery.data?.payment_total ?? detail.payment_total}
     paymentPaging={relationPager("payments")} meetings={meetings?.items ?? []} meetingPaging={relationPager("meetings")}
     referenceWorkspace={<CockpitNodeTasks wsId={wsId} node={node} userId={detail.actor.user_id} readOnly={readonly} referenceOnly onCreateReference={createReference} />}

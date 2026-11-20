@@ -19,18 +19,16 @@ import type {
   CockpitPatch,
 } from "@multica/core/types";
 import {
-  buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitScopeViewKey, useCockpitScopeViewStore, EMPTY_COCKPIT_PLAN_CONTEXT,
   useCockpitMeetingCreateDraftStore, checkpointCockpitMeetingCreation,
-  cockpitPlanOptions, cockpitContextOptions, cockpitSelectedMemberOptions, buildCockpitDisplayCodesFromIndex,
+  cockpitPlanOptions, cockpitContextOptions, cockpitSelectedMemberOptions,
   cockpitSurfacePath, cockpitScopedPath,
   cockpitShellDestination,
   cockpitObjectPath, cockpitMeetingContextPath, cockpitMeetingDirectoryPath,
   cockpitDestination,
   cockpitScope,
   cockpitOverallProgress,
-  cockpitSummaryCollapseIds,
   splitCockpitVendors,
   flattenCockpitTree,
   useCreateCockpitMeeting,
@@ -254,25 +252,9 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   // the query is still loading, invalidating every memo below it.
   const nodes = useMemo(() => board?.nodes ?? EMPTY_NODES, [board?.nodes]);
   const tree = useMemo(() => buildCockpitTree(nodes), [nodes]);
-  // The shipped shape of the board: merged directions, tasks flattened under
-  // the group rows. The gantt and the detail tables quote row codes from this
-  // tree, so a code means the same row everywhere.
-  const summaryTree = useMemo(() => buildCockpitSummaryTree(tree), [tree]);
-  const summaryFlat = useMemo(() => flattenCockpitTree(summaryTree), [summaryTree]);
-  const displayCodes = useMemo(() => buildCockpitDisplayCodesFromIndex(planQuery.data?.node_index ?? []), [planQuery.data?.node_index]);
-  // The summary tree's parent links, for jumps that must open a row whose
-  // display parent is a merged group rather than its stored parent.
-  const summaryParent = useMemo(() => {
-    const map = new Map<string, string>();
-    const walk = (entry: (typeof summaryFlat)[number]) => {
-      entry.children.forEach((child) => {
-        map.set(child.node.id, entry.node.id);
-        walk(child);
-      });
-    };
-    summaryTree.forEach(walk);
-    return map;
-  }, [summaryTree]);
+  const flat = useMemo(() => flattenCockpitTree(tree), [tree]);
+  // Parent links, for jumps that must open a row's whole path first.
+  const parentOf = useMemo(() => new Map(nodes.map((n) => [n.id, n.parent_id])), [nodes]);
   const statusSuggestions = useMemo(() => suggestionsFor(nodes.map((n) => n.status)), [nodes]);
   const execStatusSuggestions = useMemo(
     () => suggestionsFor(nodes.map((n) => n.exec_status)),
@@ -358,7 +340,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         const ancestors = new Set<string>();
         let cursor: string | null = nodeId;
         while (cursor) {
-          const parent = summaryParent.get(cursor);
+          const parent: string | null = parentOf.get(cursor) ?? null;
           if (!parent) break;
           ancestors.add(parent);
           cursor = parent;
@@ -371,7 +353,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
       setFocusTarget((prev) => ({ nodeId, nonce: (prev?.nonce ?? 0) + 1 }));
       setTab("gantt");
     },
-    [summaryParent, setCollapsed],
+    [parentOf, setCollapsed],
   );
 
   const openTask = useCallback((nodeId: string) => {
@@ -401,13 +383,13 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
     (maxDepth: number) => {
       setCollapsed(
         new Set(
-          summaryFlat
+          flat
             .filter((e) => e.children.length > 0 && e.depth >= maxDepth)
             .map((e) => e.node.id),
         ),
       );
     },
-    [summaryFlat, setCollapsed],
+    [flat, setCollapsed],
   );
 
   /**
@@ -417,9 +399,11 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
    * fold a branch the reader just opened.
    */
   useEffect(() => {
-    if (planState.seeded || summaryFlat.length === 0) return;
-    setCollapsed(new Set(cockpitSummaryCollapseIds(summaryTree)));
-  }, [planState.seeded, summaryFlat.length, summaryTree, setCollapsed]);
+    if (planState.seeded || flat.length === 0) return;
+    // Open to the directions: every branch below the projects folds, so first
+    // paint shows projects and their modules, one click from the work items.
+    setCollapsed(new Set(flat.filter((e) => e.depth >= 1 && e.children.length > 0).map((e) => e.node.id)));
+  }, [planState.seeded, flat, setCollapsed]);
 
   useEffect(() => { if (selectedId && nodes.some((node) => node.id === selectedId)) focusTask(selectedId); }, [selectedId, nodes, focusTask]);
 
@@ -623,7 +607,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
                         style={{ backgroundColor: root.color || "var(--color-brand)" }}
                         aria-hidden
                       />
-                      {displayCodes.get(root.id) ?? root.code} {root.name}
+                      {root.code} {root.name}
                     </DropdownMenuCheckboxItem>
                   ))}
                   <DropdownMenuSeparator />
@@ -789,7 +773,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               <CockpitOverview
                 board={board}
                 contextNodeIds={contextNodeIds}
-                displayCodes={displayCodes}
                 today={today}
                 onPatchBoard={patchBoard}
                 onPatchNode={patchNode}
@@ -819,7 +802,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             <div ref={chartContainer} className="flex min-h-0 flex-1 flex-col" aria-busy={exporting}>
             <CockpitGantt
               board={board}
-              displayCodes={displayCodes}
               contextNodeIds={contextNodeIds}
               taskCounts={taskCounts}
               today={today}
@@ -864,8 +846,8 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             <CockpitChanges key={planKey} wsId={wsId} scope={scope} readOnly={context.data?.actor.is_human !== true} onOpenTask={openTask} />
           )}
 
-          {tab === "gantt" && planView === "responsibility" && <CockpitResponsibilities wsId={wsId} query={query} rootIds={rootIds} nodes={nodes} displayCodes={displayCodes} scope={scope} />}
-          {tab === "gantt" && planView === "milestones" && board && <CockpitMilestones wsId={wsId} query={query} rootIds={rootIds} readOnly={context.data?.actor.is_human !== true || planQuery.isError} nodes={nodes} milestones={board.milestones} displayCodes={displayCodes} scope={scope}
+          {tab === "gantt" && planView === "responsibility" && <CockpitResponsibilities wsId={wsId} query={query} rootIds={rootIds} nodes={nodes} scope={scope} />}
+          {tab === "gantt" && planView === "milestones" && board && <CockpitMilestones wsId={wsId} query={query} rootIds={rootIds} readOnly={context.data?.actor.is_human !== true || planQuery.isError} nodes={nodes} milestones={board.milestones} scope={scope}
             today={today} goalDate={board.cockpit.goal_date} onCreate={() => setCreatingMilestone(true)}
             onPatch={patchMilestone} onDelete={(id) => requestDeletion("milestone", id)} />}
           {tab === "gantt" && planView === "table" && board && (
@@ -886,7 +868,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           {(tab === "finance" || (tab === "gantt" && planView === "finance")) && board && (
             <CockpitTable
               board={board}
-              displayCodes={displayCodes}
               contextNodeIds={contextNodeIds}
               taskCounts={taskCounts}
               mode="finance"

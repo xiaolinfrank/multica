@@ -73,7 +73,7 @@ function resize(nextWidth: number) {
   flushFrames();
 }
 function show(overrides: Partial<CockpitGanttProps> = {}) {
-  const props: CockpitGanttProps = { board, displayCodes: new Map([["root", "03"], ["branch", "03.01"], ["leaf", "03.01.01"]]),
+  const props: CockpitGanttProps = { board,
     contextNodeIds: new Set(), taskCounts: new Map(), today: "2026-10-14", zoom: "month", query: "", rootIds: new Set(), collapsed: new Set(),
     onToggleCollapse: vi.fn(), onSelect: vi.fn(), selectedId: null, onPatchNode: vi.fn(), statusSuggestions: [], ownerSuggestions: [],
     showFinance: true, toolbarOpen: false, scrollToTodayNonce: 0, focusTarget: null, ...overrides };
@@ -90,13 +90,14 @@ describe("CockpitGantt responsive identity", () => {
     expect(tree.style.width).toBe("160px");
     expect(within(tree).queryByRole("button", { name: "Owner" })).toBeNull();
     expect(within(tree).queryByText("Partner")).toBeNull();
-    fireEvent.click(within(tree).getByRole("button", { name: "Open 03.01.01" }));
+    fireEvent.click(within(tree).getByRole("button", { name: "Open historic-task" }));
     expect(props.onSelect).toHaveBeenCalledWith("leaf");
-    fireEvent.click(within(tree).getByRole("button", { name: /Collapse.*Direction/ }));
+    const branch = tree.querySelector<HTMLElement>('[data-cockpit-node="branch"]')!;
+    fireEvent.click(within(branch).getByRole("button", { name: "Collapse" }));
     expect(props.onToggleCollapse).toHaveBeenCalledWith("branch");
     const leaf = tree.querySelector<HTMLElement>('[data-cockpit-node="leaf"]')!;
-    fireEvent.click(within(leaf).getByRole("button", { name: "Name" }));
-    const editor = within(leaf).getByRole("textbox", { name: "Name" });
+    fireEvent.doubleClick(within(leaf).getByRole("button", { name: "Execution task" }));
+    const editor = within(leaf).getByRole("textbox");
     fireEvent.change(editor, { target: { value: "Renamed task" } });
     fireEvent.keyDown(editor, { key: "Enter" });
     expect(props.onPatchNode).toHaveBeenCalledWith("leaf", { name: "Renamed task" });

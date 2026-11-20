@@ -7,8 +7,6 @@
 
 import type { CockpitBoard, CockpitIssueLink, CockpitNode } from "../types";
 import {
-  buildCockpitDisplayCodes,
-  buildCockpitSummaryTree,
   buildCockpitTree,
   computeCockpitFinanceRows,
   flattenCockpitTree,
@@ -41,7 +39,7 @@ function layerLabel(depth: number): string {
 
 type CsvIssueLink = Pick<CockpitIssueLink, "node_id" | "issue_identifier">;
 export type CockpitCsvData = Pick<CockpitBoard, "nodes" | "payments"> & { issue_links: readonly CsvIssueLink[] };
-export interface CockpitCsvOptions { displayCodes?: ReadonlyMap<string, string>; contextNodeIds?: ReadonlySet<string> }
+export interface CockpitCsvOptions { contextNodeIds?: ReadonlySet<string> }
 function groupCsvLinks(links: readonly CsvIssueLink[]): Map<string, CsvIssueLink[]> {
   const grouped = new Map<string, CsvIssueLink[]>();
   for (const link of links) { const items = grouped.get(link.node_id); if (items) items.push(link); else grouped.set(link.node_id, [link]); }
@@ -62,34 +60,12 @@ export function cockpitTasksCsv(board: CockpitCsvData, options: CockpitCsvOption
   const paymentsByNode = groupPaymentsByNode(board.payments);
   const linksByNode = groupCsvLinks(board.issue_links);
   // The numbers a reader copies from the gantt must find the same rows here:
-  // quote the shipped summary codes, not the stored history. A folded member
-  // direction is not a gantt row and keeps its stored code.
-  const summaryTree = buildCockpitSummaryTree(tree);
-  const displayCodes = options.displayCodes ?? buildCockpitDisplayCodes(summaryTree);
+  // both quote the stored code, which S3 made the address of the row.
   const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
-  const codeOf = (n: CockpitNode): string => displayCodes.get(n.id) ?? n.code;
-  // Names too: a renamed direction ("院端一体机与部署") reads its shipped name
-  // here, folded members keep their stored one.
-  const shippedName = new Map<string, string>();
-  const walkNames = (entry: CockpitTreeNode) => {
-    shippedName.set(entry.node.id, entry.node.name);
-    entry.children.forEach(walkNames);
-  };
-  summaryTree.forEach(walkNames);
-  const nameOf = (n: CockpitNode): string => shippedName.get(n.id) ?? n.name;
-  // The parent a row ships under: a merged task's shipped parent is the group
-  // row, not the folded direction its stored parent_id names.
-  const shippedParentCode = new Map<string, string>();
-  const walkParents = (entry: CockpitTreeNode) => {
-    for (const child of entry.children) {
-      shippedParentCode.set(child.node.id, displayCodes.get(entry.node.id) ?? entry.node.code);
-      walkParents(child);
-    }
-  };
-  summaryTree.forEach(walkParents);
+  const codeOf = (n: CockpitNode): string => n.code;
+  const nameOf = (n: CockpitNode): string => n.name;
   const parentOf = (n: CockpitNode): string =>
-    shippedParentCode.get(n.id) ??
-    (n.parent_id && nodeById.has(n.parent_id) ? codeOf(nodeById.get(n.parent_id)!) : "");
+    n.parent_id && nodeById.has(n.parent_id) ? codeOf(nodeById.get(n.parent_id)!) : "";
 
   const out = [
     csvRow([
@@ -156,11 +132,8 @@ export function cockpitTasksCsv(board: CockpitCsvData, options: CockpitCsvOption
 export function cockpitFinanceCsv(board: CockpitCsvData, options: CockpitCsvOptions = {}): string {
   const tree: CockpitTreeNode[] = buildCockpitTree(board.nodes);
   const linksByNode = groupCsvLinks(board.issue_links);
-  const displayCodes = options.displayCodes ?? buildCockpitDisplayCodes(buildCockpitSummaryTree(tree));
-  const codeOf = (n: CockpitNode): string => displayCodes.get(n.id) ?? n.code;
-  const rootNumberOf = new Map(
-    tree.map((root) => [root.node.code, displayCodes.get(root.node.id) ?? root.node.code]),
-  );
+  const codeOf = (n: CockpitNode): string => n.code;
+  const rootNumberOf = new Map(tree.map((root) => [root.node.code, root.node.code]));
   const out = [
     csvRow([
       "板块",

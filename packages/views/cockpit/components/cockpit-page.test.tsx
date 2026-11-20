@@ -418,46 +418,14 @@ describe("CockpitPage", () => {
     ];
   }
 
-  it("numbers digest tasks with the shipped row codes, not the pre-merge outline", async () => {
-    readCockpitFixture.mockResolvedValue(
-      structuredClone({
-        ...board,
-        nodes: [
-          ...board.nodes,
-          // No dir10 here: with the merged area alone, "02.03.01" would only
-          // ever come from the base tree's pre-merge numbering of t3.
-          ...mergedAreaNodes().filter((n) => n.id !== "dir10" && n.id !== "t16"),
-        ],
-      }),
-    );
-    renderPage();
-    // Stored-02.03's active task ships as 02.02.02 in the digest card.
-    expect((await screen.findAllByText("02.02.02")).length).toBeGreaterThan(0);
-    expect(screen.queryByText("02.03.01")).not.toBeInTheDocument();
-  });
-
-  it("shows the shipped row code beside the stored code in the node panel", async () => {
-    readCockpitFixture.mockResolvedValue(
-      structuredClone({ ...board, nodes: [...board.nodes, ...mergedAreaNodes()] }),
-    );
-    renderPage();
-    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
-    // The renamed direction ships as "02.03 院端一体机与部署" (stored 02.10).
-    fireEvent.click(await screen.findByRole("button", { name: "Open 02.03" }));
-    await screen.findByRole("button", { name: enCockpit.node.stored_code });
-    const panel = screen.getByRole("complementary");
-    expect(within(panel).getByText("02.03")).toBeInTheDocument();
-    expect(within(panel).getByText("02.10")).toBeInTheDocument();
-  });
-
-  it("numbers change rows with the shipped row codes", async () => {
+  it("quotes the change row's code as the server sent it", async () => {
     readCockpitFixture.mockResolvedValue(
       structuredClone({ ...board, nodes: [...board.nodes, ...mergedAreaNodes()] }),
     );
     vi.mocked(api.listCockpitChangePage).mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: null, module_id: null, project_title: "", module_title: "" }, q: "", status: "pending", total: 1, next_cursor: null, counts: { pending: 1, decided: 0 }, items: [
       {
         id: "ch1", cockpit_id: "cp", node_id: "t3",
-        node_code: "02.03", node_name: "Ship",
+        node_code: "L3-02-08", node_name: "Ship",
         field: "progress", old_value: "50", new_value: "60",
         source: "manual", reason: "", status: "pending",
         created_by_type: "member", created_by_label: "Li",
@@ -468,7 +436,7 @@ describe("CockpitPage", () => {
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Governance" }));
     expect(
-      await screen.findByRole("button", { name: "Locate 02.02.02 in the gantt" }),
+      await screen.findByRole("button", { name: "Locate L3-02-08 in the gantt" }),
     ).toBeInTheDocument();
   });
 
@@ -502,7 +470,7 @@ describe("CockpitPage", () => {
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
 
-    expect(await screen.findByRole("button", { name: "Open 01.01" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open L3-01-08" })).toBeInTheDocument();
     // The branch has one leaf at 40%, so it reports 40% and is not editable.
     const progressFields = screen.getAllByRole("button", { name: "Progress" });
     expect(progressFields.length).toBeGreaterThan(0);
@@ -561,8 +529,10 @@ describe("CockpitPage", () => {
     useDetailedBoard(true);
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Expand Governance" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
+    const moduleRow = (await screen.findByRole("button", { name: "Open L2-01-01" }))
+      .closest<HTMLElement>('[data-cockpit-node="module"]')!;
+    fireEvent.click(within(moduleRow).getByRole("button", { name: "Expand" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
 
     expect(await screen.findByText("Instalments")).toBeInTheDocument();
     expect(screen.getByText("Deliverable")).toBeInTheDocument();
@@ -584,8 +554,10 @@ describe("CockpitPage", () => {
     useDetailedBoard(true);
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Expand Governance" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
+    const moduleRow = (await screen.findByRole("button", { name: "Open L2-01-01" }))
+      .closest<HTMLElement>('[data-cockpit-node="module"]')!;
+    fireEvent.click(within(moduleRow).getByRole("button", { name: "Expand" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Link reference issue" }));
     const dialog = await screen.findByRole("dialog"); const search = within(dialog).getByRole("textbox", { name: enCockpit.task_flow.issue_search }); fireEvent.change(search, { target: { value: "cohort" } });
@@ -603,9 +575,9 @@ describe("CockpitPage", () => {
       target: { value: "governance" },
     });
 
-    expect(await screen.findByRole("button", { name: "Open 01.01" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open L3-01-08" })).toBeInTheDocument();
     // The parent stays so the hit has context to be read in.
-    expect(screen.getByRole("button", { name: "Open 01" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open L1-01" })).toBeInTheDocument();
   });
 
   it("shows an empty board as an invitation to add work, not as an error", async () => {
@@ -629,7 +601,7 @@ describe("CockpitPage", () => {
   // canonical component regressions in cockpit-plan-structure-create.test.tsx.
   it("opens explicit plan structure creation from the toolbar without guessing a parent from the selected row", async () => {
     renderPage(); fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open L1-01" }));
     fireEvent.click(screen.getByRole("button", { name: "Add plan item" })); const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("textbox", { name: "Name" })).toHaveValue("");
     expect(within(dialog).getByRole("button", { name: "Create plan item" })).toBeDisabled(); expect(api.createCockpitNode).not.toHaveBeenCalled();

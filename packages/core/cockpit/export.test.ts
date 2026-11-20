@@ -67,15 +67,15 @@ function board(over: Partial<CockpitBoard>): CockpitBoard {
 }
 
 describe("complete scoped CSV export", () => {
-  it("uses the confirmed global codes, preserves reference identifiers and excludes context-only ancestor amounts", () => {
+  it("quotes the stored row code, preserves reference identifiers and excludes context-only ancestor amounts", () => {
     const source = {
-      nodes: [node({ id: "ancestor", code: "project-old", name: "Outside scope", budget_amount: 900 }),
-        node({ id: "module", code: "module-old", parent_id: "ancestor", name: "Scoped module", budget_amount: 40 })],
+      nodes: [node({ id: "ancestor", code: "09", name: "Outside scope", budget_amount: 900 }),
+        node({ id: "module", code: "09.03", parent_id: "ancestor", name: "Scoped module", budget_amount: 40 })],
       // The ledger lists instalments: the scoped module needs one to appear.
       payments: [{ id: "pay-1", node_id: "module", label: "首款", pay_date: "2026-01-10", amount: 40, position: 0 }],
       issue_links: [{ node_id: "module", issue_identifier: "BIO-42" }],
     };
-    const options = { displayCodes: new Map([["ancestor", "09"], ["module", "09.03"]]), contextNodeIds: new Set(["ancestor"]) };
+    const options = { contextNodeIds: new Set(["ancestor"]) };
     const tasks = cockpitTasksCsv(source, options);
     expect(tasks).toContain('="09.03"'); expect(tasks).toContain("BIO-42"); expect(tasks).toContain("Scoped module");
     expect(tasks).not.toContain("Outside scope"); expect(tasks).not.toContain("900");
@@ -102,11 +102,11 @@ describe("cockpitTasksCsv", () => {
     );
     const lines = csv.split("\r\n").filter(Boolean);
     expect(lines).toHaveLength(4);
-    // The shipped numbering quotes a mainline as "01" the way the gantt does.
-    expect(lines[1]).toContain('L1,="01",,数据底座');
+    // The row's own code is the address both the gantt and the CSV quote.
+    expect(lines[1]).toContain("L1,L1-01,,数据底座");
     // Codes with a leading zero are forced to text or Excel reads them as dates.
-    expect(lines[2]).toContain('L2,="01.01",="01",甲');
-    expect(lines[3]).toContain('L2,="01.02",="01",乙');
+    expect(lines[2]).toContain('L2,="01.01",L1-01,甲');
+    expect(lines[3]).toContain('L2,="01.02",L1-01,乙');
   });
 
   it("neutralises a cell that would otherwise run as a spreadsheet formula", () => {
@@ -126,46 +126,6 @@ describe("cockpitTasksCsv", () => {
 
   it("starts with a BOM so Excel opens it as UTF-8", () => {
     expect(cockpitTasksCsv(board({}))).toMatch(/^\uFEFF/);
-  });
-});
-
-describe("shipped row codes", () => {
-  // The v1.2 summary merge folds 02.02-09 into one "02.02" row and shows the
-  // stored 02.10 as "02.03"; the CSVs quote those shipped numbers, not the
-  // stored history, so a code copied from the gantt finds the same row here.
-  const mergedNodes = [
-    node({ id: "l2", code: "L1-02", name: "Platform" }),
-    node({ id: "dir1", code: "02.01", parent_id: "l2", name: "Infra" }),
-    node({ id: "dir2", code: "02.02", parent_id: "l2", name: "Arch" }),
-    node({ id: "dir3", code: "02.03", parent_id: "l2", name: "Data" }),
-    node({ id: "dir10", code: "02.10", parent_id: "l2", name: "院端节点与部署" }),
-    node({ id: "t2", code: "L3-02-02", parent_id: "dir2", name: "Design" }),
-    node({ id: "t3", code: "L3-02-08", parent_id: "dir3", name: "Ship", budget_amount: 100 }),
-    node({ id: "t16", code: "L3-02-16", parent_id: "dir10", name: "Box" }),
-  ];
-
-  it("tasks CSV numbers merged rows by the shipped outline, parents included", () => {
-    const csv = cockpitTasksCsv(board({ nodes: mergedNodes }));
-    expect(csv).toContain('="02.01"');
-    expect(csv).toContain('="02.02.01"');
-    expect(csv).toContain('="02.02.02"');
-    expect(csv).toContain('="02.03.01"');
-    expect(csv).not.toContain("L3-02-08");
-    // The task's parent cell names the group row it ships under, not the
-    // folded direction its stored parent_id points at.
-    expect(csv).toMatch(/="02\.02\.02",="02\.02"/);
-    // The renamed direction reads its shipped name, not the stored one.
-    expect(csv).toContain("院端一体机与部署");
-    expect(csv).not.toContain("院端节点与部署");
-  });
-
-  it("finance CSV numbers spend lines the same way", () => {
-    const csv = cockpitFinanceCsv(board({
-      nodes: mergedNodes,
-      payments: [{ id: "p1", node_id: "t3", label: "首期", pay_date: "2026-10-15", amount: 40, position: 0 }],
-    }));
-    expect(csv).toContain('="02",="02.02.02"');
-    expect(csv).not.toContain("L3-02-08");
   });
 });
 
@@ -194,7 +154,7 @@ describe("cockpitFinanceCsv", () => {
     const lines = csv.split("\r\n").filter(Boolean);
     // The row with neither budget nor instalments is not a spend line.
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toContain('="02"');
+    expect(lines[1]).toContain("L1-02");
     expect(lines[1]).toContain("2026-02-01,2026-02-01,45,45,联通");
   });
 

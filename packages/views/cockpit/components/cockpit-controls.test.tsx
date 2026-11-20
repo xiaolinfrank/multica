@@ -280,10 +280,11 @@ describe("Cockpit controls regressions", () => {
   it("opens week details with tasks even when the root branch is collapsed", async () => {
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
-    await screen.findByRole("button", { name: "Open 01" });
-    const collapse = screen.queryByRole("button", { name: "Collapse High-quality datasets" });
+    const openRoot = await screen.findByRole("button", { name: "Open L1-01" });
+    const rootRow = openRoot.closest<HTMLElement>('[data-cockpit-node="root"]')!;
+    const collapse = within(rootRow).queryByRole("button", { name: "Collapse" });
     if (collapse) fireEvent.click(collapse);
-    expect(await screen.findByRole("button", { name: "Expand High-quality datasets" })).toBeInTheDocument();
+    expect(within(rootRow).getByRole("button", { name: "Expand" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("combobox", { name: "Timeline density" }));
     await userEvent.click(await screen.findByRole("option", { name: "Week" }));
     fireEvent.click(await screen.findByRole("button", { name: "Week · 2026-09-14 – 2026-09-20" }));

@@ -2,7 +2,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
-import { buildCockpitDisplayCodesFromIndex, cockpitScopeViewKey, cockpitNodeDetailOptions, cockpitSurfacePath, useCreateCockpitMilestone, useCockpitMilestoneDraftStore, setCockpitMilestoneDraft, settleCockpitMilestoneDraft, type CockpitScope } from "@multica/core/cockpit";
+import { cockpitScopeViewKey, cockpitNodeDetailOptions, cockpitSurfacePath, useCreateCockpitMilestone, useCockpitMilestoneDraftStore, setCockpitMilestoneDraft, settleCockpitMilestoneDraft, type CockpitScope } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@multica/ui/components/ui/dialog";
@@ -40,7 +40,7 @@ export function CockpitMilestoneCreate({ wsId, scope, open, onOpenChange, initia
   return <Dialog open={open} onOpenChange={(next) => { if (!lock.current) onOpenChange(next); }}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{t(($) => $.overview.add_milestone)}</DialogTitle></DialogHeader>
     <label className="space-y-1 text-caption">{t(($) => $.milestone.name)}<Input value={draft.name} disabled={disabled || create.isPending || draft.uncertain} onChange={(event) => change({ name: event.target.value })} /></label>
     <label className="space-y-1 text-caption">{t(($) => $.overview.milestone_plan_date)}<Input type="date" value={draft.date} disabled={disabled || create.isPending || draft.uncertain} onChange={(event) => change({ date: event.target.value })} /></label>
-    <CockpitNodeChoicePicker wsId={wsId} scope={scope} eligible={false} label={t(($) => $.plan_views.item)} value={chosen.data ? `${buildCockpitDisplayCodesFromIndex(chosen.data.node_index).get(chosen.data.node.id) ?? chosen.data.node.code} ${chosen.data.node.name}` : draft.nodeId}
+    <CockpitNodeChoicePicker wsId={wsId} scope={scope} eligible={false} label={t(($) => $.plan_views.item)} value={chosen.data ? `${chosen.data.node.code} ${chosen.data.node.name}` : draft.nodeId}
       disabled={disabled || create.isPending || draft.uncertain} allowClear={!scoped} onClear={() => change({ nodeId: "" })} onSelect={(node) => change({ nodeId: node.id })} />
     {scoped && !draft.nodeId && <p className="text-caption text-muted-foreground">{t(($) => $.milestone_create.anchor_required)}</p>}
     {chosen.isError && <CockpitFlowError onRetry={() => void chosen.refetch()} />}

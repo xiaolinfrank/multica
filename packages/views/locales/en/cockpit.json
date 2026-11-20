@@ -2354,6 +2354,7 @@
     "dismiss": "Dismiss",
     "collapse": "Collapse",
     "expand": "Expand",
+    "open_row": "Open {{code}}",
     "add_child": "Add a row below",
     "add_issue": "New issue",
     "more": "More actions",

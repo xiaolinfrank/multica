@@ -397,9 +397,9 @@ describe("the meeting register", () => {
     expect(await screen.findByText("/Volumes/share/06.06/20260921-01 Working group weekly")).toBeInTheDocument();
   });
 
-  it("numbers the work-item picker with the shipped row codes", async () => {
-    // A directionless exec row under L1-02 ships as "02.04" once the merged
-    // group counts as one row; the base tree would number it "02.05".
+  it("labels the work-item picker with the row's stored code", async () => {
+    // The stored code is the address: no positional recomputation happens, so
+    // a row keeps its own number wherever it is quoted.
     const extra = [
       { ...board.nodes[0]!, id: "l2", code: "L1-02", name: "Platform", parent_id: null },
       { ...board.nodes[0]!, id: "dir1", code: "02.01", name: "Infra", parent_id: "l2" },
@@ -414,8 +414,8 @@ describe("the meeting register", () => {
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
     fireEvent.click(await screen.findByRole("tab", { name: "Preparation" }));
     fireEvent.click(await screen.findByRole("button", { name: "Add work item" }));
-    expect(await screen.findByRole("button", { name: /02\.04 Ship/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /02\.05 Ship/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /L3-02-08 Ship/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /02\.0[45] Ship/ })).not.toBeInTheDocument();
   });
 
   it("retains a retired review relation from required roles without loading version history", async () => {

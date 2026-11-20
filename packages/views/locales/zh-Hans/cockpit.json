@@ -2354,6 +2354,7 @@
     "dismiss": "关闭",
     "collapse": "折叠",
     "expand": "展开",
+    "open_row": "打开 {{code}}",
     "add_child": "新增下级",
     "add_issue": "新建 issue",
     "more": "更多操作",

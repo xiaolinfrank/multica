@@ -33,9 +33,7 @@ import type {
 } from "@multica/core/types";
 import {
   COCKPIT_STATUS_LEGEND,
-  COCKPIT_SUMMARY_GROUPS,
   axisMonths,
-  buildCockpitSummaryTree,
   buildCockpitTree,
   cockpitAggStatusColor,
   cockpitCoreNodes,
@@ -52,7 +50,6 @@ import {
   isCockpitExecNode,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
-  isCockpitSummaryGroup,
   parseDay,
   type CockpitCoreNodeKind,
   type CockpitGoalProgress,
@@ -68,15 +65,15 @@ import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogTr
 import {
   CalendarDays,
   Check,
-  ChevronDown,
-  ChevronRight,
   Diamond,
   Target,
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 import { useLocale, useT } from "../../i18n";
-import { EditableSuggest, EditableText, ProgressField } from "./cockpit-fields";
+import { EditableSuggest, ProgressField } from "./cockpit-fields";
+import { PlanRowName } from "../../plan-tree/plan-row-name";
+import { planRowFor } from "../../plan-tree/plan-rows";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { StatusChip } from "./cockpit-status";
 import { cockpitGanttLayout } from "./cockpit-layout";
@@ -105,7 +102,6 @@ const CORE_GOAL_COLOR = "#7c3aed";
 
 export interface CockpitGanttProps {
   board: Pick<CockpitBoard, "cockpit" | "nodes" | "payments">;
-  displayCodes: ReadonlyMap<string, string>;
   contextNodeIds: ReadonlySet<string>;
   taskCounts: ReadonlyMap<string, CockpitPlanTaskCount>;
   today: string;
@@ -211,10 +207,7 @@ function visibleRows(
 function carriesMarkers(entry: CockpitTreeNode): boolean {
   // The group's synthetic id deliberately fails the definition regex, so
   // recognise it before the exec check classifies it as a task.
-  return (
-    entry.depth === 1 &&
-    (isCockpitSummaryGroup(entry.node.code) || !isCockpitExecNode(entry.node.code))
-  );
+  return entry.depth === 1 && !isCockpitExecNode(entry.node.code);
 }
 
 /** Trims "李林（POOL 超饱和）" down to the name the row has space for. */
@@ -644,7 +637,6 @@ function GoalChip({
 
 export function CockpitGantt({
   board,
-  displayCodes,
   contextNodeIds,
   taskCounts,
   today,
@@ -673,24 +665,15 @@ export function CockpitGantt({
   const scope = cockpitScope(navigation.searchParams);
   const [viewport, setViewport] = useState({ left: 0, width: 0 });
   const reduceMotion = useReducedMotion() === true;
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const selectedGroup = COCKPIT_SUMMARY_GROUPS.find((group) => group.id === selectedGroupId);
-  const onSelect = (id: string) => { if (isCockpitSummaryGroup(id)) setSelectedGroupId(id); else onSelectNode(id); };
+  const onSelect = onSelectNode;
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [navOpen, setNavOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastTodayScroll = useRef({ nonce: 0, dayWidth: 0, axisStart: 0 });
   useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, scope), "gantt"]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
 
-  const baseTree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  // The shipped shape: merged directions, their tasks flattened underneath.
-  const tree = useMemo(() => {
-    const presentCodes = new Set(board.nodes.map((node) => node.code));
-    return buildCockpitSummaryTree(baseTree).map((root) => ({ ...root, children: root.children.filter((child) => {
-      const group = COCKPIT_SUMMARY_GROUPS.find((item) => item.id === child.node.id);
-      return !group || group.members.some((code) => presentCodes.has(code));
-    }) }));
-  }, [baseTree, board.nodes]);
+  const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
   const scopedTree = useMemo(() => {
     if (rootIds.size === 0) return tree;
     const picked = tree.filter((entry) => rootIds.has(entry.node.id));
@@ -857,10 +840,8 @@ export function CockpitGantt({
     const observer = new ResizeObserver(read); observer.observe(element); measure();
     return () => { cancelAnimationFrame(frame); element.removeEventListener("scroll", read); observer.disconnect(); };
   }, [hasNodes]);
-  const markerRows = renderedRows.filter(carriesMarkers).slice(0, 100).map((entry) => {
-    const group = COCKPIT_SUMMARY_GROUPS.find((item) => item.id === entry.node.id);
-    return { row_key: entry.node.id, node_ids: group ? board.nodes.filter((node) => group.members.includes(node.code)).map((node) => node.id) : [entry.node.id] };
-  }).filter((row) => row.node_ids.length > 0);
+  const markerRows = renderedRows.filter(carriesMarkers).slice(0, 100)
+    .map((entry) => ({ row_key: entry.node.id, node_ids: [entry.node.id] }));
   const markerWindows = [];
   const firstDay = Math.max(0, Math.floor(viewport.left / dayWidth));
   const lastDay = Math.min(axis.days - 1, firstDay + Math.ceil(Math.max(1, viewport.width - treeWidth) / dayWidth));
@@ -1037,7 +1018,6 @@ export function CockpitGantt({
               const drifting = !late && isCockpitNodeDrifting(node, today);
               const budget = isBranch ? (rollup?.budget ?? 0) : (node.budget_amount ?? 0);
               const ownPayments = paymentsByNode.get(node.id) ?? [];
-              const code = displayCodes.get(node.id) ?? node.code;
               const goal = isMainline ? goalProgress.get(node.id) : undefined;
               // The branch read is the subtask average, the figure the source
               // sheet scores merged groups by.
@@ -1051,7 +1031,7 @@ export function CockpitGantt({
                   key={node.id}
                   data-cockpit-node={node.id}
                   data-context-only={contextNodeIds.has(node.id) || undefined}
-                  title={contextNodeIds.has(node.id) ? t(($) => $.plan_views.context_only) : isCockpitSummaryGroup(node.id) ? t(($) => $.plan_views.presentation_group) : undefined}
+                  title={contextNodeIds.has(node.id) ? t(($) => $.plan_views.context_only) : undefined}
                   onMouseEnter={() => setHoveredId(node.id)}
                   onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                   onClick={toggleRow(entry)}
@@ -1075,63 +1055,20 @@ export function CockpitGantt({
                       : {}),
                   }}
                 >
-                  <div
-                    className="flex min-w-0 flex-1 items-center gap-1"
-                    style={{ paddingLeft: compact ? Math.min(depth * 8, 16) : depth * INDENT }}
-                  >
-                    {isBranch ? (
-                      <button
-                        type="button"
-                        onClick={() => onToggleCollapse(node.id)}
-                        aria-label={
-                          collapsed.has(node.id)
-                            ? t(($) => $.gantt.expand_branch, { name: node.name })
-                            : t(($) => $.gantt.collapse_branch, { name: node.name })
-                        }
-                        className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                      >
-                        {collapsed.has(node.id) ? (
-                          <ChevronRight className="size-3.5" />
-                        ) : (
-                          <ChevronDown className="size-3.5" />
-                        )}
-                      </button>
-                    ) : (
-                      <span className="w-[1.125rem] shrink-0" />
-                    )}
-                    <div className={cn("flex min-w-0 flex-1", compact ? "flex-col items-start [&:has(input)>button]:hidden" : "items-center gap-1")}>
-                    {/* The row code is the address people quote in meetings.
-                        It already says which level the row is on, so no
-                        separate depth chip sits beside it. Only the mainline
-                        carries the module colour — below it the codes stay
-                        grey so colour keeps meaning "which module". */}
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            type="button"
-                            onClick={() => onSelect(node.id)}
-                            aria-label={t(($) => $.gantt.open_node, { code })}
-                            className={cn("max-w-full shrink-0 truncate rounded-sm px-1 font-mono text-micro text-muted-foreground tabular-nums hover:bg-accent hover:text-foreground", compact && "leading-tight")}
-                            style={isMainline && entry.color ? { color: entry.color } : undefined}
-                          >
-                            {code}
-                          </button>
-                        }
-                      />
-                      <TooltipContent>
-                        {t(($) => $.gantt.original_code, { code: node.code })}
-                      </TooltipContent>
-                    </Tooltip>
-                    <EditableText
-                      value={node.name}
-                      onCommit={(name) => onPatchNode(node.id, { name })}
-                      label={t(($) => $.node.name)}
-                      placeholder={t(($) => $.node.name_placeholder)}
-                      disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
-                      displayClassName={cn("min-w-0 truncate", compact ? "w-full text-caption leading-tight" : "flex-1", isBranch && "font-medium")}
-                    />
-                    </div>
+                  <PlanRowName
+                    row={planRowFor(node, depth, taskCounts.get(node.id) ?? null, isBranch)}
+                    open={!collapsed.has(node.id)}
+                    locked={readOnly || contextNodeIds.has(node.id)}
+                    renaming={renamingId === node.id}
+                    compact={compact}
+                    indent={INDENT}
+                    expandable={isBranch}
+                    onToggle={() => onToggleCollapse(node.id)}
+                    onSelect={() => onSelect(node.id)}
+                    onStartRename={() => setRenamingId(node.id)}
+                    onSubmitRename={(name) => { onPatchNode(node.id, { name }); setRenamingId(null); }}
+                    onCancelRename={() => setRenamingId(null)}
+                  />
                     {!compact && <>
                     {/* A branch that never got broken down looks identical to a
                         finished one at a glance. It should not. */}
@@ -1166,7 +1103,6 @@ export function CockpitGantt({
                       </span>
                     )}
                     </>}
-                  </div>
 
                   {!compact && <>
                   {showFinance && (
@@ -1223,7 +1159,7 @@ export function CockpitGantt({
                             suggestions={ownerSuggestions}
                             label={t(($) => $.node.owner)}
                             placeholder={emptyLabel}
-                            disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
+                            disabled={readOnly || contextNodeIds.has(node.id)}
                             displayClassName="text-caption"
                             displayValue={shortOwner(inheritedOwner)}
                           />
@@ -1239,7 +1175,7 @@ export function CockpitGantt({
                         suggestions={ownerSuggestions}
                         label={t(($) => $.node.owner)}
                         placeholder={emptyLabel}
-                        disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
+                        disabled={readOnly || contextNodeIds.has(node.id)}
                         displayClassName="text-caption"
                         displayValue={shortOwner(node.owner)}
                       />
@@ -1269,7 +1205,7 @@ export function CockpitGantt({
                         clearLabel={t(($) => $.node.status_unscheduled)}
                         label={t(($) => $.node.status)}
                         placeholder={emptyLabel}
-                        disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
+                        disabled={readOnly || contextNodeIds.has(node.id)}
                         renderDisplay={(value) =>
                           value ? (
                             <StatusChip status={value} />
@@ -1315,7 +1251,7 @@ export function CockpitGantt({
                         value={node.progress}
                         onCommit={(progress) => onPatchNode(node.id, { progress })}
                         label={t(($) => $.node.progress)}
-                        disabled={readOnly || contextNodeIds.has(node.id) || isCockpitSummaryGroup(node.id)}
+                        disabled={readOnly || contextNodeIds.has(node.id)}
                       />
                     )}
                   </div>
@@ -1398,7 +1334,7 @@ export function CockpitGantt({
                               <tbody>{tasks.map((node) => (
                                 <tr key={node.id} className="border-t border-border">
                                   <td className="py-2 pr-2"><DialogClose render={<Button variant="link" size="sm" className="h-auto whitespace-normal text-left" onClick={() => onSelect(node.id)} />}>
-                                    {displayCodes.get(node.id) ?? node.code} {node.name}
+                                    {node.code} {node.name}
                                   </DialogClose>
                                     <div>{t(($) => $.node.progress)}: {cockpitEffectiveProgress(node)}%</div>
                                     <div>{t(($) => $.node.current_progress)}: {node.current_progress || emptyLabel}</div>
@@ -1526,7 +1462,7 @@ export function CockpitGantt({
                 const rollup = rollups.get(node.id);
                 const isBranch = children.length > 0;
                 const isMainline = depth === 0;
-                const code = displayCodes.get(node.id) ?? node.code;
+                const code = node.code;
                 const start = node.start_date ?? (isBranch ? (rollup?.start ?? null) : null);
                 const end = node.end_date ?? (isBranch ? (rollup?.end ?? null) : null);
                 const startDate = parseDay(start);
@@ -1570,7 +1506,7 @@ export function CockpitGantt({
                     key={node.id}
                     data-cockpit-node={node.id}
                   data-context-only={contextNodeIds.has(node.id) || undefined}
-                  title={contextNodeIds.has(node.id) ? t(($) => $.plan_views.context_only) : isCockpitSummaryGroup(node.id) ? t(($) => $.plan_views.presentation_group) : undefined}
+                  title={contextNodeIds.has(node.id) ? t(($) => $.plan_views.context_only) : undefined}
                     onMouseEnter={() => setHoveredId(node.id)}
                     onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                     onClick={toggleRow(entry)}
@@ -1764,15 +1700,6 @@ export function CockpitGantt({
           </div>
         </div>
       </div>
-      <Dialog open={Boolean(selectedGroup)} onOpenChange={(open) => { if (!open) setSelectedGroupId(null); }}>
-        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>{selectedGroup?.name}</DialogTitle></DialogHeader>
-          <p className="text-caption text-muted-foreground">{t(($) => $.plan_views.presentation_group)}</p>
-          <ul className="max-h-80 space-y-2 overflow-y-auto">{selectedGroup && board.nodes.filter((node) => selectedGroup.members.includes(node.code)).map((node) => <li key={node.id}>
-            <DialogClose render={<Button type="button" variant="outline" className="h-auto min-h-10 w-full justify-start whitespace-normal text-left" onClick={() => onSelectNode(node.id)} />}>
-              <span className="mr-2 shrink-0 font-mono text-caption text-muted-foreground">{displayCodes.get(node.id) ?? node.code}</span><span className="line-clamp-2 min-w-0 break-words">{node.name}</span>
-            </DialogClose></li>)}</ul>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -93,7 +93,7 @@ describe("bounded governance queue decisions", () => {
   it("loads field integrity only on request and retains root totals, owner and supplementary fields", async () => {
     changes = []; const root = { ...task, id: "root", code: "L1-01", name: "Programme" }; const incomplete = { ...task, parent_id: root.id, owner: "", start_date: "" }; const complete = { ...task, id: "complete", parent_id: root.id, name: "Complete task" }; const open = vi.fn(); show([root, incomplete, complete], open);
     expect(api.getCockpitPlan).not.toHaveBeenCalled(); await userEvent.click(screen.getByRole("button", { name: enCockpit.governance.quality }));
-    expect(await screen.findByRole("heading", { name: "Check · Required fields missing: 2 · OK 1/2" })).toBeVisible(); expect(screen.getByText("01 Programme · Required fields missing: 2 · OK 1/2")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Check · Required fields missing: 2 · OK 1/2" })).toBeVisible(); expect(screen.getByText("L1-01 Programme · Required fields missing: 2 · OK 1/2")).toBeVisible();
     expect(screen.getByText("Owner: —")).toBeVisible(); expect(screen.getByText("Owner: Li")).toBeVisible(); expect(screen.getByText("Required fields missing: 2: Owner / Start")).toBeVisible(); expect(screen.getAllByText(/Suggested additions: 9:/)).toHaveLength(2);
     await userEvent.click(screen.getByRole("button", { name: /Review task/ })); expect(open).toHaveBeenCalledExactlyOnceWith("task");
   });

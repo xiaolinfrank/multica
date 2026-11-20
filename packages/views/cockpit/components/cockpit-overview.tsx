@@ -33,7 +33,6 @@ import {
   computeCockpitRollups,
   daysBetween,
   isCockpitMilestoneDone,
-  isCockpitSummaryGroup,
   parseCockpitCardText,
   parseDay,
   sortCockpitMilestones,
@@ -367,7 +366,6 @@ function ManualCardBody({
 export interface CockpitOverviewProps {
   board: Pick<CockpitBoard, "cockpit" | "nodes" | "payments" | "milestones">;
   contextNodeIds: ReadonlySet<string>;
-  displayCodes: ReadonlyMap<string, string>;
   today: string;
   onPatchBoard: (patch: CockpitPatch) => void;
   onPatchNode: (nodeId: string, patch: CockpitNodePatch) => void;
@@ -389,7 +387,6 @@ export interface CockpitOverviewProps {
 export function CockpitOverview({
   board,
   contextNodeIds,
-  displayCodes,
   today,
   onPatchBoard,
   onPatchNode,
@@ -424,27 +421,17 @@ export function CockpitOverview({
   const milestones = useMemo(() => sortCockpitMilestones(board.milestones), [board.milestones]);
   const nodeById = useMemo(() => new Map(board.nodes.map((n) => [n.id, n])), [board.nodes]);
   const nodeByCode = useMemo(() => new Map(board.nodes.map((n) => [n.code, n])), [board.nodes]);
-  const idByDisplayCode = useMemo(() => {
-    const map = new Map<string, string>();
-    displayCodes.forEach((code, id) => {
-      // A synthetic summary-group row is not a node a task jump can open.
-      if (!isCockpitSummaryGroup(id)) map.set(code, id);
-    });
-    return map;
-  }, [displayCodes]);
-
   /** A card line's code back to a node: the displayed code first, then the
    * board's own code, so a hand-written line keeps working either way. */
   const openByCode = onOpenTask
     ? (code: string) => {
-        const id = idByDisplayCode.get(code) ?? nodeByCode.get(code)?.id;
+        const id = nodeByCode.get(code)?.id;
         if (id) onOpenTask(id);
       }
     : undefined;
 
   const emptyLabel = t(($) => $.common.unset);
-  const dispCode = (node: CockpitNode | null | undefined): string =>
-    node ? (displayCodes.get(node.id) ?? node.code) : "";
+  const dispCode = (node: CockpitNode | null | undefined): string => node?.code ?? "";
   const moduleCode = (rootCode: string): string =>
     dispCode(nodeByCode.get(rootCode)) || rootCode;
 
@@ -552,7 +539,7 @@ export function CockpitOverview({
             <ModuleBigCard
               key={entry.node.id}
               entry={entry}
-              code={displayCodes.get(entry.node.id) ?? entry.node.code}
+              code={entry.node.code}
               rollup={rollups.get(entry.node.id)}
               today={today}
               readOnly={readOnly || contextNodeIds.has(entry.node.id)}
@@ -569,7 +556,7 @@ export function CockpitOverview({
             <ModuleSmallCard
               key={entry.node.id}
               entry={entry}
-              code={displayCodes.get(entry.node.id) ?? entry.node.code}
+              code={entry.node.code}
               rollup={rollups.get(entry.node.id)}
               today={today}
               readOnly={readOnly || contextNodeIds.has(entry.node.id)}

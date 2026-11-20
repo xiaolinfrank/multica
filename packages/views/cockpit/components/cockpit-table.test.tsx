@@ -15,7 +15,6 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { CockpitBoard, CockpitNode } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
-import { buildCockpitDisplayCodesFromIndex } from "@multica/core/cockpit";
 import { CockpitTable, type CockpitTableProps } from "./cockpit-table";
 
 function node(overrides: Partial<CockpitNode> & { id: string; code: string }): CockpitNode {
@@ -40,7 +39,7 @@ function show(overrides: Partial<Omit<CockpitTableProps, "board">> & { board?: C
     nodes, payments: [], issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
   };
   const onSelect = vi.fn();
-  const props: CockpitTableProps = { board, contextNodeIds: new Set(), taskCounts: new Map(), displayCodes: buildCockpitDisplayCodesFromIndex(overrides.board?.nodes ?? nodes), mode: "tasks", query: "", rootIds: new Set(), selectedId: null,
+  const props: CockpitTableProps = { board, contextNodeIds: new Set(), taskCounts: new Map(), mode: "tasks", query: "", rootIds: new Set(), selectedId: null,
     onSelect, onPatchNode: vi.fn(), statusSuggestions: [], execStatusSuggestions: [],
     budgetCategorySuggestions: [], ownerSuggestions: [], vendorSuggestions: [], ...overrides };
   const view = render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
@@ -51,11 +50,11 @@ function show(overrides: Partial<Omit<CockpitTableProps, "board">> & { board?: C
 }
 
 describe("CockpitTable execution rows", () => {
-  it("shows only leaves with positional codes and aligned review columns", () => {
+  it("shows only leaves with their stored codes and aligned review columns", () => {
     show();
     const table = screen.getByRole("table");
     expect(within(table).getAllByRole("row")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: /03\.01\.01/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /historic-task-18/ })).toBeInTheDocument();
     const headers = within(table).getAllByRole("columnheader");
     expect(headers.slice(0, 10).map((h) => h.textContent)).toEqual([
       "Code", "Name", "L1", "L2", "Owner", "Start", "End", "Status", "Progress", "Check",
@@ -67,15 +66,14 @@ describe("CockpitTable execution rows", () => {
   it("finds hidden fields and Enter locates the first execution match once", () => {
     const { onSelect } = show({ query: "diagnostic needle" });
     expect(screen.getByRole("status")).toHaveTextContent("1 matches");
-    expect(screen.getByRole("button", { name: /03\.01\.01/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /historic-task-18/ })).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Search the board" }), { key: "Enter" });
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("leaf");
   });
 
-  it("searches display codes without changing the stored task address", () => {
-    show({ query: "03.01.01" });
-    expect(screen.getByText("03.01.01")).toBeInTheDocument();
-    expect(screen.getByTitle("historic-task-18")).toBeInTheDocument();
+  it("searches the stored row address", () => {
+    show({ query: "historic-task-18" });
+    expect(screen.getByRole("button", { name: /historic-task-18/ })).toBeInTheDocument();
   });
 
   it("does not treat optional missing fields or zero progress as core warnings", () => {
@@ -160,7 +158,7 @@ describe("CockpitTable narrow containers and motion", () => {
     expect((row.children[1] as HTMLElement).style.left).toBe("");
     expect(screen.getByRole("columnheader", { name: "Deliverable" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Budget" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open 03.01.01" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open historic-task-18" }));
     expect(onSelect).toHaveBeenCalledWith("leaf");
     width = 1440;
     act(() => resize());

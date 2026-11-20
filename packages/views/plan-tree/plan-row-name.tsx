@@ -14,6 +14,11 @@ export interface PlanRowNameProps {
   locked: boolean;
   renaming: boolean;
   compact?: boolean;
+  /** Pixels per level. Surfaces with their own row height pass their own. */
+  indent?: number;
+  /** A row that cannot unfold (the gantt's leaves) keeps the chevron's space
+   *  but shows no control. */
+  expandable?: boolean;
   onToggle: () => void;
   onSelect: () => void;
   onStartRename: () => void;
@@ -27,25 +32,29 @@ export interface PlanRowNameProps {
  *  for the tree, the table and the gantt — the row model is PlanRow in all
  *  three, so the column cannot disagree with itself about levels or codes. */
 export function PlanRowName({
-  row, open, locked, renaming, compact = false,
+  row, open, locked, renaming, compact = false, indent = 14, expandable = true,
   onToggle, onSelect, onStartRename, onSubmitRename, onCancelRename, trailing,
 }: PlanRowNameProps) {
   const { t } = useT("cockpit");
   return (
     <div
       className="flex min-w-0 flex-1 items-center gap-1"
-      style={{ paddingLeft: row.depth * (compact ? 8 : 14) }}
+      style={{ paddingLeft: row.depth * (compact ? 8 : indent) }}
     >
       <span className="flex shrink-0 items-center">
         {/* Every level expands: a work item's children are its issues, which
             load on demand rather than with the tree. */}
-        <button type="button" aria-label={open ? t(($) => $.plan_tree.collapse) : t(($) => $.plan_tree.expand)}
-          aria-expanded={open} onClick={onToggle}
-          className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
-          {open ? <ChevronDown className="size-3" aria-hidden /> : <ChevronRight className="size-3" aria-hidden />}
-        </button>
+        {expandable ? (
+          <button type="button" aria-label={open ? t(($) => $.plan_tree.collapse) : t(($) => $.plan_tree.expand)}
+            aria-expanded={open} onClick={onToggle}
+            className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
+            {open ? <ChevronDown className="size-3" aria-hidden /> : <ChevronRight className="size-3" aria-hidden />}
+          </button>
+        ) : (
+          <span className="size-4 shrink-0" aria-hidden />
+        )}
       </span>
-      <button type="button" onClick={onSelect} title={row.node.code}
+      <button type="button" onClick={onSelect} title={row.node.code} aria-label={t(($) => $.plan_tree.open_row, { code: row.code })}
         className="shrink-0 rounded-sm px-1 font-mono text-micro text-muted-foreground hover:text-foreground"
         style={row.kind === "project" && row.node.color ? { color: row.node.color } : undefined}>
         {row.code}

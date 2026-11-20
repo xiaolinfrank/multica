@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  buildCockpitDisplayCodesFromIndex, cockpitMeetingDetailOptions, cockpitMeetingIssuesOptions, cockpitMeetingNodesOptions,
+  cockpitMeetingDetailOptions, cockpitMeetingIssuesOptions, cockpitMeetingNodesOptions,
   cockpitMeetingWorkflowOptions, cockpitScopeMembersOptions, cockpitRelationViewKey, cockpitMeetingOperationBasisOptions, cockpitMeetingPreparationPath,
   useCockpitScopeViewStore, EMPTY_COCKPIT_RELATION_PAGE, cockpitObjectPath, cockpitSurfacePath,
   useAppendCockpitMeetingIssue, useAppendCockpitMeetingNode, useDeleteCockpitMeetingIssue, useDeleteCockpitMeetingNode,
@@ -60,8 +60,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
   const saveContacts = async (entries: (CockpitDirectoryEntry & { clear_position?: boolean })[]) => {
     try { await upsertDirectory.mutateAsync({ entries: entries.map(({ party, name, position, clear_position }) => ({ party, name, position, clear_position })) }); return true; } catch { toast.error(t(($) => $.meetings.directory_save_failed)); return false; }
   };
-  const codes = useMemo(() => buildCockpitDisplayCodesFromIndex(detail?.node_index ?? []), [detail?.node_index]);
-  const labels = new Map((nodePage?.items ?? []).map((link) => [link.node_id, `${codes.get(link.node_id) ?? link.code} ${link.name}`.trim()]));
+  const labels = new Map((nodePage?.items ?? []).map((link) => [link.node_id, `${link.code} ${link.name}`.trim()]));
   if (!detail) return <aside className="min-w-0 w-[46rem] max-w-full shrink-0 space-y-4 overflow-y-auto border-l border-border bg-card p-4 @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0">
     <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label={t(($) => $.panel.close)}><X className="size-4" /></Button>
     {query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`meeting:${meetingId}`} onRetry={() => void query.refetch()} onClose={close} /> : <Spinner />}
@@ -88,7 +87,7 @@ export function CockpitSelectedMeeting({ wsId, meetingId, scope, onClose, onOpen
     meetings={[detail.meeting]} members={people}
     defaultPlacement={{ project_id: projectId, module_id: moduleId, node_id: defaultNodeId }}
     defaultAssigneeType={defaults?.meeting_assignee_type || null} defaultAssigneeId={defaults?.meeting_assignee_id ?? null}
-    issueLinks={issuePage?.items ?? []} nodeLinks={nodePage?.items ?? []} nodeLabels={labels} nodeCodes={codes} issuePaging={pager("issues")} nodePaging={pager("nodes")} issuePageReady={Boolean(issuePage)} nodePageReady={Boolean(nodePage)}
+    issueLinks={issuePage?.items ?? []} nodeLinks={nodePage?.items ?? []} nodeLabels={labels} issuePaging={pager("issues")} nodePaging={pager("nodes")} issuePageReady={Boolean(issuePage)} nodePageReady={Boolean(nodePage)}
     onSaveDirectory={(nas_dir) => saveMaterial.mutateAsync({ id: meetingId, patch: { nas_dir } }).then(() => undefined)}
     readOnly={readOnly} onClose={close} onOpenNode={onOpenNode} onPatch={(patch) => update.mutate({ id: meetingId, patch }, { onError: fail })}
     onLinkIssue={(issueId) => appendIssue.mutateAsync({ meetingId, issueId })}

@@ -80,7 +80,6 @@ export interface CockpitMeetingPanelProps {
   /** Display codes ("06.06.02") for the linked work items, resolved by the
    *  page so the panel and the gantt address a node the same way. */
   nodeLabels: Map<string, string>;
-  nodeCodes: ReadonlyMap<string, string>;
   onPatch: (patch: CockpitMeetingPatch) => void;
   onClose: () => void;
   onDelete: () => void;
@@ -113,7 +112,7 @@ export function CockpitMeetingPanel({
   onAutoSaveDirectory,
   issueLinks,
   nodeLinks,
-  nodeLabels, nodeCodes,
+  nodeLabels,
   onPatch,
   onClose,
   onDelete,
@@ -361,7 +360,7 @@ export function CockpitMeetingPanel({
               </ul>
             )}
             {!readOnly && (
-              <CockpitNodeChoicePicker wsId={wsId} displayCodes={nodeCodes} eligible={false} scope={scope}
+              <CockpitNodeChoicePicker wsId={wsId} eligible={false} scope={scope}
                 onSelect={(node) => onLinkNode(node.id)} label={t(($) => $.meeting.link_node)} />
             )}
           </section>

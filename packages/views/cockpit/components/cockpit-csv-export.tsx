@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { buildCockpitDisplayCodesFromIndex, cockpitTasksCsv, cockpitFinanceCsv, usePrepareCockpitCsvExport, type CockpitScope } from "@multica/core/cockpit";
+import { cockpitTasksCsv, cockpitFinanceCsv, usePrepareCockpitCsvExport, type CockpitScope } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
@@ -22,7 +22,7 @@ export function CockpitCsvExport({ wsId, scope, initialMode = "tasks" }: { wsId:
   function download() {
     if (!data || !sameScope || prepare.isPending) return;
     const context = new Set(data.context_node_ids);
-    const options = { displayCodes: buildCockpitDisplayCodesFromIndex(data.node_index), contextNodeIds: context };
+    const options = { contextNodeIds: context };
     const csv = mode === "finance" ? cockpitFinanceCsv(data, options) : cockpitTasksCsv(data, options);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob);
     const title = [data.scope.project_title, data.scope.module_title].filter(Boolean).join("_") || data.cockpit?.title || "cockpit";

@@ -17,7 +17,7 @@ import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { CockpitPendingChange } from "@multica/core/types";
 import {
-  cockpitChangePageOptions, cockpitNodeIndexOptions, buildCockpitDisplayCodesFromIndex, cockpitNodeDetailOptions, cockpitScopeViewKey,
+  cockpitChangePageOptions, cockpitNodeDetailOptions, cockpitScopeViewKey,
   useCockpitScopeViewStore, EMPTY_COCKPIT_GOVERNANCE_CONTEXT,
   useCockpitChangeDraftStore, EMPTY_COCKPIT_CHANGE_DRAFT, setCockpitChangeDraft, acknowledgeCockpitChangeDraft, type CockpitScope,
   useCreateCockpitChange,
@@ -438,7 +438,7 @@ function FileChangeForm({ wsId, scope, onError, readOnly }: { wsId: string; scop
       <p className="text-title-sm font-semibold">{t(($) => $.changes.form_title)}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <CockpitNodeChoicePicker wsId={wsId} scope={scope} eligible={false} label={t(($) => $.changes.form_node)}
-          value={selected.data ? `${buildCockpitDisplayCodesFromIndex(selected.data.node_index).get(selected.data.node.id) ?? selected.data.node.code} ${selected.data.node.name}` : nodeRef} disabled={readOnly || file.isPending} onSelect={(node) => update({ nodeId: node.id })} />
+          value={selected.data ? `${selected.data.node.code} ${selected.data.node.name}` : nodeRef} disabled={readOnly || file.isPending} onSelect={(node) => update({ nodeId: node.id })} />
         <Select
           items={CHANGE_FIELDS.map((key) => ({ value: key, label: fieldLabel(t, key) }))}
           value={field}
@@ -494,10 +494,8 @@ export function CockpitChanges({ wsId, scope, onOpenTask, readOnly }: { wsId: st
   const [reviewIds, setReviewIds] = useState<string[] | null>(null), [batchBusy, setBatchBusy] = useState(false);
   const batchLock = useRef(false); const q = useCockpitSearch(text); const searching = text.trim() !== q;
   const query = useQuery({ ...cockpitChangePageOptions(wsId, scope, { status, q, cursor: cursors.at(-1) || undefined, page_size: 25 }), enabled: Boolean(wsId && !searching) });
-  const index = useQuery(cockpitNodeIndexOptions(wsId));
-  const codes = useMemo(() => buildCockpitDisplayCodesFromIndex(index.data?.items ?? []), [index.data]);
   const page = query.data;
-  const rows = useMemo(() => (page?.items ?? []).map((change) => ({ ...change, node_code: codes.get(change.node_id) ?? change.node_code })), [page, codes]);
+  const rows = useMemo(() => page?.items ?? [], [page]);
   const listRef = useRef<HTMLUListElement>(null);
   useCockpitScrollMemory(listRef, JSON.stringify([viewKey, "changes", cursors.at(-1)]), rows.length > 0, JSON.stringify([q, status]));
   const pending = rows.filter((change) => change.status === "pending" && CHANGE_FIELDS.some((field) => field === change.field));

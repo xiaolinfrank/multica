@@ -14,8 +14,8 @@ import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { CockpitViewHeading } from "./cockpit-view-heading";
 import { CockpitMilestoneCard } from "./cockpit-overview";
 
-export function CockpitMilestones({ wsId, milestones, nodes, displayCodes, scope, query, rootIds, today, goalDate, onCreate, onPatch, onDelete, readOnly }: {
-  wsId: string; milestones: CockpitMilestone[]; nodes: CockpitNode[]; displayCodes: ReadonlyMap<string, string>; scope: CockpitScope; query: string; rootIds: ReadonlySet<string>;
+export function CockpitMilestones({ wsId, milestones, nodes, scope, query, rootIds, today, goalDate, onCreate, onPatch, onDelete, readOnly }: {
+  wsId: string; milestones: CockpitMilestone[]; nodes: CockpitNode[]; scope: CockpitScope; query: string; rootIds: ReadonlySet<string>;
   today: string; goalDate: string | null; onCreate: () => void;
   onPatch: (id: string, patch: CockpitMilestonePatch) => void; onDelete: (id: string) => void; readOnly?: boolean;
 }) {
@@ -31,8 +31,8 @@ export function CockpitMilestones({ wsId, milestones, nodes, displayCodes, scope
       if (!root || !rootIds.has(root.id)) return false;
     }
     const needle = query.trim().toLowerCase();
-    return !needle || [milestone.name, milestone.condition, milestone.status, node?.name, node?.code, node ? displayCodes.get(node.id) : ""].join(" ").toLowerCase().includes(needle);
-  }), [milestones, nodeById, rootIds, query, displayCodes]);
+    return !needle || [milestone.name, milestone.condition, milestone.status, node?.name, node?.code].join(" ").toLowerCase().includes(needle);
+  }), [milestones, nodeById, rootIds, query]);
   const selected = milestones.find((milestone) => milestone.id === selectedId);
   const selectedNode = selected?.node_id ? nodeById.get(selected.node_id) : undefined;
   useCockpitScrollMemory(scroll, JSON.stringify([cockpitScopeViewKey(wsId, scope), "cockpit-milestones.tsx"]), rows.length > 0, JSON.stringify([query, [...rootIds].sort()]));
@@ -61,7 +61,7 @@ export function CockpitMilestones({ wsId, milestones, nodes, displayCodes, scope
               <span role="cell" className="cockpit-roadmap-date pt-1 text-caption tabular-nums">{milestone.plan_date || "—"}</span>
               <span role="cell" className="pt-1 text-caption tabular-nums">{milestone.actual_date || "—"}</span>
               <div role="cell" className="min-w-0 pt-1 text-caption">{node ? <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id, planView: "milestones" }, scope)} className="line-clamp-2 break-words hover:underline" title={node.name}>
-                <span className="mr-1 font-mono text-muted-foreground">{displayCodes.get(node.id) ?? node.code}</span>{node.name}</AppLink> : "—"}</div>
+                <span className="mr-1 font-mono text-muted-foreground">{node.code}</span>{node.name}</AppLink> : "—"}</div>
             </div>;
           })}
         </div>
@@ -69,7 +69,7 @@ export function CockpitMilestones({ wsId, milestones, nodes, displayCodes, scope
       {rows.length === 0 && <p className="px-5 py-8 text-caption text-muted-foreground">{t(($) => $.empty.no_milestones)}</p>}
     </div>
     <DialogContent className="cockpit-skin cockpit-milestone-dialog"><DialogHeader><DialogTitle>{t(($) => $.plan_views.milestones)}</DialogTitle></DialogHeader>
-        {selected && <ol><CockpitMilestoneCard milestone={selected} node={selectedNode} nodeCode={selectedNode ? displayCodes.get(selectedNode.id) ?? selectedNode.code : ""}
+        {selected && <ol><CockpitMilestoneCard milestone={selected} node={selectedNode} nodeCode={selectedNode?.code ?? ""}
           countdownFrom={null} today={today} fallbackDate={goalDate} onPatch={(patch) => onPatch(selected.id, patch)} onDelete={() => onDelete(selected.id)} readOnly={readOnly} /></ol>}
     </DialogContent>
   </section></Dialog>;

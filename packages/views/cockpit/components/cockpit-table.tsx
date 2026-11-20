@@ -47,7 +47,6 @@ export type CockpitTableMode = "tasks" | "finance";
 
 export interface CockpitTableProps {
   board: Pick<CockpitBoard, "nodes" | "payments">;
-  displayCodes: ReadonlyMap<string, string>;
   contextNodeIds: ReadonlySet<string>;
   taskCounts: ReadonlyMap<string, CockpitPlanTaskCount>;
   mode: CockpitTableMode;
@@ -155,7 +154,6 @@ function IssueCell({ count, onOpen }: { count: CockpitPlanTaskCount | undefined;
 
 export function CockpitTable({
   board,
-  displayCodes,
   contextNodeIds,
   taskCounts,
   mode,
@@ -208,15 +206,15 @@ export function CockpitTable({
   const paymentsByNode = useMemo(() => groupPaymentsByNode(board.payments), [board.payments]);
 
   const taskRows = useMemo(
-    () => flattenCockpitTree(scopedTree).filter((e) => e.children.length === 0 && matches(e.node, query, displayCodes.get(e.node.id) ?? e.node.code)),
-    [scopedTree, query, displayCodes],
+    () => flattenCockpitTree(scopedTree).filter((e) => e.children.length === 0 && matches(e.node, query, e.node.code)),
+    [scopedTree, query],
   );
   const financeRows = useMemo(
     () =>
       computeCockpitFinanceRows(scopedTree, board.payments, contextNodeIds).filter((row) =>
-        matches(row.node, query, displayCodes.get(row.node.id) ?? row.node.code),
+        matches(row.node, query, row.node.code),
       ),
-    [scopedTree, board.payments, query, displayCodes, contextNodeIds],
+    [scopedTree, board.payments, query, contextNodeIds],
   );
 
   const visibleCount = mode === "finance" ? financeRows.length : taskRows.length;
@@ -317,17 +315,17 @@ export function CockpitTable({
                           style={{ backgroundColor: row.rootColor || "var(--muted-foreground)" }}
                           aria-hidden
                         />
-                        {displayCodes.get(ancestors.get(node.id)?.root.node.id ?? "") ?? row.rootCode}
+                        {row.rootCode}
                       </span>
                     </Td>
                     <Td>
                       <button
                         type="button"
                         onClick={() => onSelect(node.id)}
-                        aria-label={t(($) => $.gantt.open_node, { code: displayCodes.get(node.id) ?? node.code })}
+                        aria-label={t(($) => $.gantt.open_node, { code: node.code })}
                         className="rounded-sm px-1 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
                       >
-                        {displayCodes.get(node.id) ?? node.code}
+                        {node.code}
                       </button>
                     </Td>
                     <Td>
@@ -498,11 +496,11 @@ export function CockpitTable({
                       <button
                         type="button"
                         onClick={() => onSelect(node.id)}
-                        aria-label={t(($) => $.gantt.open_node, { code: displayCodes.get(node.id) ?? node.code })}
+                        aria-label={t(($) => $.gantt.open_node, { code: node.code })}
                         className="rounded-sm px-1 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-foreground"
                         style={entry.color ? { color: entry.color } : undefined}
                       >
-                        {displayCodes.get(node.id) ?? node.code}
+                        {node.code}
                       </button>
                     </span>
                   </Td>
@@ -516,7 +514,7 @@ export function CockpitTable({
                       displayClassName={cn("text-caption", isBranch && "font-medium")}
                     />
                   </Td>
-                  <Td><span className="text-caption" title={ancestors.get(node.id)?.root.node.name}>{displayCodes.get(ancestors.get(node.id)?.root.node.id ?? "") ?? "—"}</span></Td>
+                  <Td><span className="text-caption" title={ancestors.get(node.id)?.root.node.name}>{ancestors.get(node.id)?.root.node.code ?? "—"}</span></Td>
                   <Td className="max-w-48"><span className="text-caption" title={ancestors.get(node.id)?.parent?.node.name}>{ancestors.get(node.id)?.parent?.node.name ?? "—"}</span></Td>
                   <Td>
                     <EditableSuggest

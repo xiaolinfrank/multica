@@ -6,7 +6,7 @@ import { containerOperationBasisOptions, containerOperationAllowed } from "@mult
 import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
 import { ApiError } from "@multica/core/api";
 import {
-  buildCockpitDisplayCodesFromIndex, cockpitObjectPath, cockpitScopeViewKey, cockpitContextOptions, cockpitNodeDetailOptions, cockpitNodeCodePreviewOptions, useCreateCockpitNode,
+  cockpitObjectPath, cockpitScopeViewKey, cockpitContextOptions, cockpitNodeDetailOptions, cockpitNodeCodePreviewOptions, useCreateCockpitNode,
   useCockpitPlanNodeDraftStore, EMPTY_COCKPIT_PLAN_NODE_DRAFT, updateCockpitPlanNodeDraft, clearCockpitPlanNodeDraft, rejectCockpitPlanNodeDraft, getCockpitNodeBindingConflict, type CockpitScope,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
@@ -76,7 +76,7 @@ export function CockpitPlanStructureCreate({ wsId, scope, disabled, onCreated, d
         onSelect={(id) => change({ moduleId: id ?? "" })} />}
       {selected.isError && <CockpitFlowError onRetry={() => void selected.refetch()} />}
       {draft.kind !== "project" && <div className="space-y-2"><CockpitNodeChoicePicker wsId={wsId} scope={{ projectId: draft.projectId || scope.projectId, moduleId: draft.kind === "task" ? scope.moduleId : null }} eligible={false}
-        label={t(($) => $.plan_structure.parent)} value={parent.data ? `${buildCockpitDisplayCodesFromIndex(parent.data.node_index).get(parent.data.node.id) ?? parent.data.node.code} ${parent.data.node.name}` : draft.parentId} disabled={busy || frozen} onSelect={(node) => change({ parentId: node.id })} />
+        label={t(($) => $.plan_structure.parent)} value={parent.data ? `${parent.data.node.code} ${parent.data.node.name}` : draft.parentId} disabled={busy || frozen} onSelect={(node) => change({ parentId: node.id })} />
         {parent.isError && <CockpitFlowError onRetry={() => void parent.refetch()} />}{draft.parentId && !parent.isPending && !parentValid && <p role="alert" className="text-caption text-destructive">{t(($) => $.plan_structure.invalid_parent)}</p>}
         {parentId && !draft.pending && <ContainerOperationRestriction basis={operation.isError ? undefined : operation.data} operation="add_child" pending={operation.isPending} error={operation.isError} retry={() => void operation.refetch()} />}
         <p className="text-caption text-muted-foreground">{draft.kind === "module" ? t(($) => $.plan_structure.module_parent) : t(($) => $.plan_structure.task_parent)}</p></div>}

@@ -7,7 +7,6 @@
 // Canonical test file: build-graph-model.test.ts (// @vitest-environment node).
 
 import { GRAPH_EDGE_KINDS, graphExecutionAddress, graphMeetingAddress } from "../types/graph";
-import { buildCockpitDisplayCodesFromIndex } from "../cockpit/model";
 import type {
   GraphEdge,
   GraphNode,
@@ -131,16 +130,9 @@ export function buildGraphModel(
   });
 
   // The label a reader recognizes is the gantt's POSITIONAL row code
-  // ("06.02.01"), not the stored code ("L3-06-03" sits under 06.02). Derive it
-  // from the whole-board index the same way the cockpit does; without the
-  // index the stored code stays the label.
-  const execDisplayCodes =
-    graph.cockpit_nodes && graph.cockpit_nodes.length > 0 && executions.length > 0
-      ? buildCockpitDisplayCodesFromIndex(graph.cockpit_nodes)
-      : null;
-  const executionsLabeled = execDisplayCodes
-    ? executions.map((x) => ({ ...x, display_code: execDisplayCodes.get(x.id) ?? x.code }))
-    : executions;
+  // The stored code is the row's address (S3 renumbering made the two agree),
+  // so the graph labels a row with the same number the gantt does.
+  const executionsLabeled = executions;
   const visibleExecutions = new Set(executionsLabeled.map((r) => graphExecutionAddress(r.id)));
 
   const isVisibleEndpoint = (addr: string) =>

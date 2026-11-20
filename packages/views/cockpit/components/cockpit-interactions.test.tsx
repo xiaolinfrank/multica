@@ -5,7 +5,6 @@ beforeLayout(() => { restoreLayout = installCockpitTestLayout(); });
 afterLayout(() => restoreLayout());
 import { useCockpitScopeViewStore } from "@multica/core/cockpit";
 import { readCockpitFixture, readCockpitMembersFixture } from "./test/cockpit-read-mocks-fixture";
-import { buildCockpitDisplayCodesFromIndex } from "@multica/core/cockpit";
 import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
 import { workflowFixture, workflowSummary } from "./workflow-test-fixtures";
@@ -327,7 +326,7 @@ describe("Cockpit secondary interactions", () => {
     fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Expand all" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
     fireEvent.click(await screen.findByRole("tab", { name: "Plan details" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete instalment" }));
     expect(api.deleteCockpitPayment).not.toHaveBeenCalled();
@@ -359,23 +358,23 @@ describe("Cockpit secondary interactions", () => {
 
     // The explicitly bound module row is structural, so it does not offer
     // issue creation from an inherited execution scope.
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open L2-01-01" }));
     expect(screen.queryByRole("button", { name: "New issue" })).not.toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Open 01.01.01" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
     fireEvent.click(await screen.findByRole("button", { name: "New issue" }));
 
     const modal = useModalStore.getState();
     expect(modal.modal).toBe("create-issue");
     expect(modal.data).toMatchObject({
-      title: "01.01.01",
+      title: "L3-01-08",
       project_id: "p-01",
       module_id: "m-0101",
       // The row travels whole so the dialog can name it and offer another.
       cockpit_node: {
         node_id: "task",
-        code: "01.01.01",
-        label: "01.01.01 Sign the governance agreement",
+        code: "L3-01-08",
+        label: "L3-01-08 Sign the governance agreement",
         project_id: "p-01",
         module_id: "m-0101",
       },
@@ -418,14 +417,14 @@ describe("Cockpit secondary interactions", () => {
   it("opens week details for tasks inside a collapsed branch without obsolete core markers", async () => {
     const select = vi.fn();
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
-      <CockpitGantt board={board} displayCodes={buildCockpitDisplayCodesFromIndex(board.nodes)} contextNodeIds={new Set()} taskCounts={new Map()} today="2026-09-18" zoom="week" query=""
+      <CockpitGantt board={board} contextNodeIds={new Set()} taskCounts={new Map()} today="2026-09-18" zoom="week" query=""
         rootIds={new Set()} collapsed={new Set(["root"])} onToggleCollapse={vi.fn()}
         onSelect={select} selectedId={null} onPatchNode={vi.fn()} statusSuggestions={[]}
         ownerSuggestions={[]} showFinance={false} toolbarOpen scrollToTodayNonce={0} focusTarget={null} />
     </I18nProvider></QueryClientProvider>);
     fireEvent.click(screen.getByRole("button", { name: "Week · 2026-09-14 – 2026-09-20" }));
     const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "01.01 Sign the governance agreement" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "L3-01-08 Sign the governance agreement" }));
     expect(select).toHaveBeenCalledWith("task");
     expect(screen.queryByRole("button", { name: /coming due/ })).not.toBeInTheDocument();
   });
@@ -443,47 +442,4 @@ describe("Cockpit secondary interactions", () => {
       .toEqual(["running", "deadline"]);
   });
 
-  // Regression: the merged-direction rows (COCKPIT_SUMMARY_GROUPS) lost their
-  // instalment markers because their synthetic ids fail the definition-code
-  // regex and were read as execution tasks.
-  it("draws instalment markers on a merged direction row as on any direction row", () => {
-    const markerBoard: CockpitBoard = {
-      cockpit: { id: "cp", workspace_id: "ws", title: "Board", goal_title: "End-to-end demo", goal_date: "2026-12-31", summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "", meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" },
-      nodes: [
-        node({ id: "l1", code: "L1-02", name: "Platform", color: "#0891b2" }),
-        node({ id: "d1", code: "02.01", parent_id: "l1", name: "Infrastructure", start_date: "2026-09-01", end_date: "2026-12-31" }),
-        node({ id: "t1", code: "L3-02-01-01", parent_id: "d1", name: "Tokens", start_date: "2026-09-05", end_date: "2026-11-20" }),
-        node({ id: "dir2", code: "02.02", parent_id: "l1", name: "Architecture", start_date: "2026-09-01", end_date: "2026-12-31" }),
-        node({ id: "t2", code: "L3-02-02-01", parent_id: "dir2", name: "Design", start_date: "2026-09-05", end_date: "2026-12-31" }),
-        node({ id: "dir3", code: "02.03", parent_id: "l1", name: "Data", start_date: "2026-09-01", end_date: "2026-12-31" }),
-        node({ id: "t3", code: "L3-02-03-01", parent_id: "dir3", name: "Ship", start_date: "2026-09-05", end_date: "2026-12-31" }),
-      ],
-      payments: [
-        { id: "pay-2", node_id: "t2", label: "1st", pay_date: "2026-10-08", amount: 10, position: 0 },
-        { id: "pay-3", node_id: "t3", label: "1st", pay_date: "2026-10-15", amount: 5, position: 0 },
-        { id: "pay-4", node_id: "t3", label: "2nd", pay_date: "2026-12-15", amount: 7, position: 1 },
-        { id: "pay-5", node_id: "t1", label: "1st", pay_date: "2026-11-15", amount: 3, position: 0 },
-      ],
-      issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
-    };
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
-        <CockpitGantt board={markerBoard} displayCodes={buildCockpitDisplayCodesFromIndex(markerBoard.nodes)} contextNodeIds={new Set()} taskCounts={new Map()} today="2026-09-18" zoom="month" query=""
-          rootIds={new Set()} collapsed={new Set()} onToggleCollapse={vi.fn()}
-          onSelect={vi.fn()} selectedId={null} onPatchNode={vi.fn()} statusSuggestions={[]}
-          ownerSuggestions={[]} showFinance={false} toolbarOpen scrollToTodayNonce={0} focusTarget={null} />
-      </I18nProvider></QueryClientProvider>,
-    );
-    const markersIn = (nodeId: string, name: string | RegExp) =>
-      Array.from(document.querySelectorAll<HTMLElement>(`[data-cockpit-node="${nodeId}"]`))
-        .flatMap((row) => within(row).queryAllByRole("button", { name }));
-    // The merged row carries both member directions' instalments — October
-    // buckets onto the month's last instalment — exactly once each.
-    expect(markersIn("02.02-09", "Scheduled · Payment on 2026-10-15")).toHaveLength(1);
-    expect(markersIn("02.02-09", "Scheduled · Payment on 2026-12-15")).toHaveLength(1);
-    // The same gate carries the annual-objective pin for the mainline's rows.
-    expect(markersIn("02.02-09", /🎯 Annual objective/)).toHaveLength(1);
-    // A plain direction row keeps carrying its own subtree's instalments.
-    expect(markersIn("d1", "Scheduled · Payment on 2026-11-15")).toHaveLength(1);
-  });
 });

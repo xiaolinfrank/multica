@@ -178,27 +178,6 @@ describe("buildGraphModel", () => {
     expect(m.edges).toHaveLength(9); // 10 direct minus the mention edge
   });
 
-  it("labels executions with the gantt's positional row code", () => {
-    const m = model();
-    // Positional codes come from the tree index, not the stored code:
-    // "L3-04-01" sits under 01.02, so the gantt (and the graph) read 01.02.01.
-    expect(m.executions.find((n) => n.id === "r1")?.display_code).toBe("01.01.01");
-    expect(m.executions.find((n) => n.id === "r2")?.display_code).toBe("01.02.01");
-
-    // Without the index the stored code stays the label.
-    const bare = buildGraphModel(
-      { ...graph, cockpit_nodes: [] },
-      {
-        projects: null,
-        statuses: null,
-        edgeKinds: defaultEdgeKinds(),
-        meetings: true,
-        executions: true,
-      },
-    );
-    expect(bare.executions.find((n) => n.id === "r1")?.display_code).toBeUndefined();
-  });
-
   it("keeps the direct meeting→execution edge under the meeting group", () => {
     const m = model();
     expect(m.edges).toContainEqual({ source: "mtg:m1", target: "exc:r1", kind: "meeting" });
