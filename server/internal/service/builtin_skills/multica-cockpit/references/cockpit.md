@@ -299,7 +299,7 @@ Where the task and the folder go is board configuration, not code:
 `meeting_project_id`, `meeting_module_id`, `meeting_node_id` and `meeting_dir`
 on the cockpit row, set through `PATCH /api/cockpit` or remembered by a
 provision. `meeting_node_id` is the archive sub-item — a node on this board's
-tree, one level below the module ("06.06.03 会议纪要与素材"): its folder holds
+tree, one level below the module (the meeting-materials work item): its folder holds
 the material and its `code` opens the meeting task's title. The folder chain
 below the project's collaboration space is created if it is missing, one level
 at a time. This endpoint requires an existing root; a missing path does not identify the storage failure or authorize a replacement root.
@@ -315,16 +315,15 @@ folder is always the board's own; the endpoint takes no path. `POST
 resolves outside the archive folder is reported in `skipped` rather than
 failing the batch. `create_task` defaults to false there: those meetings have
 already been held.
-## Meeting archive path on this workspace
+## Meeting archive path
 
 The board's `meeting_dir` and each meeting's `nas_dir` are authoritative for
 where meeting material lives; never reconstruct a path from the platform
-module's display name. The canonical archive for this workspace is under
-`/Volumes/人机协作空间/AI医药联合创新平台/06项目管理与规划/06.06多方协同与会议/06.06.03会议纪要与素材`
-— `06.06多方协同与会议` has no space. The spaced `06.06 多方协同与会议`
-look-alike was a historical duplicate and must not be written, recreated, or
-used as an alternative delivery location. Check the actual binding before
-provisioning or filing material, and reconcile any disagreement first.
+module's display name. A folder name may have no space; a near-duplicate with
+a space was a historical duplicate in some boards and must not be written,
+recreated, or used as an alternative delivery location. Check the actual
+binding before provisioning or filing material, and reconcile any disagreement
+first.
 
 Directory root boundaries and partial outcomes: [directory-operations.md](directory-operations.md). Persistent meeting directory preparation uses [meeting-directory.md](meeting-directory.md).
 
