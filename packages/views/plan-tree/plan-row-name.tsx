@@ -19,6 +19,10 @@ export interface PlanRowNameProps {
   /** A row that cannot unfold (the gantt's leaves) keeps the chevron's space
    *  but shows no control. */
   expandable?: boolean;
+  /** While a search filters the tree, folding is not the reader's call: the
+   *  query decides what shows, so the chevron is a disabled placeholder that
+   *  still says "open" honestly (a hit under a closed branch is visible). */
+  foldDisabled?: boolean;
   onToggle: () => void;
   onSelect: () => void;
   onStartRename: () => void;
@@ -32,7 +36,7 @@ export interface PlanRowNameProps {
  *  for the tree, the table and the gantt — the row model is PlanRow in all
  *  three, so the column cannot disagree with itself about levels or codes. */
 export function PlanRowName({
-  row, open, locked, renaming, compact = false, indent = 14, expandable = true,
+  row, open, locked, renaming, compact = false, indent = 14, expandable = true, foldDisabled = false,
   onToggle, onSelect, onStartRename, onSubmitRename, onCancelRename, trailing,
 }: PlanRowNameProps) {
   const { t } = useT("cockpit");
@@ -45,11 +49,20 @@ export function PlanRowName({
         {/* Every level expands: a work item's children are its issues, which
             load on demand rather than with the tree. */}
         {expandable ? (
-          <button type="button" aria-label={open ? t(($) => $.plan_tree.collapse) : t(($) => $.plan_tree.expand)}
-            aria-expanded={open} onClick={onToggle}
-            className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
-            {open ? <ChevronDown className="size-3" aria-hidden /> : <ChevronRight className="size-3" aria-hidden />}
-          </button>
+          foldDisabled ? (
+            // Not aria-disabled on purpose: the button keeps its "open" state
+            // so screen readers hear that children are showing; it simply has
+            // no effect while the search owns the visible set.
+            <span className="p-0.5 text-faint-foreground" aria-hidden>
+              <ChevronDown className="size-3" />
+            </span>
+          ) : (
+            <button type="button" aria-label={open ? t(($) => $.plan_tree.collapse) : t(($) => $.plan_tree.expand)}
+              aria-expanded={open} onClick={onToggle}
+              className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
+              {open ? <ChevronDown className="size-3" aria-hidden /> : <ChevronRight className="size-3" aria-hidden />}
+            </button>
+          )
         ) : (
           <span className="size-4 shrink-0" aria-hidden />
         )}

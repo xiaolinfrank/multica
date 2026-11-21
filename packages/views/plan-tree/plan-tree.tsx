@@ -129,6 +129,7 @@ export function PlanTree({
     ? rows.find((r) => r.node.id === confirmDelete)?.counts?.primary_total ?? 0
     : 0;
 
+  const searching = query.trim().length > 0;
   const setRowOpen = useCallback((row: PlanRow, open: boolean) => {
     const state = useCockpitScopeViewStore.getState().plans[viewKey];
     if (row.kind === "work_item") {
@@ -263,7 +264,7 @@ export function PlanTree({
         break;
       case "Enter": event.preventDefault(); onSelect(row.node.id); break;
       case " ":
-        if (expandable) { event.preventDefault(); setRowOpen(row, !expanded.has(row.node.id)); }
+        if (expandable && !searching) { event.preventDefault(); setRowOpen(row, !expanded.has(row.node.id)); }
         break;
       default: break;
     }
@@ -340,14 +341,16 @@ export function PlanTree({
           return (
             <Fragment key={row.node.id}>
             <div role="row" aria-level={row.depth + 1} aria-selected={selectedId === row.node.id}
-              aria-expanded={expandable ? open : undefined}
+              aria-expanded={expandable ? (searching ? true : open) : undefined}
               tabIndex={isActive ? 0 : -1}
               data-node-id={row.node.id} data-kind={row.kind} data-active={isActive || undefined}
               onFocus={() => setActiveId(row.node.id)}
               onClick={(event) => {
                 // A click anywhere on a branch row folds it, unless it landed
-                // on a control — the gantt's rule, kept identical here.
-                if (!expandable) return;
+                // on a control — the gantt's rule, kept identical here. A
+                // search is a filter, not a fold: the query decides what is
+                // visible, so the click does nothing until it is cleared.
+                if (!expandable || searching) return;
                 if ((event.target as HTMLElement).closest("button, a, input, textarea, select, [contenteditable=true]")) return;
                 setRowOpen(row, !open);
               }}
@@ -358,6 +361,7 @@ export function PlanTree({
                 row={row}
                 open={open}
                 locked={!editable || !canRename}
+                foldDisabled={searching}
                 renaming={renaming === row.node.id}
                 onToggle={() => setRowOpen(row, !open)}
                 onSelect={() => onSelect(row.node.id)}

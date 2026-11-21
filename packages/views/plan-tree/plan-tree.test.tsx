@@ -88,7 +88,8 @@ function show(props: Partial<React.ComponentProps<typeof PlanTree>> = {}) {
       </QueryClientProvider>
     </I18nProvider>
   );
-  return { ...render(element(props)), qc };
+  const view = render(element(props));
+  return { ...view, qc, rerenderWithQuery: async (query: string) => { view.rerender(element({ query })); await screen.findAllByRole("row"); } };
 }
 const rowOf = (kind: string) => screen.getAllByRole("row").find((row) => row.getAttribute("data-kind") === kind)!;
 const rowsOf = (kind: string) => screen.getAllByRole("row").filter((row) => row.getAttribute("data-kind") === kind);
@@ -183,6 +184,21 @@ describe("PlanTree", () => {
     // The non-matching sibling 工作项一 is gone; the path to the hit stays.
     expect(rows.map((r) => r.getAttribute("data-kind"))).toEqual(["project", "module", "work_item"]);
     expect(within(rows[2]!).getByText("01.02.01")).toBeInTheDocument();
+  });
+
+  it("shows a search's rows as expanded and leaves the fold control inert", async () => {
+    apiMock.getCockpitPlan.mockResolvedValue(reconciled);
+    const { rerenderWithQuery } = show();
+    await screen.findAllByRole("row");
+    // Fold the module first, so the search overriding the fold is observable.
+    fireEvent.click(within(rowOf("module")).getByRole("button", { name: enCockpit.plan_tree.collapse }));
+    await waitFor(() => expect(rowOf("module")).toHaveAttribute("aria-expanded", "false"));
+    await rerenderWithQuery("工作项二");
+    // The hit still shows under the folded module, the rows read as expanded,
+    // and the chevron is a placeholder: the query owns what is visible.
+    expect(await screen.findByText("01.02.01")).toBeInTheDocument();
+    expect(rowOf("module")).toHaveAttribute("aria-expanded", "true");
+    expect(within(rowOf("module")).queryByRole("button", { name: enCockpit.plan_tree.collapse })).toBeNull();
   });
 
   it("creates a module inline from the project row", async () => {
