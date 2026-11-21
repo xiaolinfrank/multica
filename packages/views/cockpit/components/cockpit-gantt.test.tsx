@@ -1,12 +1,21 @@
-import { act, cleanup, fireEvent, render, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { computeCockpitAxis, daysBetween, parseDay } from "@multica/core/cockpit";
 import type { CockpitNode, CockpitPlanMeetingMarkerQuery } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitGantt, type CockpitGanttProps } from "./cockpit-gantt";
 
-const mocks = vi.hoisted(() => ({ reduced: false, queries: vi.fn((_options: { queries: Array<{ queryKey: unknown[] }> }) => []) }));
+const mocks = vi.hoisted(() => ({
+  reduced: false,
+  queries: vi.fn((_options: { queries: Array<{ queryKey: unknown[] }> }) => []),
+  updateModule: vi.fn(async (id: string, data: { title: string }) => ({ id, title: data.title })),
+}));
+vi.mock("@multica/core/api", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>("@multica/core/api");
+  return { ...actual, api: { updateModule: mocks.updateModule }, setApiInstance: () => {} };
+});
 vi.mock("motion/react", () => ({ useReducedMotion: () => mocks.reduced }));
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
@@ -32,7 +41,7 @@ function node(id: string, overrides: Partial<CockpitNode>): CockpitNode {
 }
 const nodes = [
   node("root", { code: "L1-03", name: "Programme" }),
-  node("branch", { code: "03.09", parent_id: "root", name: "Direction" }),
+  node("branch", { code: "03.09", parent_id: "root", name: "Direction", kind: "module", module_id: "mod-branch" }),
   node("leaf", { code: "historic-task", parent_id: "branch", name: "Execution task", collaborators: "Partner" }),
 ];
 const board: CockpitGanttProps["board"] = {
@@ -77,7 +86,10 @@ function show(overrides: Partial<CockpitGanttProps> = {}) {
     contextNodeIds: new Set(), taskCounts: new Map(), today: "2026-10-14", zoom: "month", query: "", rootIds: new Set(), collapsed: new Set(),
     onToggleCollapse: vi.fn(), onSelect: vi.fn(), selectedId: null, onPatchNode: vi.fn(), statusSuggestions: [], ownerSuggestions: [],
     showFinance: true, toolbarOpen: false, scrollToTodayNonce: 0, focusTarget: null, ...overrides };
-  const ui = (next: CockpitGanttProps) => <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}><CockpitGantt {...next} /></I18nProvider>;
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const ui = (next: CockpitGanttProps) => <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
+    <QueryClientProvider client={qc}><CockpitGantt {...next} /></QueryClientProvider>
+  </I18nProvider>;
   const view = render(ui(props));
   const viewport = view.container.querySelector<HTMLElement>("[data-cockpit-scroll]")!;
   const tree = viewport.firstElementChild!.firstElementChild as HTMLElement;
@@ -85,7 +97,7 @@ function show(overrides: Partial<CockpitGanttProps> = {}) {
 }
 
 describe("CockpitGantt responsive identity", () => {
-  it("reserves half a 320px container for dates while retaining open, edit and collapse actions", () => {
+  it("reserves half a 320px container for dates while retaining open, edit and collapse actions", async () => {
     const { tree, props } = show();
     expect(tree.style.width).toBe("160px");
     expect(within(tree).queryByRole("button", { name: "Owner" })).toBeNull();
@@ -95,12 +107,14 @@ describe("CockpitGantt responsive identity", () => {
     const branch = tree.querySelector<HTMLElement>('[data-cockpit-node="branch"]')!;
     fireEvent.click(within(branch).getByRole("button", { name: "Collapse" }));
     expect(props.onToggleCollapse).toHaveBeenCalledWith("branch");
-    const leaf = tree.querySelector<HTMLElement>('[data-cockpit-node="leaf"]')!;
-    fireEvent.doubleClick(within(leaf).getByRole("button", { name: "Execution task" }));
-    const editor = within(leaf).getByRole("textbox");
-    fireEvent.change(editor, { target: { value: "Renamed task" } });
+    // A module row's title is the module record (I5), so the rename goes to
+    // updateModule — writing the node's name would change nothing on screen.
+    fireEvent.doubleClick(within(branch).getByRole("button", { name: "Direction" }));
+    const editor = within(branch).getByRole("textbox");
+    fireEvent.change(editor, { target: { value: "Renamed direction" } });
     fireEvent.keyDown(editor, { key: "Enter" });
-    expect(props.onPatchNode).toHaveBeenCalledWith("leaf", { name: "Renamed task" });
+    await waitFor(() => expect(mocks.updateModule).toHaveBeenCalledWith("mod-branch", { title: "Renamed direction" }));
+    expect(props.onPatchNode).not.toHaveBeenCalledWith("branch", expect.objectContaining({ name: expect.anything() }));
   });
 
   it("measures the container rather than the browser and restores metadata after export", () => {

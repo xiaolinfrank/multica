@@ -73,6 +73,7 @@ import { useLocale, useT } from "../../i18n";
 import { EditableSuggest, ProgressField } from "./cockpit-fields";
 import { PlanRowName } from "../../plan-tree/plan-row-name";
 import { planRowFor } from "../../plan-tree/plan-rows";
+import { planRowRenameTarget, usePlanRowRename } from "../../plan-tree/use-plan-row-rename";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { StatusChip } from "./cockpit-status";
 import { cockpitGanttLayout } from "./cockpit-layout";
@@ -665,6 +666,8 @@ export function CockpitGantt({
   const onSelect = onSelectNode;
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const renameRow = usePlanRowRename(wsId);
   const [navOpen, setNavOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastTodayScroll = useRef({ nonce: 0, dayWidth: 0, axisStart: 0 });
@@ -980,6 +983,7 @@ export function CockpitGantt({
         </div>
       )}
 
+      {renameError && <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive"><span className="min-w-0 flex-1">{renameError}</span><button type="button" className="underline" onClick={() => setRenameError(null)}>{t(($) => $.plan_tree.dismiss)}</button></div>}
       {markerError && <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive"><span>{t(($) => $.meeting_center.marker_failed)}</span><Button type="button" variant="outline" size="sm" onClick={() => markerQueries.forEach((query) => { void query.refetch(); })}>{t(($) => $.binding.retry)}</Button></div>}
       {renderAllRows && <p className="px-3 py-2 text-caption text-muted-foreground">{t(($) => $.meeting_center.export_markers)}</p>}
       <div ref={scrollRef} data-cockpit-scroll className="min-h-0 min-w-0 flex-1 overflow-auto">
@@ -1023,6 +1027,7 @@ export function CockpitGantt({
                 depth === 1 && !node.owner
                   ? (rootOwner.get(rootOf.byId.get(node.id) ?? "") ?? "")
                   : "";
+              const planRow = planRowFor(node, depth, taskCounts.get(node.id) ?? null, isBranch);
               return (
                 <div
                   key={node.id}
@@ -1053,17 +1058,23 @@ export function CockpitGantt({
                   }}
                 >
                   <PlanRowName
-                    row={planRowFor(node, depth, taskCounts.get(node.id) ?? null, isBranch)}
+                    row={planRow}
                     open={!collapsed.has(node.id)}
-                    locked={readOnly || contextNodeIds.has(node.id)}
+                    locked={readOnly || contextNodeIds.has(node.id) || planRowRenameTarget(planRow) == null}
                     renaming={renamingId === node.id}
                     compact={compact}
                     indent={INDENT}
                     expandable={isBranch}
                     onToggle={() => onToggleCollapse(node.id)}
                     onSelect={() => onSelect(node.id)}
-                    onStartRename={() => setRenamingId(node.id)}
-                    onSubmitRename={(name) => { onPatchNode(node.id, { name }); setRenamingId(null); }}
+                    onStartRename={() => { setRenameError(null); setRenamingId(node.id); }}
+                    onSubmitRename={async (name) => {
+                      // L1/L2 titles live on the project/module record; a work
+                      // item is renamed as a node. Same hook as the tree.
+                      try { await renameRow(planRow, name); }
+                      catch (error) { setRenameError(error instanceof Error ? error.message : String(error)); }
+                      setRenamingId(null);
+                    }}
                     onCancelRename={() => setRenamingId(null)}
                   />
                     {!compact && <>
