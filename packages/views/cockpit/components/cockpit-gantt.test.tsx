@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -110,11 +110,23 @@ describe("CockpitGantt responsive identity", () => {
     // A module row's title is the module record (I5), so the rename goes to
     // updateModule — writing the node's name would change nothing on screen.
     fireEvent.doubleClick(within(branch).getByRole("button", { name: "Direction" }));
-    const editor = within(branch).getByRole("textbox");
+    let editor = within(branch).getByRole("textbox");
     fireEvent.change(editor, { target: { value: "Renamed direction" } });
     fireEvent.keyDown(editor, { key: "Enter" });
     await waitFor(() => expect(mocks.updateModule).toHaveBeenCalledWith("mod-branch", { title: "Renamed direction" }));
     expect(props.onPatchNode).not.toHaveBeenCalledWith("branch", expect.objectContaining({ name: expect.anything() }));
+
+    // A refused rename keeps the editor open with the typed draft, the same
+    // rule as the plan tree — closing it would throw the text away.
+    mocks.updateModule.mockRejectedValueOnce(new Error("module rename refused"));
+    // The mock never refreshes the board, so the row still reads the old
+    // title; find it by what is on screen rather than what was submitted.
+    fireEvent.doubleClick(within(branch).getByRole("button", { name: "Direction" }));
+    editor = within(branch).getByRole("textbox");
+    fireEvent.change(editor, { target: { value: "Second attempt" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("module rename refused"));
+    await waitFor(() => expect(within(branch).getByRole("textbox")).toHaveValue("Second attempt"));
   });
 
   it("measures the container rather than the browser and restores metadata after export", () => {

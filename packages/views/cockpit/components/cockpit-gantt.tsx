@@ -1070,10 +1070,15 @@ export function CockpitGantt({
                     onStartRename={() => { setRenameError(null); setRenamingId(node.id); }}
                     onSubmitRename={async (name) => {
                       // L1/L2 titles live on the project/module record; a work
-                      // item is renamed as a node. Same hook as the tree.
-                      try { await renameRow(planRow, name); }
-                      catch (error) { setRenameError(error instanceof Error ? error.message : String(error)); }
-                      setRenamingId(null);
+                      // item is renamed as a node. Same hook as the tree, and
+                      // the same draft rule: a refusal keeps the editor open
+                      // with what was typed, ready to retry.
+                      try {
+                        await renameRow(planRow, name);
+                        setRenamingId(null);
+                      } catch (error) {
+                        setRenameError(error instanceof Error ? error.message : String(error));
+                      }
                     }}
                     onCancelRename={() => setRenamingId(null)}
                   />
