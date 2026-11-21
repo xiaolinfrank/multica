@@ -718,8 +718,6 @@ describe("cockpitModuleHighlights", () => {
 });
 
 describe("isCockpitWorkItem", () => {
-  const byId = (rows: CockpitNode[]) => new Map(rows.map((row) => [row.id, row]));
-
   it("reads the level from kind and never from the code's shape", () => {
     // Reconciled codes: 00 is a project, 00.01 a module, 00.01.01 a work item.
     // The old code-shaped rule called every one of these a task.
@@ -728,22 +726,30 @@ describe("isCockpitWorkItem", () => {
       node({ id: "m", code: "00.01", kind: "module", parent_id: "p" }),
       node({ id: "w", code: "00.01.01", kind: "work_item", parent_id: "m" }),
     ];
-    const index = byId(rows);
-    expect(rows.map((row) => isCockpitWorkItem(row, index))).toEqual([false, false, true]);
+    expect(rows.map((row, depth) => isCockpitWorkItem(row, depth))).toEqual([false, false, true]);
     // A legacy code keeps its level too, because kind is what is read.
-    expect(isCockpitWorkItem(node({ id: "x", code: "L1-02", kind: "project" }), byId([]))).toBe(false);
+    expect(isCockpitWorkItem(node({ id: "x", code: "L1-02", kind: "project" }), 0)).toBe(false);
   });
 
-  it("uses the parent chain only when the row carries no kind", () => {
-    const rows = [
+  it("uses the depth only when the row carries no kind", () => {
+    // The fixture helper seeds a kind; strip it to model an old board row.
+    const bare = [
       node({ id: "p", code: "legacy-root" }),
       node({ id: "m", code: "legacy-mid", parent_id: "p" }),
       node({ id: "w", code: "legacy-leaf", parent_id: "m" }),
+    ].map(({ kind: _kind, ...row }) => row as CockpitNode);
+    expect(bare.map((row, depth) => isCockpitWorkItem(row, depth))).toEqual([false, false, true]);
+  });
+
+  it("TestRolledCountsNeverCountAProject: a leafless reconciled project stays out of the goal and overall counts", () => {
+    // After the reconcile a project reads "02" with no children: the rolled
+    // counts and the goal figures must not treat it as one more task.
+    const rows = [
+      node({ id: "p2", code: "02", kind: "project", status: "进行中", progress: 40, start_date: "2026-06-01", end_date: "2026-09-30" }),
     ];
-    // The fixture helper seeds a kind; strip it to model an old board row.
-    const bare = rows.map(({ kind: _kind, ...row }) => row as CockpitNode);
-    const index = byId(bare);
-    expect(bare.map((row) => isCockpitWorkItem(row, index))).toEqual([false, false, true]);
+    const tree = buildCockpitTree(rows);
+    expect(cockpitGoalProgress(tree[0]!, "2026-06-11", "2026-12-31")).toMatchObject({ taskCount: 0, actual: null, scheduled: null });
+    expect(cockpitOverallProgress(rows, "2026-06-11", "2026-12-31").overall).toBeNull();
   });
 
   it("does not let a reconciled project's own progress into the overall mean", () => {
