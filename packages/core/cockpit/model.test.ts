@@ -23,7 +23,7 @@ import {
   flattenCockpitTree,
   groupPaymentsByNode,
   groupSubtreePayments,
-  isCockpitExecNode,
+  isCockpitWorkItem,
   isCockpitMilestoneDone,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
@@ -58,6 +58,10 @@ function node(over: Partial<CockpitNode> & { id: string; code: string }): Cockpi
     updated_by_id: null,
     created_at: "",
     updated_at: "",
+    // The plan read writes `kind`; a fixture that does not name one is a task
+    // under its parent, or a root project. Branch rows below the root opt in
+    // with kind: "module" explicitly.
+    kind: over.parent_id ? "work_item" : "project",
     ...over,
   };
 }
@@ -98,7 +102,7 @@ describe("buildCockpitTree", () => {
   it("keeps ancestor context in the hierarchy without charging its own budget to a scoped finance view", () => {
     const tree = buildCockpitTree([
       node({ id: "project", code: "P", budget_amount: 900 }),
-      node({ id: "module", code: "M", parent_id: "project", budget_amount: 300 }),
+      node({ id: "module", code: "M", parent_id: "project", kind: "module", budget_amount: 300 }),
       node({ id: "task", code: "T", parent_id: "module", budget_amount: 40 }),
     ]);
     const payments = [{ id: "payment", node_id: "task", label: "Verification", pay_date: "2026-10-10", amount: 10, position: 0 }];
@@ -133,7 +137,7 @@ describe("buildCockpitTree", () => {
   it("inherits colour from the nearest ancestor that sets one", () => {
     const tree = buildCockpitTree([
       node({ id: "r", code: "L1-01", color: "#2563eb" }),
-      node({ id: "c", code: "01.01", parent_id: "r" }),
+      node({ id: "c", code: "01.01", parent_id: "r", kind: "module" }),
       node({ id: "g", code: "L3-1", parent_id: "c", color: "#ff0000" }),
     ]);
     const flat = flattenCockpitTree(tree);
@@ -213,8 +217,8 @@ describe("computeCockpitRollups", () => {
   // A branch with 40 tasks must not weigh the same as its sibling with 2.
   it("weights a deep branch by how much work it holds", () => {
     const nodes: CockpitNode[] = [node({ id: "root", code: "ROOT" })];
-    nodes.push(node({ id: "big", code: "BIG", parent_id: "root" }));
-    nodes.push(node({ id: "small", code: "SMALL", parent_id: "root" }));
+    nodes.push(node({ id: "big", code: "BIG", parent_id: "root", kind: "module" }));
+    nodes.push(node({ id: "small", code: "SMALL", parent_id: "root", kind: "module" }));
     for (let i = 0; i < 9; i++) {
       nodes.push(
         node({ id: `big-${i}`, code: `BIG-${i}`, parent_id: "big", progress: 0, status: "未开始" }),
@@ -508,14 +512,15 @@ describe("computeCockpitAxis", () => {
   it("starts week density on the Monday of the earliest execution row", () => {
     const axis = computeCockpitAxis(
       [
-        node({ id: "r", code: "R", start_date: "2026-03-02", end_date: "2026-05-20" }),
+        node({ id: "r", code: "R", kind: "work_item", start_date: "2026-03-02", end_date: "2026-05-20" }),
         node({ id: "a", code: "A", parent_id: "r", start_date: "2026-03-18", end_date: "2026-05-20" }),
       ],
       "2026-04-01",
       { zoom: "week" },
     );
-    // 2026-03-02 is itself a Monday, and the parent row is execution work too:
-    // the source sheet converges on the earliest task week, parents included.
+    // 2026-03-02 is itself a Monday. A work item that carries sub-work is
+    // still work — its own dates place the axis — while a project or module
+    // row's dates never do.
     expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-02");
   });
 
@@ -532,13 +537,13 @@ describe("computeCockpitAxis", () => {
 
 describe("computeCockpitDigest", () => {
   const nodes = [
-    node({ id: "done", code: "D", status: "已完成", end_date: "2026-06-10" }),
-    node({ id: "old-done", code: "OD", status: "已完成", end_date: "2026-01-10" }),
-    node({ id: "soon", code: "S", end_date: "2026-06-20" }),
-    node({ id: "far", code: "F", end_date: "2026-12-20" }),
-    node({ id: "late", code: "L", status: "进行中", end_date: "2026-05-01" }),
-    node({ id: "blocked", code: "B", status: "受阻", end_date: "2026-07-01" }),
-    node({ id: "cancelled", code: "C", status: "已取消", end_date: "2026-05-01" }),
+    node({ id: "done", code: "D", kind: "work_item", status: "已完成", end_date: "2026-06-10" }),
+    node({ id: "old-done", code: "OD", kind: "work_item", status: "已完成", end_date: "2026-01-10" }),
+    node({ id: "soon", code: "S", kind: "work_item", end_date: "2026-06-20" }),
+    node({ id: "far", code: "F", kind: "work_item", end_date: "2026-12-20" }),
+    node({ id: "late", code: "L", kind: "work_item", status: "进行中", end_date: "2026-05-01" }),
+    node({ id: "blocked", code: "B", kind: "work_item", status: "受阻", end_date: "2026-07-01" }),
+    node({ id: "cancelled", code: "C", kind: "work_item", status: "已取消", end_date: "2026-05-01" }),
   ];
   const digest = computeCockpitDigest(board({ nodes }), "2026-06-15");
 
@@ -712,16 +717,42 @@ describe("cockpitModuleHighlights", () => {
   });
 });
 
-describe("isCockpitExecNode", () => {
-  it("reads structure rows by their stored codes, everything else as work", () => {
-    expect(isCockpitExecNode("L1-02")).toBe(false);
-    expect(isCockpitExecNode("02.03")).toBe(false);
-    expect(isCockpitExecNode("AI-05-01")).toBe(false);
-    // An empty direction is structure, not a task at 0%.
-    expect(isCockpitExecNode("04.04")).toBe(false);
-    expect(isCockpitExecNode("L3-02-03-01")).toBe(true);
-    expect(isCockpitExecNode("（后续年度）")).toBe(true);
-    expect(isCockpitExecNode("04.04-01")).toBe(true);
+describe("isCockpitWorkItem", () => {
+  const byId = (rows: CockpitNode[]) => new Map(rows.map((row) => [row.id, row]));
+
+  it("reads the level from kind and never from the code's shape", () => {
+    // Reconciled codes: 00 is a project, 00.01 a module, 00.01.01 a work item.
+    // The old code-shaped rule called every one of these a task.
+    const rows = [
+      node({ id: "p", code: "00", kind: "project" }),
+      node({ id: "m", code: "00.01", kind: "module", parent_id: "p" }),
+      node({ id: "w", code: "00.01.01", kind: "work_item", parent_id: "m" }),
+    ];
+    const index = byId(rows);
+    expect(rows.map((row) => isCockpitWorkItem(row, index))).toEqual([false, false, true]);
+    // A legacy code keeps its level too, because kind is what is read.
+    expect(isCockpitWorkItem(node({ id: "x", code: "L1-02", kind: "project" }), byId([]))).toBe(false);
+  });
+
+  it("uses the parent chain only when the row carries no kind", () => {
+    const rows = [
+      node({ id: "p", code: "legacy-root" }),
+      node({ id: "m", code: "legacy-mid", parent_id: "p" }),
+      node({ id: "w", code: "legacy-leaf", parent_id: "m" }),
+    ];
+    // The fixture helper seeds a kind; strip it to model an old board row.
+    const bare = rows.map(({ kind: _kind, ...row }) => row as CockpitNode);
+    const index = byId(bare);
+    expect(bare.map((row) => isCockpitWorkItem(row, index))).toEqual([false, false, true]);
+  });
+
+  it("does not let a reconciled project's own progress into the overall mean", () => {
+    const rows = [
+      node({ id: "p", code: "00", kind: "project", progress: 100, status: "已完成" }),
+      node({ id: "m", code: "00.01", kind: "module", parent_id: "p" }),
+      node({ id: "w", code: "00.01.01", kind: "work_item", parent_id: "m", progress: 10, status: "进行中", start_date: "2026-06-01", end_date: "2026-06-20" }),
+    ];
+    expect(cockpitOverallProgress(rows, "2026-06-11", null).overall).toBe(10);
   });
 });
 
@@ -823,10 +854,11 @@ describe("goal and overall progress", () => {
       actual: 32, scheduled: 50, gapPts: 18, latestEnd: "2026-06-21", planVsGoalDays: -193,
       taskCount: 3, crossYearCount: 1, behind: true,
     });
-    // The toolbar means run over every execution row — the parent included —
-    // and the year figure only over rows with both dates ending by the goal.
+    // The toolbar means run over work items only: the root row is a project,
+    // and a project's own figure never enters the mean. The year figure only
+    // covers rows with both dates ending by the goal.
     expect(cockpitOverallProgress(nodes, "2026-06-11", "2026-12-31")).toEqual({
-      overall: 59, thisYear: 35, scheduled: 50, behind: true,
+      overall: 49, thisYear: 35, scheduled: 50, behind: true,
     });
   });
   it.each([["2026-05-01", 0, false], ["2026-07-01", 100, true]] as const)(
@@ -834,11 +866,11 @@ describe("goal and overall progress", () => {
       expect(cockpitGoalProgress(buildCockpitTree(nodes)[0]!, today, null)).toMatchObject({
         actual: 49, scheduled, gapPts: scheduled - 49, taskCount: 4, crossYearCount: 0, planVsGoalDays: null, behind,
       });
-      expect(cockpitOverallProgress(nodes, today, null)).toEqual({ overall: 59, thisYear: 59, scheduled, behind });
+      expect(cockpitOverallProgress(nodes, today, null)).toEqual({ overall: 49, thisYear: 49, scheduled, behind });
     },
   );
   it("reports nulls rather than fabricated percentages when all work is cancelled or cross-year", () => {
-    const cross = node({ id: "x", code: "X", end_date: "2027-01-01", progress: 20, status: "进行中" });
+    const cross = node({ id: "x", code: "X", kind: "work_item", end_date: "2027-01-01", progress: 20, status: "进行中" });
     expect(cockpitGoalProgress(buildCockpitTree([cross])[0]!, "2026-06-11", "2026-12-31")).toEqual({
       actual: null, scheduled: null, gapPts: null, latestEnd: null, planVsGoalDays: null,
       taskCount: 0, crossYearCount: 1, behind: false,
@@ -856,7 +888,8 @@ describe("goal and overall progress", () => {
     expect(cockpitGoalProgress(buildCockpitTree(invalid)[0]!, "2026-06-11", "2026-06-11")).toMatchObject({
       actual: 33, scheduled: null, gapPts: null, taskCount: 3, crossYearCount: 0, planVsGoalDays: 0, behind: false,
     });
-    expect(cockpitOverallProgress(invalid, "2026-06-11", "2026-06-11")).toEqual({ overall: 25, thisYear: 0, scheduled: null, behind: false });
+    // The root is a project: only its three work items enter the mean.
+    expect(cockpitOverallProgress(invalid, "2026-06-11", "2026-06-11")).toEqual({ overall: 33, thisYear: 0, scheduled: null, behind: false });
   });
 });
 
@@ -910,7 +943,7 @@ describe("unscheduled rows stay out of every progress tally", () => {
 
 describe("week axis boundaries", () => {
   it("clips the first month and accounts for every remaining day", () => {
-    const axis = computeCockpitAxis([node({ id: "x", code: "X", start_date: "2026-03-22", end_date: "2026-04-10" })], "2026-03-25", { zoom: "week" });
+    const axis = computeCockpitAxis([node({ id: "x", code: "X", kind: "work_item", start_date: "2026-03-22", end_date: "2026-04-10" })], "2026-03-25", { zoom: "week" });
     expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-16");
     expect(axis.end.toISOString().slice(0, 10)).toBe("2026-04-30");
     expect(axis.days).toBe(46);
@@ -919,7 +952,7 @@ describe("week axis boundaries", () => {
     ]);
   });
   it("converges to the earliest task's week even when that week is in the future", () => {
-    const axis = computeCockpitAxis([node({ id: "x", code: "X", start_date: "2026-03-18", end_date: "2026-04-10" })], "2026-03-10", { zoom: "week" });
+    const axis = computeCockpitAxis([node({ id: "x", code: "X", kind: "work_item", start_date: "2026-03-18", end_date: "2026-04-10" })], "2026-03-10", { zoom: "week" });
     expect(axis.start.toISOString().slice(0, 10)).toBe("2026-03-16");
   });
   it("keeps the annual fallback at week density when no execution dates exist", () => {

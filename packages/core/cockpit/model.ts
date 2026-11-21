@@ -106,16 +106,38 @@ export function buildCockpitTree(nodes: CockpitNode[]): CockpitTreeNode[] {
   return roots;
 }
 
-/** The structure rows above the work: L1 mainlines and L2 directions. */
-const DEFINITION_CODE_RE = /^(?:L1-\d{2}|\d{2}\.\d{2}|AI-\d{2}-\d{2})$/;
+/** Depth by the parent chain in a flat read — 0 for a root, independent of
+ *  any code format. */
+function depthOf(node: CockpitNode, byId: ReadonlyMap<string, CockpitNode>): number {
+  let depth = 0;
+  let current = node.parent_id ? byId.get(node.parent_id) : undefined;
+  const seen = new Set<string>();
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    depth += 1;
+    current = current.parent_id ? byId.get(current.parent_id) : undefined;
+  }
+  return depth;
+}
 
 /**
- * Whether a node is execution work ("yg" in the source sheet) rather than an
- * L1/L2 structure row. An empty direction such as 04.04 is structure, not a
- * task, so module tallies and progress averages must not count it.
+ * Whether a row is execution work ("yg" in the source sheet) rather than an
+ * L1/L2 structure row. Read from `kind`, which every plan read carries; a row
+ * without it is placed by its parent chain (third level or deeper). Never
+ * from the code's shape: after the reconcile a project reads "00"…"19", which
+ * a code-shaped rule would call a task and count in every progress mean.
  */
-export function isCockpitExecNode(code: string): boolean {
-  return !DEFINITION_CODE_RE.test(code);
+export function isCockpitWorkItem(node: CockpitNode, byId: ReadonlyMap<string, CockpitNode>): boolean {
+  if (node.kind === "project" || node.kind === "module") return false;
+  if (node.kind === "work_item") return true;
+  return depthOf(node, byId) >= 2;
+}
+
+/** The same answer for a tree entry, which already knows its depth. */
+function isWorkEntry(entry: CockpitTreeNode): boolean {
+  if (entry.node.kind === "project" || entry.node.kind === "module") return false;
+  if (entry.node.kind === "work_item") return true;
+  return entry.depth >= 2;
 }
 
 /** Depth-first order — the order the gantt and the table render rows in. */
@@ -319,7 +341,7 @@ export function computeCockpitRollups(
       // Budget lives on the tasks that spend it. A branch that also carries a
       // figure would otherwise be counted twice — once as its own line and
       // once through the children it summarises.
-      budget: children.length === 0 && isCockpitExecNode(node.code) ? (node.budget_amount ?? 0) : 0,
+      budget: children.length === 0 && isWorkEntry(entry) ? (node.budget_amount ?? 0) : 0,
       start: node.start_date,
       end: node.end_date,
       live: {
@@ -337,7 +359,7 @@ export function computeCockpitRollups(
     // unscheduled row is work the plan has not taken up yet: it still keeps
     // its budget and its dates (the bar spans them), but no progress tally
     // counts it.
-    if (children.length === 0 && isCockpitExecNode(node.code)) {
+    if (children.length === 0 && isWorkEntry(entry)) {
       if (!isCockpitNodeUnscheduled(node)) {
         own.leafCount = 1;
         own.doneCount = isCockpitNodeDone(node) ? 1 : 0;
@@ -862,8 +884,9 @@ export interface CockpitAxisOptions {
 /** Monday of the week the earliest execution row starts in, or null. */
 function execWeekStart(nodes: CockpitNode[]): Date | null {
   let earliest: string | null = null;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
   for (const node of nodes) {
-    if (!isCockpitExecNode(node.code)) continue;
+    if (!isCockpitWorkItem(node, byId)) continue;
     earliest = minDate(earliest, node.start_date);
     earliest = minDate(earliest, node.end_date);
   }
@@ -1080,7 +1103,7 @@ export function computeCockpitDigest(
   const leaves: CockpitNode[] = [];
   const walk = (entry: CockpitTreeNode, rootCode: string): void => {
     rootCodeOf.set(entry.node.id, rootCode);
-    if (entry.children.length === 0 && isCockpitExecNode(entry.node.code)) {
+    if (entry.children.length === 0 && isWorkEntry(entry)) {
       leaves.push(entry.node);
     }
     entry.children.forEach((child) => walk(child, rootCode));
@@ -1344,7 +1367,7 @@ export function cockpitSubtreeAverage(entry: CockpitTreeNode): number | null {
       return;
     }
     const node = branch.node;
-    if (!isCockpitExecNode(node.code) || isCockpitNodeCancelled(node)) return;
+    if (!isWorkEntry(branch) || isCockpitNodeCancelled(node)) return;
     if (isCockpitNodeUnscheduled(node)) return;
     sum +=
       node.progress > 0
@@ -1519,7 +1542,7 @@ export function cockpitGoalProgress(
     // module's forecast to zero by counting as a task at 0%. Nor must an
     // unscheduled row — it has not joined the plan, so no figure here counts
     // it, not even the cross-year tally.
-    if (!isCockpitExecNode(node.code)) return;
+    if (!isWorkEntry(branch)) return;
     if (isCockpitNodeCancelled(node)) return;
     if (isCockpitNodeUnscheduled(node)) return;
     if (goalDate && node.end_date && node.end_date > goalDate) {
@@ -1616,8 +1639,9 @@ export function cockpitOverallProgress(
   let schedSum = 0;
   let schedCount = 0;
 
+  const byId = new Map(nodes.map((node) => [node.id, node]));
   for (const node of nodes) {
-    if (!isCockpitExecNode(node.code)) continue;
+    if (!isCockpitWorkItem(node, byId)) continue;
     if (isCockpitNodeCancelled(node)) continue;
     if (isCockpitNodeUnscheduled(node)) continue;
     const progress =

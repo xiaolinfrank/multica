@@ -47,7 +47,6 @@ import {
   groupPaymentsByNode,
   groupSubtreePayments,
   cockpitPlanMeetingWindowOptions, cockpitScope, cockpitSurfacePath, cockpitScopeViewKey,
-  isCockpitExecNode,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
   parseDay,
@@ -198,16 +197,14 @@ function visibleRows(
 }
 
 /**
- * Which rows carry the payment markers: the direction rows. One row per
- * direction, always the same one — drawing an instalment on whichever row
- * happens to be collapsed right now moves it around as the reader expands the
- * tree, and drawing it on every ancestor draws it three times. A merged
- * summary group is its members' one direction row.
+ * Which rows carry the payment markers: the module rows. One row per module,
+ * always the same one — drawing an instalment on whichever row happens to be
+ * collapsed right now moves it around as the reader expands the tree, and
+ * drawing it on every ancestor draws it three times. Depth is the plan's own
+ * shape (three fixed levels), so this needs no code format.
  */
 function carriesMarkers(entry: CockpitTreeNode): boolean {
-  // The group's synthetic id deliberately fails the definition regex, so
-  // recognise it before the exec check classifies it as a task.
-  return entry.depth === 1 && !isCockpitExecNode(entry.node.code);
+  return entry.depth === 1;
 }
 
 /** Trims "李林（POOL 超饱和）" down to the name the row has space for. */
