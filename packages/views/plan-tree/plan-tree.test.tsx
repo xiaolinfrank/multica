@@ -22,8 +22,13 @@ const plan: {
     { id: "m2", code: "01.02", name: "模块二", kind: "module", parent_id: "p1", position: 1, module_id: "mod-2", project_id: "proj-1" },
     { id: "w2", code: "01.02.01", name: "工作项二", kind: "work_item", parent_id: "m2", position: 0 },
   ],
+  // The server rolls counts up (cockpit_surface_read.sql rolled_counts), so
+  // the module and project rows carry their subtree's totals too.
   task_counts: [
+    { node_id: "p1", primary_total: 2, reference_total: 0, active: 1, done: 1, closed: 0 },
+    { node_id: "m1", primary_total: 2, reference_total: 0, active: 1, done: 1, closed: 0 },
     { node_id: "w1", primary_total: 2, reference_total: 0, active: 1, done: 1, closed: 0 },
+    { node_id: "m2", primary_total: 0, reference_total: 0, active: 0, done: 0, closed: 0 },
     { node_id: "w2", primary_total: 0, reference_total: 0, active: 0, done: 0, closed: 0 },
   ],
   context_node_ids: [],
@@ -76,14 +81,14 @@ const reconciled = { ...plan, cockpit: { ...plan.cockpit, plan_reconciled_at: "2
 
 function show(props: Partial<React.ComponentProps<typeof PlanTree>> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const view = render(
+  const element = (next: Partial<React.ComponentProps<typeof PlanTree>>) => (
     <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, projects: enProjects } }}>
       <QueryClientProvider client={qc}>
-        <PlanTree wsId="ws-1" scope={{ projectId: null, moduleId: null }} query="" readOnly={false} selectedId={null} onSelect={() => {}} {...props} />
+        <PlanTree wsId="ws-1" scope={{ projectId: null, moduleId: null }} query="" readOnly={false} selectedId={null} onSelect={() => {}} {...next} />
       </QueryClientProvider>
-    </I18nProvider>,
+    </I18nProvider>
   );
-  return { ...view, qc };
+  return { ...render(element(props)), qc };
 }
 const rowOf = (kind: string) => screen.getAllByRole("row").find((row) => row.getAttribute("data-kind") === kind)!;
 const rowsOf = (kind: string) => screen.getAllByRole("row").filter((row) => row.getAttribute("data-kind") === kind);

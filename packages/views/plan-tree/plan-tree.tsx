@@ -210,7 +210,10 @@ export function PlanTree({
     }
     const workItems = [...ids].filter((id) => { const node = byId.get(id); return node != null && planNodeKind(node, byId) === "work_item"; }).length;
     const payments = (data?.payments ?? []).filter((payment) => ids.has(payment.node_id)).length;
-    const issues = [...ids].reduce((sum, id) => sum + (countsById.get(id)?.primary_total ?? 0), 0);
+    // The read rolls counts up the tree, so the module row's primary_total
+    // already covers every work item under it; summing the descendants again
+    // doubles the figure (2 issues read as 4).
+    const issues = countsById.get(deletingModule.node.id)?.primary_total ?? 0;
     return { workItems, payments, issues };
   }, [deletingModule, nodes, byId, data, countsById]);
 
