@@ -2351,7 +2351,7 @@
     "label": "実行計画",
     "loading": "計画を読み込み中…",
     "load_failed": "計画を読み込めませんでした。",
-    "unreconciled": "この計画はまだ突合が完了していません。",
+    "unreconciled": "この計画はまだ突合が完了していないため、構造の変更は利用できません。突合はワークスペース管理者が実行します。完了までは計画フィールドの閲覧と編集のみ可能です。",
     "dismiss": "閉じる",
     "collapse": "折りたたむ",
     "expand": "展開",
@@ -2381,6 +2381,7 @@
     "cancel": "キャンセル",
     "moved": "移動しました",
     "deleted": "削除しました",
-    "status_not_in_workflow": "{{issue}}：ステータスが {{workflow}} にありません（許可：{{statuses}}）"
+    "status_not_in_workflow": "{{issue}}：ステータスが {{workflow}} にありません（許可：{{statuses}}）",
+    "delete_module_impact": "作業項目 {{work_items}} 件と支払 {{payments}} 件を削除します。課題 {{issues}} 件は帰属を失い、プロジェクトに残ります。"
   }
 }

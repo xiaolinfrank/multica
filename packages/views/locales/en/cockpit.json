@@ -2351,7 +2351,7 @@
     "label": "Execution plan",
     "loading": "Loading the plan…",
     "load_failed": "The plan could not be read.",
-    "unreconciled": "This plan has not been reconciled yet.",
+    "unreconciled": "This plan has not been reconciled yet, so structure changes are unavailable. A workspace admin runs the reconciliation; until then plan fields can still be viewed and edited.",
     "dismiss": "Dismiss",
     "collapse": "Collapse",
     "expand": "Expand",
@@ -2381,6 +2381,7 @@
     "cancel": "Cancel",
     "moved": "Moved",
     "deleted": "Deleted",
-    "status_not_in_workflow": "{{issue}}: its status is not part of {{workflow}} (allowed: {{statuses}})"
+    "status_not_in_workflow": "{{issue}}: its status is not part of {{workflow}} (allowed: {{statuses}})",
+    "delete_module_impact": "Deletes {{work_items}} work items and {{payments}} payments; {{issues}} issues lose their filing and stay in the project."
   }
 }

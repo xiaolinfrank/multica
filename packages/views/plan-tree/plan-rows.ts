@@ -36,6 +36,13 @@ function kindOf(node: CockpitNode, depth: number): PlanKind {
   return depth === 0 ? "project" : depth === 1 ? "module" : "work_item";
 }
 
+/** A row's level anywhere a flat read is in hand: `kind` when the read row
+ *  carries it, else the parent chain's depth. A code is an address, not a
+ *  level — after the reconcile a root reads "00"…"19" like any other row. */
+export function planNodeKind(node: CockpitNode, byId: ReadonlyMap<string, CockpitNode>): PlanKind {
+  return kindOf(node, planDepthOf(node, byId));
+}
+
 /** One row, for a caller that has already resolved the visible shape (a
  *  filtered or presentation tree): kind still comes from `node.kind` first,
  *  so a presentation row can never relabel a work item as a module. */
@@ -49,7 +56,7 @@ export function planRowFor(
 }
 
 /** Depth by the parent chain, independent of any code format. */
-function depthOf(node: CockpitNode, byId: ReadonlyMap<string, CockpitNode>): number {
+export function planDepthOf(node: CockpitNode, byId: ReadonlyMap<string, CockpitNode>): number {
   let depth = 0;
   let current = node.parent_id ? byId.get(node.parent_id) : undefined;
   const seen = new Set<string>();
@@ -64,10 +71,12 @@ function depthOf(node: CockpitNode, byId: ReadonlyMap<string, CockpitNode>): num
 export interface BuildPlanRowsInput {
   nodes: readonly CockpitNode[];
   counts: readonly CockpitPlanTaskCount[];
-  /** Ids whose children are shown. A collapsed row's subtree is skipped. */
+  /** Ids whose children are shown. A collapsed row's subtree is skipped —
+   *  except while searching, when the query alone decides what is visible. */
   expanded: ReadonlySet<string>;
-  /** Search text. A match expands its ancestor path (the caller seeds
-   *  `expanded`); matching rows stay visible even when a parent collapsed. */
+  /** Search text. Filters to the hits and the parents that place them; a hit
+   *  inside a closed branch still shows, and a hit does not pull in children
+   *  that do not match. */
   query?: string;
   /** Restrict to these root branches; empty shows the whole plan. A branch
    *  keeps its own depth, so a scoped view still reads at the right level. */
@@ -90,37 +99,44 @@ export function buildPlanRows({ nodes, counts, expanded, query, rootIds }: Build
   }
   const countsById = new Map(counts.map((c) => [c.node_id, c]));
   const needle = query?.trim().toLowerCase() ?? "";
+  const searching = needle.length > 0;
   const matches = (node: CockpitNode) =>
-    needle.length === 0 || node.name.toLowerCase().includes(needle) || node.code.toLowerCase().includes(needle);
-  // A match deep in a collapsed subtree still shows itself: keep every row on a
-  // match's ancestor path so the hit is never hidden behind a closed parent.
-  const pathToMatch = new Set<string>();
-  if (needle.length > 0) {
+    node.name.toLowerCase().includes(needle) || node.code.toLowerCase().includes(needle);
+  // The rows a search leaves visible: the hits themselves plus the parents
+  // that place them, so no hit is hidden behind a closed branch and no
+  // non-matching sibling stays on screen. This is a filter like the finance
+  // grid's, not an expander.
+  const visible = new Set<string>();
+  if (searching) {
     for (const node of nodes) {
       if (!matches(node)) continue;
       let current: CockpitNode | undefined = node;
-      while (current) {
-        pathToMatch.add(current.id);
+      const seen = new Set<string>();
+      while (current && !seen.has(current.id)) {
+        seen.add(current.id);
+        visible.add(current.id);
         current = current.parent_id ? byId.get(current.parent_id) : undefined;
       }
     }
   }
+  const keeps = (node: CockpitNode) => !searching || visible.has(node.id);
 
   const rows: PlanRow[] = [];
   const roots = rootIds && rootIds.size > 0 ? nodes.filter((node) => rootIds.has(node.id)) : null;
   const walk = (parentId: string | null, depth: number) => {
     for (const node of childrenOf.get(parentId) ?? []) {
+      if (!keeps(node)) continue;
       const children = childrenOf.get(node.id) ?? [];
       rows.push(planRowFor(node, depth, countsById.get(node.id) ?? null, children.length > 0));
-      const open = expanded.has(node.id) || pathToMatch.has(node.id);
-      if (open) walk(node.id, depth + 1);
+      if (searching || expanded.has(node.id)) walk(node.id, depth + 1);
     }
   };
   if (roots && roots.length > 0) {
     for (const root of [...roots].sort((a, b) => a.position - b.position || a.code.localeCompare(b.code))) {
-      const depth = depthOf(root, byId);
+      if (!keeps(root)) continue;
+      const depth = planDepthOf(root, byId);
       rows.push(planRowFor(root, depth, countsById.get(root.id) ?? null, (childrenOf.get(root.id) ?? []).length > 0));
-      if (expanded.has(root.id) || pathToMatch.has(root.id)) walk(root.id, depth + 1);
+      if (searching || expanded.has(root.id)) walk(root.id, depth + 1);
     }
   } else {
     walk(null, 0);
@@ -128,17 +144,10 @@ export function buildPlanRows({ nodes, counts, expanded, query, rootIds }: Build
   return rows;
 }
 
-/** Sibling work items under one module, in order — the move menu's choices. */
+/** The plan's modules in code order — the move menu's choices. */
 export function planModules(nodes: readonly CockpitNode[]): CockpitNode[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   return nodes
-    .filter((n) => kindOf(n, depthOf(n, byId)) === "module")
+    .filter((n) => kindOf(n, planDepthOf(n, byId)) === "module")
     .sort((a, b) => a.code.localeCompare(b.code));
-}
-
-/** Ids to expand by default: everything down to the work items, which is what
- *  "expanded to work item" means on a three-level plan. */
-export function planDefaultExpanded(nodes: readonly CockpitNode[]): Set<string> {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  return new Set(nodes.filter((n) => kindOf(n, depthOf(n, byId)) !== "work_item").map((n) => n.id));
 }

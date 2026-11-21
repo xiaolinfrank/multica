@@ -17,10 +17,14 @@ export interface CockpitPlanContext {
    *  include_closed flag, remembered per scope like the other toolbar
    *  switches (S5). */
   includeClosedProjects: boolean;
-  /** The plan tree's own fold state. The gantt's `collapsedIds` is the chart's
-   *  (it opens to directions); the tree opens to work items, so the two
-   *  surfaces remember separately. Undefined means "not seeded yet". */
+  /** The plan tree's fold state for structure rows: projects and modules are
+   *  open unless their id is here. Work items fold the other way round (they
+   *  are closed until opened, so no scope fires a hundred issue reads on first
+   *  paint) and keep their opened ids in `treeExpandedWorkItemIds`. */
   treeCollapsedIds?: string[];
+  /** Work items the reader opened in the plan tree. Absent means "none yet";
+   *  there is no seed, so a row that appears later starts closed too. */
+  treeExpandedWorkItemIds?: string[];
   scrollTop: number;
   scrollLeft: number;
 }

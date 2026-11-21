@@ -2351,7 +2351,7 @@
     "label": "执行计划",
     "loading": "正在读取计划…",
     "load_failed": "计划读取失败。",
-    "unreconciled": "执行计划尚未完成对账",
+    "unreconciled": "执行计划尚未完成对账，结构修改暂不可用。对账由工作区管理员完成；完成前可以查看和编辑计划字段。",
     "dismiss": "关闭",
     "collapse": "折叠",
     "expand": "展开",
@@ -2381,6 +2381,7 @@
     "cancel": "取消",
     "moved": "已移动",
     "deleted": "已删除",
-    "status_not_in_workflow": "{{issue}}：状态不属于 {{workflow}}（允许：{{statuses}}）"
+    "status_not_in_workflow": "{{issue}}：状态不属于 {{workflow}}（允许：{{statuses}}）",
+    "delete_module_impact": "将删除 {{work_items}} 个工作项、{{payments}} 笔付款；{{issues}} 个 issue 将失去归属并保留在项目中。"
   }
 }

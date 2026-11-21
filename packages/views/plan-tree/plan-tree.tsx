@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Ellipsis, Plus } from "@multica/ui/icons";
 import {
@@ -9,21 +9,26 @@ import {
   useCreateCockpitWorkItem,
   useDeleteCockpitWorkItem,
   useMoveCockpitWorkItem,
-  useRenameCockpitWorkItem,
   useRenumberCockpitChildren,
   CockpitPlanWriteRefusedError,
   CockpitStatusNotInWorkflowError,
   type CockpitScope,
 } from "@multica/core/cockpit";
-import { useCreateModule, useDeleteModule, useUpdateModule } from "@multica/core/modules";
-import { useUpdateProject } from "@multica/core/projects";
+import { useCreateModule, useDeleteModule } from "@multica/core/modules";
+import { containerOperationAllowed, containerOperationBasisOptions } from "@multica/core/issues";
 import { useModalStore } from "@multica/core/modals";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
-import { useT } from "../i18n";
+import { useLocale, useT } from "../i18n";
+import { formatDateOnly } from "@multica/core/issues/date";
 import type { CockpitNode, CockpitNodePatch } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
+import { Button } from "@multica/ui/components/ui/button";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@multica/ui/components/ui/alert-dialog";
+import { ContainerOperationRestriction } from "../issues/components/issue-operation-restriction";
 import { useNavigation } from "../navigation";
-import { buildPlanRows, planIssueProgress, planModules, type PlanRow } from "./plan-rows";
+import { buildPlanRows, planIssueProgress, planModules, planNodeKind, type PlanRow } from "./plan-rows";
+import { planRowRenameTarget, usePlanRowRename } from "./use-plan-row-rename";
 import { PlanRowName } from "./plan-row-name";
 import { EditableDate, EditableSuggest } from "../cockpit/components/cockpit-fields";
 import { StatusChip } from "../cockpit/components/cockpit-status";
@@ -58,12 +63,15 @@ export function PlanTree({
   variant = "tree", onPatchNode, ownerSuggestions = [], statusSuggestions = [], rootIds,
 }: PlanTreeProps) {
   const { t } = useT("cockpit");
+  const { t: tProjects } = useT("projects");
   const viewKey = cockpitScopeViewKey(wsId, scope);
   const includeClosed = useCockpitScopeViewStore((s) => s.plans[viewKey]?.includeClosedProjects ?? false);
   // Selected as the stored array, not a `?? []` default: a fresh array each
   // render makes the store subscription re-render forever.
   const storedCollapsed = useCockpitScopeViewStore((s) => s.plans[viewKey]?.treeCollapsedIds);
   const collapsedIds = storedCollapsed ?? EMPTY_COLLAPSED;
+  const storedExpandedWorkItems = useCockpitScopeViewStore((s) => s.plans[viewKey]?.treeExpandedWorkItemIds);
+  const expandedWorkItemIds = storedExpandedWorkItems ?? EMPTY_IDS;
   const updatePlan = useCockpitScopeViewStore((s) => s.updatePlan);
   const { data, isPending, isError } = useQuery(cockpitPlanOptions(wsId, scope, includeClosed));
   const [error, setError] = useState<string | null>(null);
@@ -72,16 +80,15 @@ export function PlanTree({
   const [menuId, setMenuId] = useState<string | null>(null);
   const [confirmRenumber, setConfirmRenumber] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deletingModule, setDeletingModule] = useState<PlanRow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const createModule = useCreateModule();
-  const updateModule = useUpdateModule();
   const deleteModule = useDeleteModule();
-  const updateProject = useUpdateProject();
+  const renameRow = usePlanRowRename(wsId);
   const createWorkItem = useCreateCockpitWorkItem(wsId);
-  const renameWorkItem = useRenameCockpitWorkItem(wsId);
   const moveWorkItem = useMoveCockpitWorkItem(wsId);
   const deleteWorkItem = useDeleteCockpitWorkItem(wsId);
   const renumber = useRenumberCockpitChildren(wsId);
@@ -93,27 +100,24 @@ export function PlanTree({
   const unreconciled = data != null && !data.cockpit?.plan_reconciled_at && nodes.length > 0;
   const structureLocked = readOnly || unreconciled;
 
-  // collapsedIds is the single source of truth: every row is open unless it is
-  // in that list, and the seed puts the work items in it. Deriving from
-  // planDefaultExpanded instead would make a work item un-expandable, because
-  // that set never contains one.
-  const expanded = useMemo(() => {
-    const open = new Set(nodes.map((n) => n.id));
-    for (const id of collapsedIds) open.delete(id);
-    return open;
-  }, [nodes, collapsedIds]);
+  const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const countsById = useMemo(() => new Map(counts.map((c) => [c.node_id, c])), [counts]);
 
-  // Seed once per scope: expand down to the work items, leave their issues for
-  // a click. Storing the seed (rather than a second "opened" set) keeps the
-  // toggle a single add/remove on treeCollapsedIds. An effect, not a render
-  // side effect: the write lands with the mount, not after it.
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (seeded.current || nodes.length === 0 || storedCollapsed !== undefined) return;
-    seeded.current = true;
-    const workItemIds = nodes.filter((n) => n.kind === "work_item").map((n) => n.id);
-    updatePlan(viewKey, { treeCollapsedIds: workItemIds });
-  }, [nodes, storedCollapsed, updatePlan, viewKey]);
+  // Projects and modules are open unless folded; work items are closed unless
+  // opened. The asymmetry is the point: a work item's children are its issues,
+  // and expanding it is a read. Nothing is seeded, so the first paint of a
+  // scope, a scope switch and a row that arrives later all start closed.
+  const expanded = useMemo(() => {
+    const open = new Set<string>();
+    for (const node of nodes) {
+      if (planNodeKind(node, byId) === "work_item") {
+        if (expandedWorkItemIds.includes(node.id)) open.add(node.id);
+      } else if (!collapsedIds.includes(node.id)) {
+        open.add(node.id);
+      }
+    }
+    return open;
+  }, [nodes, byId, collapsedIds, expandedWorkItemIds]);
 
   const rows = useMemo(
     () => buildPlanRows({ nodes, counts, expanded, query, rootIds }),
@@ -125,12 +129,90 @@ export function PlanTree({
     ? rows.find((r) => r.node.id === confirmDelete)?.counts?.primary_total ?? 0
     : 0;
 
-  const setExpanded = useCallback((id: string, open: boolean) => {
-    const next = new Set(useCockpitScopeViewStore.getState().plans[viewKey]?.treeCollapsedIds ?? EMPTY_COLLAPSED);
-    if (open) next.delete(id);
-    else next.add(id);
+  const setRowOpen = useCallback((row: PlanRow, open: boolean) => {
+    const state = useCockpitScopeViewStore.getState().plans[viewKey];
+    if (row.kind === "work_item") {
+      const next = new Set(state?.treeExpandedWorkItemIds ?? EMPTY_IDS);
+      if (open) next.add(row.node.id);
+      else next.delete(row.node.id);
+      updatePlan(viewKey, { treeExpandedWorkItemIds: [...next] });
+      return;
+    }
+    const next = new Set(state?.treeCollapsedIds ?? EMPTY_COLLAPSED);
+    if (open) next.delete(row.node.id);
+    else next.add(row.node.id);
     updatePlan(viewKey, { treeCollapsedIds: [...next] });
   }, [updatePlan, viewKey]);
+
+  const parentRowOf = (row: PlanRow) => (row.node.parent_id ? byId.get(row.node.parent_id) : undefined);
+  const paths = useWorkspacePaths();
+  // S5 opens the issue list on the project page narrowed to the row's module;
+  // S6 hands over `?node=` instead. A work item's module is the row above it.
+  const projectListHref = (row: PlanRow): string | null => {
+    const module = parentRowOf(row);
+    if (!module?.project_id || !module.module_id) return null;
+    return `${paths.projectDetail(module.project_id)}?module=${encodeURIComponent(module.module_id)}`;
+  };
+  // A work item takes its filing from the module row above it (its own
+  // project_id/module_id are null by design); a module carries its own. A
+  // missing id disables the action instead of substituting the node's id,
+  // which would call a project endpoint with a node id.
+  const createScopeOf = (row: PlanRow): { project_id: string; module_id: string } | null => {
+    if (row.kind === "module") {
+      return row.node.project_id && row.node.module_id
+        ? { project_id: row.node.project_id, module_id: row.node.module_id } : null;
+    }
+    if (row.kind === "work_item") {
+      const module = parentRowOf(row);
+      return module?.project_id && module.module_id
+        ? { project_id: module.project_id, module_id: module.module_id } : null;
+    }
+    return null;
+  };
+
+  const openCreateIssue = (row: PlanRow) => {
+    const scope = createScopeOf(row);
+    if (!scope) return;
+    useModalStore.getState().open("create-issue", {
+      project_id: scope.project_id,
+      module_id: scope.module_id,
+      ...(row.kind === "work_item" ? { cockpit_node: {
+        node_id: row.node.id,
+        code: row.node.code,
+        label: `${row.node.code} ${row.node.name}`.trim(),
+        project_id: scope.project_id,
+        module_id: scope.module_id,
+      } } : {}),
+    });
+  };
+
+  // Deleting a module is the project's operation, not a plan-row edit: it
+  // takes the module, its work items and their payments, and unfiles the
+  // issues. The dialog says how much of each goes, the way the project page's
+  // module deletion does, and the same operation basis decides whether it is
+  // allowed.
+  const deleteBasis = useQuery({
+    ...containerOperationBasisOptions(wsId, "module", deletingModule?.node.module_id ?? ""),
+    enabled: Boolean(deletingModule?.node.module_id),
+  });
+  const canDeleteModule = !deleteBasis.isError && containerOperationAllowed(deleteBasis.data, "delete");
+  const [deletingModuleError, setDeletingModuleError] = useState("");
+  const moduleImpact = useMemo(() => {
+    const empty = { workItems: 0, payments: 0, issues: 0 };
+    if (!deletingModule) return empty;
+    const ids = new Set<string>([deletingModule.node.id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const node of nodes) {
+        if (node.parent_id && ids.has(node.parent_id) && !ids.has(node.id)) { ids.add(node.id); grew = true; }
+      }
+    }
+    const workItems = [...ids].filter((id) => { const node = byId.get(id); return node != null && planNodeKind(node, byId) === "work_item"; }).length;
+    const payments = (data?.payments ?? []).filter((payment) => ids.has(payment.node_id)).length;
+    const issues = [...ids].reduce((sum, id) => sum + (countsById.get(id)?.primary_total ?? 0), 0);
+    return { workItems, payments, issues };
+  }, [deletingModule, nodes, byId, data, countsById]);
 
   const report = (e: unknown) => {
     if (e instanceof CockpitStatusNotInWorkflowError) {
@@ -141,16 +223,6 @@ export function PlanTree({
       // The server's own message, never a generic "save failed".
       setError(e.message);
     } else setError(String(e));
-  };
-
-  const openCreateIssue = (row: PlanRow) => {
-    useModalStore.getState().open("create-issue", {
-      project_id: row.node.project_id ?? undefined,
-      module_id: row.node.module_id ?? undefined,
-      ...(row.kind === "work_item"
-        ? { cockpit_node: { node_id: row.node.id, code: row.node.code, name: row.node.name } }
-        : {}),
-    });
   };
 
   // Arrow keys move a cursor over the rows without navigating: selection is
@@ -175,12 +247,12 @@ export function PlanTree({
       case "End": event.preventDefault(); focusRow(rows[rows.length - 1]!.node.id); break;
       case "ArrowRight":
         event.preventDefault();
-        if (expandable && !expanded.has(row.node.id)) setExpanded(row.node.id, true);
+        if (expandable && !expanded.has(row.node.id)) setRowOpen(row, true);
         else if (expandable) focusRow(rows[Math.min(rows.length - 1, index + 1)]!.node.id);
         break;
       case "ArrowLeft":
         event.preventDefault();
-        if (expandable && expanded.has(row.node.id)) setExpanded(row.node.id, false);
+        if (expandable && expanded.has(row.node.id)) setRowOpen(row, false);
         else {
           const parent = rows.find((candidate) => candidate.node.id === row.node.parent_id);
           if (parent) focusRow(parent.node.id);
@@ -188,7 +260,7 @@ export function PlanTree({
         break;
       case "Enter": event.preventDefault(); onSelect(row.node.id); break;
       case " ":
-        if (expandable) { event.preventDefault(); setExpanded(row.node.id, !expanded.has(row.node.id)); }
+        if (expandable) { event.preventDefault(); setRowOpen(row, !expanded.has(row.node.id)); }
         break;
       default: break;
     }
@@ -233,13 +305,9 @@ export function PlanTree({
           <span className="flex-1">{t(($) => $.plan_tree.delete_confirm, { n: confirmCounts })}</span>
           <button type="button" className="text-destructive" onClick={() => {
             const id = confirmDelete;
-            const row = rows.find((r) => r.node.id === id);
             setConfirmDelete(null);
-            if (!row) return;
-            const done = { onSuccess: () => setNotice(t(($) => $.plan_tree.deleted)), onError: report };
             // The server answers first; the row leaves the tree on the refetch it triggers.
-            if (row.kind === "work_item") deleteWorkItem.mutate(id, done);
-            else deleteModule.mutate(row.node.module_id ?? id, done);
+            deleteWorkItem.mutate(id, { onSuccess: () => setNotice(t(($) => $.plan_tree.deleted)), onError: report });
           }}>{t(($) => $.plan_tree.confirm)}</button>
           <button type="button" className="text-muted-foreground" onClick={() => setConfirmDelete(null)}>{t(($) => $.plan_tree.cancel)}</button>
         </div>
@@ -263,6 +331,9 @@ export function PlanTree({
           const patchable = !readOnly && onPatchNode != null && !contextNodeIds.has(row.node.id);
           const isActive = activeId != null ? activeId === row.node.id : selectedId === row.node.id;
           const expandable = row.hasChildren || row.kind === "work_item";
+          const canRename = planRowRenameTarget(row) != null;
+          const canAddChild = row.kind === "project" ? Boolean(row.node.project_id) : row.kind === "module" ? Boolean(row.node.module_id) : false;
+          const canAddIssue = createScopeOf(row) != null;
           return (
             <Fragment key={row.node.id}>
             <div role="row" aria-level={row.depth + 1} aria-selected={selectedId === row.node.id}
@@ -275,7 +346,7 @@ export function PlanTree({
                 // on a control — the gantt's rule, kept identical here.
                 if (!expandable) return;
                 if ((event.target as HTMLElement).closest("button, a, input, textarea, select, [contenteditable=true]")) return;
-                setExpanded(row.node.id, !open);
+                setRowOpen(row, !open);
               }}
               className={cn("group flex items-center gap-1 border-b border-border/60 px-2 py-1 text-caption hover:bg-accent aria-selected:bg-accent",
                 "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
@@ -283,16 +354,14 @@ export function PlanTree({
               <PlanRowName
                 row={row}
                 open={open}
-                locked={!editable}
+                locked={!editable || !canRename}
                 renaming={renaming === row.node.id}
-                onToggle={() => setExpanded(row.node.id, !open)}
+                onToggle={() => setRowOpen(row, !open)}
                 onSelect={() => onSelect(row.node.id)}
                 onStartRename={() => setRenaming(row.node.id)}
                 onSubmitRename={async (name) => {
                   try {
-                    if (row.kind === "project") await updateProject.mutateAsync({ id: row.node.project_id ?? row.node.id, title: name });
-                    else if (row.kind === "module") await updateModule.mutateAsync({ id: row.node.module_id ?? row.node.id, title: name });
-                    else await renameWorkItem.mutateAsync({ id: row.node.id, name });
+                    await renameRow(row, name);
                     setRenaming(null);
                   } catch (e) { report(e); }
                 }}
@@ -339,14 +408,14 @@ export function PlanTree({
               )}
               {editable && (
                 <span className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-                  {row.kind !== "work_item" && (
+                  {row.kind !== "work_item" && canAddChild && (
                     <button type="button" aria-label={t(($) => $.plan_tree.add_child)}
                       onClick={() => { creationKey.current = null; setCreating({ parentId: row.node.id, kind: row.kind === "project" ? "module" : "work_item" }); }}
                       className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
                       <Plus className="size-3" aria-hidden />
                     </button>
                   )}
-                  {row.kind !== "project" && (
+                  {row.kind !== "project" && canAddIssue && (
                     <button type="button" aria-label={t(($) => $.plan_tree.add_issue)} onClick={() => openCreateIssue(row)}
                       className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
                       <Plus className="size-3" aria-hidden />
@@ -372,7 +441,11 @@ export function PlanTree({
                     });
                   }}
                   onRenumber={() => { setMenuId(null); setConfirmRenumber(row.node.id); }}
-                  onDelete={() => { setMenuId(null); setConfirmDelete(row.node.id); }}
+                  onDelete={() => {
+                    setMenuId(null);
+                    if (row.kind === "module") { setDeletingModuleError(""); setDeletingModule(row); }
+                    else setConfirmDelete(row.node.id);
+                  }}
                 />
               )}
             </div>
@@ -383,12 +456,14 @@ export function PlanTree({
                 onSubmit={async (name) => {
                   try {
                     if (creating.kind === "module") {
-                      await createModule.mutateAsync({ project_id: row.node.project_id ?? "", title: name });
+                      if (!row.node.project_id) return;
+                      await createModule.mutateAsync({ project_id: row.node.project_id, title: name });
                     } else {
+                      if (!row.node.module_id) return;
                       // A retry reuses the key so the server replays the row
                       // it already made instead of creating a second one.
                       creationKey.current ??= crypto.randomUUID();
-                      await createWorkItem.mutateAsync({ module_id: row.node.module_id ?? "", name, creation_key: creationKey.current });
+                      await createWorkItem.mutateAsync({ module_id: row.node.module_id, name, creation_key: creationKey.current });
                     }
                     setCreating(null);
                     creationKey.current = null;
@@ -397,12 +472,41 @@ export function PlanTree({
               />
             )}
             {row.kind === "work_item" && open && (
-              <IssueRows wsId={wsId} nodeId={row.node.id} depth={row.depth} label={t(($) => $.plan_tree.issues_overflow)} />
+              <IssueRows wsId={wsId} nodeId={row.node.id} depth={row.depth} listHref={projectListHref(row)} />
             )}
           </Fragment>
           );
         })}
       </div>
+
+      <AlertDialog open={deletingModule != null} onOpenChange={(open) => {
+        if (!open && !deleteModule.isPending) { setDeletingModule(null); setDeletingModuleError(""); }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tProjects(($) => $.module.delete_title, { title: deletingModule?.name ?? "" })}</AlertDialogTitle>
+            <AlertDialogDescription>{tProjects(($) => $.module.delete_description)}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <p className="text-caption text-muted-foreground">{t(($) => $.plan_tree.delete_module_impact, {
+            work_items: moduleImpact.workItems, payments: moduleImpact.payments, issues: moduleImpact.issues,
+          })}</p>
+          <ContainerOperationRestriction basis={deleteBasis.isError ? undefined : deleteBasis.data} operation="delete"
+            pending={deleteBasis.isPending} error={deleteBasis.isError} retry={() => void deleteBasis.refetch()} />
+          {deletingModuleError && <p role="alert" className="text-caption text-destructive">{deletingModuleError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteModule.isPending}>{t(($) => $.plan_tree.cancel)}</AlertDialogCancel>
+            <Button type="button" variant="destructive" disabled={deleteModule.isPending || !canDeleteModule} onClick={() => {
+              const moduleId = deletingModule?.node.module_id;
+              if (!moduleId) return;
+              setDeletingModuleError("");
+              deleteModule.mutate(moduleId, {
+                onSuccess: () => { setDeletingModule(null); setNotice(t(($) => $.plan_tree.deleted)); },
+                onError: (error) => setDeletingModuleError(error instanceof Error ? error.message : t(($) => $.plan_tree.load_failed)),
+              });
+            }}>{tProjects(($) => $.module.delete_confirm)}</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -411,9 +515,13 @@ export { planIssueProgress };
 
 /** Issue rows under one work item: paged (20 a page) as the reader scrolls,
  *  never the whole list up front. */
-function IssueRows({ wsId, nodeId, depth, label }: { wsId: string; nodeId: string; depth: number; label: string }) {
+function IssueRows({ wsId, nodeId, depth, listHref }: {
+  wsId: string; nodeId: string; depth: number; listHref: string | null;
+}) {
   const paths = useWorkspacePaths();
   const navigation = useNavigation();
+  const { t } = useT("cockpit");
+  const locale = useLocale();
   const { data } = useQuery(cockpitNodeTasksOptions(wsId, nodeId, { page_size: PAGE_SIZE }));
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -427,27 +535,31 @@ function IssueRows({ wsId, nodeId, depth, label }: { wsId: string; nodeId: strin
             onClick={() => navigation.push(paths.issueDetail(task.id))}>
             {task.identifier} {task.title}
           </button>
-          <TaskBar due={task.due_date ?? null} />
+          {/* The task projection carries due_date but no start date, so the
+              row states the deadline rather than drawing a span the server
+              never sent. A bar in the gantt needs start_date added to the
+              node-task response (a server change, S6+). */}
+          {task.due_date && (
+            <span className="ml-auto shrink-0 text-micro text-muted-foreground">
+              {formatDateOnly(task.due_date, { month: "short", day: "numeric" }, locale)}
+            </span>
+          )}
         </div>
       ))}
       {total > items.length && (
         <div role="row" aria-level={depth + 2} className="px-2 py-0.5 text-micro">
           <span style={{ paddingLeft: (depth + 1) * 14 + 8 }} className="inline-block" />
-          <button type="button" className="text-primary hover:underline" onClick={() => navigation.push(paths.issueDetail(nodeId))}>
-            {label.replace("{{n}}", String(total - items.length))}
-          </button>
+          {listHref ? (
+            <button type="button" className="text-primary hover:underline" onClick={() => navigation.push(listHref)}>
+              {t(($) => $.plan_tree.issues_overflow, { n: total - items.length })}
+            </button>
+          ) : (
+            <span className="text-muted-foreground">{t(($) => $.plan_tree.issues_overflow, { n: total - items.length })}</span>
+          )}
         </div>
       )}
     </>
   );
-}
-
-/** The issue's due marker. The cockpit task projection carries `due_date` but
- *  no start date, so the row shows a marker rather than a span — drawing one
- *  would invent the start the server never sent. */
-function TaskBar({ due }: { due: string | null }) {
-  if (!due) return null;
-  return <span className="ml-auto h-1 w-16 shrink-0 rounded-full bg-muted" aria-hidden title={due} />;
 }
 
 /** Inline create field for a module or a work item. */
