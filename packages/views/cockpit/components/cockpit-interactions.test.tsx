@@ -336,12 +336,14 @@ describe("Cockpit secondary interactions", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   });
 
-  it("preserves legacy reference creation on a grouping with an inherited UUID binding", async () => {
+  it("files a new issue from a grouping's row under the work item, with no related-link append", async () => {
     const threeLevel = structuredClone(board);
     threeLevel.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root", project_id: "p-01", module_id: "m-0101" }));
     threeLevel.nodes[1]!.parent_id = "module";
     // Eligible leaves use the primary-task workspace (covered in node-tasks).
-    // A grouping retains the legacy reference creation flow and callback.
+    // A grouping's "New issue" now files the issue under the work item itself:
+    // the dialog carries cockpit_node and the create sends work_item_id, so
+    // there is no related-link append to preserve.
     threeLevel.nodes.push(node({ id: "execution-leaf", code: "detail", parent_id: "task" }));
     readCockpitFixture.mockResolvedValue(threeLevel);
     vi.mocked(api.listModules).mockResolvedValue({
@@ -380,9 +382,9 @@ describe("Cockpit secondary interactions", () => {
       },
     });
 
-    // The dialog files the issue with `work_item_id`, which is the filing
-    // itself. There is no follow-up append: that writes a related link and
-    // would leave the issue filed and "related" to the same row.
+    // The dialog files the issue with `work_item_id`, which IS the filing. No
+    // follow-up append is passed: that hook writes a related link, so the
+    // issue would end up filed and "related" to the same work item.
     expect(modal.data!.on_created).toBeUndefined();
     expect(api.appendCockpitNodeIssue).not.toHaveBeenCalled();
     expect(api.setCockpitNodeIssues).not.toHaveBeenCalled();
