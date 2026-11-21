@@ -326,7 +326,8 @@
     "note_placeholder": "Anything worth knowing",
     "source": "Source: {{source}}",
     "progress_branch_hint": "Branch progress is the weighted roll-up of its tasks and updates on its own.",
-    "current_progress_hint": "Free-text progress note; the gantt bar takes the percentage above."
+    "current_progress_hint": "Free-text progress note; the gantt bar takes the percentage above.",
+    "progress_issue_hint": "Progress is the share of this work item's issues that are done; it updates with them."
   },
   "milestone": {
     "name": "Milestone",
@@ -497,7 +498,8 @@
     "task_assignee": "Assignee",
     "with_task_hint": "Filed under {{project}} › {{module}}.",
     "with_task_hint_numbered": "Filed under {{project}} › {{module}} › {{code}}.",
-    "with_task_unset": "Choose where meeting tasks are filed to turn this on."
+    "with_task_unset": "Choose where meeting tasks are filed to turn this on.",
+    "node_meeting_count": "{{n}} meetings"
   },
   "timeline": {
     "empty": "No scheduled meetings yet. Once a meeting has a date, it appears here.",

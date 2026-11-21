@@ -1,33 +1,29 @@
 "use client";
 
-import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { cockpitNodeDetailOptions, cockpitNodePaymentsOptions, cockpitNodeMeetingsOptions, cockpitObjectPath,
-  cockpitRelationViewKey, EMPTY_COCKPIT_RELATION_PAGE, useCockpitScopeViewStore, useDeleteCockpitNode,
-  useCreateCockpitPayment, useUpdateCockpitNode, useUpdateCockpitPayment, useDeleteCockpitPayment,
+import { cockpitNodeDetailOptions, cockpitObjectPath, cockpitSurfacePath,
+  useDeleteCockpitNode, useUpdateCockpitNode,
   type CockpitScope, type CockpitNodeView, type CockpitPlanView } from "@multica/core/cockpit";
+import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
 import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
-import { useModalStore } from "@multica/core/modals";
 import { Button } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@multica/ui/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { X } from "lucide-react";
 import { AppLink, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitNodeTasks } from "./cockpit-node-tasks";
-import { CockpitArtifacts } from "./cockpit-artifacts";
-import { CockpitArtifactCreate } from "./cockpit-artifact-create";
-import { CockpitAcceptance } from "./cockpit-acceptance";
-import { CockpitFlowError, CockpitFlowPaging } from "./cockpit-task-flow";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 
-export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, onClose, onOpenMeeting }: {
+export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, issueCounts, onClose }: {
   wsId: string; nodeId: string; scope: CockpitScope; planView: CockpitPlanView; section: CockpitNodeView;
-  onClose: () => void; onOpenMeeting: (id: string) => void;
+  /** The plan read's issue roll-up for this row: a work item with issues
+   *  takes its progress from them. */
+  issueCounts?: CockpitPlanTaskCount | null;
+  onClose: () => void;
 }) {
   const { t } = useT("cockpit"); const navigation = useNavigation();
   const captureContext = useCockpitCommandContext(JSON.stringify([wsId, nodeId]));
@@ -36,17 +32,7 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
   const query = useQuery(cockpitNodeDetailOptions(wsId, nodeId, scope)); const detail = query.data;
   const operation = useQuery(containerOperationBasisOptions(wsId, "node", nodeId));
   const deleteAllowed = !operation.isError && containerOperationAllowed(operation.data, "delete");
-  const paymentKey = cockpitRelationViewKey(wsId, "payments", nodeId); const meetingKey = cockpitRelationViewKey(wsId, "node-meetings", nodeId);
-  const paymentCursors = useCockpitScopeViewStore((state) => state.relations[paymentKey] ?? EMPTY_COCKPIT_RELATION_PAGE);
-  const meetingCursors = useCockpitScopeViewStore((state) => state.relations[meetingKey] ?? EMPTY_COCKPIT_RELATION_PAGE);
-  const setPage = useCockpitScopeViewStore((state) => state.setRelationPage);
-  const paymentQuery = useQuery({ ...cockpitNodePaymentsOptions(wsId, nodeId, paymentCursors.at(-1) || undefined), enabled: paymentCursors.length > 1 && Boolean(detail) });
-  const meetingQuery = useQuery({ ...cockpitNodeMeetingsOptions(wsId, nodeId, meetingCursors.at(-1) || undefined), enabled: meetingCursors.length > 1 && Boolean(detail) });
-  const payments = paymentCursors.length === 1 ? detail?.payments : paymentQuery.data;
-  const meetings = meetingCursors.length === 1 ? detail?.meetings : meetingQuery.data;
-  const updateNode = useUpdateCockpitNode(wsId); const deleteNode = useDeleteCockpitNode(wsId); 
-  const createPayment = useCreateCockpitPayment(wsId); const patchPayment = useUpdateCockpitPayment(wsId); const deletePayment = useDeleteCockpitPayment(wsId);
-  const [removingPayment, setRemovingPayment] = useState<{ id: string; label: string } | null>(null); const deletionLock = useRef(false); const [deleteError, setDeleteError] = useState("");
+  const updateNode = useUpdateCockpitNode(wsId); const deleteNode = useDeleteCockpitNode(wsId);
   const fail = (cause: unknown) => toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
   const readonly = !detail?.actor.is_human || detail.scope_match === false || query.isError;
   if (!detail) return <aside className="flex min-w-0 w-[54rem] max-w-full shrink-0 flex-col overflow-y-auto border-l border-border bg-card p-4 @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0">
@@ -54,60 +40,26 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
     {query.isPending ? <div role="status" className="flex gap-2 text-caption"><Spinner />{t(($) => $.workflow.loading)}</div>
       : <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`node:${nodeId}`} onRetry={() => void query.refetch()} />}
   </aside>;
-  const node = detail.node; const binding = detail.binding;
-  const nodeLabel = `${node.code} ${node.name}`.trim();
+  const node = detail.node;
   const executionSurface = detail.children_count === 0 && !node.project_id && !node.module_id;
-  const canFile = Boolean(binding.project_id && binding.module_id);
-  const filingProjectId = binding.project_id; const filingModuleId = binding.module_id;
-  // The dialog files the issue with `work_item_id`, which IS the filing on
-  // this row. The append this used to call writes a related link, not a
-  // filing, so it would leave the new issue both filed and "related" to the
-  // same work item — a duplicate chip, not a second home.
-  const createReference = canFile && !node.project_id && !node.module_id ? () => {
-    useModalStore.getState().open("create-issue", { title: node.code, project_id: filingProjectId, module_id: filingModuleId,
-      cockpit_node: { node_id: node.id, code: node.code, label: nodeLabel, project_id: filingProjectId, module_id: filingModuleId } });
-  } : undefined;
-  const relationPager = (kind: "payments" | "meetings") => {
-    const rows = kind === "payments" ? payments : meetings; const cursors = kind === "payments" ? paymentCursors : meetingCursors;
-    const pageQuery = kind === "payments" ? paymentQuery : meetingQuery; const key = kind === "payments" ? paymentKey : meetingKey;
-    return <div className="mb-3 space-y-2">{rows ? <CockpitFlowPaging page={cursors.length} shown={rows.items.length} total={rows.total} hasNext={Boolean(rows.next_cursor)} busy={pageQuery.isFetching || query.isFetching}
-      onPrevious={() => { if (cursors.length > 1) setPage(key, cursors.slice(0, -1)); }} onNext={() => { if (rows.next_cursor) setPage(key, [...cursors, rows.next_cursor]); }} />
-      : cursors.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => setPage(key, cursors.slice(0, -1))}>{t(($) => $.task_flow.previous)}</Button>}
-      {cursors.length > 1 && (pageQuery.isError ? <CockpitFlowError onRetry={() => void pageQuery.refetch()} /> : pageQuery.isPending ? <Spinner /> : null)}</div>;
-  };
-  // The breadcrumb quotes the parent's display code like every other surface;
-  // the stored code only names parents the summary tree does not ship.
-  const treeParent = detail.ancestors.find((entry) => entry.id === node.parent_id);
-  const parent = treeParent;
+  // The register filters by node; the panel only says how many there are and
+  // hands the reader over.
+  const meetings = new URLSearchParams({ meeting_node: nodeId });
+  const meetingsHref = `${cockpitSurfacePath(navigation.pathname, "meetings", scope)}?${meetings}`;
+  // The breadcrumb quotes the parent's display code like every other surface.
+  const parent = detail.ancestors.find((entry) => entry.id === node.parent_id);
   return <><CockpitNodePanel node={node} section={section} onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view, planView }, scope))}
     displayCode={node.code} parent={parent} isBranch={detail.children_count > 0} depth={detail.ancestors.length}
-    payments={payments?.items ?? []} paymentTotal={paymentCursors.length === 1 ? detail.payment_total : paymentQuery.data?.payment_total ?? detail.payment_total}
-    paymentPaging={relationPager("payments")} meetings={meetings?.items ?? []} meetingPaging={relationPager("meetings")}
-    referenceWorkspace={<CockpitNodeTasks wsId={wsId} node={node} userId={detail.actor.user_id} readOnly={readonly} referenceOnly onCreateReference={createReference} />}
+    issueCounts={issueCounts ?? null} meetingCount={detail.meetings.total} meetingsHref={meetingsHref}
+    referenceWorkspace={<CockpitNodeTasks wsId={wsId} node={node} userId={detail.actor.user_id} readOnly={readonly} referenceOnly />}
     taskWorkspace={executionSurface ? <CockpitNodeTasks wsId={wsId} node={node} userId={detail.actor.user_id} readOnly={readonly} /> : undefined}
-    artifactWorkspace={executionSurface && detail.capabilities?.artifacts === true ? <CockpitArtifacts wsId={wsId} scope={scope} nodeId={nodeId}
-      registration={filingProjectId && filingModuleId && binding.eligible ? <CockpitArtifactCreate wsId={wsId} nodeId={nodeId} nodeLabel={nodeLabel} projectId={filingProjectId} moduleId={filingModuleId} scope={scope} disabled={readonly} />
-        : <AppLink href={cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view: "details", planView }, scope)} className="text-caption text-primary hover:underline">{t(($) => $.binding.configure)}</AppLink>} /> : undefined}
-    acceptanceWorkspace={executionSurface && detail.capabilities?.acceptance === true ? <CockpitAcceptance wsId={wsId} nodeId={nodeId} scope={scope} currentUserId={detail.actor.user_id} readOnly={readonly} /> : undefined}
-    notice={!detail.scope_match ? <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.shell.scope_outside)}</p><AppLink href={cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view: section, planView }, { projectId: binding.project_id, moduleId: binding.module_id })} className="text-primary hover:underline">{t(($) => $.shell.show_object_scope)}</AppLink></div>
+    notice={!detail.scope_match ? <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.shell.scope_outside)}</p><AppLink href={cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view: section, planView }, { projectId: detail.binding.project_id, moduleId: detail.binding.module_id })} className="text-primary hover:underline">{t(($) => $.shell.show_object_scope)}</AppLink></div>
       : query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`node:${nodeId}`} onRetry={() => void query.refetch()} /> : undefined}
-    statusSuggestions={[node.status].filter(Boolean)} execStatusSuggestions={[node.exec_status].filter(Boolean)}
-    budgetCategorySuggestions={[node.budget_category].filter(Boolean)} ownerSuggestions={[node.owner].filter(Boolean)}
-    vendorSuggestions={[node.vendor].filter(Boolean)}
+    statusSuggestions={[node.status].filter(Boolean)}
+    ownerSuggestions={[node.owner].filter(Boolean)}
     readOnly={readonly} onPatch={(patch) => updateNode.mutate({ id: nodeId, patch }, { onError: fail })} onDelete={() => { if (!deleteAllowed) return Promise.reject(new Error(t(($) => $.errors.save_failed))); return deleteNode.mutateAsync(nodeId); }}
     deleteAllowed={deleteAllowed} deleteRestriction={<ContainerOperationRestriction basis={operation.isError ? undefined : operation.data} operation="delete" pending={operation.isPending} error={operation.isError} retry={() => void operation.refetch()} />}
     deleteConfirmationDescription={detail.children_count > 0 ? t(($) => $.confirmation.delete_branch_description, { label: node.name || node.code }) : t(($) => $.confirmation.delete_description, { label: node.name || node.code })}
-    onClose={close} onOpenMeeting={onOpenMeeting}
-    onCreatePayment={() => createPayment.mutate({ nodeId, body: { label: t(($) => $.payment.new_label, { index: detail.payments.total + 1 }), amount: 0, position: detail.payments.total } }, { onError: fail })}
-    onPatchPayment={(id, patch) => patchPayment.mutate({ id, patch }, { onError: fail })} onDeletePayment={(id) => { const found = payments?.items.find((item) => item.id === id); if (found) { setDeleteError(""); setRemovingPayment({ id, label: found.label }); } }} />
-    <AlertDialog open={Boolean(removingPayment)} onOpenChange={(open) => { if (!open && !deletionLock.current) setRemovingPayment(null); }}><AlertDialogContent><AlertDialogHeader>
-      <AlertDialogTitle>{t(($) => $.payment.delete)}</AlertDialogTitle><AlertDialogDescription>{t(($) => $.confirmation.delete_description, { label: removingPayment?.label ?? "" })}</AlertDialogDescription></AlertDialogHeader>
-      {deleteError && <p role="alert" className="text-caption text-destructive">{deleteError}</p>}
-      <AlertDialogFooter><AlertDialogCancel render={<Button type="button" variant="outline" disabled={deletePayment.isPending} />}>{t(($) => $.task_create.cancel)}</AlertDialogCancel>
-        <Button type="button" variant="destructive" disabled={deletePayment.isPending || !removingPayment} onClick={() => {
-          if (!removingPayment || deletionLock.current) return; deletionLock.current = true;
-          void deletePayment.mutateAsync(removingPayment.id).then(() => setRemovingPayment(null)).catch(() => setDeleteError(t(($) => $.errors.save_failed))).finally(() => { deletionLock.current = false; });
-        }}>{deletePayment.isPending && <Spinner />}{t(($) => $.payment.delete)}</Button></AlertDialogFooter>
-    </AlertDialogContent></AlertDialog>
+    onClose={close} />;
   </>;
 }

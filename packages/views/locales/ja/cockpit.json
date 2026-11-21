@@ -326,7 +326,8 @@
     "note_placeholder": "記録しておくこと",
     "source": "出典: {{source}}",
     "progress_branch_hint": "分岐の進捗は配下タスクの加重集計で、自動的に更新されます。",
-    "current_progress_hint": "自由記述の進捗メモです。ガントのバーは上のパーセントを使います。"
+    "current_progress_hint": "自由記述の進捗メモです。ガントのバーは上のパーセントを使います。",
+    "progress_issue_hint": "進捗はこの作業項目の課題の完了割合で、課題の進みに合わせて更新されます。"
   },
   "milestone": {
     "name": "マイルストーン",
@@ -497,7 +498,8 @@
     "task_assignee": "担当者",
     "with_task_hint": "「{{project}} › {{module}}」の下に作成します。",
     "with_task_hint_numbered": "{{project}} › {{module}} › {{code}} に登録します。",
-    "with_task_unset": "会議タスクの保存先プロジェクトとモジュールを選ぶと有効になります。"
+    "with_task_unset": "会議タスクの保存先プロジェクトとモジュールを選ぶと有効になります。",
+    "node_meeting_count": "会議 {{n}} 件"
   },
   "timeline": {
     "empty": "日程が入った会議がまだありません。日付を設定するとタイムラインに表示されます。",

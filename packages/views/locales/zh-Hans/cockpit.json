@@ -326,7 +326,8 @@
     "note_placeholder": "需要记录的信息",
     "source": "数据来源：{{source}}",
     "progress_branch_hint": "分支进度由下级任务加权汇总，随数据自动更新。",
-    "current_progress_hint": "文字进展说明；甘特图进度条取上方的百分比。"
+    "current_progress_hint": "文字进展说明；甘特图进度条取上方的百分比。",
+    "progress_issue_hint": "进度取这个工作项下 issue 的完成比例，随 issue 进展自动更新。"
   },
   "milestone": {
     "name": "里程碑",
@@ -497,7 +498,8 @@
     "task_assignee": "受理人",
     "with_task_hint": "建在「{{project}} › {{module}}」下。",
     "with_task_hint_numbered": "归入 {{project}} › {{module}} › {{code}}。",
-    "with_task_unset": "先选定会议任务归属的项目与模块，才能开启。"
+    "with_task_unset": "先选定会议任务归属的项目与模块，才能开启。",
+    "node_meeting_count": "{{n}} 场会议"
   },
   "timeline": {
     "empty": "还没有已排期的会议。给会议填上日期后，它会出现在时间线上。",

@@ -527,7 +527,7 @@ describe("CockpitPage", () => {
     await waitFor(() => expect(api.updateCockpitNode).toHaveBeenCalledWith("task", { owner: "Li" }));
   });
 
-  it("opens a work item panel with its plan fields and instalments, not the money fields", async () => {
+  it("opens a work item panel with its plan fields and no money fields or instalments", async () => {
     useDetailedBoard(true);
     renderPage();
     fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
@@ -536,11 +536,12 @@ describe("CockpitPage", () => {
     fireEvent.click(within(moduleRow).getByRole("button", { name: "Expand" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
 
-    expect(await screen.findByText("Instalments")).toBeInTheDocument();
-    expect(screen.getByText("Deliverable")).toBeInTheDocument();
-    // The finance grid lists one row per instalment, so a node without one
-    // has no row there: the five money fields stay editable in the panel.
-    expect(screen.getByText("Payment status")).toBeInTheDocument();
+    expect(await screen.findByText("Deliverable")).toBeInTheDocument();
+    // Money and instalments live in the finance view now: the panel carries
+    // neither, so there is exactly one place to edit them.
+    expect(screen.queryByText("Instalments")).not.toBeInTheDocument();
+    expect(screen.queryByText("Payment status")).not.toBeInTheDocument();
+    expect(screen.queryByText("Vendor")).not.toBeInTheDocument();
     // The linked issue renders as the live issue, not as free text.
     expect((await screen.findAllByText("BIO-314")).length).toBeGreaterThan(0);
   });

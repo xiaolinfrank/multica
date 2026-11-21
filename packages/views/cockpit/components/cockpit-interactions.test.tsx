@@ -92,7 +92,6 @@ vi.mock("@multica/core/auth", () => {
 });
 
 import { api } from "@multica/core/api";
-import { useModalStore } from "@multica/core/modals";
 import { CockpitPage } from "./cockpit-entry";
 import { captureCockpitGantt, printCockpitGantt } from "./cockpit-export";
 vi.mock("./cockpit-export", () => ({ captureCockpitGantt: vi.fn(), printCockpitGantt: vi.fn(), downloadCockpitPng: vi.fn() }));
@@ -314,81 +313,6 @@ describe("Cockpit secondary interactions", () => {
     expect(await screen.findByRole("button", { name: "Export" })).toBeInTheDocument();
     fireEvent.click(toggle);
     expect(screen.getByRole("combobox", { name: "Timeline density" })).toBeInTheDocument();
-  });
-
-  it("confirms payment deletion rather than immediately deleting from the node panel", async () => {
-    vi.mocked(api.deleteCockpitPayment).mockResolvedValue(undefined);
-    const paymentBoard = structuredClone(board);
-    paymentBoard.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root" }));
-    paymentBoard.nodes[1]!.parent_id = "module";
-    readCockpitFixture.mockResolvedValue(paymentBoard);
-    renderPage();
-    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
-    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Expand all" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
-    fireEvent.click(await screen.findByRole("tab", { name: "Plan details" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete instalment" }));
-    expect(api.deleteCockpitPayment).not.toHaveBeenCalled();
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete instalment" }));
-    await waitFor(() => expect(api.deleteCockpitPayment).toHaveBeenCalled());
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
-  });
-
-  it("files a new issue from a grouping's row under the work item, with no related-link append", async () => {
-    const threeLevel = structuredClone(board);
-    threeLevel.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root", project_id: "p-01", module_id: "m-0101" }));
-    threeLevel.nodes[1]!.parent_id = "module";
-    // Eligible leaves use the primary-task workspace (covered in node-tasks).
-    // A grouping's "New issue" now files the issue under the work item itself:
-    // the dialog carries cockpit_node and the create sends work_item_id, so
-    // there is no related-link append to preserve.
-    threeLevel.nodes.push(node({ id: "execution-leaf", code: "detail", parent_id: "task" }));
-    readCockpitFixture.mockResolvedValue(threeLevel);
-    vi.mocked(api.listModules).mockResolvedValue({
-      modules: [
-        { id: "m-0101", project_id: "p-01", title: "01.01 Retrospective cohort" },
-        { id: "m-other", project_id: "p-09", title: "Meeting material" },
-      ],
-    } as unknown as Awaited<ReturnType<typeof api.listModules>>);
-    vi.mocked(api.appendCockpitNodeIssue).mockImplementation(async (_ws, nodeId, issueId) => ({ id: `reference-${issueId}`, issue_number: 0, node_id: nodeId, issue_id: issueId, issue_identifier: issueId.toUpperCase(), issue_title: issueId, issue_status: "todo", position: 1 }));
-    renderPage();
-    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
-    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Expand all" }));
-
-    // The explicitly bound module row is structural, so it does not offer
-    // issue creation from an inherited execution scope.
-    fireEvent.click(await screen.findByRole("button", { name: "Open L2-01-01" }));
-    expect(screen.queryByRole("button", { name: "New issue" })).not.toBeInTheDocument();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Open L3-01-08" }));
-    fireEvent.click(await screen.findByRole("button", { name: "New issue" }));
-
-    const modal = useModalStore.getState();
-    expect(modal.modal).toBe("create-issue");
-    expect(modal.data).toMatchObject({
-      title: "L3-01-08",
-      project_id: "p-01",
-      module_id: "m-0101",
-      // The row travels whole so the dialog can name it and offer another.
-      cockpit_node: {
-        node_id: "task",
-        code: "L3-01-08",
-        label: "L3-01-08 Sign the governance agreement",
-        project_id: "p-01",
-        module_id: "m-0101",
-      },
-    });
-
-    // The dialog files the issue with `work_item_id`, which IS the filing. No
-    // follow-up append is passed: that hook writes a related link, so the
-    // issue would end up filed and "related" to the same work item.
-    expect(modal.data!.on_created).toBeUndefined();
-    expect(api.appendCockpitNodeIssue).not.toHaveBeenCalled();
-    expect(api.setCockpitNodeIssues).not.toHaveBeenCalled();
-    useModalStore.getState().close();
   });
 
   it("exports the actual Gantt in an isolated popup rather than a substitute task report", async () => {

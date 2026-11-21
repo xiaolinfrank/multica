@@ -20,10 +20,10 @@ vi.mock("../../navigation", () => ({
 }));
 vi.mock("../../issues/components/pickers/assignee-picker", () => ({ AssigneePicker: () => <button type="button">Assignee picker</button> }));
 
-function setup() {
+function setup(referenceOnly = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(<QueryClientProvider client={client}><I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, issues: enIssues } }}>
-    <CockpitNodeTasks wsId="ws-1" node={actionNode} userId="reviewer-1" />
+    <CockpitNodeTasks wsId="ws-1" node={actionNode} userId="reviewer-1" referenceOnly={referenceOnly} />
   </I18nProvider></QueryClientProvider>);
 }
 beforeEach(() => {
@@ -50,6 +50,13 @@ describe("bounded L3 task workbench", () => {
       .toHaveAttribute("href", "/ws/cockpit?node=node-1&node_view=details");
     expect(screen.getByRole("button", { name: "Create issue" })).toBeDisabled();
     expect(api.createCockpitNodeTask).not.toHaveBeenCalled();
+  });
+  it("offers no create button in the reference-only list", async () => {
+    // A related issue is attached from the issue side; this list only reads
+    // and unlinks, so the create affordance is gone.
+    setup(true);
+    await screen.findByText("Work item 1");
+    expect(screen.queryByRole("button", { name: "New issue" })).not.toBeInTheDocument();
   });
   it("clears the default open category and cursor when a specific completed status is selected", async () => {
     setup();

@@ -7,7 +7,10 @@ import type { CockpitNode } from "@multica/core/types";
 import { CockpitNodePanel, type CockpitNodePanelProps } from "./cockpit-node-panel";
 
 
-vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
+vi.mock("../../navigation", () => ({
+  useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }),
+  AppLink: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a>,
+}));
 
 const node: CockpitNode = {
   id: "task", cockpit_id: "board", parent_id: "module", code: "L3-01-01", name: "Task",
@@ -21,13 +24,12 @@ const node: CockpitNode = {
 
 function setup(overrides: Partial<CockpitNodePanelProps> = {}) {
   const props: CockpitNodePanelProps = {
-    node, deleteAllowed: true, parent: undefined, depth: 2, payments: [], meetings: [], referenceWorkspace: <p>Issue links</p>, isBranch: false,
+    node, deleteAllowed: true, parent: undefined, depth: 2, referenceWorkspace: <p>Issue links</p>, isBranch: false,
     section: "tasks", onSectionChange: vi.fn(),
-    statusSuggestions: [], execStatusSuggestions: [], budgetCategorySuggestions: [], ownerSuggestions: [], vendorSuggestions: [],
+    meetingCount: 0, meetingsHref: "/ws/cockpit?tab=meetings",
+    statusSuggestions: [], ownerSuggestions: [],
     onPatch: vi.fn(), onDelete: vi.fn().mockResolvedValue(undefined), onClose: vi.fn(),
-    deleteConfirmationDescription: "This permanently deletes the item and its payments and issue links.",
-    onOpenMeeting: vi.fn(), onCreatePayment: vi.fn(),
-    onPatchPayment: vi.fn(), onDeletePayment: vi.fn(), ...overrides,
+    deleteConfirmationDescription: "This permanently deletes the item and its issue links.", ...overrides,
   };
   const view = render(
     <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>
@@ -107,37 +109,46 @@ describe("CockpitNodePanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Manage references" })); expect(open).toHaveBeenCalledOnce();
   });
 
-  const payments = [{ id: "pay-1", node_id: "task", label: "First", pay_date: null, amount: 15, position: 0 }];
+  const issueCounts = { node_id: "task", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 };
 
-  it.each([0, 1])("keeps structural instalments as a read-only ledger at depth %i", (depth) => {
-    // Finance editing belongs to execution tasks; instalments filed on a
-    // structural row by older data stay visible but cannot be edited here.
-    const { props } = setup({ depth, payments });
-    expect(screen.getByText("Instalments")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Vendor" })).not.toBeInTheDocument();
-    expect(screen.getByText("First")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Amount" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete instalment" })).not.toBeInTheDocument();
-    expect(props.onPatchPayment).not.toHaveBeenCalled();
+  it("reads a work item's progress from its issues and offers no typed field", () => {
+    setup({ issueCounts });
+    expect(screen.getByText("75%")).toBeInTheDocument();
+    expect(screen.getByText(enCockpit.node.progress_issue_hint)).toBeInTheDocument();
+    // The ratio is a read-out: there is no progress editor to type into.
+    expect(screen.queryByRole("button", { name: "Progress" })).not.toBeInTheDocument();
   });
 
-  it.each([0, 1])("keeps existing structural instalments read-only at depth %i", (depth) => {
-    setup({ depth, payments, readOnly: true });
-    expect(screen.getByText("First")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Amount" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Add" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete instalment" })).not.toBeInTheDocument();
+  it("offers only the task and plan-detail tabs, and does not advertise hidden sections", () => {
+    // §9 hides artifacts and acceptance: an old URL that still asks for one
+    // lands on the plan details instead of a tab or an unavailable notice.
+    setup({ taskWorkspace: <p>Task workspace</p>, section: "artifacts" });
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Tasks", "Plan details"]);
+    expect(screen.getByRole("tab", { name: "Plan details" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText(enCockpit.feature_availability.unavailable)).not.toBeInTheDocument();
   });
 
-  it("keeps the plan and money fields, and folds only the secondary ones", () => {
+  it("keeps typed progress for a work item that owns no issues", () => {
+    setup({ issueCounts: { node_id: "task", primary_total: 0, reference_total: 0, active: 0, done: 0, closed: 0 } });
+    expect(screen.queryByText(enCockpit.node.progress_issue_hint)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Progress" })).toBeInTheDocument();
+  });
+
+  it("sends the reader to the register for the node's meetings, as a count", () => {
+    setup({ meetingCount: 3, meetingsHref: "/ws/cockpit?tab=meetings&meeting_node=task" });
+    const link = screen.getByRole("link", { name: "3 meetings" });
+    expect(link).toHaveAttribute("href", "/ws/cockpit?tab=meetings&meeting_node=task");
+    // The list itself moved to the register; the panel only counts.
+    expect(screen.queryByText(enCockpit.meetings.node_meetings)).toBeInTheDocument();
+  });
+
+  it("keeps the plan fields and folds only the secondary ones", () => {
     const { props } = setup({ readOnly: true });
     expect(screen.getByText("Deliverable text")).toBeInTheDocument();
     expect(screen.getByText("Issue links")).toBeInTheDocument();
-    // The finance grid lists one row per instalment, so a node without one
-    // has no row there: these five stay editable here too.
-    expect(screen.getByText("Vendor text")).toBeInTheDocument();
-    expect(screen.getByText("Contract text")).toBeInTheDocument();
+    // Money lives in the finance view now: the panel carries no field for it.
+    expect(screen.queryByRole("button", { name: "Vendor" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Contract" })).not.toBeInTheDocument();
     // Collaborators, dependencies and source are one click away, read-only.
     fireEvent.click(screen.getByText("More"));
     expect(screen.getByText("Collaborator")).toBeInTheDocument();

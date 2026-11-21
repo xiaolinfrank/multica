@@ -326,7 +326,8 @@
     "note_placeholder": "기록해 둘 내용",
     "source": "출처: {{source}}",
     "progress_branch_hint": "분기 진행률은 하위 작업의 가중 합산이며 자동으로 업데이트됩니다.",
-    "current_progress_hint": "자유 서식 진행 메모입니다. 간트 막대는 위의 백분율을 사용합니다."
+    "current_progress_hint": "자유 서식 진행 메모입니다. 간트 막대는 위의 백분율을 사용합니다.",
+    "progress_issue_hint": "진행률은 이 작업 항목 이슈의 완료 비율이며, 이슈 진행에 따라 갱신됩니다."
   },
   "milestone": {
     "name": "마일스톤",
@@ -497,7 +498,8 @@
     "task_assignee": "담당자",
     "with_task_hint": "「{{project}} › {{module}}」 아래에 만듭니다.",
     "with_task_hint_numbered": "{{project}} › {{module}} › {{code}}에 등록합니다.",
-    "with_task_unset": "회의 작업을 둘 프로젝트와 모듈을 먼저 고르면 켤 수 있습니다."
+    "with_task_unset": "회의 작업을 둘 프로젝트와 모듈을 먼저 고르면 켤 수 있습니다.",
+    "node_meeting_count": "회의 {{n}}건"
   },
   "timeline": {
     "empty": "일정이 잡힌 회의가 아직 없습니다. 날짜를 입력하면 타임라인에 표시됩니다.",

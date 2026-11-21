@@ -887,8 +887,8 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
           onClose={() => navigation.push(cockpitMeetingContextPath(navigation.pathname, null, scope, navigation.searchParams))} onOpenNode={openTask} />}
 
         {tab !== "meetings" && selectedId && <CockpitSelectedNode key={selectedId} wsId={wsId} nodeId={selectedId} scope={scope} planView={planView}
-          section={destination.nodeView ?? "tasks"} onClose={() => navigation.push(cockpitSurfacePath(navigation.pathname, "plan", scope, planView))}
-          onOpenMeeting={openMeeting} />}
+          section={destination.nodeView ?? "tasks"} issueCounts={taskCounts.get(selectedId) ?? null}
+          onClose={() => navigation.push(cockpitSurfacePath(navigation.pathname, "plan", scope, planView))} />}
 
       </div>
       <CockpitMilestoneCreate wsId={wsId} scope={scope} open={creatingMilestone} onOpenChange={setCreatingMilestone} initialNodeId={selectedId && nodes.some((node) => node.id === selectedId) && !contextNodeIds.has(selectedId) ? selectedId : null} disabled={context.data?.actor.is_human !== true} />
