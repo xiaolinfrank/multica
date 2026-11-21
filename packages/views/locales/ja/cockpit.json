@@ -591,7 +591,7 @@
     "delete_branch": "このブランチを削除"
   },
   "empty": {
-    "no_nodes": "このボードにはまだ作業分解がありません。項目を追加するか、`multica cockpit import` で計画を取り込んでください。",
+    "no_nodes": "このボードにはまだ作業分解がありません。対象プロジェクトを作成するか、`multica cockpit import` で計画を取り込んでください。",
     "no_milestones": "マイルストーンはまだありません。",
     "no_meetings": "会議記録はありません。",
     "no_payments": "分割払いはありません。",

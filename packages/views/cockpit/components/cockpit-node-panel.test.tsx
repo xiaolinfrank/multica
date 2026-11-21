@@ -158,6 +158,13 @@ describe("CockpitNodePanel", () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("shows the code as an address, not an editable field", () => {
+    setup();
+    expect(screen.getByText("L3-01-01")).toBeInTheDocument();
+    // Renumbering is the only way a code moves; the header does not edit it.
+    expect(screen.queryByRole("button", { name: enCockpit.node.stored_code })).not.toBeInTheDocument();
+  });
+
   it("Escape cancels an editor first, then closes the idle panel", () => {
     const { props } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Name" }));

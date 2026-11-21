@@ -591,7 +591,7 @@
     "delete_branch": "Delete this branch"
   },
   "empty": {
-    "no_nodes": "This board has no work breakdown yet. Add an item, or import a plan with `multica cockpit import`.",
+    "no_nodes": "This board has no work breakdown yet. Create the project it belongs to, or import a plan with `multica cockpit import`.",
     "no_milestones": "No milestones yet.",
     "no_meetings": "No meetings recorded.",
     "no_payments": "No instalments.",

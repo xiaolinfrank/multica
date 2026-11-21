@@ -591,7 +591,7 @@
     "delete_branch": "删除该分支"
   },
   "empty": {
-    "no_nodes": "本看板还没有任务分解。新增一项，或用 `multica cockpit import` 导入既有计划。",
+    "no_nodes": "看板还没有工作分解。先创建它所属的项目，或用 `multica cockpit import` 导入计划。",
     "no_milestones": "暂无里程碑。",
     "no_meetings": "暂无会议记录。",
     "no_payments": "暂无分期付款。",

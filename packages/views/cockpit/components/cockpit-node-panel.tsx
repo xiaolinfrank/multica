@@ -167,17 +167,11 @@ export function CockpitNodePanel({
                 {displayCode}
               </span>
             )}
-            <EditableText
-              value={node.code}
-              onCommit={(code) => onPatch({ code })}
-              label={t(($) => $.node.stored_code)}
-              placeholder={t(($) => $.node.code)}
-              disabled={readOnly}
-              displayClassName={cn(
-                "font-mono text-micro",
-                displayCode && displayCode !== node.code && "text-muted-foreground",
-              )}
-            />
+            {/* The code is an address, not a field: it moves only by
+                renumbering the level that owns it. */}
+            <span className={cn("font-mono text-micro", displayCode && displayCode !== node.code && "text-muted-foreground")}>
+              {node.code}
+            </span>
           </div>
           <div className="mt-1">
             <EditableText

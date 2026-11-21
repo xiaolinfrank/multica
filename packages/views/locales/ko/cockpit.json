@@ -591,7 +591,7 @@
     "delete_branch": "이 분기 삭제"
   },
   "empty": {
-    "no_nodes": "이 보드에는 아직 작업 분해가 없습니다. 항목을 추가하거나 `multica cockpit import`로 계획을 가져오세요.",
+    "no_nodes": "이 보드에는 아직 작업 분해가 없습니다. 대상 프로젝트를 만들거나 `multica cockpit import`로 계획을 가져오세요.",
     "no_milestones": "마일스톤이 없습니다.",
     "no_meetings": "회의 기록이 없습니다.",
     "no_payments": "분할 지급이 없습니다.",

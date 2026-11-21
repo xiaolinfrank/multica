@@ -599,19 +599,41 @@ describe("CockpitPage", () => {
 
     expect(await screen.findByText(/no work breakdown yet/)).toBeInTheDocument();
     expect(screen.queryByText(enCockpit.plan_structure.empty)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add plan item" })).toBeEnabled();
+    // The dialog that used to create the first row is gone; a board starts
+    // from its project, and the tree's own "+" adds what sits below.
+    expect(screen.queryByRole("button", { name: "Add plan item" })).not.toBeInTheDocument();
   });
 
-  // Parent binding, observed code, retry identity and late receipts have their
-  // canonical component regressions in cockpit-plan-structure-create.test.tsx.
-  it("opens explicit plan structure creation from the toolbar without guessing a parent from the selected row", async () => {
-    renderPage(); fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open L1-01" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add plan item" })); const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("textbox", { name: "Name" })).toHaveValue("");
-    expect(within(dialog).getByRole("button", { name: "Create plan item" })).toBeDisabled(); expect(api.createCockpitNode).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" })); await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(api.createCockpitNode).not.toHaveBeenCalled(); expect(api.getCockpitNextNodeCode).not.toHaveBeenCalled();
+  it("filters the tree by search while keeping a matched row's ancestors visible", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
+
+    fireEvent.change(await screen.findByLabelText("Search the board"), {
+      target: { value: "governance" },
+    });
+
+    expect(await screen.findByRole("button", { name: "Open L3-01-08" })).toBeInTheDocument();
+    // The parent stays so the hit has context to be read in.
+    expect(screen.getByRole("button", { name: "Open L1-01" })).toBeInTheDocument();
+  });
+
+  it("shows an empty board as an invitation to add work, not as an error", async () => {
+    readCockpitFixture.mockResolvedValue({
+      ...structuredClone(board),
+      nodes: [],
+      payments: [],
+      issue_links: [],
+      milestones: [],
+      meetings: [],
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
+
+    expect(await screen.findByText(/no work breakdown yet/)).toBeInTheDocument();
+    expect(screen.queryByText(enCockpit.plan_structure.empty)).not.toBeInTheDocument();
+    // The dialog that used to create the first row is gone; a board starts
+    // from its project, and the tree's own "+" adds what sits below.
+    expect(screen.queryByRole("button", { name: "Add plan item" })).not.toBeInTheDocument();
   });
 
 });

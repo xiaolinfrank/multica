@@ -81,7 +81,6 @@ import { captureCockpitGantt, downloadCockpitPng, printCockpitGantt } from "./co
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitMeetingCreate, type CockpitMeetingDraft, type CockpitMeetingCreationResult } from "./cockpit-meeting-create";
-import { CockpitPlanStructureCreate } from "./cockpit-plan-structure-create";
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitSelectedMeeting } from "./cockpit-selected-meeting";
 import { CockpitBusinessMeetings } from "./cockpit-business-meetings";
@@ -684,7 +683,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
             </DropdownMenuContent>
           </DropdownMenu>}
 
-          {tab !== "changes" && <CockpitPlanStructureCreate wsId={wsId} scope={scope} defaultKind={scope.moduleId && nodes.some((node) => node.module_id === scope.moduleId) ? "task" : scope.projectId && nodes.some((node) => node.project_id === scope.projectId && !node.module_id) ? "module" : "project"} disabled={context.data?.actor.is_human !== true || planQuery.isError} onCreated={openTask} />}
         </div>
 
         {tab === "gantt" && planView === "gantt" && toolsOpen && (
