@@ -13,11 +13,22 @@ vi.mock("@tanstack/react-virtual", () => ({
   },
 }));
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
 import type { CockpitBoard, CockpitNode } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitTable, type CockpitTableProps } from "./cockpit-table";
+
+const apiMock = vi.hoisted(() => ({
+  createCockpitPayment: vi.fn(async (nodeId: string, body: { label: string }) => ({ id: "p-new", node_id: nodeId, label: body.label, pay_date: null, amount: 0, position: 0 })),
+  updateCockpitPayment: vi.fn(async () => ({})),
+  deleteCockpitPayment: vi.fn(async () => {}),
+}));
+vi.mock("@multica/core/api", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>("@multica/core/api");
+  return { ...actual, api: apiMock, setApiInstance: () => {} };
+});
 
 function node(overrides: Partial<CockpitNode> & { id: string; code: string }): CockpitNode {
   return {
@@ -45,8 +56,10 @@ function show(overrides: Partial<Omit<CockpitTableProps, "board">> & { board?: C
     onSelect, onPatchNode: vi.fn(), execStatusSuggestions: [],
     budgetCategorySuggestions: [], vendorSuggestions: [], ...overrides };
   const view = render(<I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
-    <input aria-label="Search the board" />
-    <CockpitTable {...props} />
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}>
+      <input aria-label="Search the board" />
+      <CockpitTable {...props} />
+    </QueryClientProvider>
   </I18nProvider>);
   return { ...view, onSelect };
 }
@@ -134,5 +147,51 @@ describe("CockpitTable instalment rows", () => {
     expect(totals).toHaveTextContent("300");
     expect(totals).toHaveTextContent("130");
     expect(within(screen.getByRole("table")).getAllByRole("columnheader")).toHaveLength(rows[1]!.children.length);
+  });
+});
+
+const ledgerCockpit = { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
+  summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "", meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" };
+
+function ledgerBoard(payments: CockpitBoard["payments"]) {
+  const root = node({ id: "root", code: "01" });
+  const module = node({ id: "module", code: "01.01", parent_id: "root", kind: "module", name: "Module" });
+  const work = node({ id: "work", code: "01.01.01", parent_id: "module", name: "Work item", budget_amount: 60 });
+  const board: CockpitBoard = { cockpit: ledgerCockpit, nodes: [root, module, work], payments,
+    issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [] };
+  return board;
+}
+
+describe("CockpitTable work items without instalments", () => {
+  it("lists a work item that has none, so its money stays editable here", async () => {
+    show({ board: ledgerBoard([]) });
+    // The only row is the work item itself: the finance grid is the one place
+    // its money fields and instalments are edited.
+    const row = within(screen.getByRole("table")).getAllByRole("row")[1]!;
+    expect(within(row).getByText("Work item")).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: enCockpit.node.add_payment })).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: enCockpit.node.add_payment }));
+    await waitFor(() => expect(apiMock.createCockpitPayment).toHaveBeenCalledWith("work", expect.objectContaining({ amount: 0 })));
+  });
+
+  it("edits an instalment's amount in its own row", async () => {
+    const board = ledgerBoard([{ id: "p1", node_id: "work", label: "First", pay_date: "2026-02-01", amount: 30, position: 0 }]);
+    show({ board });
+    fireEvent.click(screen.getByRole("button", { name: enCockpit.payment.amount }));
+    const field = screen.getByRole("spinbutton", { name: enCockpit.payment.amount });
+    fireEvent.change(field, { target: { value: "45" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(apiMock.updateCockpitPayment).toHaveBeenCalledWith("p1", { amount: 45 }));
+  });
+
+  it("deletes an instalment only after the dialog names it", async () => {
+    const board = ledgerBoard([{ id: "p1", node_id: "work", label: "First", pay_date: "2026-02-01", amount: 30, position: 0 }]);
+    show({ board });
+    fireEvent.click(screen.getByRole("button", { name: enCockpit.payment.delete }));
+    expect(apiMock.deleteCockpitPayment).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("First");
+    fireEvent.click(within(dialog).getByRole("button", { name: enCockpit.payment.delete }));
+    await waitFor(() => expect(apiMock.deleteCockpitPayment).toHaveBeenCalledWith("p1"));
   });
 });

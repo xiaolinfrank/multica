@@ -2015,6 +2015,61 @@ export function computeCockpitFinanceRows(
   return rows;
 }
 
+/**
+ * One row of the finance ledger: an instalment, or a work item that has none
+ * yet.
+ *
+ * `computeCockpitFinanceRows` is the spend ledger — one line per instalment,
+ * which is what the summary figures read. The finance grid also has to edit
+ * the money fields of a work item that never got an instalment, so it lists
+ * every work item at least once; a node with instalments keeps one row each,
+ * and a structural row keeps any instalments older data filed on it instead
+ * of hiding them.
+ */
+export interface CockpitFinanceLedgerRow {
+  node: CockpitNode;
+  /** Root branch this row rolls up to, for the module column. */
+  rootCode: string;
+  rootColor: string;
+  budget: number;
+  /** null for a work item that has no instalment yet. */
+  payment: CockpitPayment | null;
+  amount: number;
+  paid: boolean;
+}
+
+export function computeCockpitFinanceLedger(
+  tree: CockpitTreeNode[],
+  payments: CockpitPayment[],
+  contextNodeIds?: ReadonlySet<string>,
+): CockpitFinanceLedgerRow[] {
+  const paymentsByNode = groupPaymentsByNode(payments);
+  const rows: CockpitFinanceLedgerRow[] = [];
+
+  const walk = (entry: CockpitTreeNode, rootCode: string, rootColor: string) => {
+    const own = paymentsByNode.get(entry.node.id) ?? [];
+    if (!contextNodeIds?.has(entry.node.id)) {
+      const paid = cockpitPaymentTone(entry.node.exec_status) === "paid";
+      const base = {
+        node: entry.node,
+        rootCode,
+        rootColor,
+        budget: entry.node.budget_amount ?? 0,
+        paid,
+      };
+      if (own.length > 0) {
+        for (const payment of own) rows.push({ ...base, payment, amount: payment.amount });
+      } else if (isCockpitWorkItem(entry.node, entry.depth)) {
+        rows.push({ ...base, payment: null, amount: 0 });
+      }
+    }
+    entry.children.forEach((child) => walk(child, rootCode, rootColor));
+  };
+
+  tree.forEach((root) => walk(root, root.node.code, root.color));
+  return rows;
+}
+
 // ---------------------------------------------------------------------------
 // Meetings
 // ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@
 // where they are read.
 
 import { useMemo, useRef, useState } from "react";
-import { Wallet } from "lucide-react";
+import { Plus, Trash2, Wallet } from "lucide-react";
 import { CockpitViewHeading } from "./cockpit-view-heading";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useNavigation } from "../../navigation";
@@ -27,13 +27,19 @@ import {
   buildCockpitTree,
   cockpitPaymentTone,
   cockpitPaymentToneColor,
-  computeCockpitFinanceRows,
+  computeCockpitFinanceLedger,
   splitCockpitVendors,
+  useCreateCockpitPayment,
+  useDeleteCockpitPayment,
+  useUpdateCockpitPayment,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { useT } from "../../i18n";
-import { EditableNumber, EditableSuggest, EditableText, EditableTokens } from "./cockpit-fields";
+import { EditableDate, EditableNumber, EditableSuggest, EditableText, EditableTokens } from "./cockpit-fields";
 import { ExecStatusChip } from "./cockpit-status";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@multica/ui/components/ui/alert-dialog";
+import { Button } from "@multica/ui/components/ui/button";
 
 export interface CockpitTableProps {
   board: Pick<CockpitBoard, "nodes" | "payments">;
@@ -119,10 +125,17 @@ export function CockpitTable({
 }: CockpitTableProps) {
   const { t } = useT("cockpit");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // An instalment is removed only after the dialog says which one: the grid
+  // is dense and a stray click used to be the whole confirmation.
+  const [removing, setRemoving] = useState<{ id: string; label: string } | null>(null);
+  const [removeError, setRemoveError] = useState("");
 
   const tableRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const wsId = useWorkspaceId(); const navigation = useNavigation();
+  const createPayment = useCreateCockpitPayment(wsId);
+  const patchPayment = useUpdateCockpitPayment(wsId);
+  const removePayment = useDeleteCockpitPayment(wsId);
   useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, cockpitScope(navigation.searchParams)), "finance"]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
   const scopedTree = useMemo(() => {
@@ -130,9 +143,12 @@ export function CockpitTable({
     return tree.filter((entry) => rootIds.has(entry.node.id));
   }, [tree, rootIds]);
 
+  // Every work item appears at least once (its instalment rows, or a single
+  // row with no instalment yet) so its money fields are editable here rather
+  // than in the node panel.
   const financeRows = useMemo(
     () =>
-      computeCockpitFinanceRows(scopedTree, board.payments, contextNodeIds).filter((row) =>
+      computeCockpitFinanceLedger(scopedTree, board.payments, contextNodeIds).filter((row) =>
         matches(row.node, query, row.node.code),
       ),
     [scopedTree, board.payments, query, contextNodeIds],
@@ -143,7 +159,12 @@ export function CockpitTable({
   // and the virtualizer would key two rows the same.
   const rowVirtualizer = useVirtualizer({ count: visibleCount, getScrollElement: () => scrollRef.current,
     estimateSize: () => 56, overscan: 6, scrollMargin: 36, initialRect: { width: 1200, height: 700 },
-    getItemKey: (index) => financeRows[index]!.payment.id });
+    getItemKey: (index) => {
+      const row = financeRows[index]!;
+      // One row per instalment; a work item without one still needs a stable
+      // key of its own.
+      return row.payment?.id ?? `node:${row.node.id}`;
+    } });
   const virtualRows = rowVirtualizer.getVirtualItems();
   const topSpace = Math.max(0, (virtualRows[0]?.start ?? 36) - 36);
   const bottomSpace = Math.max(0, rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 36) + 36);
@@ -203,9 +224,10 @@ export function CockpitTable({
             {virtualRows.map((virtual) => {
               const row = financeRows[virtual.index]!;
               const node = row.node;
+              const payment = row.payment;
               return (
                 <tr
-                  key={row.payment.id}
+                  key={payment?.id ?? `node:${node.id}`}
                   ref={rowVirtualizer.measureElement}
                   data-index={virtual.index}
                   aria-rowindex={virtual.index + 2}
@@ -248,7 +270,16 @@ export function CockpitTable({
                     />
                   </Td>
                   <Td>
-                    <Derived value={row.payment.label} />
+                    {payment ? (
+                      <EditableText
+                        value={payment.label}
+                        onCommit={(label) => patchPayment.mutate({ id: payment.id, patch: { label } })}
+                        label={t(($) => $.payment.label)}
+                        placeholder={t(($) => $.payment.label)}
+                        disabled={readOnly}
+                        displayClassName="w-24 text-caption"
+                      />
+                    ) : <span className="text-caption text-faint-foreground">—</span>}
                   </Td>
                   <Td className="max-w-64">
                     <EditableText
@@ -262,10 +293,18 @@ export function CockpitTable({
                   </Td>
                   {/* This instalment's date, not the task's first payment. */}
                   <Td>
-                    <Derived value={row.payment.pay_date ?? ""} />
+                    {payment ? (
+                      <EditableDate
+                        value={payment.pay_date}
+                        onCommit={(pay_date) => patchPayment.mutate({ id: payment.id, patch: { pay_date } })}
+                        label={t(($) => $.payment.date)}
+                        placeholder={emptyLabel}
+                        disabled={readOnly}
+                      />
+                    ) : <span className="text-caption text-faint-foreground">—</span>}
                   </Td>
                   <Td>
-                    <Derived value={row.paid ? (row.payment.pay_date ?? "") : ""} />
+                    <Derived value={row.paid ? (payment?.pay_date ?? "") : ""} />
                   </Td>
                   <Td className="text-right">
                     <EditableNumber
@@ -278,9 +317,16 @@ export function CockpitTable({
                     />
                   </Td>
                   <Td className="text-right">
-                    <Derived
-                      value={formatAmount(row.amount)}
-                    />
+                    {payment ? (
+                      <EditableNumber
+                        value={payment.amount}
+                        onCommit={(amount) => patchPayment.mutate({ id: payment.id, patch: { amount: amount ?? 0 } })}
+                        label={t(($) => $.payment.amount)}
+                        placeholder="0"
+                        disabled={readOnly}
+                        className="text-right"
+                      />
+                    ) : <span className="text-caption text-faint-foreground">—</span>}
                   </Td>
                   <Td>
                     <EditableTokens
@@ -321,16 +367,34 @@ export function CockpitTable({
                     />
                   </Td>
                   <Td>
-                    <span
-                      className="inline-flex whitespace-nowrap rounded-full border px-1.5 py-px text-micro font-medium"
-                      style={{
-                        color: cockpitPaymentToneColor(cockpitPaymentTone(node.exec_status)),
-                        borderColor: "color-mix(in srgb, currentColor 35%, transparent)",
-                        backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
-                      }}
-                    >
-                      {row.paid ? t(($) => $.finance.payment_paid) : t(($) => $.finance.payment_planned)}
-                    </span>
+                    <div className="flex items-center gap-1 whitespace-nowrap">
+                      <span
+                        className="inline-flex whitespace-nowrap rounded-full border px-1.5 py-px text-micro font-medium"
+                        style={{
+                          color: cockpitPaymentToneColor(cockpitPaymentTone(node.exec_status)),
+                          borderColor: "color-mix(in srgb, currentColor 35%, transparent)",
+                          backgroundColor: "color-mix(in srgb, currentColor 8%, transparent)",
+                        }}
+                      >
+                        {row.paid ? t(($) => $.finance.payment_paid) : t(($) => $.finance.payment_planned)}
+                      </span>
+                      {payment ? (
+                        <button type="button" disabled={readOnly} aria-label={t(($) => $.payment.delete)}
+                          onClick={() => { setRemoveError(""); setRemoving({ id: payment.id, label: payment.label }); }}
+                          className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive disabled:opacity-40">
+                          <Trash2 className="size-3" aria-hidden />
+                        </button>
+                      ) : (
+                        <button type="button" disabled={readOnly || createPayment.isPending} aria-label={t(($) => $.node.add_payment)}
+                          onClick={() => createPayment.mutate({
+                            nodeId: node.id,
+                            body: { label: t(($) => $.payment.new_label, { index: (board.payments.filter((item) => item.node_id === node.id).length || 0) + 1 }), amount: 0, position: 0 },
+                          })}
+                          className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40">
+                          <Plus className="size-3" aria-hidden />
+                        </button>
+                      )}
+                    </div>
                   </Td>
                 </tr>
               );
@@ -339,6 +403,25 @@ export function CockpitTable({
           </tbody>
         </table>
       </div>
+      <AlertDialog open={Boolean(removing)} onOpenChange={(open) => { if (!open && !removePayment.isPending) setRemoving(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(($) => $.payment.delete)}</AlertDialogTitle>
+            <AlertDialogDescription>{t(($) => $.confirmation.delete_description, { label: removing?.label ?? "" })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {removeError && <p role="alert" className="text-caption text-destructive">{removeError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removePayment.isPending}>{t(($) => $.binding.cancel)}</AlertDialogCancel>
+            <Button type="button" variant="destructive" disabled={removePayment.isPending || !removing} onClick={() => {
+              if (!removing) return;
+              removePayment.mutate(removing.id, {
+                onSuccess: () => setRemoving(null),
+                onError: (error) => setRemoveError(error instanceof Error ? error.message : t(($) => $.errors.save_failed)),
+              });
+            }}>{t(($) => $.payment.delete)}</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

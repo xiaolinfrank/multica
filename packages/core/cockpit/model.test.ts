@@ -18,6 +18,7 @@ import {
   computeCockpitDigest,
   computeCockpitFinance,
   computeCockpitFinanceRows,
+  computeCockpitFinanceLedger,
   computeCockpitMonths,
   computeCockpitRollups,
   flattenCockpitTree,
@@ -683,6 +684,34 @@ describe("computeCockpitFinanceRows", () => {
       { id: "p4", node_id: "d", label: "待定", pay_date: null, amount: 8, position: 0 },
     ]);
     expect(rows.at(-1)).toMatchObject({ payment: { id: "p4", pay_date: null }, amount: 8, budget: 0, paid: false });
+  });
+});
+
+describe("computeCockpitFinanceLedger", () => {
+  const tree = buildCockpitTree([
+    node({ id: "r", code: "L1-01", color: "#2563eb" }),
+    node({ id: "m", code: "01.01", parent_id: "r", kind: "module", budget_amount: 100 }),
+    node({ id: "w1", code: "01.01.01", parent_id: "m", budget_amount: 60 }),
+    node({ id: "w2", code: "01.01.02", parent_id: "m", budget_amount: 40 }),
+  ]);
+  const payments = [{ id: "p1", node_id: "w1", label: "首期", pay_date: "2026-03-01", amount: 60, position: 0 }];
+
+  it("lists a work item with no instalment, so its money fields stay editable", () => {
+    const rows = computeCockpitFinanceLedger(tree, payments);
+    expect(rows.map((row) => [row.node.code, row.payment?.id ?? null, row.amount])).toEqual([
+      ["01.01.01", "p1", 60],
+      ["01.01.02", null, 0],
+    ]);
+    expect(rows[1]).toMatchObject({ budget: 40, paid: false, rootCode: "L1-01", rootColor: "#2563eb" });
+  });
+
+  it("keeps an instalment filed on a structural row, and drops context rows", () => {
+    const legacy = [{ id: "p9", node_id: "m", label: "旧", pay_date: "2026-01-01", amount: 5, position: 0 }];
+    const rows = computeCockpitFinanceLedger(tree, legacy, new Set(["w2"]));
+    expect(rows.map((row) => [row.node.code, row.payment?.id ?? null])).toEqual([
+      ["01.01", "p9"],
+      ["01.01.01", null],
+    ]);
   });
 });
 
