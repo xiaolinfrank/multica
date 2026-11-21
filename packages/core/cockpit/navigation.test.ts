@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingPreparationPath, cockpitAreaPath, cockpitDestination, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
+import { cockpitArtifactPath, cockpitArtifactReturn, cockpitMeetingContextPath, cockpitMeetingPreparationPath, cockpitAreaPath, cockpitDestination, cockpitNodeMeetingsPath, cockpitObjectPath, cockpitScope, cockpitScopedPath, cockpitShellDestination, cockpitSurfacePath } from "./navigation";
 
 describe("cockpit destinations", () => {
   it("opens and closes maintenance operations in details without changing the meeting or register context", () => {
@@ -67,6 +67,18 @@ describe("cockpit destinations", () => {
       .toMatchObject({ nodeView: null, meetingView: null });
     expect(cockpitDestination(new URLSearchParams("meeting_view=resources&node_view=details")))
       .toMatchObject({ area: "work", nodeView: null, meetingView: null });
+  });
+});
+
+describe("cockpitNodeMeetingsPath", () => {
+  it("keeps the node filter as its own parameter beside the scope", () => {
+    const url = new URL(cockpitNodeMeetingsPath("/acme/cockpit", "n1", { projectId: "p1", moduleId: "m1" }), "https://example.test");
+    expect(url.searchParams.get("tab")).toBe("meetings");
+    expect(url.searchParams.get("meeting_node")).toBe("n1");
+    // The scope stays intact: a second "?" would swallow the filter into the
+    // module's value.
+    expect(url.searchParams.get("project")).toBe("p1");
+    expect(url.searchParams.get("module")).toBe("m1");
   });
 });
 

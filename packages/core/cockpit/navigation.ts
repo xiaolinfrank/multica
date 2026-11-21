@@ -53,6 +53,16 @@ export function cockpitSurfacePath(pathname: string, surface: CockpitSurface, sc
   return cockpitScopedPath(pathname, query, scope);
 }
 
+/** The meeting register, filtered to one node. Built from the surface's own
+ *  query so the filter cannot land inside another parameter's value. */
+export function cockpitNodeMeetingsPath(pathname: string, nodeId: string, scope: CockpitScope = EMPTY_COCKPIT_SCOPE): string {
+  const base = cockpitSurfacePath(pathname, "meetings", scope);
+  const [path, query = ""] = base.split("?");
+  const search = new URLSearchParams(query);
+  search.set("meeting_node", nodeId);
+  return `${path}?${search}`;
+}
+
 export function cockpitShellDestination(search: { get: (name: string) => string | null }): {
   surface: CockpitSurface; planView: CockpitPlanView; governanceView: CockpitGovernanceView; artifactView: CockpitArtifactView; scope: CockpitScope;
 } {

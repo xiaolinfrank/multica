@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { cockpitNodeDetailOptions, cockpitObjectPath, cockpitSurfacePath,
+import { cockpitNodeDetailOptions, cockpitNodeMeetingsPath, cockpitObjectPath,
   useDeleteCockpitNode, useUpdateCockpitNode,
   type CockpitScope, type CockpitNodeView, type CockpitPlanView } from "@multica/core/cockpit";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
@@ -44,8 +44,7 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
   const executionSurface = detail.children_count === 0 && !node.project_id && !node.module_id;
   // The register filters by node; the panel only says how many there are and
   // hands the reader over.
-  const meetings = new URLSearchParams({ meeting_node: nodeId });
-  const meetingsHref = `${cockpitSurfacePath(navigation.pathname, "meetings", scope)}?${meetings}`;
+  const meetingsHref = cockpitNodeMeetingsPath(navigation.pathname, nodeId, scope);
   // The breadcrumb quotes the parent's display code like every other surface.
   const parent = detail.ancestors.find((entry) => entry.id === node.parent_id);
   return <><CockpitNodePanel node={node} section={section} onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view, planView }, scope))}
