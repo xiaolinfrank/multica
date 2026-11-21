@@ -50,11 +50,11 @@ export function PlanRowName({
             load on demand rather than with the tree. */}
         {expandable ? (
           foldDisabled ? (
-            // Not aria-disabled on purpose: the button keeps its "open" state
-            // so screen readers hear that children are showing; it simply has
-            // no effect while the search owns the visible set.
+            // Not aria-disabled on purpose: the placeholder keeps the row's
+            // actual direction so screen readers and eyes hear the truth; it
+            // simply has no effect while the search owns the visible set.
             <span className="p-0.5 text-faint-foreground" aria-hidden>
-              <ChevronDown className="size-3" />
+              {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
             </span>
           ) : (
             <button type="button" aria-label={open ? t(($) => $.plan_tree.collapse) : t(($) => $.plan_tree.expand)}

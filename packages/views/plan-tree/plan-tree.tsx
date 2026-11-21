@@ -249,18 +249,21 @@ export function PlanTree({
       case "ArrowUp": event.preventDefault(); focusRow(rows[Math.max(0, index - 1)]!.node.id); break;
       case "Home": event.preventDefault(); focusRow(rows[0]!.node.id); break;
       case "End": event.preventDefault(); focusRow(rows[rows.length - 1]!.node.id); break;
+      // While a search filters the tree, folding is not the reader's call:
+      // the query decides what shows, so the arrows only move the cursor and
+      // never write a fold the cleared search would then reveal.
       case "ArrowRight":
         event.preventDefault();
-        if (expandable && !expanded.has(row.node.id)) setRowOpen(row, true);
+        if (searching) focusRow(rows[Math.min(rows.length - 1, index + 1)]!.node.id);
+        else if (expandable && !expanded.has(row.node.id)) setRowOpen(row, true);
         else if (expandable) focusRow(rows[Math.min(rows.length - 1, index + 1)]!.node.id);
         break;
       case "ArrowLeft":
         event.preventDefault();
-        if (expandable && expanded.has(row.node.id)) setRowOpen(row, false);
-        else {
+        if (searching || !expandable || !expanded.has(row.node.id)) {
           const parent = rows.find((candidate) => candidate.node.id === row.node.parent_id);
           if (parent) focusRow(parent.node.id);
-        }
+        } else setRowOpen(row, false);
         break;
       case "Enter": event.preventDefault(); onSelect(row.node.id); break;
       case " ":
@@ -335,13 +338,19 @@ export function PlanTree({
           const patchable = !readOnly && onPatchNode != null && !contextNodeIds.has(row.node.id);
           const isActive = activeId != null ? activeId === row.node.id : selectedId === row.node.id;
           const expandable = row.hasChildren || row.kind === "work_item";
+          // A search keeps a hit's parents on screen, so those rows read as
+          // open while it runs — the query, not the stored fold, decides what
+          // is visible. A work item's issues are not part of that filtered
+          // set: its row reports the fold it actually has, and only then
+          // reads them.
+          const shownOpen = searching && row.kind !== "work_item" ? true : open;
           const canRename = planRowRenameTarget(row) != null;
           const canAddChild = row.kind === "project" ? Boolean(row.node.project_id) : row.kind === "module" ? Boolean(row.node.module_id) : false;
           const canAddIssue = createScopeOf(row) != null;
           return (
             <Fragment key={row.node.id}>
             <div role="row" aria-level={row.depth + 1} aria-selected={selectedId === row.node.id}
-              aria-expanded={expandable ? (searching ? true : open) : undefined}
+              aria-expanded={expandable ? shownOpen : undefined}
               tabIndex={isActive ? 0 : -1}
               data-node-id={row.node.id} data-kind={row.kind} data-active={isActive || undefined}
               onFocus={() => setActiveId(row.node.id)}
@@ -359,7 +368,7 @@ export function PlanTree({
                 row.kind === "project" && "bg-muted/30 font-semibold")}>
               <PlanRowName
                 row={row}
-                open={open}
+                open={shownOpen}
                 locked={!editable || !canRename}
                 foldDisabled={searching}
                 renaming={renaming === row.node.id}

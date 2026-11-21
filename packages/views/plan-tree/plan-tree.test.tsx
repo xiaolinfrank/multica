@@ -201,6 +201,57 @@ describe("PlanTree", () => {
     expect(within(rowOf("module")).queryByRole("button", { name: enCockpit.plan_tree.collapse })).toBeNull();
   });
 
+  it("leaves the fold state alone when an arrow key runs during a search", async () => {
+    apiMock.getCockpitPlan.mockResolvedValue(reconciled);
+    const { rerenderWithQuery } = show();
+    const grid = await screen.findByRole("treegrid");
+    // Fold the module, then search into it: the hit is painted under an open
+    // module, but ArrowRight must not quietly store that as the new fold.
+    fireEvent.click(within(rowOf("module")).getByRole("button", { name: enCockpit.plan_tree.collapse }));
+    await waitFor(() => expect(rowOf("module")).toHaveAttribute("aria-expanded", "false"));
+    await rerenderWithQuery("工作项一");
+    fireEvent.keyDown(grid, { key: "Home" });
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    await waitFor(() => expect(rowOf("module")).toHaveAttribute("data-active", "true"));
+    fireEvent.keyDown(rowOf("module"), { key: "ArrowRight" });
+    await rerenderWithQuery("");
+    expect(rowOf("module")).toHaveAttribute("aria-expanded", "false");
+    // And the mirror: an open module stays open when ArrowLeft runs mid-search.
+    fireEvent.click(within(rowOf("module")).getByRole("button", { name: enCockpit.plan_tree.expand }));
+    await waitFor(() => expect(rowOf("module")).toHaveAttribute("aria-expanded", "true"));
+    await rerenderWithQuery("工作项一");
+    fireEvent.keyDown(grid, { key: "Home" });
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    await waitFor(() => expect(rowOf("module")).toHaveAttribute("data-active", "true"));
+    fireEvent.keyDown(rowOf("module"), { key: "ArrowLeft" });
+    await rerenderWithQuery("");
+    expect(rowOf("module")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("01.01.01")).toBeInTheDocument();
+  });
+
+  it("reports a collapsed work item hit as collapsed and reads none of its issues", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
+    show({ query: "工作项一" });
+    await screen.findAllByRole("row");
+    // The row is a hit, not an expansion: it says closed and never asks for
+    // the issues a closed row does not show.
+    expect(rowOf("work_item")).toHaveAttribute("aria-expanded", "false");
+    expect(apiMock.getCockpitNodeTasks).not.toHaveBeenCalled();
+  });
+
+  it("keeps an expanded work item's issues on screen while it is a search hit", async () => {
+    apiMock.getCockpitPlan.mockResolvedValue(reconciled);
+    const { rerenderWithQuery } = show();
+    await screen.findAllByRole("row");
+    fireEvent.click(within(rowOf("work_item")).getByRole("button", { name: enCockpit.plan_tree.expand }));
+    expect(await screen.findByText(/首个任务/)).toBeInTheDocument();
+    await rerenderWithQuery("工作项一");
+    expect(rowOf("work_item")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/首个任务/)).toBeInTheDocument();
+    // One read, not one per search keystroke: the same page stays cached.
+    expect(apiMock.getCockpitNodeTasks).toHaveBeenCalledTimes(1);
+  });
+
   it("creates a module inline from the project row", async () => {
     apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
     show();
