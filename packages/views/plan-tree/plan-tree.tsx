@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Ellipsis, Plus } from "@multica/ui/icons";
 import {
   cockpitNodeTasksOptions,
   cockpitPlanOptions,
@@ -20,7 +19,7 @@ import { useModalStore } from "@multica/core/modals";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import { useLocale, useT } from "../i18n";
 import { formatDateOnly } from "@multica/core/issues/date";
-import type { CockpitNode, CockpitNodePatch } from "@multica/core/types";
+import type { CockpitNodePatch } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -30,6 +29,7 @@ import { useNavigation } from "../navigation";
 import { buildPlanRows, planIssueProgress, planModules, planNodeKind, type PlanRow } from "./plan-rows";
 import { planRowRenameTarget, usePlanRowRename } from "./use-plan-row-rename";
 import { PlanRowName } from "./plan-row-name";
+import { CreateRow, PlanRowActions } from "./plan-row-actions";
 import { EditableDate, EditableSuggest } from "../cockpit/components/cockpit-fields";
 import { StatusChip } from "../cockpit/components/cockpit-status";
 import { cn } from "@multica/ui/lib/utils";
@@ -77,7 +77,6 @@ export function PlanTree({
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ parentId: string; kind: "module" | "work_item" } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [menuId, setMenuId] = useState<string | null>(null);
   const [confirmRenumber, setConfirmRenumber] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deletingModule, setDeletingModule] = useState<PlanRow | null>(null);
@@ -423,42 +422,22 @@ export function PlanTree({
                 </>
               )}
               {editable && (
-                <span className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-                  {row.kind !== "work_item" && canAddChild && (
-                    <button type="button" aria-label={t(($) => $.plan_tree.add_child)}
-                      onClick={() => { creationKey.current = null; setCreating({ parentId: row.node.id, kind: row.kind === "project" ? "module" : "work_item" }); }}
-                      className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
-                      <Plus className="size-3" aria-hidden />
-                    </button>
-                  )}
-                  {row.kind !== "project" && canAddIssue && (
-                    <button type="button" aria-label={t(($) => $.plan_tree.add_issue)} onClick={() => openCreateIssue(row)}
-                      className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
-                      <Plus className="size-3" aria-hidden />
-                    </button>
-                  )}
-                  <button type="button" aria-label={t(($) => $.plan_tree.more)} aria-expanded={menuId === row.node.id}
-                    onClick={() => setMenuId(menuId === row.node.id ? null : row.node.id)}
-                    className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground">
-                    <Ellipsis className="size-3" aria-hidden />
-                  </button>
-                </span>
-              )}
-              {menuId === row.node.id && (
-                <RowMenu
+                <PlanRowActions
                   row={row}
                   modules={modules}
+                  onAddChild={row.kind !== "work_item" && canAddChild
+                    ? () => { creationKey.current = null; setCreating({ parentId: row.node.id, kind: row.kind === "project" ? "module" : "work_item" }); }
+                    : undefined}
+                  onAddIssue={row.kind !== "project" && canAddIssue ? () => openCreateIssue(row) : undefined}
                   onMove={(parentId) => {
-                    setMenuId(null);
                     if (row.kind !== "work_item") return;
                     moveWorkItem.mutate({ id: row.node.id, parent_id: parentId }, {
                       onSuccess: () => setNotice(t(($) => $.plan_tree.moved)),
                       onError: report,
                     });
                   }}
-                  onRenumber={() => { setMenuId(null); setConfirmRenumber(row.node.id); }}
+                  onRenumber={() => setConfirmRenumber(row.node.id)}
                   onDelete={() => {
-                    setMenuId(null);
                     if (row.kind === "module") { setDeletingModuleError(""); setDeletingModule(row); }
                     else setConfirmDelete(row.node.id);
                   }}
@@ -575,63 +554,5 @@ function IssueRows({ wsId, nodeId, depth, listHref }: {
         </div>
       )}
     </>
-  );
-}
-
-/** Inline create field for a module or a work item. */
-function CreateRow({ label, onSubmit, onCancel }: {
-  label: string; onSubmit: (name: string) => void | Promise<void>; onCancel: () => void;
-}) {
-  const { t: t2 } = useT("cockpit");
-  const [value, setValue] = useState("");
-  return (
-    <div role="row" className="flex items-center gap-1 border-b border-border/60 bg-muted/40 px-2 py-1 text-caption">
-      <input autoFocus value={value} placeholder={label} onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); const next = value.trim(); if (next) void onSubmit(next); }
-          if (e.key === "Escape") { e.preventDefault(); onCancel(); }
-        }}
-        className="min-w-0 flex-1 rounded-sm border border-input bg-background px-1 text-caption" />
-      <button type="button" className="text-primary" disabled={!value.trim()}
-        onClick={() => { const next = value.trim(); if (next) void onSubmit(next); }}>↵</button>
-      <button type="button" className="text-muted-foreground" onClick={onCancel}>{t2(($) => $.plan_tree.cancel)}</button>
-    </div>
-  );
-}
-
-/** The row's "…" menu. Only the actions the level supports appear. */
-function RowMenu({ row, modules, onMove, onRenumber, onDelete }: {
-  row: PlanRow;
-  modules: CockpitNode[];
-  onMove: (parentId: string) => void;
-  onRenumber: () => void;
-  onDelete: () => void;
-}) {
-  const { t } = useT("cockpit");
-  const [moving, setMoving] = useState(false);
-  return (
-    <div role="menu" className="flex flex-col gap-1 border-b border-border/60 bg-popover px-3 py-1.5 text-caption">
-      {row.kind === "work_item" && !moving && (
-        <button type="button" role="menuitem" className="text-left" onClick={() => setMoving(true)}>{t(($) => $.plan_tree.move)}</button>
-      )}
-      {moving && (
-        <label className="flex items-center gap-2">
-          <span className="text-muted-foreground">{t(($) => $.plan_tree.move_to)}</span>
-          <select className="rounded-sm border border-input bg-background px-1" defaultValue=""
-            onChange={(e) => { if (e.target.value) onMove(e.target.value); }}>
-            <option value="" disabled>{t(($) => $.plan_tree.choose_module)}</option>
-            {modules.filter((m) => m.id !== row.node.parent_id).map((m) => (
-              <option key={m.id} value={m.id}>{m.code} {m.name}</option>
-            ))}
-          </select>
-        </label>
-      )}
-      {row.kind !== "work_item" && (
-        <button type="button" role="menuitem" className="text-left" onClick={onRenumber}>{t(($) => $.plan_tree.renumber)}</button>
-      )}
-      {row.kind !== "project" && (
-        <button type="button" role="menuitem" className="text-left text-destructive" onClick={onDelete}>{t(($) => $.plan_tree.delete)}</button>
-      )}
-    </div>
   );
 }

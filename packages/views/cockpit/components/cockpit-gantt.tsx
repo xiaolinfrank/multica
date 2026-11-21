@@ -47,6 +47,7 @@ import {
   groupPaymentsByNode,
   groupSubtreePayments,
   cockpitPlanMeetingWindowOptions, cockpitScope, cockpitSurfacePath, cockpitScopeViewKey,
+  useCreateCockpitWorkItem, useDeleteCockpitWorkItem, useMoveCockpitWorkItem, useRenumberCockpitChildren,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
   parseDay,
@@ -70,9 +71,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useLocale, useT } from "../../i18n";
+import { useCreateModule, useDeleteModule } from "@multica/core/modules";
+import { useModalStore } from "@multica/core/modals";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@multica/ui/components/ui/alert-dialog";
 import { EditableSuggest, ProgressField } from "./cockpit-fields";
 import { PlanRowName } from "../../plan-tree/plan-row-name";
-import { planRowFor } from "../../plan-tree/plan-rows";
+import { CreateRow, PlanRowActions } from "../../plan-tree/plan-row-actions";
+import { planModules, planRowFor, type PlanRow } from "../../plan-tree/plan-rows";
 import { planRowRenameTarget, usePlanRowRename } from "../../plan-tree/use-plan-row-rename";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { StatusChip } from "./cockpit-status";
@@ -666,14 +672,25 @@ export function CockpitGantt({
   const onSelect = onSelectNode;
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameError, setRenameError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [creating, setCreating] = useState<{ parentId: string; kind: "module" | "work_item" } | null>(null);
+  const [confirming, setConfirming] = useState<{ kind: "delete" | "renumber"; row: PlanRow } | null>(null);
   const renameRow = usePlanRowRename(wsId);
+  const createModule = useCreateModule();
+  const deleteModule = useDeleteModule();
+  const createWorkItem = useCreateCockpitWorkItem(wsId);
+  const moveWorkItem = useMoveCockpitWorkItem(wsId);
+  const deleteWorkItem = useDeleteCockpitWorkItem(wsId);
+  const renumber = useRenumberCockpitChildren(wsId);
+  const createKey = useRef<string | null>(null);
   const [navOpen, setNavOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastTodayScroll = useRef({ nonce: 0, dayWidth: 0, axisStart: 0 });
   useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, scope), "gantt"]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
 
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
+  const modules = useMemo(() => planModules(board.nodes), [board.nodes]);
   const scopedTree = useMemo(() => {
     if (rootIds.size === 0) return tree;
     const picked = tree.filter((entry) => rootIds.has(entry.node.id));
@@ -697,6 +714,59 @@ export function CockpitGantt({
   const topPadding = renderAllRows ? 0 : Math.max(0, (virtualRows[0]?.start ?? headerHeight) - headerHeight);
   const bottomPadding = renderAllRows ? 0 : Math.max(0, rows.length * ROW_HEIGHT - topPadding - renderedRows.length * ROW_HEIGHT);
   const nodeById = useMemo(() => new Map(board.nodes.map((n) => [n.id, n])), [board.nodes]);
+  // Structure writes wait for the reconcile, exactly as the tree's do: a
+  // board without rows can still be reconciled, and a missing stamp means
+  // the module/work-item rows do not exist yet.
+  const structureLocked = Boolean(readOnly) || (board.nodes.length > 0 && !board.cockpit.plan_reconciled_at);
+  const failAction = (error: unknown) => setActionError(error instanceof Error ? error.message : String(error));
+  const filingOf = (row: PlanRow): { project_id: string; module_id: string } | null => {
+    if (row.kind === "module") {
+      return row.node.project_id && row.node.module_id
+        ? { project_id: row.node.project_id, module_id: row.node.module_id } : null;
+    }
+    if (row.kind === "work_item") {
+      const parent = row.node.parent_id ? nodeById.get(row.node.parent_id) : undefined;
+      return parent?.project_id && parent.module_id
+        ? { project_id: parent.project_id, module_id: parent.module_id } : null;
+    }
+    return null;
+  };
+  const submitCreate = async (row: PlanRow, name: string) => {
+    try {
+      if (creating?.kind === "module") {
+        if (!row.node.project_id) return;
+        await createModule.mutateAsync({ project_id: row.node.project_id, title: name });
+      } else {
+        if (!row.node.module_id) return;
+        // A retry replays the same key instead of creating a second row.
+        createKey.current ??= crypto.randomUUID();
+        await createWorkItem.mutateAsync({ module_id: row.node.module_id, name, creation_key: createKey.current });
+      }
+      setCreating(null);
+      createKey.current = null;
+    } catch (error) {
+      failAction(error);
+    }
+  };
+  const runConfirmed = () => {
+    if (!confirming) return;
+    const row = confirming.row;
+    const done = () => { setConfirming(null); setActionError(null); };
+    const fail = (error: unknown) => { setConfirming(null); failAction(error); };
+    if (confirming.kind === "delete") {
+      if (row.kind === "module") {
+        if (!row.node.module_id) return;
+        deleteModule.mutate(row.node.module_id, { onSuccess: done, onError: fail });
+      } else {
+        deleteWorkItem.mutate(row.node.id, { onSuccess: done, onError: fail });
+      }
+      return;
+    }
+    renumber.mutate(row.node.id, {
+      onSuccess: (result) => { setConfirming(null); setActionError(null); setActionNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })); },
+      onError: fail,
+    });
+  };
   // Whose module a row belongs to, and who answers for that module — the
   // owner a direction row inherits and the mainline the goal marker pins to.
   const rootOf = useMemo(() => {
@@ -983,7 +1053,8 @@ export function CockpitGantt({
         </div>
       )}
 
-      {renameError && <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive"><span className="min-w-0 flex-1">{renameError}</span><button type="button" className="underline" onClick={() => setRenameError(null)}>{t(($) => $.plan_tree.dismiss)}</button></div>}
+      {actionError && <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive"><span className="min-w-0 flex-1">{actionError}</span><button type="button" className="underline" onClick={() => setActionError(null)}>{t(($) => $.plan_tree.dismiss)}</button></div>}
+      {actionNotice && <p role="status" className="border-b px-3 py-2 text-caption text-muted-foreground">{actionNotice}</p>}
       {markerError && <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive"><span>{t(($) => $.meeting_center.marker_failed)}</span><Button type="button" variant="outline" size="sm" onClick={() => markerQueries.forEach((query) => { void query.refetch(); })}>{t(($) => $.binding.retry)}</Button></div>}
       {renderAllRows && <p className="px-3 py-2 text-caption text-muted-foreground">{t(($) => $.meeting_center.export_markers)}</p>}
       <div ref={scrollRef} data-cockpit-scroll className="min-h-0 min-w-0 flex-1 overflow-auto">
@@ -1038,7 +1109,7 @@ export function CockpitGantt({
                   onMouseLeave={() => setHoveredId((id) => (id === node.id ? null : id))}
                   onClick={toggleRow(entry)}
                   className={cn(
-                    "flex items-center gap-2 border-b border-border/50",
+                    "group flex items-center gap-2 border-b border-border/50",
                     compact ? "px-1" : "px-3",
                     isBranch && "cursor-pointer",
                     // The selected row must stay identifiable while hovered, so
@@ -1057,31 +1128,65 @@ export function CockpitGantt({
                       : {}),
                   }}
                 >
-                  <PlanRowName
-                    row={planRow}
-                    open={!collapsed.has(node.id)}
-                    locked={readOnly || contextNodeIds.has(node.id) || planRowRenameTarget(planRow) == null}
-                    renaming={renamingId === node.id}
-                    compact={compact}
-                    indent={INDENT}
-                    expandable={isBranch}
-                    onToggle={() => onToggleCollapse(node.id)}
-                    onSelect={() => onSelect(node.id)}
-                    onStartRename={() => { setRenameError(null); setRenamingId(node.id); }}
-                    onSubmitRename={async (name) => {
-                      // L1/L2 titles live on the project/module record; a work
-                      // item is renamed as a node. Same hook as the tree, and
-                      // the same draft rule: a refusal keeps the editor open
-                      // with what was typed, ready to retry.
-                      try {
-                        await renameRow(planRow, name);
-                        setRenamingId(null);
-                      } catch (error) {
-                        setRenameError(error instanceof Error ? error.message : String(error));
-                      }
-                    }}
-                    onCancelRename={() => setRenamingId(null)}
-                  />
+                  {creating?.parentId === node.id ? (
+                    <CreateRow inline
+                      label={creating.kind === "module" ? t(($) => $.plan_tree.new_module) : t(($) => $.plan_tree.new_work_item)}
+                      onCancel={() => { setCreating(null); createKey.current = null; }}
+                      onSubmit={(name) => submitCreate(planRow, name)} />
+                  ) : (
+                    <PlanRowName
+                      row={planRow}
+                      open={!collapsed.has(node.id)}
+                      locked={readOnly || contextNodeIds.has(node.id) || planRowRenameTarget(planRow) == null}
+                      renaming={renamingId === node.id}
+                      compact={compact}
+                      indent={INDENT}
+                      expandable={isBranch}
+                      onToggle={() => onToggleCollapse(node.id)}
+                      onSelect={() => onSelect(node.id)}
+                      onStartRename={() => { setActionError(null); setRenamingId(node.id); }}
+                      onSubmitRename={async (name) => {
+                        // L1/L2 titles live on the project/module record; a work
+                        // item is renamed as a node. Same hook as the tree, and
+                        // the same draft rule: a refusal keeps the editor open
+                        // with what was typed, ready to retry.
+                        try {
+                          await renameRow(planRow, name);
+                          setRenamingId(null);
+                        } catch (error) {
+                          setActionError(error instanceof Error ? error.message : String(error));
+                        }
+                      }}
+                      onCancelRename={() => setRenamingId(null)}
+                    />
+                  )}
+                  {!structureLocked && !contextNodeIds.has(node.id) && creating?.parentId !== node.id && (
+                    <PlanRowActions
+                      row={planRow}
+                      modules={modules}
+                      onAddChild={planRow.kind === "project"
+                        ? () => { createKey.current = null; setCreating({ parentId: node.id, kind: "module" }); }
+                        : planRow.kind === "module"
+                          ? () => { createKey.current = null; setCreating({ parentId: node.id, kind: "work_item" }); }
+                          : undefined}
+                      onAddIssue={filingOf(planRow) ? () => {
+                        const filing = filingOf(planRow)!;
+                        useModalStore.getState().open("create-issue", {
+                          project_id: filing.project_id, module_id: filing.module_id,
+                          ...(planRow.kind === "work_item" ? { cockpit_node: {
+                            node_id: node.id, code: node.code, label: `${node.code} ${node.name}`.trim(),
+                            project_id: filing.project_id, module_id: filing.module_id,
+                          } } : {}),
+                        });
+                      } : undefined}
+                      onMove={(parentId) => moveWorkItem.mutate({ id: node.id, parent_id: parentId }, {
+                        onSuccess: () => setActionNotice(t(($) => $.plan_tree.moved)),
+                        onError: failAction,
+                      })}
+                      onRenumber={() => setConfirming({ kind: "renumber", row: planRow })}
+                      onDelete={() => setConfirming({ kind: "delete", row: planRow })}
+                    />
+                  )}
                     {!compact && <>
                     {/* A branch that never got broken down looks identical to a
                         finished one at a glance. It should not. */}
@@ -1713,6 +1818,26 @@ export function CockpitGantt({
           </div>
         </div>
       </div>
+      <AlertDialog open={confirming != null} onOpenChange={(open) => { if (!open) setConfirming(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirming?.kind === "renumber" ? t(($) => $.plan_tree.renumber_confirm) : t(($) => $.plan_tree.delete)}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirming?.kind === "renumber"
+                ? t(($) => $.plan_tree.renumber_confirm)
+                : t(($) => $.plan_tree.delete_confirm, { n: confirming?.row.counts?.primary_total ?? 0 })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t(($) => $.plan_tree.cancel)}</AlertDialogCancel>
+            <Button type="button" variant={confirming?.kind === "delete" ? "destructive" : "default"} onClick={runConfirmed}>
+              {t(($) => $.plan_tree.confirm)}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

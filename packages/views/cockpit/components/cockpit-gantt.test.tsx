@@ -11,10 +11,24 @@ const mocks = vi.hoisted(() => ({
   reduced: false,
   queries: vi.fn((_options: { queries: Array<{ queryKey: unknown[] }> }) => []),
   updateModule: vi.fn(async (id: string, data: { title: string }) => ({ id, title: data.title })),
+  createCockpitWorkItem: vi.fn(async (body: { module_id: string; name: string }) => ({
+    id: "w-new", cockpit_id: "cp", parent_id: "branch", code: "03.09.01", name: body.name,
+    kind: "work_item", position: 9, color: "", owner: "", collaborators: "", start_date: null,
+    end_date: null, status: "", progress: 0, deliverable: "", dependencies: "", note: "",
+    current_progress: "", vendor: "", budget_category: "", budget_amount: null, exec_status: "",
+    contract: "", source: "", updated_by_type: "", updated_by_id: null, created_at: "", updated_at: "",
+  })),
+  deleteCockpitNode: vi.fn(async () => {}),
+  moveCockpitWorkItem: vi.fn(async (id: string, patch: { parent_id: string }) => ({ id, parent_id: patch.parent_id })),
 }));
 vi.mock("@multica/core/api", async () => {
   const actual = await vi.importActual<Record<string, unknown>>("@multica/core/api");
-  return { ...actual, api: { updateModule: mocks.updateModule }, setApiInstance: () => {} };
+  return { ...actual, api: {
+    updateModule: mocks.updateModule,
+    createCockpitWorkItem: mocks.createCockpitWorkItem,
+    deleteCockpitNode: mocks.deleteCockpitNode,
+    moveCockpitWorkItem: mocks.moveCockpitWorkItem,
+  }, setApiInstance: () => {} };
 });
 vi.mock("motion/react", () => ({ useReducedMotion: () => mocks.reduced }));
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
@@ -48,7 +62,7 @@ const board: CockpitGanttProps["board"] = {
   cockpit: { id: "cp", workspace_id: "ws-1", title: "Board", goal_title: "", goal_date: null,
     summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "",
     meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null,
-    meeting_dir: "", created_at: "", updated_at: "" }, nodes, payments: [],
+    meeting_dir: "", created_at: "", updated_at: "", plan_reconciled_at: "2026-11-20T00:00:00Z" }, nodes, payments: [],
 };
 let width = 320;
 let frames: Map<number, FrameRequestCallback>;
@@ -127,6 +141,31 @@ describe("CockpitGantt responsive identity", () => {
     fireEvent.keyDown(editor, { key: "Enter" });
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("module rename refused"));
     await waitFor(() => expect(within(branch).getByRole("textbox")).toHaveValue("Second attempt"));
+  });
+
+  it("offers the tree's row actions in the name column", async () => {
+    const { tree } = show({ renderAllRows: true });
+    const branch = tree.querySelector<HTMLElement>('[data-cockpit-node="branch"]')!;
+    // "+" on a module creates a work item inline, with the same creation key
+    // rule as the tree: a retry replays the row instead of duplicating it.
+    fireEvent.click(within(branch).getByRole("button", { name: enCockpit.plan_tree.add_child }));
+    const field = within(branch).getByRole("textbox");
+    fireEvent.change(field, { target: { value: "New work item" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(mocks.createCockpitWorkItem).toHaveBeenCalledWith(
+      expect.objectContaining({ module_id: "mod-branch", name: "New work item", creation_key: expect.any(String) }),
+      "ws-1",
+    ));
+
+    // "…" on a work item offers move and delete; delete confirms first.
+    const leaf = tree.querySelector<HTMLElement>('[data-cockpit-node="leaf"]')!;
+    fireEvent.click(within(leaf).getByRole("button", { name: enCockpit.plan_tree.more }));
+    expect(screen.getByRole("menuitem", { name: enCockpit.plan_tree.move })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: enCockpit.plan_tree.delete }));
+    expect(mocks.deleteCockpitNode).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: enCockpit.plan_tree.confirm }));
+    await waitFor(() => expect(mocks.deleteCockpitNode).toHaveBeenCalledWith("leaf"));
   });
 
   it("measures the container rather than the browser and restores metadata after export", () => {
