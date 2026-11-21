@@ -168,6 +168,7 @@ const board: CockpitBoard = {
     node({
       id: "task",
       code: "L3-01-08",
+      kind: "work_item",
       name: "Sign the governance agreement",
       parent_id: "root",
       owner: "Li",
@@ -242,8 +243,8 @@ const board: CockpitBoard = {
 function useDetailedBoard(legacyGroup = false) {
   const detailed = structuredClone(board);
   detailed.nodes[1]!.parent_id = "module";
-  detailed.nodes.push(node({ id: "module", code: "L2-01-01", parent_id: "root", name: "Governance" }));
-  if (legacyGroup) detailed.nodes.push(node({ id: "agreement-detail", code: "detail", parent_id: "task", name: "Agreement detail" }));
+  detailed.nodes.push(node({ id: "module", code: "L2-01-01", kind: "module", parent_id: "root", name: "Governance" }));
+  if (legacyGroup) detailed.nodes.push(node({ id: "agreement-detail", code: "detail", kind: "work_item", parent_id: "task", name: "Agreement detail" }));
   readCockpitFixture.mockResolvedValue(detailed);
 }
 
@@ -384,6 +385,7 @@ describe("CockpitPage", () => {
           node({
             id: "task-c",
             code: "L3-03-01",
+            kind: "work_item",
             name: "Pilot",
             parent_id: "root-c",
             status: "In progress",
@@ -536,8 +538,9 @@ describe("CockpitPage", () => {
 
     expect(await screen.findByText("Instalments")).toBeInTheDocument();
     expect(screen.getByText("Deliverable")).toBeInTheDocument();
-    // Budget, vendor and payment status are edited in the finance grid.
-    expect(screen.queryByText("Payment status")).not.toBeInTheDocument();
+    // The finance grid lists one row per instalment, so a node without one
+    // has no row there: the five money fields stay editable in the panel.
+    expect(screen.getByText("Payment status")).toBeInTheDocument();
     // The linked issue renders as the live issue, not as free text.
     expect((await screen.findAllByText("BIO-314")).length).toBeGreaterThan(0);
   });

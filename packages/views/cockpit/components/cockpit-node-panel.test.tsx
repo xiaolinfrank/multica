@@ -23,7 +23,7 @@ function setup(overrides: Partial<CockpitNodePanelProps> = {}) {
   const props: CockpitNodePanelProps = {
     node, deleteAllowed: true, parent: undefined, depth: 2, payments: [], meetings: [], referenceWorkspace: <p>Issue links</p>, isBranch: false,
     section: "tasks", onSectionChange: vi.fn(),
-    statusSuggestions: [], ownerSuggestions: [],
+    statusSuggestions: [], execStatusSuggestions: [], budgetCategorySuggestions: [], ownerSuggestions: [], vendorSuggestions: [],
     onPatch: vi.fn(), onDelete: vi.fn().mockResolvedValue(undefined), onClose: vi.fn(),
     deleteConfirmationDescription: "This permanently deletes the item and its payments and issue links.",
     onOpenMeeting: vi.fn(), onCreatePayment: vi.fn(),
@@ -130,12 +130,14 @@ describe("CockpitNodePanel", () => {
     expect(screen.queryByRole("button", { name: "Delete instalment" })).not.toBeInTheDocument();
   });
 
-  it("keeps the plan fields, folds the secondary ones, and leaves money to the finance grid", () => {
+  it("keeps the plan and money fields, and folds only the secondary ones", () => {
     const { props } = setup({ readOnly: true });
     expect(screen.getByText("Deliverable text")).toBeInTheDocument();
     expect(screen.getByText("Issue links")).toBeInTheDocument();
-    // Vendor/budget/contract are edited in the finance grid, not here.
-    expect(screen.queryByText("Vendor text")).not.toBeInTheDocument();
+    // The finance grid lists one row per instalment, so a node without one
+    // has no row there: these five stay editable here too.
+    expect(screen.getByText("Vendor text")).toBeInTheDocument();
+    expect(screen.getByText("Contract text")).toBeInTheDocument();
     // Collaborators, dependencies and source are one click away, read-only.
     fireEvent.click(screen.getByText("More"));
     expect(screen.getByText("Collaborator")).toBeInTheDocument();
