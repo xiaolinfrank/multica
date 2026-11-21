@@ -139,9 +139,11 @@ export function CockpitTable({
   );
 
   const visibleCount = financeRows.length;
+  // One row is one instalment (R0): a node with several would repeat its id
+  // and the virtualizer would key two rows the same.
   const rowVirtualizer = useVirtualizer({ count: visibleCount, getScrollElement: () => scrollRef.current,
     estimateSize: () => 56, overscan: 6, scrollMargin: 36, initialRect: { width: 1200, height: 700 },
-    getItemKey: (index) => financeRows[index]!.node.id });
+    getItemKey: (index) => financeRows[index]!.payment.id });
   const virtualRows = rowVirtualizer.getVirtualItems();
   const topSpace = Math.max(0, (virtualRows[0]?.start ?? 36) - 36);
   const bottomSpace = Math.max(0, rowVirtualizer.getTotalSize() - (virtualRows.at(-1)?.end ?? 36) + 36);

@@ -3,10 +3,12 @@ vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cock
 // jsdom gives the scroll container a zero rect, and the virtualizer then
 // renders no data rows at all — render every row so the assertions read the
 // table content, not the viewport.
+const virtual = vi.hoisted(() => ({ keys: [] as Array<string | number> }));
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: (options: { count: number; getItemKey?: (index: number) => string | number }) => {
     const size = 56;
     const items = Array.from({ length: options.count }, (_, index) => ({ index, start: index * size, end: (index + 1) * size, size, key: options.getItemKey ? options.getItemKey(index) : index }));
+    virtual.keys = items.map((item) => item.key);
     return { getVirtualItems: () => items, getTotalSize: () => options.count * size, measureElement: () => undefined };
   },
 }));
@@ -70,6 +72,23 @@ describe("CockpitTable execution rows", () => {
     expect(totals.querySelectorAll(".cockpit-currency-unit")).toHaveLength(2);
     expect(totals).toHaveTextContent(enCockpit.finance.amount_unit);
     expect(screen.getByText(enCockpit.finance.actual_basis)).toBeVisible();
+  });
+
+  it("keys a row by its instalment, so two instalments on one node stay distinct", () => {
+    virtual.keys = [];
+    const cockpit = { id: "cp", workspace_id: "ws", title: "Board", goal_title: "", goal_date: null,
+      summary_overall: "", summary_next: "", summary_support: "", basis: "", meeting_assignee_type: "", meeting_assignee_id: null, meeting_project_id: null, meeting_module_id: null, meeting_node_id: null, meeting_dir: "", created_at: "", updated_at: "" };
+    show({ board: {
+      cockpit,
+      nodes: [node({ id: "paid", code: "01", budget_amount: 50 })],
+      payments: [
+        { id: "p1", node_id: "paid", label: "已付", pay_date: "2026-01-10", amount: 30, position: 0 },
+        { id: "p2", node_id: "paid", label: "待付", pay_date: "2026-02-10", amount: 20, position: 1 },
+      ],
+      issue_links: [], milestones: [], meetings: [], meeting_issues: [], meeting_nodes: [],
+    } });
+    // One row per instalment (R0); keying by node id would repeat the id.
+    expect(virtual.keys).toEqual(["p1", "p2"]);
   });
 
   it("does not fall back to unrelated roots when a selected branch is missing", () => {
