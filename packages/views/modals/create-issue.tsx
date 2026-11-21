@@ -64,6 +64,7 @@ import {
   CockpitNodeIssuePicker,
   type CockpitNodeIssueOption,
 } from "../cockpit/components/cockpit-node-issue-picker";
+import { cockpitKeys, cockpitReadKeys } from "@multica/core/cockpit";
 import { useIssueTriggerPreview } from "../issues/hooks/use-issue-trigger-preview";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
@@ -670,6 +671,9 @@ export function ManualCreatePanel({
               stage: parentIssueId && stage != null ? stage : undefined,
               project_id: projectId,
               module_id: moduleId,
+              // The work item is the filing, not a follow-up link: the server
+              // resolves its module/project and rejects a mismatching pair.
+              ...(cockpitNode ? { work_item_id: cockpitNode.node_id } : {}),
             },
           },
         });
@@ -696,7 +700,18 @@ export function ManualCreatePanel({
           stage: parentIssueId && stage != null ? stage : undefined,
           project_id: projectId,
           module_id: moduleId,
+          // Same filing as the ordinary path: a source-context create opened
+          // from a work item lands under it too.
+          ...(cockpitNode ? { work_item_id: cockpitNode.node_id } : {}),
         });
+      }
+
+      // A create opened on a work item changes that row's issue list and the
+      // plan's tallies. Nothing else invalidates the cockpit reads on an issue
+      // create, so without this the new row would not show until a remount.
+      if (cockpitNode) {
+        void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+        void queryClient.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, cockpitNode.node_id) });
       }
 
       // An opener that files the new issue somewhere of its own — the cockpit's

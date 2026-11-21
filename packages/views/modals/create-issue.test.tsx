@@ -671,6 +671,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
+import { cockpitKeys } from "@multica/core/cockpit";
 import {
   CreateIssueModal,
   ManualCreatePanel,
@@ -680,11 +681,11 @@ function renderModal(element: React.ReactElement) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  return { qc, ...render(
     <I18nWrapper>
       <QueryClientProvider client={qc}>{element}</QueryClientProvider>
     </I18nWrapper>,
-  );
+  ) };
 }
 
 describe("CreateIssueModal", () => {
@@ -877,6 +878,89 @@ describe("CreateIssueModal", () => {
     );
 
     expect(screen.getByTestId("work-item")).toHaveTextContent(WORK_ITEM.label);
+  });
+
+  it("files the new issue under the work item, not only as a related link", async () => {
+    const user = userEvent.setup();
+
+    renderModal(
+      <CreateIssueModal
+        onClose={vi.fn()}
+        data={{
+          title: WORK_ITEM.code,
+          project_id: WORK_ITEM.project_id,
+          module_id: WORK_ITEM.module_id,
+          cockpit_node: WORK_ITEM,
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "01.01.01 Governance agreement" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() =>
+      expect(mockCreateIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          work_item_id: "node-a",
+          project_id: "proj-a",
+          module_id: "mod-a",
+        }),
+      ),
+    );
+  });
+
+  it("refreshes the work item's issue list after filing under it", async () => {
+    const user = userEvent.setup();
+    const { qc } = renderModal(
+      <CreateIssueModal
+        onClose={vi.fn()}
+        data={{
+          title: WORK_ITEM.code,
+          project_id: WORK_ITEM.project_id,
+          module_id: WORK_ITEM.module_id,
+          cockpit_node: WORK_ITEM,
+        }}
+      />,
+    );
+    const key = cockpitKeys.nodeTasks("ws-test", "node-a");
+    qc.setQueryData(key, { node_id: "node-a", items: [], total: 0, filtered_total: 0, next_cursor: null });
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "01.01.01 Governance agreement" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+    // Nothing else invalidates the cockpit reads on an issue create, so the
+    // row under the work item would otherwise stay stale until a remount.
+    await waitFor(() => expect(qc.getQueryState(key)?.isInvalidated).toBe(true));
+  });
+
+  it("files a source-context create under the work item as well", async () => {
+    const user = userEvent.setup();
+
+    renderModal(
+      <ManualCreatePanel
+        data={{ ...sourceContextPanelData(), ...{
+          project_id: WORK_ITEM.project_id,
+          module_id: WORK_ITEM.module_id,
+          cockpit_node: WORK_ITEM,
+        } }}
+        onClose={vi.fn()}
+        onSwitchMode={vi.fn()}
+        isExpanded={false}
+        setIsExpanded={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByPlaceholderText("Issue title"), "01.01.01 From a comment");
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() => expect(mockCreateCommentSubIssue).toHaveBeenCalledWith(
+      "comment-source",
+      expect.objectContaining({
+        issue: expect.objectContaining({ work_item_id: "node-a" }),
+      }),
+    ));
   });
 
   it("refiles and renumbers when the issue is moved to another work item", async () => {

@@ -380,19 +380,12 @@ describe("Cockpit secondary interactions", () => {
       },
     });
 
-    // The dialog reports the issue it created; the row it was created from
-    // picks it up without the user going looking for it.
-    const onCreated = modal.data!.on_created as (
-      issue: { id: string },
-      state: { cockpit_node_id: string | null },
-    ) => unknown;
-    await onCreated({ id: "issue-9" }, { cockpit_node_id: "task" });
-    await waitFor(() => expect(api.appendCockpitNodeIssue).toHaveBeenCalledExactlyOnceWith("ws-1", "task", "issue-9"));
-    // Create another appends independently; it never replaces a collection read from a page.
-    await onCreated({ id: "issue-10" }, { cockpit_node_id: "task" });
-    await waitFor(() => expect(api.appendCockpitNodeIssue).toHaveBeenLastCalledWith("ws-1", "task", "issue-10"));
+    // The dialog files the issue with `work_item_id`, which is the filing
+    // itself. There is no follow-up append: that writes a related link and
+    // would leave the issue filed and "related" to the same row.
+    expect(modal.data!.on_created).toBeUndefined();
+    expect(api.appendCockpitNodeIssue).not.toHaveBeenCalled();
     expect(api.setCockpitNodeIssues).not.toHaveBeenCalled();
-    vi.mocked(api.appendCockpitNodeIssue).mockClear(); await onCreated({ id: "issue-11" }, { cockpit_node_id: null }); expect(api.appendCockpitNodeIssue).not.toHaveBeenCalled();
     useModalStore.getState().close();
   });
 

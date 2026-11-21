@@ -3,13 +3,12 @@
 import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cockpitNodeDetailOptions, cockpitNodePaymentsOptions, cockpitNodeMeetingsOptions, cockpitObjectPath,
-  cockpitRelationViewKey, EMPTY_COCKPIT_RELATION_PAGE, useCockpitScopeViewStore, useAppendCockpitNodeIssue, useDeleteCockpitNode,
+  cockpitRelationViewKey, EMPTY_COCKPIT_RELATION_PAGE, useCockpitScopeViewStore, useDeleteCockpitNode,
   useCreateCockpitPayment, useUpdateCockpitNode, useUpdateCockpitPayment, useDeleteCockpitPayment,
   type CockpitScope, type CockpitNodeView, type CockpitPlanView } from "@multica/core/cockpit";
 import { containerOperationBasisOptions, containerOperationAllowed } from "@multica/core/issues";
 import { ContainerOperationRestriction } from "../../issues/components/issue-operation-restriction";
 import { useModalStore } from "@multica/core/modals";
-import type { Issue } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@multica/ui/components/ui/alert-dialog";
@@ -46,7 +45,7 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
   const payments = paymentCursors.length === 1 ? detail?.payments : paymentQuery.data;
   const meetings = meetingCursors.length === 1 ? detail?.meetings : meetingQuery.data;
   const updateNode = useUpdateCockpitNode(wsId); const deleteNode = useDeleteCockpitNode(wsId); 
-  const appendIssue = useAppendCockpitNodeIssue(wsId); const createPayment = useCreateCockpitPayment(wsId); const patchPayment = useUpdateCockpitPayment(wsId); const deletePayment = useDeleteCockpitPayment(wsId);
+  const createPayment = useCreateCockpitPayment(wsId); const patchPayment = useUpdateCockpitPayment(wsId); const deletePayment = useDeleteCockpitPayment(wsId);
   const [removingPayment, setRemovingPayment] = useState<{ id: string; label: string } | null>(null); const deletionLock = useRef(false); const [deleteError, setDeleteError] = useState("");
   const fail = (cause: unknown) => toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
   const readonly = !detail?.actor.is_human || detail.scope_match === false || query.isError;
@@ -60,10 +59,13 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, on
   const executionSurface = detail.children_count === 0 && !node.project_id && !node.module_id;
   const canFile = Boolean(binding.project_id && binding.module_id);
   const filingProjectId = binding.project_id; const filingModuleId = binding.module_id;
+  // The dialog files the issue with `work_item_id`, which IS the filing on
+  // this row. The append this used to call writes a related link, not a
+  // filing, so it would leave the new issue both filed and "related" to the
+  // same work item — a duplicate chip, not a second home.
   const createReference = canFile && !node.project_id && !node.module_id ? () => {
     useModalStore.getState().open("create-issue", { title: node.code, project_id: filingProjectId, module_id: filingModuleId,
-      cockpit_node: { node_id: node.id, code: node.code, label: nodeLabel, project_id: filingProjectId, module_id: filingModuleId },
-      on_created: (issue: Issue, state: { cockpit_node_id: string | null }) => { if (state.cockpit_node_id) void appendIssue.mutateAsync({ nodeId: state.cockpit_node_id, issueId: issue.id }).catch(fail); } });
+      cockpit_node: { node_id: node.id, code: node.code, label: nodeLabel, project_id: filingProjectId, module_id: filingModuleId } });
   } : undefined;
   const relationPager = (kind: "payments" | "meetings") => {
     const rows = kind === "payments" ? payments : meetings; const cursors = kind === "payments" ? paymentCursors : meetingCursors;
