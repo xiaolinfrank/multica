@@ -264,7 +264,7 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
     ...cockpitNodeDetailOptions(wsId ?? "", activeNodeId ?? "", EMPTY_COCKPIT_SCOPE),
     enabled: Boolean(wsId && activeNodeId && activeNodeId !== "none"),
   });
-  const activeNodeModuleId = activeNode.data?.binding.module_id ?? null;
+  const activeNodeModuleId = activeNode.data?.binding?.module_id ?? null;
 
   const modulesByProject = useMemo(() => {
     const map = new Map<string, Module[]>();

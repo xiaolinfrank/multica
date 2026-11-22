@@ -607,14 +607,14 @@ describe("Work projects tree", () => {
     const project = screen.getByRole("button", { name: "Project Alpha" });
     expect(project).toHaveAttribute("data-href", "/acme/projects/project-a");
     fireEvent.click(screen.getByRole("button", { name: "Toggle modules Project Alpha" }));
-    expect(screen.getByRole("button", { name: /Module Alpha/ })).toHaveAttribute("data-href", "/acme/projects/project-a?module=module-a");
+    expect(screen.getByRole("button", { name: /^Module Alpha/ })).toHaveAttribute("data-href", "/acme/projects/project-a?module=module-a");
     expect(screen.queryByRole("button", { name: /Module Beta/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add module to project Project Alpha" }));
     expect(openModal).toHaveBeenCalledWith("create-module", { projectId: "project-a" });
     fireEvent.click(toggle);
-    expect(screen.queryByRole("button", { name: /Module Alpha/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Module Alpha/ })).not.toBeInTheDocument();
     fireEvent.click(toggle);
-    expect(screen.getByRole("button", { name: /Module Alpha/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Module Alpha/ })).toBeInTheDocument();
   });
 
   it("supports keyboard expansion and module creation", async () => {
@@ -659,15 +659,15 @@ describe("Work projects tree", () => {
   it("auto-opens a module deep link, scopes selection to its project, and allows collapse", () => {
     navigation.current = { pathname: "/acme/projects/project-a", search: "module=module-a" };
     const { rerender } = renderWithI18n(<AppSidebar />);
-    expect(screen.getByRole("button", { name: /Module Alpha/ })).toHaveAttribute("data-active", "true");
+    expect(screen.getByRole("button", { name: /^Module Alpha/ })).toHaveAttribute("data-active", "true");
     expect(screen.getByRole("button", { name: "Project Alpha" })).not.toHaveAttribute("data-active");
     const toggle = screen.getByRole("button", { name: "Toggle modules Project Alpha" });
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("button", { name: /Module Alpha/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Module Alpha/ })).not.toBeInTheDocument();
     navigation.current = { pathname: "/acme/projects/project-b", search: "module=module-a" };
     rerender(<AppSidebar />);
     expect(screen.getByRole("button", { name: "Project Beta" })).toHaveAttribute("data-active", "true");
-    expect(screen.queryByRole("button", { name: /Module Alpha/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Module Alpha/ })).not.toBeInTheDocument();
   });
 });
