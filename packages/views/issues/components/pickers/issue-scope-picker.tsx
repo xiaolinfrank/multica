@@ -188,11 +188,12 @@ export function IssueScopePicker({
         {value.project_id || value.module_id || value.work_item_id ? (
           <>
             {display === "leaf" ? (
+              // A leaf cell stands for one level: the work-item column says
+              // which work item, and an issue without one says exactly that
+              // rather than borrowing the module or project it also has.
               value.work_item_id
                 ? selectedWorkItem ? `${selectedWorkItem.code} ${selectedWorkItem.name}`.trim() : "…"
-                : value.module_id
-                  ? selectedModule?.title ?? "…"
-                  : selectedProject?.title ?? "…"
+                : <span className="text-muted-foreground">{t(($) => $.table.no_work_item)}</span>
             ) : (
               <>
                 {selectedProject?.title ?? (value.project_id ? "…" : "")}
