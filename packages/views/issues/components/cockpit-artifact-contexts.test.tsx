@@ -46,7 +46,7 @@ it("pages long histories and targets the precise acceptance request", async () =
   renderSection();
   await screen.findByRole("link", { name: "Delivery report · Version v1" });
   fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-  const link = await screen.findByRole("link", { name: "Interface delivery · L3 acceptance" });
+  const link = await screen.findByRole("link", { name: "Interface delivery · Work-item acceptance" });
   expect(link).toHaveAttribute("href", "/acme/cockpit?node=node-1&node_view=acceptance&acceptance=request-1");
   expect(api.getCockpitIssueArtifacts).toHaveBeenLastCalledWith("ws-1", "issue-1", { cursor: "next-page", page_size: 25 }, expect.any(AbortSignal));
   expect(screen.getByText("Current review task")).toBeInTheDocument();

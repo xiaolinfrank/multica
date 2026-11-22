@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "图谱",
-    "subtitle": "工作如何相互关联：任务、会议与执行任务的全貌"
+    "subtitle": "工作如何相互关联：任务、会议与工作项的全貌"
   },
   "toolbar": {
     "search_placeholder": "搜索任务…",
@@ -22,7 +22,7 @@
     "edge_group_dependency": "依赖",
     "edge_group_mention": "引用",
     "edge_group_meeting": "会议关联",
-    "edge_group_execution": "执行任务",
+    "edge_group_execution": "工作项",
     "statuses": "状态",
     "projects": "项目",
     "no_project": "无项目"
@@ -54,7 +54,7 @@
   "entity": {
     "issue": "任务",
     "meeting": "会议",
-    "execution": "执行任务"
+    "execution": "工作项"
   },
   "fields": {
     "status": "状态",

@@ -98,10 +98,10 @@ describe("bounded L3 task workbench", () => {
     setup();
     await screen.findByText("Work item 26");
     expect(vi.mocked(api.getCockpitNodeTasks).mock.lastCall?.[1]?.cursor).toBe("page-2");
-    fireEvent.change(screen.getByRole("textbox", { name: "Search L3 issues" }), { target: { value: "needle" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search issues under this work item" }), { target: { value: "needle" } });
     await screen.findByText("Needle outside first page");
     expect(vi.mocked(api.getCockpitNodeTasks).mock.lastCall?.[1]).toMatchObject({ q: "needle", cursor: undefined });
-    fireEvent.change(screen.getByRole("textbox", { name: "Search L3 issues" }), { target: { value: "" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search issues under this work item" }), { target: { value: "" } });
     await waitFor(() => expect(vi.mocked(api.getCockpitNodeTasks).mock.lastCall?.[1]?.q).toBe(""));
     await screen.findByText("Work item 1");
     expect(vi.mocked(api.getCockpitNodeTasks).mock.lastCall?.[1]?.cursor).toBeUndefined();
