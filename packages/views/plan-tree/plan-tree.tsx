@@ -47,6 +47,10 @@ export interface PlanTreeProps {
   statusSuggestions?: string[];
   /** Restrict to these root branches; empty shows the whole plan. */
   rootIds?: ReadonlySet<string>;
+  /** Whether a work item expands into its issues. The project page's tree
+   *  stops at the work item — the issue list is the surface beside it — so it
+   *  passes false instead of growing a second tree component. */
+  showIssueRows?: boolean;
 }
 
 const PAGE_SIZE = 20;
@@ -58,6 +62,7 @@ const EMPTY_IDS: string[] = [];
 export function PlanTree({
   wsId, scope, query, readOnly, selectedId, onSelect,
   variant = "tree", onPatchNode, ownerSuggestions = [], statusSuggestions = [], rootIds,
+  showIssueRows = true,
 }: PlanTreeProps) {
   const { t } = useT("cockpit");
   const viewKey = cockpitScopeViewKey(wsId, scope);
@@ -141,12 +146,13 @@ export function PlanTree({
 
   const parentRowOf = (row: PlanRow) => (row.node.parent_id ? byId.get(row.node.parent_id) : undefined);
   const paths = useWorkspacePaths();
-  // S5 opens the issue list on the project page narrowed to the row's module;
-  // S6 hands over `?node=` instead. A work item's module is the row above it.
+  // "Open in the list" hands the project page the row itself (S6): the page
+  // selects `?node=`, so the work item stays selected instead of only its
+  // module. A work item's project is the module row above it.
   const projectListHref = (row: PlanRow): string | null => {
     const module = parentRowOf(row);
-    if (!module?.project_id || !module.module_id) return null;
-    return `${paths.projectDetail(module.project_id)}?module=${encodeURIComponent(module.module_id)}`;
+    if (!module?.project_id) return null;
+    return `${paths.projectDetail(module.project_id)}?node=${encodeURIComponent(row.node.id)}`;
   };
   // A work item takes its filing from the module row above it (its own
   // project_id/module_id are null by design); a module carries its own. A
@@ -205,8 +211,9 @@ export function PlanTree({
     const row = activeRow ?? rows[Math.max(0, Math.min(rows.length - 1, activeIndex))]!;
     const index = rows.indexOf(row);
     // A work item has no node children, but its issues load under it: it
-    // expands like a branch for every keyboard and pointer purpose.
-    const expandable = row.hasChildren || row.kind === "work_item";
+    // expands like a branch for every keyboard and pointer purpose — unless
+    // this tree stops at the work item.
+    const expandable = row.hasChildren || (showIssueRows && row.kind === "work_item");
     // A search owns the visible set, so it locks the containers' folds. A
     // work item's issues are not part of that set: expanding one is a read
     // the query does not contradict, so it stays available.
@@ -303,7 +310,7 @@ export function PlanTree({
           const editable = !structureLocked && !contextNodeIds.has(row.node.id);
           const patchable = !readOnly && onPatchNode != null && !contextNodeIds.has(row.node.id);
           const isActive = activeId != null ? activeId === row.node.id : selectedId === row.node.id;
-          const expandable = row.hasChildren || row.kind === "work_item";
+          const expandable = row.hasChildren || (showIssueRows && row.kind === "work_item");
           // A search keeps a hit's parents on screen, so those rows read as
           // open while it runs — the query, not the stored fold, decides what
           // is visible. A work item's issues are not part of that filtered
@@ -336,6 +343,7 @@ export function PlanTree({
               <PlanRowName
                 row={row}
                 open={shownOpen}
+                expandable={expandable}
                 locked={!editable || !canRename}
                 foldDisabled={searching && row.kind !== "work_item"}
                 renaming={renaming === row.node.id}
@@ -434,7 +442,7 @@ export function PlanTree({
                 }}
               />
             )}
-            {row.kind === "work_item" && open && (
+            {showIssueRows && row.kind === "work_item" && open && (
               <IssueRows wsId={wsId} nodeId={row.node.id} depth={row.depth} listHref={projectListHref(row)} />
             )}
           </Fragment>

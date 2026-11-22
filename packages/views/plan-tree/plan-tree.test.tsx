@@ -121,6 +121,21 @@ describe("PlanTree", () => {
     expect(within(rows[2]!).getByText("01.01.01")).toBeInTheDocument();
   });
 
+  it("stops at the work item when issue rows are off", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
+    show({ showIssueRows: false });
+    const rows = await screen.findAllByRole("row");
+    // The three levels stay: the tree's job here is where an issue is filed.
+    expect(rows.map((r) => r.getAttribute("data-kind"))).toEqual([
+      "project", "module", "work_item", "module", "work_item",
+    ]);
+    // A work item is a leaf in this mode: no fold affordance, nothing to read.
+    const workItem = rowsOf("work_item")[0]!;
+    expect(workItem).not.toHaveAttribute("aria-expanded");
+    expect(within(workItem).queryByRole("button", { name: enCockpit.plan_tree.expand })).toBeNull();
+    expect(apiMock.getCockpitNodeTasks).not.toHaveBeenCalled();
+  });
+
   it("opens with every work item closed and reads no issues until one is opened", async () => {
     apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
     show();
@@ -139,10 +154,10 @@ describe("PlanTree", () => {
     fireEvent.click(within(workItem).getByRole("button", { name: enCockpit.plan_tree.expand }));
     expect(await screen.findByText(/首个任务/)).toBeInTheDocument();
     expect(apiMock.getCockpitNodeTasks).toHaveBeenCalledWith("w1", expect.objectContaining({ page_size: 20, relation: "primary" }), expect.anything());
-    // S5 opens the project page narrowed to the work item's module (S6 will
-    // hand over `?node=` instead); the work item id is not an issue id.
+    // S6 hands the project page the work item itself, so the page opens with
+    // that row selected rather than only its module.
     fireEvent.click(screen.getByText("2 more · open in the list"));
-    expect(navMock.push).toHaveBeenCalledWith("/ws/projects/proj-1?module=mod-1");
+    expect(navMock.push).toHaveBeenCalledWith("/ws/projects/proj-1?node=w1");
   });
 
   it("keeps work items closed after a scope switch", async () => {
