@@ -12,6 +12,9 @@ describe("operation decisions", () => {
     expect(issueUpdateOperationAllowed(basis, { priority: "high" })).toBe(true);
     expect(issueUpdateOperationAllowed(basis, { assignee_id: null })).toBe(false);
     expect(issueUpdateOperationAllowed({ ...basis, scope: { state: "blocked", reason_codes: ["retained_artifact_scope"] } }, { module_id: "new", parent_issue_id: null })).toBe(false);
+    // A work item names the module and project it files into, so it is a
+    // scope write even when it arrives alone.
+    expect(issueUpdateOperationAllowed({ ...basis, scope: { state: "blocked", reason_codes: ["retained_artifact_scope"] } }, { work_item_id: "w-1" })).toBe(false);
   });
   it("keeps status categories and unknown basis distinct from an ordinary permitted edit", () => {
     const basis = operationBasisFixture("i", { status: { state: "allowed", reason_codes: ["formal_review_status"], allowed_categories: ["unstarted", "started"] } });

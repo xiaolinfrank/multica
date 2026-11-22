@@ -90,7 +90,7 @@ export function issueUpdateOperationAllowed(
   categoryOf: (key: string) => string | null = () => null,
 ): boolean {
   const has = (field: keyof UpdateIssueRequest) => Object.prototype.hasOwnProperty.call(updates, field) && updates[field] !== undefined;
-  const governed = (["status", "assignee_type", "assignee_id", "project_id", "module_id", "parent_issue_id", "duplicate_of_issue_id"] as const).some(has);
+  const governed = (["status", "assignee_type", "assignee_id", "project_id", "module_id", "work_item_id", "parent_issue_id", "duplicate_of_issue_id"] as const).some(has);
   if (!governed) return basis?.availability !== "unavailable";
   if (basis?.availability !== "available") return false;
   if (has("status") && (!updates.status || !issueStatusOperationAllowed(basis, categoryOf(updates.status) ?? ""))) return false;
@@ -98,7 +98,9 @@ export function issueUpdateOperationAllowed(
   if (has("duplicate_of_issue_id") && (!updates.duplicate_of_issue_id || (has("status") && updates.status !== "cancelled")
     || !issueStatusOperationAllowed(basis, "closed"))) return false;
   if ((has("assignee_type") || has("assignee_id")) && !issueOperationAllowed(basis, "assignee")) return false;
-  if ((has("project_id") || has("module_id")) && !issueOperationAllowed(basis, "scope")) return false;
+  // A work item names the module and project it files into, so it is a scope
+  // write even when it arrives alone.
+  if ((has("project_id") || has("module_id") || has("work_item_id")) && !issueOperationAllowed(basis, "scope")) return false;
   if (has("parent_issue_id") && !issueOperationAllowed(basis, "parent")) return false;
   return true;
 }

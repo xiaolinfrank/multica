@@ -321,8 +321,14 @@ vi.mock("../../common/actor-avatar", () => ({
   ),
 }));
 
-vi.mock("../../projects/components/project-picker", () => ({
-  ProjectPicker: () => <span data-testid="project-picker">Project</span>,
+// The ownership tree has its own suite; here it only has to be present, and
+// to name the issue's current filing.
+vi.mock("./pickers/issue-scope-picker", () => ({
+  IssueScopePicker: ({ value }: any) => (
+    <span data-testid="issue-scope">
+      {value.work_item_id ?? value.module_id ?? value.project_id ?? "none"}
+    </span>
+  ),
 }));
 
 // Mock api
@@ -1198,8 +1204,12 @@ describe("IssueDetail (shared)", () => {
     // Core rows — always rendered regardless of whether the issue has a value.
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("Assignee")).toBeInTheDocument();
-    // "Project" appears twice (row label + picker stub), so disambiguate by id.
-    expect(screen.getByTestId("project-picker")).toBeInTheDocument();
+    // Ownership is one row: project → module → work item in a single control.
+    expect(screen.getByText("Ownership")).toBeInTheDocument();
+    // The fixture files the issue nowhere, and the row says so rather than
+    // hiding — it is the issue's only way into a work item.
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent("none");
+    expect(screen.queryByText("Module")).not.toBeInTheDocument();
     // priority="high" + due_date are set in the fixture, so both optional rows show.
     expect(screen.getByText("Priority")).toBeInTheDocument();
     expect(screen.getByText("Due date")).toBeInTheDocument();
@@ -1232,8 +1242,8 @@ describe("IssueDetail (shared)", () => {
     expect(screen.queryByText("Priority")).not.toBeInTheDocument();
     expect(screen.queryByText("Due date")).not.toBeInTheDocument();
     expect(screen.queryByText("Labels")).not.toBeInTheDocument();
-    // Project stays as a core row regardless of value.
-    expect(screen.getByTestId("project-picker")).toBeInTheDocument();
+    // Ownership stays as a core row regardless of value.
+    expect(screen.getByTestId("issue-scope")).toBeInTheDocument();
     // No parent → no standalone Parent issue section either.
     expect(screen.queryByText("Parent issue")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add property" })).toBeInTheDocument();
@@ -1331,7 +1341,7 @@ describe("IssueDetail (shared)", () => {
     // No resizable sidebar: the properties become pills under the title.
     expect(screen.queryByTestId("panel-group")).not.toBeInTheDocument();
     expect(screen.queryByText("Properties")).not.toBeInTheDocument();
-    expect(screen.getByTestId("project-picker")).toBeInTheDocument();
+    expect(screen.getByTestId("issue-scope")).toBeInTheDocument();
     expect(screen.getByText("High")).toBeInTheDocument();
     // The host's controls replace the sidebar toggle.
     expect(screen.getByTestId("peek-nav")).toBeInTheDocument();

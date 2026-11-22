@@ -98,8 +98,7 @@ import { IssueActionsDropdown, useIssueActions, useArchivedInboxItemId, IssueAct
 import { LabelChip } from "../../labels/label-chip";
 import { IssueAgentActivityIndicator } from "./issue-agent-activity-indicator";
 import { SubIssuesAgentWorkingChip } from "./sub-issues-agent-working-chip";
-import { IssueProjectPicker } from "../../projects/components/issue-project-picker";
-import { ModulePicker } from "../../projects/components/module-picker";
+import { IssueScopeProperty } from "./issue-scope-property";
 import { IssuePropertyPills } from "./issue-property-pills";
 import { IssueOperationRestriction, type IssueOperationObservation } from "./issue-operation-restriction";
 import { LocalDirectoryHint } from "../../projects/components/local-directory-hint";
@@ -124,7 +123,7 @@ import { WakeupsSection } from "./wakeups-section";
 import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
-import { CockpitClearPrimaryNode, CockpitNodesSection } from "./cockpit-nodes-section";
+import { CockpitNodesSection } from "./cockpit-nodes-section";
 import { CockpitMeetingsSection } from "./cockpit-meetings-section";
 import { CockpitIssueInputManifest, CockpitIssueInputManifestInspector } from "../../cockpit/components/cockpit-issue-input-manifest";
 import { CockpitArtifactContexts } from "./cockpit-artifact-contexts";
@@ -1591,7 +1590,7 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
   const scopeReadOnly = !issueOperationAllowed(basis, "scope");
   const formalRestriction = <IssueOperationRestriction observation={operation} operation="status" />;
   const assigneeRestriction = <IssueOperationRestriction observation={operation} operation="assignee" />;
-  const scopeRestriction = <div className="space-y-2"><IssueOperationRestriction observation={operation} operation="scope" />{issue && basis?.scope.reason_codes.includes("primary_scope") && <CockpitClearPrimaryNode issueId={issue.id} />}</div>;
+  const scopeRestriction = <IssueOperationRestriction observation={operation} operation="scope" />;
   // Upstream: opening the detail marks the issue (and its inbox row) read.
   useMarkIssueReadWhileViewing(wsId, issue?.id ?? "");
   useMarkIssueInboxReadWhileViewing(wsId, issue?.id ?? "", readsInbox);
@@ -2957,19 +2956,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
             <AssigneePicker assigneeType={issue.assignee_type} assigneeId={issue.assignee_id} onUpdate={handleUpdateField} align="start" readOnly={assigneeReadOnly} restriction={assigneeRestriction} />
           </PropRow>
           {formalRestriction && <div className="col-span-2 py-2">{formalRestriction}</div>}
-          <PropRow label={t(($) => $.detail.prop_project)}>
-            <IssueProjectPicker
-              projectId={issue.project_id}
-              onUpdate={handleUpdateField}
+          <PropRow label={t(($) => $.detail.prop_scope)}>
+            <IssueScopeProperty
               issue={issue}
-              readOnly={scopeReadOnly}
-              restriction={scopeRestriction}
-            />
-          </PropRow>
-          <PropRow label={t(($) => $.detail.prop_module)}>
-            <ModulePicker
-              moduleId={issue.module_id ?? null}
-              projectId={issue.project_id}
               onUpdate={handleUpdateField}
               readOnly={scopeReadOnly}
               restriction={scopeRestriction}

@@ -2,7 +2,6 @@
 
 import type { Issue, IssueStatusCategory, UpdateIssueRequest } from "@multica/core/types";
 import { PillButton } from "../../common/pill-button";
-import { ProjectPicker } from "../../projects/components/project-picker";
 import {
   AssigneePicker,
   DueDatePicker,
@@ -11,6 +10,7 @@ import {
   StartDatePicker,
   StatusPicker,
 } from "./pickers";
+import { IssueScopeProperty } from "./issue-scope-property";
 
 /**
  * The issue's core properties as one wrapping row of pills, each opening the
@@ -73,8 +73,8 @@ export function IssuePropertyPills({
         readOnly={assigneeReadOnly}
         restriction={assigneeRestriction ?? restriction}
       />
-      <ProjectPicker
-        projectId={issue.project_id}
+      <IssueScopeProperty
+        issue={issue}
         onUpdate={onUpdate}
         readOnly={scopeReadOnly}
         restriction={scopeRestriction}
