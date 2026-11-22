@@ -174,6 +174,19 @@ describe("CockpitTable work items without instalments", () => {
     await waitFor(() => expect(apiMock.createCockpitPayment).toHaveBeenCalledWith("work", expect.objectContaining({ amount: 0 })));
   });
 
+  it("adds the next instalment from the last one's row, continuing the sequence", async () => {
+    const board = ledgerBoard([{ id: "p1", node_id: "work", label: "First", pay_date: "2026-02-01", amount: 30, position: 0 }]);
+    show({ board });
+    // The add button used to exist only on a work item without instalments,
+    // so a first payment closed the door on a second.
+    fireEvent.click(screen.getByRole("button", { name: enCockpit.node.add_payment }));
+    await waitFor(() => expect(apiMock.createCockpitPayment).toHaveBeenCalledWith("work", {
+      label: enCockpit.payment.new_label.replace("{{index}}", "2"),
+      amount: 0,
+      position: 1,
+    }));
+  });
+
   it("edits an instalment's amount in its own row", async () => {
     const board = ledgerBoard([{ id: "p1", node_id: "work", label: "First", pay_date: "2026-02-01", amount: 30, position: 0 }]);
     show({ board });

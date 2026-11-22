@@ -28,6 +28,7 @@ import {
   cockpitPaymentTone,
   cockpitPaymentToneColor,
   computeCockpitFinanceLedger,
+  groupPaymentsByNode,
   splitCockpitVendors,
   useCreateCockpitPayment,
   useDeleteCockpitPayment,
@@ -154,6 +155,10 @@ export function CockpitTable({
     [scopedTree, board.payments, query, contextNodeIds],
   );
 
+  // A work item can always take one more instalment: the button rides on its
+  // last row, and the new position continues the sequence instead of
+  // restarting at zero.
+  const paymentsByNode = useMemo(() => groupPaymentsByNode(board.payments), [board.payments]);
   const visibleCount = financeRows.length;
   // One row is one instalment (R0): a node with several would repeat its id
   // and the virtualizer would key two rows the same.
@@ -228,6 +233,9 @@ export function CockpitTable({
               // Money is a work item's: a structural row's legacy instalments
               // and figures are shown, never edited.
               const moneyEditable = row.editable && !readOnly && !contextNodeIds.has(node.id);
+              const ownPayments = paymentsByNode.get(node.id) ?? [];
+              const lastPayment = ownPayments.at(-1);
+              const nextPosition = ownPayments.reduce((max, item) => Math.max(max, item.position), -1) + 1;
               return (
                 <tr
                   key={payment?.id ?? `node:${node.id}`}
@@ -381,22 +389,23 @@ export function CockpitTable({
                       >
                         {row.paid ? t(($) => $.finance.payment_paid) : t(($) => $.finance.payment_planned)}
                       </span>
-                      {payment && moneyEditable ? (
+                      {moneyEditable && payment && (
                         <button type="button" aria-label={t(($) => $.payment.delete)}
                           onClick={() => { setRemoveError(""); setRemoving({ id: payment.id, label: payment.label }); }}
-                          className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive disabled:opacity-40">
+                          className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive">
                           <Trash2 className="size-3" aria-hidden />
                         </button>
-                      ) : payment ? null : moneyEditable ? (
+                      )}
+                      {moneyEditable && (!payment || payment.id === lastPayment?.id) && (
                         <button type="button" disabled={createPayment.isPending} aria-label={t(($) => $.node.add_payment)}
                           onClick={() => createPayment.mutate({
                             nodeId: node.id,
-                            body: { label: t(($) => $.payment.new_label, { index: (board.payments.filter((item) => item.node_id === node.id).length || 0) + 1 }), amount: 0, position: 0 },
+                            body: { label: t(($) => $.payment.new_label, { index: ownPayments.length + 1 }), amount: 0, position: nextPosition },
                           })}
                           className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40">
                           <Plus className="size-3" aria-hidden />
                         </button>
-                      ) : null}
+                      )}
                     </div>
                   </Td>
                 </tr>
