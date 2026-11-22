@@ -799,6 +799,7 @@ function SwimLaneViewImpl({
     includeNoProject: activeFiltersProp?.includeNoProject ?? false,
     moduleFilters: activeFiltersProp?.moduleFilters ?? [],
     includeNoModule: activeFiltersProp?.includeNoModule ?? false,
+    workItemFilters: [],
     projectStatusFilters: activeFiltersProp?.projectStatusFilters ?? [],
     // Needed to evaluate the project-status predicate: an Issue only carries
     // `project_id`. Absent → the predicate is a no-op, never match-none.

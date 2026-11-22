@@ -22,6 +22,7 @@ const NO_FILTER: IssueFilters = {
   includeNoProject: false,
   moduleFilters: [],
   includeNoModule: false,
+  workItemFilters: [],
   labelFilters: [],
 };
 
@@ -781,6 +782,28 @@ describe("module filters", () => {
     expect(
       filterIssues([inA, legacy], { ...NO_FILTER, includeNoModule: true }).map((i) => i.id),
     ).toEqual(["M4"]);
+  });
+});
+
+describe("work item filters", () => {
+  const inW1 = makeIssue({ id: "W1", project_id: "p-1", module_id: "mod-a", work_item_id: "w-1" });
+  const inW2 = makeIssue({ id: "W2", project_id: "p-1", module_id: "mod-a", work_item_id: "w-2" });
+  const unfiled = makeIssue({ id: "W3", project_id: "p-1", module_id: "mod-a", work_item_id: null });
+
+  it("workItemFilters match any listed work item (OR within the field)", () => {
+    const result = filterIssues([inW1, inW2, unfiled], {
+      ...NO_FILTER,
+      workItemFilters: ["w-1", "w-2"],
+    });
+    expect(result.map((i) => i.id)).toEqual(["W1", "W2"]);
+  });
+
+  it("a work item with no issues leaves nothing, an unfiled issue never matches", () => {
+    const result = filterIssues([inW1, unfiled], {
+      ...NO_FILTER,
+      workItemFilters: ["w-2"],
+    });
+    expect(result.map((i) => i.id)).toEqual([]);
   });
 });
 

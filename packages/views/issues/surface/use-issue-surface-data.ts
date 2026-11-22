@@ -131,6 +131,7 @@ export function useIssueSurfaceData({
   includeNoProject,
   moduleFilters,
   includeNoModule,
+  workItemFilters,
   projectStatusFilters,
   labelFilters,
   relationFilters,
@@ -171,6 +172,10 @@ export function useIssueSurfaceData({
   includeNoProject: boolean;
   moduleFilters: string[];
   includeNoModule: boolean;
+  /** Plan work items the page narrowed to (S6) — same shape as
+   *  `moduleFilters`. The Table query filters server-side; this predicate
+   *  covers every client-filtered view. */
+  workItemFilters: string[];
   projectStatusFilters: ProjectStatus[];
   labelFilters: string[];
   relationFilters: IssueRelationFilter[];
@@ -269,6 +274,7 @@ export function useIssueSurfaceData({
       includeNoProject,
       moduleFilters,
       includeNoModule,
+      workItemFilters,
       projectStatusFilters,
       labelFilters,
       relationFilters,
@@ -300,6 +306,7 @@ export function useIssueSurfaceData({
       relationFilters,
       showSubIssues,
       statusFilters,
+      workItemFilters,
     ],
   );
 
@@ -485,6 +492,7 @@ export function useIssueSurfaceData({
       includeNoProject,
       moduleFilters,
       includeNoModule,
+      workItemFilters,
       projectStatusFilters,
       projectStatusById,
       labelFilters,
@@ -520,6 +528,7 @@ export function useIssueSurfaceData({
       today,
       unreadFilter,
       unreadIssueIDs,
+      workItemFilters,
       workingIssueIDs,
     ],
   );

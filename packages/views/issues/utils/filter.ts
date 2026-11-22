@@ -31,6 +31,9 @@ export interface IssueFilters {
   includeNoProject: boolean;
   moduleFilters: string[];
   includeNoModule: boolean;
+  /** Plan work items the page narrowed to (S6). An issue files under one
+   *  work item via `work_item_id`; empty array = no filter. */
+  workItemFilters: string[];
   /** Lifecycle status of the parent project. Needs
    *  `IssueFilterContext.projectStatusById` to be evaluated — an Issue only
    *  carries `project_id`. */
@@ -80,6 +83,8 @@ export interface IssueFilterState {
   includeNoProject: boolean;
   moduleFilters: string[];
   includeNoModule: boolean;
+  /** See IssueFilters.workItemFilters. */
+  workItemFilters: string[];
   /** See IssueFilters.projectStatusFilters. */
   projectStatusFilters?: ProjectStatus[];
   labelFilters: string[];
@@ -258,13 +263,14 @@ export function applyIssueFilters(
   filters: IssueFilterState,
   context: IssueFilterContext = {},
 ): Issue[] {
-  const { statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters, projectFilters, includeNoProject, moduleFilters, includeNoModule, labelFilters, workingOnly } = filters;
+  const { statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters, projectFilters, includeNoProject, moduleFilters, includeNoModule, workItemFilters, labelFilters, workingOnly } = filters;
   const hasAssigneeFilter =
     filters.assigneeFilterActive === true ||
     assigneeFilters.length > 0 ||
     includeNoAssignee;
   const hasProjectFilter = projectFilters.length > 0 || includeNoProject;
   const hasModuleFilter = moduleFilters.length > 0 || includeNoModule;
+  const hasWorkItemFilter = workItemFilters.length > 0;
   const projectStatusFilters = filters.projectStatusFilters ?? [];
   // Without the catalog the predicate cannot be answered. Treat that as
   // "no filter" — the server-driven surfaces enforce it for real, and a
@@ -348,6 +354,13 @@ export function applyIssueFilters(
         // Only "No module" is checked → hide issues that have a module
         return false;
       }
+    }
+
+    // A work-item narrowing (project page's tree, S6). Unlike modules there
+    // is no "no work item" entry here yet: the tree's "none" row filters
+    // modules, not work items.
+    if (hasWorkItemFilter && !workItemFilters.includes(issue.work_item_id ?? "")) {
+      return false;
     }
 
     if (hasProjectStatusFilter) {
@@ -526,6 +539,7 @@ export function filterIssues(issues: Issue[], filters: IssueFilters): Issue[] {
       includeNoProject: filters.includeNoProject,
       moduleFilters: filters.moduleFilters,
       includeNoModule: filters.includeNoModule,
+      workItemFilters: filters.workItemFilters ?? [],
       projectStatusFilters: filters.projectStatusFilters,
       labelFilters: filters.labelFilters,
       relationFilters: filters.relationFilters,

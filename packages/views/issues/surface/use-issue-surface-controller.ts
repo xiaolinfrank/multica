@@ -659,6 +659,9 @@ export function useIssueSurfaceController({
         ...(moduleFilter?.include_no_module
           ? { include_no_module: true }
           : {}),
+        ...(moduleFilter?.work_item_ids?.length
+          ? { work_item_ids: moduleFilter.work_item_ids }
+          : {}),
         ...(projectStatusFilters.length > 0
           ? { project_statuses: projectStatusFilters }
           : {}),
@@ -971,6 +974,7 @@ export function useIssueSurfaceController({
     includeNoProject: viewIncludeNoProject,
     moduleFilters: moduleFilter?.module_ids ?? [],
     includeNoModule: moduleFilter?.include_no_module ?? false,
+    workItemFilters: moduleFilter?.work_item_ids ?? [],
     projectStatusFilters,
     labelFilters,
     relationFilters,

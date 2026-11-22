@@ -45,4 +45,8 @@ export interface IssueSurfaceProps {
 export interface IssueSurfaceModuleFilter {
   module_ids?: string[];
   include_no_module?: boolean;
+  /** Plan work items (S6). Same OR-within-the-field semantics as
+   *  `module_ids`: the table query carries them server-side, every other
+   *  view filters on `issue.work_item_id` client-side. */
+  work_item_ids?: string[];
 }
