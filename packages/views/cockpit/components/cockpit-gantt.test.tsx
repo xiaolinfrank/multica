@@ -5,6 +5,7 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { computeCockpitAxis, daysBetween, parseDay } from "@multica/core/cockpit";
 import type { CockpitNode, CockpitPlanMeetingMarkerQuery } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
+import enProjects from "../../locales/en/projects.json";
 import { CockpitGantt, type CockpitGanttProps } from "./cockpit-gantt";
 
 const mocks = vi.hoisted(() => ({
@@ -19,6 +20,13 @@ const mocks = vi.hoisted(() => ({
     contract: "", source: "", updated_by_type: "", updated_by_id: null, created_at: "", updated_at: "",
   })),
   deleteCockpitNode: vi.fn(async () => {}),
+  deleteModule: vi.fn(async () => {}),
+  getContainerOperationBasis: vi.fn(async (wsId: string, kind: string, id: string): Promise<Record<string, unknown>> => ({
+    workspace_id: wsId, schema_version: 1, generated_at: "2026-11-22T00:00:00Z", resource_kind: kind,
+    resource_id: id, availability: "available", resource_revision: 1,
+    delete: { state: "allowed", reason_codes: [] }, structural_edit: { state: "allowed", reason_codes: [] },
+    add_child: { state: "allowed", reason_codes: [] }, targets: [], targets_total: 0,
+  })),
   moveCockpitWorkItem: vi.fn(async (id: string, patch: { parent_id: string }) => ({ id, parent_id: patch.parent_id })),
 }));
 vi.mock("@multica/core/api", async () => {
@@ -27,12 +35,21 @@ vi.mock("@multica/core/api", async () => {
     updateModule: mocks.updateModule,
     createCockpitWorkItem: mocks.createCockpitWorkItem,
     deleteCockpitNode: mocks.deleteCockpitNode,
+    deleteModule: mocks.deleteModule,
+    getContainerOperationBasis: mocks.getContainerOperationBasis,
     moveCockpitWorkItem: mocks.moveCockpitWorkItem,
   }, setApiInstance: () => {} };
 });
 vi.mock("motion/react", () => ({ useReducedMotion: () => mocks.reduced }));
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
-vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
+vi.mock("../../navigation", () => ({
+  useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }),
+  AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+}));
+vi.mock("@multica/core/paths", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@multica/core/paths")>(),
+  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}`, projectDetail: (id: string) => `/ws/projects/${id}` }),
+}));
 vi.mock("./use-cockpit-scroll-memory", () => ({ useCockpitScrollMemory: () => {} }));
 vi.mock("@tanstack/react-query", async (importOriginal) => ({
   ...await importOriginal<typeof import("@tanstack/react-query")>(),
@@ -71,6 +88,7 @@ const scrollTo = vi.fn();
 const originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
 beforeEach(() => {
   width = 320; mocks.reduced = false; mocks.queries.mockClear(); scrollTo.mockClear();
+  mocks.deleteModule.mockClear(); mocks.getContainerOperationBasis.mockClear();
   frames = new Map(); observers = [];
   let frameId = 0;
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => width);
@@ -101,7 +119,7 @@ function show(overrides: Partial<CockpitGanttProps> = {}) {
     onToggleCollapse: vi.fn(), onSelect: vi.fn(), selectedId: null, onPatchNode: vi.fn(), statusSuggestions: [], ownerSuggestions: [],
     showFinance: true, toolbarOpen: false, scrollToTodayNonce: 0, focusTarget: null, ...overrides };
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const ui = (next: CockpitGanttProps) => <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit } }}>
+  const ui = (next: CockpitGanttProps) => <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, projects: enProjects } }}>
     <QueryClientProvider client={qc}><CockpitGantt {...next} /></QueryClientProvider>
   </I18nProvider>;
   const view = render(ui(props));
@@ -182,6 +200,50 @@ describe("CockpitGantt responsive identity", () => {
     // A work item with no issues keeps the typed editor.
     const leaf2 = tree.querySelector<HTMLElement>('[data-cockpit-node="leaf2"]')!;
     expect(within(leaf2).getByRole("button", { name: "Progress" })).toBeInTheDocument();
+  });
+
+  it("deletes a module through the tree's own confirmation, counts included", async () => {
+    const boardWithPayment = {
+      ...board,
+      payments: [{ id: "p1", node_id: "leaf", label: "First", pay_date: null, amount: 10, position: 0 }],
+    };
+    const taskCounts = new Map([["branch", { node_id: "branch", primary_total: 2, reference_total: 0, active: 1, done: 1, closed: 0 }]]);
+    const { tree } = show({ board: boardWithPayment, renderAllRows: true, taskCounts });
+    const branch = tree.querySelector<HTMLElement>('[data-cockpit-node="branch"]')!;
+    fireEvent.click(within(branch).getByRole("button", { name: enCockpit.plan_tree.more }));
+    fireEvent.click(screen.getByRole("menuitem", { name: enCockpit.plan_tree.delete }));
+    const dialog = await screen.findByRole("alertdialog");
+    // One work item, one payment, two rolled-up issues: the same figures the
+    // plan tree's dialog shows.
+    expect(dialog).toHaveTextContent("Deletes 1 work items and 1 payments; 2 issues lose their filing and stay in the project.");
+    const confirm = within(dialog).getByRole("button", { name: "Delete module" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.deleteModule).toHaveBeenCalledWith("ws-1", "mod-branch"));
+  });
+
+  it("refuses the module delete when the operation basis does", async () => {
+    mocks.getContainerOperationBasis.mockResolvedValueOnce({
+      workspace_id: "ws-1", schema_version: 1, generated_at: "2026-11-22T00:00:00Z", resource_kind: "module",
+      resource_id: "mod-branch", availability: "available", resource_revision: 1,
+      delete: { state: "blocked", reason_codes: ["has_issue_ownership"] }, structural_edit: { state: "allowed", reason_codes: [] },
+      add_child: { state: "allowed", reason_codes: [] }, targets: [], targets_total: 0,
+    });
+    const { tree } = show({ renderAllRows: true });
+    const branch = tree.querySelector<HTMLElement>('[data-cockpit-node="branch"]')!;
+    fireEvent.click(within(branch).getByRole("button", { name: enCockpit.plan_tree.more }));
+    fireEvent.click(screen.getByRole("menuitem", { name: enCockpit.plan_tree.delete }));
+    const dialog = await screen.findByRole("alertdialog");
+    const confirm = await within(dialog).findByRole("button", { name: "Delete module" });
+    await waitFor(() => expect(confirm).toBeDisabled());
+    expect(mocks.deleteModule).not.toHaveBeenCalled();
+  });
+
+  it("locks the structure controls on a board that is not reconciled yet", () => {
+    const unreconciled = { ...board, cockpit: { ...board.cockpit, plan_reconciled_at: null } };
+    const { tree } = show({ board: unreconciled, renderAllRows: true });
+    expect(within(tree).queryByRole("button", { name: enCockpit.plan_tree.add_child })).toBeNull();
+    expect(within(tree).queryByRole("button", { name: enCockpit.plan_tree.more })).toBeNull();
   });
 
   it("measures the container rather than the browser and restores metadata after export", () => {

@@ -72,13 +72,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useLocale, useT } from "../../i18n";
-import { useCreateModule, useDeleteModule } from "@multica/core/modules";
+import { useCreateModule } from "@multica/core/modules";
 import { useModalStore } from "@multica/core/modals";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@multica/ui/components/ui/alert-dialog";
 import { EditableSuggest, ProgressField } from "./cockpit-fields";
 import { PlanRowName } from "../../plan-tree/plan-row-name";
 import { CreateRow, PlanRowActions } from "../../plan-tree/plan-row-actions";
+import { ModuleDeleteDialog } from "../../plan-tree/module-delete-dialog";
 import { planModules, planRowFor, type PlanRow } from "../../plan-tree/plan-rows";
 import { planRowRenameTarget, usePlanRowRename } from "../../plan-tree/use-plan-row-rename";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
@@ -677,9 +678,9 @@ export function CockpitGantt({
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ parentId: string; kind: "module" | "work_item" } | null>(null);
   const [confirming, setConfirming] = useState<{ kind: "delete" | "renumber"; row: PlanRow } | null>(null);
+  const [deletingModule, setDeletingModule] = useState<PlanRow | null>(null);
   const renameRow = usePlanRowRename(wsId);
   const createModule = useCreateModule();
-  const deleteModule = useDeleteModule();
   const createWorkItem = useCreateCockpitWorkItem(wsId);
   const moveWorkItem = useMoveCockpitWorkItem(wsId);
   const deleteWorkItem = useDeleteCockpitWorkItem(wsId);
@@ -755,12 +756,7 @@ export function CockpitGantt({
     const done = () => { setConfirming(null); setActionError(null); };
     const fail = (error: unknown) => { setConfirming(null); failAction(error); };
     if (confirming.kind === "delete") {
-      if (row.kind === "module") {
-        if (!row.node.module_id) return;
-        deleteModule.mutate(row.node.module_id, { onSuccess: done, onError: fail });
-      } else {
-        deleteWorkItem.mutate(row.node.id, { onSuccess: done, onError: fail });
-      }
+      deleteWorkItem.mutate(row.node.id, { onSuccess: done, onError: fail });
       return;
     }
     renumber.mutate(row.node.id, {
@@ -1190,7 +1186,10 @@ export function CockpitGantt({
                         onError: failAction,
                       })}
                       onRenumber={() => setConfirming({ kind: "renumber", row: planRow })}
-                      onDelete={() => setConfirming({ kind: "delete", row: planRow })}
+                      onDelete={() => {
+                        if (planRow.kind === "module") setDeletingModule(planRow);
+                        else setConfirming({ kind: "delete", row: planRow });
+                      }}
                     />
                   )}
                     {!compact && <>
@@ -1828,6 +1827,9 @@ export function CockpitGantt({
           </div>
         </div>
       </div>
+      <ModuleDeleteDialog wsId={wsId} row={deletingModule} nodes={board.nodes} payments={board.payments}
+        countsById={taskCounts} onOpenChange={(open) => { if (!open) setDeletingModule(null); }}
+        onDeleted={() => { setDeletingModule(null); setActionNotice(t(($) => $.plan_tree.deleted)); }} />
       <AlertDialog open={confirming != null} onOpenChange={(open) => { if (!open) setConfirming(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>

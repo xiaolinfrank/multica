@@ -13,23 +13,19 @@ import {
   CockpitStatusNotInWorkflowError,
   type CockpitScope,
 } from "@multica/core/cockpit";
-import { useCreateModule, useDeleteModule } from "@multica/core/modules";
-import { containerOperationAllowed, containerOperationBasisOptions } from "@multica/core/issues";
+import { useCreateModule } from "@multica/core/modules";
 import { useModalStore } from "@multica/core/modals";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import { useLocale, useT } from "../i18n";
 import { formatDateOnly } from "@multica/core/issues/date";
 import type { CockpitNodePatch } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
-import { Button } from "@multica/ui/components/ui/button";
-import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@multica/ui/components/ui/alert-dialog";
-import { ContainerOperationRestriction } from "../issues/components/issue-operation-restriction";
 import { useNavigation } from "../navigation";
 import { buildPlanRows, planIssueProgress, planModules, planNodeKind, type PlanRow } from "./plan-rows";
 import { planRowRenameTarget, usePlanRowRename } from "./use-plan-row-rename";
 import { PlanRowName } from "./plan-row-name";
 import { CreateRow, PlanRowActions } from "./plan-row-actions";
+import { ModuleDeleteDialog } from "./module-delete-dialog";
 import { EditableDate, EditableSuggest } from "../cockpit/components/cockpit-fields";
 import { StatusChip } from "../cockpit/components/cockpit-status";
 import { cn } from "@multica/ui/lib/utils";
@@ -63,7 +59,6 @@ export function PlanTree({
   variant = "tree", onPatchNode, ownerSuggestions = [], statusSuggestions = [], rootIds,
 }: PlanTreeProps) {
   const { t } = useT("cockpit");
-  const { t: tProjects } = useT("projects");
   const viewKey = cockpitScopeViewKey(wsId, scope);
   const includeClosed = useCockpitScopeViewStore((s) => s.plans[viewKey]?.includeClosedProjects ?? false);
   // Selected as the stored array, not a `?? []` default: a fresh array each
@@ -85,7 +80,6 @@ export function PlanTree({
   const gridRef = useRef<HTMLDivElement>(null);
 
   const createModule = useCreateModule();
-  const deleteModule = useDeleteModule();
   const renameRow = usePlanRowRename(wsId);
   const createWorkItem = useCreateCockpitWorkItem(wsId);
   const moveWorkItem = useMoveCockpitWorkItem(wsId);
@@ -185,37 +179,6 @@ export function PlanTree({
       } } : {}),
     });
   };
-
-  // Deleting a module is the project's operation, not a plan-row edit: it
-  // takes the module, its work items and their payments, and unfiles the
-  // issues. The dialog says how much of each goes, the way the project page's
-  // module deletion does, and the same operation basis decides whether it is
-  // allowed.
-  const deleteBasis = useQuery({
-    ...containerOperationBasisOptions(wsId, "module", deletingModule?.node.module_id ?? ""),
-    enabled: Boolean(deletingModule?.node.module_id),
-  });
-  const canDeleteModule = !deleteBasis.isError && containerOperationAllowed(deleteBasis.data, "delete");
-  const [deletingModuleError, setDeletingModuleError] = useState("");
-  const moduleImpact = useMemo(() => {
-    const empty = { workItems: 0, payments: 0, issues: 0 };
-    if (!deletingModule) return empty;
-    const ids = new Set<string>([deletingModule.node.id]);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const node of nodes) {
-        if (node.parent_id && ids.has(node.parent_id) && !ids.has(node.id)) { ids.add(node.id); grew = true; }
-      }
-    }
-    const workItems = [...ids].filter((id) => { const node = byId.get(id); return node != null && planNodeKind(node, byId) === "work_item"; }).length;
-    const payments = (data?.payments ?? []).filter((payment) => ids.has(payment.node_id)).length;
-    // The read rolls counts up the tree, so the module row's primary_total
-    // already covers every work item under it; summing the descendants again
-    // doubles the figure (2 issues read as 4).
-    const issues = countsById.get(deletingModule.node.id)?.primary_total ?? 0;
-    return { workItems, payments, issues };
-  }, [deletingModule, nodes, byId, data, countsById]);
 
   const report = (e: unknown) => {
     if (e instanceof CockpitStatusNotInWorkflowError) {
@@ -438,7 +401,7 @@ export function PlanTree({
                   }}
                   onRenumber={() => setConfirmRenumber(row.node.id)}
                   onDelete={() => {
-                    if (row.kind === "module") { setDeletingModuleError(""); setDeletingModule(row); }
+                    if (row.kind === "module") setDeletingModule(row);
                     else setConfirmDelete(row.node.id);
                   }}
                 />
@@ -474,34 +437,10 @@ export function PlanTree({
         })}
       </div>
 
-      <AlertDialog open={deletingModule != null} onOpenChange={(open) => {
-        if (!open && !deleteModule.isPending) { setDeletingModule(null); setDeletingModuleError(""); }
-      }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tProjects(($) => $.module.delete_title, { title: deletingModule?.name ?? "" })}</AlertDialogTitle>
-            <AlertDialogDescription>{tProjects(($) => $.module.delete_description)}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <p className="text-caption text-muted-foreground">{t(($) => $.plan_tree.delete_module_impact, {
-            work_items: moduleImpact.workItems, payments: moduleImpact.payments, issues: moduleImpact.issues,
-          })}</p>
-          <ContainerOperationRestriction basis={deleteBasis.isError ? undefined : deleteBasis.data} operation="delete"
-            pending={deleteBasis.isPending} error={deleteBasis.isError} retry={() => void deleteBasis.refetch()} />
-          {deletingModuleError && <p role="alert" className="text-caption text-destructive">{deletingModuleError}</p>}
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteModule.isPending}>{t(($) => $.plan_tree.cancel)}</AlertDialogCancel>
-            <Button type="button" variant="destructive" disabled={deleteModule.isPending || !canDeleteModule} onClick={() => {
-              const moduleId = deletingModule?.node.module_id;
-              if (!moduleId) return;
-              setDeletingModuleError("");
-              deleteModule.mutate(moduleId, {
-                onSuccess: () => { setDeletingModule(null); setNotice(t(($) => $.plan_tree.deleted)); },
-                onError: (error) => setDeletingModuleError(error instanceof Error ? error.message : t(($) => $.plan_tree.load_failed)),
-              });
-            }}>{tProjects(($) => $.module.delete_confirm)}</Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ModuleDeleteDialog wsId={wsId} row={deletingModule} nodes={nodes}
+        payments={data?.payments ?? []} countsById={countsById}
+        onOpenChange={(open) => { if (!open) setDeletingModule(null); }}
+        onDeleted={() => { setDeletingModule(null); setNotice(t(($) => $.plan_tree.deleted)); }} />
     </div>
   );
 }
