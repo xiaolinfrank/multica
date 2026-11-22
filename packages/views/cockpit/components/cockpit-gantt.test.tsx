@@ -289,6 +289,15 @@ describe("CockpitGantt responsive identity", () => {
     expect(within(dialog).queryByText(/Progress: 10%/)).toBeNull();
   });
 
+  it("reads a week dialog's progress from the issue counts", async () => {
+    show({ board: issueBoard(), zoom: "week", renderAllRows: true, taskCounts: issueCounts });
+    // The week of 12-18 October holds A: it spans the whole autumn.
+    fireEvent.click(screen.getByRole("button", { name: "Week · 2026-10-12 – 2026-10-18" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Progress: 75%/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Progress: 10%/)).toBeNull();
+  });
+
   it("reads every gantt progress from the issue counts", () => {
     const { tree, viewport } = show({ board: issueBoard(), renderAllRows: true, taskCounts: issueCounts });
     // The direction row's column and its summary bar: (75 + 40) / 2 = 58.
@@ -310,12 +319,16 @@ describe("CockpitGantt responsive identity", () => {
       ...board,
       nodes: [...nodes, node("empty", { code: "03.10", parent_id: "root", name: "Empty direction", kind: "module", progress: 40 })],
     };
-    const { tree } = show({ board: withEmptyModule, renderAllRows: true });
+    const { tree, viewport } = show({ board: withEmptyModule, renderAllRows: true });
     const row = tree.querySelector<HTMLElement>('[data-cockpit-node="empty"]')!;
     // An empty L1/L2 row is structure, not a work item: it has no typed
     // progress, only the roll-up that has nothing in it yet.
     expect(row.querySelector("[data-progress-empty]")).toHaveTextContent("—");
     expect(within(row).queryByRole("button", { name: "Progress" })).toBeNull();
+    // The bar paints the same nothing: a roll-up with no leaves is 0, not the
+    // 40 the row still stores.
+    expect(viewport.querySelector<HTMLElement>('[data-cockpit-node="empty"] [data-progress]'))
+      .toHaveAttribute("data-progress", "0");
   });
 
   it("locks the structure controls on a board that is not reconciled yet", () => {

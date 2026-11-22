@@ -148,7 +148,8 @@ describe("cockpitTasksCsv", () => {
     expect(lines[2]!.split(",")[9]).toBe("75");
     // No issues: the typed value.
     expect(lines[3]!.split(",")[9]).toBe("40");
-    // Without the counts the project row falls back to what it has stored.
+    // Without the counts the project row averages its leaves' typed values —
+    // still not its own stored 90.
     const typed = cockpitTasksCsv(
       board({
         nodes: [

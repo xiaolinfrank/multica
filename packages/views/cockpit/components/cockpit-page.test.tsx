@@ -414,6 +414,35 @@ describe("CockpitPage", () => {
     expect(await screen.findByText(/0\/1 items · 40%/)).toBeInTheDocument();
   });
 
+  it("reads the small module cards from the issue counts too", async () => {
+    const withCounts = structuredClone(board);
+    withCounts.nodes = [
+      node({ id: "root-a", code: "L1-01", name: "Datasets", color: "#2563eb" }),
+      node({ id: "root-b", code: "L1-02", name: "Platform", color: "#0891b2" }),
+      node({ id: "root-c", code: "L1-03", name: "Agents", color: "#7c3aed" }),
+      node({
+        id: "pilot", code: "L3-03-01", kind: "work_item", name: "Pilot", parent_id: "root-c",
+        status: "In progress", progress: 10,
+        start_date: upcomingDate(-10), end_date: upcomingDate(10),
+      }),
+    ];
+    withCounts.payments = [];
+    withCounts.issue_links = [];
+    withCounts.milestones = [];
+    withCounts.meetings = [];
+    withCounts.meeting_issues = [];
+    withCounts.meeting_nodes = [];
+    readCockpitFixture.mockResolvedValue(withCounts);
+    vi.mocked(api.getCockpitPlan).mockImplementationOnce(async (_wsId, scope) => ({
+      ...cockpitPlanFixture(withCounts, scope),
+      task_counts: [{ node_id: "pilot", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 }],
+    }));
+    renderPage();
+    // The third L1 falls past MODULE_BIG_COUNT into the compact grid; three of
+    // four issues is 75, not the typed 10. The big cards cover the other path.
+    expect(await screen.findByText(/0\/1 items · 75%/)).toBeInTheDocument();
+  });
+
   it("reads the overview and the panel from the plan's issue counts", async () => {
     const withCounts = structuredClone(board);
     withCounts.nodes = [
