@@ -42,6 +42,7 @@ import {
   cockpitGoalProgress,
   cockpitStatusColor,
   cockpitSubtreeAverage,
+  isCockpitWorkItem,
   computeCockpitAxis,
   computeCockpitRollups,
   daysBetween,
@@ -882,7 +883,7 @@ export function CockpitGantt({
     for (const entry of rows) {
       if (!carriesMarkers(entry)) continue;
       const merged = new Map<string, { kind: CockpitCoreNodeKind | "goal"; date: string; nodes: CockpitNode[] }>();
-      for (const group of cockpitCoreNodes(entry, today)) {
+      for (const group of cockpitCoreNodes(entry, today, taskCounts)) {
         const date = group.date < axisStartKey ? axisStartKey : group.date;
         const key = `${group.kind}:${date}`;
         const bucket = merged.get(key);
@@ -896,7 +897,7 @@ export function CockpitGantt({
       if (marks.length > 0) map.set(entry.node.id, marks);
     }
     return map;
-  }, [rows, today, axisStartKey, goalDate, rootOf]);
+  }, [rows, today, axisStartKey, goalDate, rootOf, taskCounts]);
 
   const { treeWidth, compact } = cockpitGanttLayout(viewport.width, showFinance, renderAllRows);
   const hasNodes = board.nodes.length > 0;
@@ -1101,9 +1102,12 @@ export function CockpitGantt({
               // A work item with issues reports their ratio and has no typed
               // field here either; the panel and this column must agree.
               const workCounts = taskCounts.get(node.id);
+              // A structure row is not a work item even when nobody has broken
+              // it down yet: it has no typed progress of its own.
+              const isWorkItem = isCockpitWorkItem(node, depth);
               // Same rule as the panel and the summaries: a countable ratio
               // means the issues own the number; none means the typed one.
-              const workRatio = isBranch ? null : cockpitIssueProgress(workCounts);
+              const workRatio = isWorkItem ? cockpitIssueProgress(workCounts) : null;
               const hasIssues = workRatio != null;
               return (
                 <div
@@ -1371,8 +1375,12 @@ export function CockpitGantt({
                           </TooltipContent>
                         </Tooltip>
                       ) : (
-                        <span className="text-caption text-faint-foreground">—</span>
+                        <span data-progress-empty className="text-caption text-faint-foreground">—</span>
                       )
+                    ) : !isWorkItem ? (
+                      // Nobody has broken this structure row down yet: the
+                      // gantt draws no figure and there is nothing to type.
+                      <span data-progress-empty className="text-caption text-faint-foreground">—</span>
                     ) : hasIssues ? (
                       <span className="text-caption tabular-nums text-muted-foreground">{workRatio}%</span>
                     ) : (
@@ -1603,7 +1611,9 @@ export function CockpitGantt({
                 const barColor = isBranch
                   ? cockpitAggStatusColor(entry)
                   : cockpitStatusColor(node.status);
-                const progress = isBranch
+                // A structure row paints its leaves' average; one nobody has
+                // broken down yet has no figure at all, not a stored one.
+                const progress = isBranch || !isCockpitWorkItem(node, depth)
                   ? (cockpitSubtreeAverage(entry, taskCounts) ?? 0)
                   : cockpitEffectiveProgress(node, taskCounts.get(node.id));
 

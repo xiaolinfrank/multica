@@ -8,7 +8,7 @@ import type {
 } from "@multica/core/types";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import { useEffect, useRef, useState } from "react";
-import { cockpitIssueProgress, type CockpitNodeView } from "@multica/core/cockpit";
+import { cockpitIssueProgress, isCockpitWorkItem, type CockpitNodeView } from "@multica/core/cockpit";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -147,8 +147,11 @@ export function CockpitNodePanel({
   // a read-out, not a field. Without issues the typed value stays.
   // "Has issues" is the same question everywhere: is there a countable
   // ratio? A work item whose issues are all cancelled has none, so it keeps
-  // the typed value the summaries also fall back to.
-  const issueRatio = !isBranch ? cockpitIssueProgress(issueCounts ?? null) : null;
+  // the typed value the summaries also fall back to. A structure row is not
+  // a work item even when it has no children yet: its progress is a roll-up
+  // with nothing in it, not a number anyone typed.
+  const isWorkItem = isCockpitWorkItem(node, depth);
+  const issueRatio = isWorkItem && !isBranch ? cockpitIssueProgress(issueCounts ?? null) : null;
   const progressFromIssues = issueRatio != null;
 
   return (
@@ -261,7 +264,7 @@ export function CockpitNodePanel({
                 </span>
                 <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.progress_issue_hint)}</p>
               </>
-            ) : isBranch ? (
+            ) : isBranch || !isWorkItem ? (
               <>
                 <span className="text-body font-medium tabular-nums">
                   {subtreeProgress == null ? "—" : `${subtreeProgress}%`}

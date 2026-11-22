@@ -252,6 +252,72 @@ describe("CockpitGantt responsive identity", () => {
     expect(tail()).toHaveAttribute("data-progress", "40");
   });
 
+  // One board, every gantt read that has to take the same number: A's four
+  // issues are three done, B is typed at 40 with no date, C's issues are all
+  // cancelled. (75 + 40 + 60) / 3 = 58 on the direction, the project row and
+  // the annual objective.
+  function issueBoard() {
+    return {
+      ...board,
+      cockpit: { ...board.cockpit, goal_date: "2026-12-31" },
+      nodes: [
+        node("root", { code: "L1-03", name: "Programme" }),
+        node("branch", { code: "03.09", parent_id: "root", name: "Direction", kind: "module", module_id: "mod-branch" }),
+        node("leaf", { code: "03.09.01", parent_id: "branch", name: "A", status: "In progress", progress: 10 }),
+        node("leaf2", { code: "03.09.02", parent_id: "branch", name: "B", status: "In progress", progress: 40, end_date: null }),
+        node("branch2", { code: "03.10", parent_id: "root", name: "Direction two", kind: "module", module_id: "mod-branch-2" }),
+        node("leaf3", { code: "03.10.01", parent_id: "branch2", name: "C", status: "In progress", progress: 60, end_date: null }),
+      ],
+    };
+  }
+  const issueCounts = new Map([
+    ["leaf", { node_id: "leaf", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 }],
+    ["leaf3", { node_id: "leaf3", primary_total: 4, reference_total: 0, active: 0, done: 0, closed: 4 }],
+  ]);
+
+  it("marks a core date from the issue counts, not the typed number", async () => {
+    // Without the counts A reads its typed 10% and B has no date, so nothing
+    // is coming up; with them A clears the floor at 75.
+    const { update } = show({ board: issueBoard(), renderAllRows: true });
+    expect(screen.queryByRole("button", { name: /coming up/ })).toBeNull();
+    update({ taskCounts: issueCounts });
+    const marker = screen.getByRole("button", { name: /coming up/ });
+    fireEvent.click(marker);
+    const dialog = await screen.findByRole("dialog");
+    // The marker's own list quotes the ratio the board shows.
+    expect(within(dialog).getByText(/Progress: 75%/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Progress: 10%/)).toBeNull();
+  });
+
+  it("reads every gantt progress from the issue counts", () => {
+    const { tree, viewport } = show({ board: issueBoard(), renderAllRows: true, taskCounts: issueCounts });
+    // The direction row's column and its summary bar: (75 + 40) / 2 = 58.
+    const branch = tree.querySelector<HTMLElement>('[data-cockpit-node="branch"]')!;
+    expect(within(branch).getByText("58%")).toBeInTheDocument();
+    expect(viewport.querySelector<HTMLElement>('[data-cockpit-node="branch"] [data-progress]'))
+      .toHaveAttribute("data-progress", "58");
+    // The project row's annual-objective chip: (75 + 40 + 60) / 3 = 58.
+    const root = tree.querySelector<HTMLElement>('[data-cockpit-node="root"]')!;
+    expect(within(root).getByText("58%")).toBeInTheDocument();
+    // C's issues are all cancelled: no countable ratio, so the typed field
+    // stays — a bare primary_total > 0 would have hidden it.
+    const leaf3 = tree.querySelector<HTMLElement>('[data-cockpit-node="leaf3"]')!;
+    expect(within(leaf3).getByRole("button", { name: "Progress" })).toBeInTheDocument();
+  });
+
+  it("draws no typed progress on a structure row nobody has broken down", () => {
+    const withEmptyModule = {
+      ...board,
+      nodes: [...nodes, node("empty", { code: "03.10", parent_id: "root", name: "Empty direction", kind: "module", progress: 40 })],
+    };
+    const { tree } = show({ board: withEmptyModule, renderAllRows: true });
+    const row = tree.querySelector<HTMLElement>('[data-cockpit-node="empty"]')!;
+    // An empty L1/L2 row is structure, not a work item: it has no typed
+    // progress, only the roll-up that has nothing in it yet.
+    expect(row.querySelector("[data-progress-empty]")).toHaveTextContent("—");
+    expect(within(row).queryByRole("button", { name: "Progress" })).toBeNull();
+  });
+
   it("locks the structure controls on a board that is not reconciled yet", () => {
     const unreconciled = { ...board, cockpit: { ...board.cockpit, plan_reconciled_at: null } };
     const { tree } = show({ board: unreconciled, renderAllRows: true });

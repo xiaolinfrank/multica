@@ -126,6 +126,14 @@ describe("CockpitNodePanel", () => {
     expect(screen.queryByRole("button", { name: "Progress" })).not.toBeInTheDocument();
   });
 
+  it("shows a dash, not a typed field, on a structure row nobody has broken down", () => {
+    // An empty module is still structure, not a work item: its progress is a
+    // roll-up with nothing under it, so there is no number to edit.
+    setup({ depth: 1, isBranch: false, subtreeProgress: null, node: { ...node, kind: "module" } });
+    expect(screen.queryByRole("button", { name: "Progress" })).not.toBeInTheDocument();
+    expect(screen.getByText(enCockpit.node.progress_branch_hint).previousElementSibling).toHaveTextContent("—");
+  });
+
   it("offers only the task and plan-detail tabs, and does not advertise hidden sections", () => {
     // §9 hides artifacts and acceptance: an old URL that still asks for one
     // lands on the plan details instead of a tab or an unavailable notice.
