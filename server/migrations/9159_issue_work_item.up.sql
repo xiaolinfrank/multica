@@ -1,4 +1,5 @@
--- S1 of the plan-tree unification (docs/design/cockpit-unification-2026-11-19).
+-- Plan-tree unification: a work item must agree with the issue's project and
+-- module.
 --
 -- issue.work_item_id is the single filing authority an issue has into the plan
 -- tree: at most one L3 work item (a third-level cockpit_node row), from which

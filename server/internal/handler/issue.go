@@ -80,9 +80,9 @@ type IssueResponse struct {
 	// nil = directly under the project.
 	ModuleID *string `json:"module_id"`
 	// WorkItemID names the plan-tree work item (third-level cockpit node) the
-	// issue belongs to; nil = filed only to the module/project. The work item
-	// always agrees with ProjectID and ModuleID (see the S1 invariants in
-	// docs/design/cockpit-unification-2026-11-19).
+	// issue belongs to; nil = filed only to the module/project. A work item
+	// always agrees with the issue's project and module: the item's row must
+	// sit in that module, and the module in that project.
 	WorkItemID *string `json:"work_item_id"`
 	Position   float64 `json:"position"`
 	// Stage groups sub-issues under the same parent into ordered barrier
