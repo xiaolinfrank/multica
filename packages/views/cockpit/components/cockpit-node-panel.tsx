@@ -8,7 +8,7 @@ import type {
 } from "@multica/core/types";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import { useEffect, useRef, useState } from "react";
-import type { CockpitNodeView } from "@multica/core/cockpit";
+import { cockpitIssueProgress, type CockpitNodeView } from "@multica/core/cockpit";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -36,7 +36,6 @@ import {
   ProgressField,
 } from "./cockpit-fields";
 import { StatusChip } from "./cockpit-status";
-import { planIssueProgress } from "../../plan-tree/plan-rows";
 
 export interface CockpitNodePanelProps {
   node: CockpitNode;
@@ -143,7 +142,7 @@ export function CockpitNodePanel({
   // A work item that owns issues takes its progress from them: the ratio is
   // a read-out, not a field. Without issues the typed value stays.
   const issueRatio = !isBranch && (issueCounts?.primary_total ?? 0) > 0
-    ? planIssueProgress(issueCounts ?? null)
+    ? cockpitIssueProgress(issueCounts ?? null)
     : null;
   const progressFromIssues = !isBranch && (issueCounts?.primary_total ?? 0) > 0;
 

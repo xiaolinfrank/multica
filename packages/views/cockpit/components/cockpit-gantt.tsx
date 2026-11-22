@@ -33,6 +33,7 @@ import type {
 } from "@multica/core/types";
 import {
   COCKPIT_STATUS_LEGEND,
+  cockpitIssueProgress,
   axisMonths,
   buildCockpitTree,
   cockpitAggStatusColor,
@@ -699,7 +700,7 @@ export function CockpitGantt({
 
   // Row codes are addresses, so they are built once over the whole tree: a
   // filtered or searched view must not renumber the rows under the reader.
-  const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
+  const rollups = useMemo(() => computeCockpitRollups(tree, today, taskCounts), [tree, today, taskCounts]);
   const rows = useMemo(
     () => visibleRows(scopedTree, collapsed, query),
     [scopedTree, collapsed, query],
@@ -1099,6 +1100,11 @@ export function CockpitGantt({
                   ? (rootOwner.get(rootOf.byId.get(node.id) ?? "") ?? "")
                   : "";
               const planRow = planRowFor(node, depth, taskCounts.get(node.id) ?? null, isBranch);
+              // A work item with issues reports their ratio and has no typed
+              // field here either; the panel and this column must agree.
+              const workCounts = taskCounts.get(node.id);
+              const hasIssues = !isBranch && (workCounts?.primary_total ?? 0) > 0;
+              const workRatio = hasIssues ? cockpitIssueProgress(workCounts) : null;
               return (
                 <div
                   key={node.id}
@@ -1364,6 +1370,10 @@ export function CockpitGantt({
                       ) : (
                         <span className="text-caption text-faint-foreground">—</span>
                       )
+                    ) : hasIssues ? (
+                      <span className="text-caption tabular-nums text-muted-foreground">
+                        {workRatio == null ? "—" : `${workRatio}%`}
+                      </span>
                     ) : (
                       <ProgressField
                         value={node.progress}
@@ -1454,7 +1464,7 @@ export function CockpitGantt({
                                   <td className="py-2 pr-2"><DialogClose render={<Button variant="link" size="sm" className="h-auto whitespace-normal text-left" onClick={() => onSelect(node.id)} />}>
                                     {node.code} {node.name}
                                   </DialogClose>
-                                    <div>{t(($) => $.node.progress)}: {cockpitEffectiveProgress(node)}%</div>
+                                    <div>{t(($) => $.node.progress)}: {cockpitEffectiveProgress(node, taskCounts.get(node.id))}%</div>
                                     <div>{t(($) => $.node.current_progress)}: {node.current_progress || emptyLabel}</div>
                                     <div>{t(($) => $.node.deliverable)}: {node.deliverable || emptyLabel}</div>
                                     <div>{t(($) => $.node.linked_issues)}: {taskCounts.has(node.id) ? t(($) => $.plan_views.task_counts, { primary: taskCounts.get(node.id)!.primary_total, reference: taskCounts.get(node.id)!.reference_total }) : emptyLabel}</div>
@@ -1594,7 +1604,7 @@ export function CockpitGantt({
                   : cockpitStatusColor(node.status);
                 const progress = isBranch
                   ? (cockpitSubtreeAverage(entry) ?? 0)
-                  : cockpitEffectiveProgress(node);
+                  : cockpitEffectiveProgress(node, taskCounts.get(node.id));
 
                 // Clamped to the axis on both edges: a bar that starts before
                 // the canvas would otherwise draw at a negative offset and a

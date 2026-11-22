@@ -168,6 +168,22 @@ describe("CockpitGantt responsive identity", () => {
     await waitFor(() => expect(mocks.deleteCockpitNode).toHaveBeenCalledWith("leaf"));
   });
 
+  it("reports a work item's issue ratio instead of a typed progress field", () => {
+    const withSecondItem = {
+      ...board,
+      nodes: [...nodes, node("leaf2", { code: "historic-task-2", parent_id: "branch", name: "Second task" })],
+    };
+    const taskCounts = new Map([["leaf", { node_id: "leaf", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 }]]);
+    const { tree } = show({ board: withSecondItem, renderAllRows: true, taskCounts });
+    const leaf = tree.querySelector<HTMLElement>('[data-cockpit-node="leaf"]')!;
+    expect(within(leaf).getByText("75%")).toBeInTheDocument();
+    // No typed field: the ratio follows the issues, here and in the panel.
+    expect(within(leaf).queryByRole("button", { name: "Progress" })).toBeNull();
+    // A work item with no issues keeps the typed editor.
+    const leaf2 = tree.querySelector<HTMLElement>('[data-cockpit-node="leaf2"]')!;
+    expect(within(leaf2).getByRole("button", { name: "Progress" })).toBeInTheDocument();
+  });
+
   it("measures the container rather than the browser and restores metadata after export", () => {
     const { tree, update } = show();
     update({ renderAllRows: true });

@@ -1,5 +1,6 @@
 import type { CockpitNode } from "@multica/core/types";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
+import { cockpitIssueProgress } from "@multica/core/cockpit";
 
 // The plan tree's row model. Level is read from `kind` (S2 writes it on every
 // read row); the parent chain is the fallback for a board API row that carries
@@ -21,14 +22,10 @@ export interface PlanRow {
   hasChildren: boolean;
 }
 
-/** Percentage of a work item's copies of its own work that are done, or null
- *  when nothing is countable. `closed` (cancelled) is not work: it leaves the
- *  denominator so cancelling a task never reads as progress. */
+/** The plan's name for the shared issue ratio: one implementation in core, so
+ *  the tree and the gantt can never disagree about what 75% means. */
 export function planIssueProgress(counts: CockpitPlanTaskCount | null): number | null {
-  if (!counts) return null;
-  const denominator = counts.primary_total - counts.closed;
-  if (denominator <= 0) return null;
-  return Math.round((counts.done / denominator) * 100);
+  return cockpitIssueProgress(counts);
 }
 
 function kindOf(node: CockpitNode, depth: number): PlanKind {

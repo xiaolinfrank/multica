@@ -159,6 +159,37 @@ describe("buildCockpitTree", () => {
   });
 });
 
+describe("progress from issues", () => {
+  const tree = buildCockpitTree([
+    node({ id: "p", code: "01", kind: "project" }),
+    node({ id: "m", code: "01.01", parent_id: "p", kind: "module" }),
+    node({ id: "w", code: "01.01.01", parent_id: "m", progress: 10, status: "进行中", start_date: "2026-09-01", end_date: "2026-09-30" }),
+    node({ id: "w2", code: "01.01.02", parent_id: "m", progress: 40, status: "进行中", start_date: "2026-09-01", end_date: "2026-09-30" }),
+  ]);
+  const counts = new Map([["w", { node_id: "w", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 }]]);
+
+  it("weighs a work item by its issues in the roll-up, not by the typed number", () => {
+    const rollups = computeCockpitRollups(tree, "2026-10-14", counts);
+    expect(rollups.get("w")!.progress).toBe(75);
+    // The parent is the leaf average, so its figure moves with the work item.
+    expect(rollups.get("m")!.progress).toBe(Math.round((75 + 40) / 2 * 100) / 100);
+  });
+
+  it("fills the gantt bar from the issues too", () => {
+    const work = node({ id: "w", code: "01.01.01", progress: 10 });
+    expect(cockpitEffectiveProgress(work, counts.get("w"))).toBe(75);
+    // Without a count read the typed value stays the bar's basis.
+    expect(cockpitEffectiveProgress(work)).toBe(10);
+  });
+
+  it("uses the same ratio in the toolbar's overall progress", () => {
+    const nodes = [tree[0]!.node, ...tree[0]!.children.flatMap((m) => [m.node, ...m.children.map((w) => w.node)])];
+    const overall = cockpitOverallProgress(nodes, "2026-10-14", null, counts);
+    // (75 + 40) / 2, not (10 + 40) / 2.
+    expect(overall.overall).toBe(58);
+  });
+});
+
 describe("computeCockpitRollups", () => {
   const tree = buildCockpitTree([
     node({ id: "r", code: "L1-01" }),

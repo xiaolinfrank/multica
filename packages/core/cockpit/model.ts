@@ -8,6 +8,7 @@ import type {
   CockpitNode,
   CockpitPayment,
 } from "../types";
+import type { CockpitPlanTaskCount } from "../types/cockpit-read";
 
 // Derivations over a cockpit board. Everything here is pure: the same board
 // always yields the same tree, the same roll-ups and the same finance summary,
@@ -322,9 +323,34 @@ function maxDate(a: string | null, b: string | null): string | null {
  * Roll-ups for every node, keyed by id. Computed in one pass over the tree so a
  * board of a few hundred nodes costs one traversal, not one per rendered row.
  */
+/** Percentage of a work item's issues that are done, or null when nothing is
+ *  countable. `closed` (cancelled) is not work: it leaves the denominator so
+ *  cancelling an issue never reads as progress. */
+export function cockpitIssueProgress(counts: CockpitPlanTaskCount | null | undefined): number | null {
+  if (!counts) return null;
+  const denominator = counts.primary_total - counts.closed;
+  if (denominator <= 0) return null;
+  return Math.round((counts.done / denominator) * 100);
+}
+
+/**
+ * The number a work item reports as its progress: the issues' ratio when it
+ * owns any, otherwise the typed value. Every surface — panel, tree, gantt,
+ * roll-up, overall — asks this one function, so a work item cannot read 75%
+ * in one place and 10% in another.
+ */
+export function cockpitWorkProgress(
+  node: CockpitNode,
+  counts: CockpitPlanTaskCount | null | undefined,
+): number {
+  const ratio = cockpitIssueProgress(counts);
+  return ratio == null ? node.progress : ratio;
+}
+
 export function computeCockpitRollups(
   tree: CockpitTreeNode[],
   today: string,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): Map<string, CockpitRollup> {
   const rollups = new Map<string, CockpitRollup>();
 
@@ -372,6 +398,9 @@ export function computeCockpitRollups(
           own.live.doneRatio = own.live.doneCount * 100;
         }
       }
+      // The leaf's own number follows its issues when it has any; the typed
+      // value is only the fallback for a work item nobody filed work under.
+      own.progress = cockpitWorkProgress(node, taskCounts?.get(node.id));
       rollups.set(node.id, own);
       return own;
     }
@@ -1332,7 +1361,12 @@ export const COCKPIT_STATUS_LEGEND: { key: CockpitStatusLegendKey; color: string
  * every module whose owners track status but not percentages, so an untyped
  * row falls back to what its status already says.
  */
-export function cockpitEffectiveProgress(node: CockpitNode): number {
+export function cockpitEffectiveProgress(
+  node: CockpitNode,
+  counts?: CockpitPlanTaskCount | null,
+): number {
+  const ratio = cockpitIssueProgress(counts);
+  if (ratio != null) return ratio;
   if (node.progress > 0) return Math.min(node.progress, 100);
   if (isCockpitNodeDone(node)) return 100;
   if (isCockpitNodeActive(node) || isCockpitNodeWaiting(node)) return 50;
@@ -1629,6 +1663,7 @@ export function cockpitOverallProgress(
   nodes: CockpitNode[],
   today: string,
   goalDate: string | null,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): CockpitOverallProgress {
   let allSum = 0;
   let allCount = 0;
@@ -1642,10 +1677,13 @@ export function cockpitOverallProgress(
     if (!isCockpitWorkItem(node, depthOf(node, byId))) continue;
     if (isCockpitNodeCancelled(node)) continue;
     if (isCockpitNodeUnscheduled(node)) continue;
-    const progress =
-      node.progress > 0
+    // A work item with issues reports their ratio here too, or the toolbar
+    // would average a number the rows no longer show.
+    const ratio = cockpitIssueProgress(taskCounts?.get(node.id));
+    const progress = ratio ??
+      (node.progress > 0
         ? Math.min(node.progress, 100)
-        : (SUBTREE_STATUS_PROGRESS[node.status] ?? 0);
+        : (SUBTREE_STATUS_PROGRESS[node.status] ?? 0));
     allSum += progress;
     allCount += 1;
     if (goalDate) {

@@ -22,6 +22,7 @@ import type {
   CockpitNodePatch,
   CockpitPatch,
 } from "@multica/core/types";
+import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import {
   buildCockpitTree,
   cockpitMilestoneStatusColor,
@@ -381,6 +382,8 @@ export interface CockpitOverviewProps {
   onOpenModule?: (rootCode: string) => void;
   /** The owners the board already uses, offered on the module cards. */
   ownerSuggestions: string[];
+  /** The plan read's issue roll-up, so a work item's progress is its issues'. */
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>;
   readOnly?: boolean;
 }
 
@@ -399,12 +402,13 @@ export function CockpitOverview({
   onOpenModule,
   ownerSuggestions,
   readOnly,
+  taskCounts,
 }: CockpitOverviewProps) {
   const { t } = useT("cockpit");
   const locale = useLocale();
 
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
+  const rollups = useMemo(() => computeCockpitRollups(tree, today, taskCounts), [tree, today, taskCounts]);
   const finance = useMemo(
     () => computeCockpitFinance(board, contextNodeIds, OVERVIEW_FINANCE_YEAR),
     [board, contextNodeIds],

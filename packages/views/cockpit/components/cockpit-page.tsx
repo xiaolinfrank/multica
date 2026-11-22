@@ -407,7 +407,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   useEffect(() => { if (selectedId && nodes.some((node) => node.id === selectedId)) focusTask(selectedId); }, [selectedId, nodes, focusTask]);
 
   const overall = useMemo(
-    () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null),
+    () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null, taskCounts),
     [nodes, today, board?.cockpit.goal_date],
   );
 
@@ -792,6 +792,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
                 }}
                 onOpenTask={openTask}
                 ownerSuggestions={ownerSuggestions}
+                taskCounts={taskCounts}
               />
             </div>
           )}
