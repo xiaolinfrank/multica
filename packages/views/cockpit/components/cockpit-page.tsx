@@ -408,7 +408,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
   const overall = useMemo(
     () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null, taskCounts),
-    [nodes, today, board?.cockpit.goal_date],
+    [nodes, today, board?.cockpit.goal_date, taskCounts],
   );
 
   const toggleRoot = useCallback((nodeId: string) => {
