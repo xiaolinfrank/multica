@@ -69,8 +69,8 @@ A cross-module move takes the destination's next number (the old one is never re
 Direct field edits (`node update`) are a human prerogative: a machine credential is refused, because a plan the programme runs on must not move on an agent's word alone. What you observe goes through the governance queue instead — a person checks every proposal against the evidence and only their decision moves the board.
 
 ```bash
-multica cockpit change propose --node 03.02.11 --field progress --value 60 \
-  --reason "会议纪要 2026-10-15 确认 60%；板载 40%"
+multica cockpit change propose --node 03.02.11 --field end_date --value 2026-11-15 \
+  --reason "会议纪要 2026-10-15 确认顺延；板载 2026-10-31"
 multica cockpit change list --status pending
 multica cockpit change preview <change-id>
 multica cockpit change withdraw <change-id>
@@ -83,7 +83,7 @@ multica cockpit change ingest --file drift.json   # batch write-back from a repo
 
 The board is the programme's memory of dates, owners and progress; keeping it current is part of the job. Four moments obligate a check:
 
-- **After verified delivery** — re-read the work item; if progress/status/dates no longer match the evidence, propose a change, and if they do match, say so briefly. Never assume an automatic roll-up.
+- **After verified delivery** — re-read the work item; if status or dates no longer match the evidence, propose a change, and if they do match, say so briefly. Progress is not a field to propose on a work item that files issues: the board shows the share of those issues that are done, so move the issues and let the number follow. Only a work item with no filed issues carries a stored progress you may propose; L1/L2 rows are rolled up from their work items and are not editable at all.
 - **After project/module creation or rename** — the plan row already exists; check its placement and say what you see instead of adding a row.
 - **After a meeting ends or its minutes land** — compare `meeting list` with the archive folders (`GET /api/cockpit/meetings/scan`); propose missing register rows with `meeting add`, or hand over the folder list for the cockpit's own import (`POST /api/cockpit/meetings/import`). `multica cockpit import` replaces the whole board — never use it for this.
 - **When an overview card looks stale** — say so against the facts you verified and offer one dated replacement via `cockpit update --summary-overall|next|support` (see [versions](references/versions.md)); on confirmation only.
@@ -99,7 +99,7 @@ multica cockpit node link 03.02.11 BIO-314 BIO-320                      # relate
 ```
 
 `--revision` is the observed filing revision (`0` only when the issue has none). Refiling rewrites the issue's module and project and keeps the old work item as a related link; it requires a human credential.
-Related links show real issue status but do not move progress. For bounded issue pages per work item and published-minute actions, read [actions and filing](references/actions.md) — those writes require a human credential.
+Only a work item's primary-filed issues count toward its progress — the board shows their completion ratio, with cancelled issues out of the denominator. Related links show real issue status but never count. Do not propose `progress` on a work item that files issues; advance or close the issues instead. For bounded issue pages per work item and published-minute actions, read [actions and filing](references/actions.md) — those writes require a human credential.
 
 ## Payments, milestones and meetings
 

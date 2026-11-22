@@ -365,8 +365,12 @@ Once a board has bound nodes, whole-board import and snapshot restore return 409
   written, and every other column keeps its value.
 - Sending a date key as `null` or `""` clears it; leaving the key out entirely
   leaves it unchanged. `budget_amount` behaves the same way with `null`.
-- `progress` is a number 0-100; fractional values such as `62.5` are accepted.
-  Anything outside that range is rejected with 400 rather than clamped.
+- `progress` is a stored number 0-100; fractional values such as `62.5` are
+  accepted. A work item that files primary issues shows their completion
+  ratio instead (cancelled issues leave the denominator), and the stored value
+  is only the fallback for a work item with none — do not propose it there.
+  L1/L2 rows are rolled up from their work items and are read-only. Anything
+  outside 0-100 is rejected with 400 rather than clamped.
 - Codes are outline numbers — L1 `04`, L2 `04.01`, L3 `04.01.03`. A node
   created before that rule may still wear `L3-01-08`; the reconcile pass
   rewrites it to the outline number the gantt already showed.
