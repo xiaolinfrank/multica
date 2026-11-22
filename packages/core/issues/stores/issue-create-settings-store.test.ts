@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_MANUAL_CREATE_FIELDS,
   DEFAULT_QUICK_CREATE_FIELDS,
+  MANUAL_CREATE_FIELDS,
+  QUICK_CREATE_FIELDS,
+  knownFields,
   useIssueCreateSettingsStore,
 } from "./issue-create-settings-store";
 
@@ -20,16 +23,12 @@ describe("issue create settings store", () => {
     setQuickCreateFieldVisible("priority", true);
 
     expect(useIssueCreateSettingsStore.getState().quickCreateFields).toEqual([
-      "project",
       "priority",
       "due_date",
     ]);
 
-    setQuickCreateFieldVisible("project", false);
-    expect(useIssueCreateSettingsStore.getState().quickCreateFields).toEqual([
-      "priority",
-      "due_date",
-    ]);
+    setQuickCreateFieldVisible("priority", false);
+    expect(useIssueCreateSettingsStore.getState().quickCreateFields).toEqual(["due_date"]);
   });
 
   it("toggles manual create fields independently of quick create", () => {
@@ -42,10 +41,9 @@ describe("issue create settings store", () => {
       "status",
       "priority",
       "assignee",
-      "project",
       "due_date",
     ]);
-    expect(useIssueCreateSettingsStore.getState().quickCreateFields).toEqual(["project"]);
+    expect(useIssueCreateSettingsStore.getState().quickCreateFields).toEqual([]);
   });
 
   it("is a no-op to re-enable an already visible field", () => {
@@ -56,5 +54,25 @@ describe("issue create settings store", () => {
     expect(useIssueCreateSettingsStore.getState().manualCreateFields).toEqual(
       DEFAULT_MANUAL_CREATE_FIELDS,
     );
+  });
+});
+
+describe("retired fields in a persisted selection", () => {
+  it("drops a field this build no longer offers and keeps the canonical order", () => {
+    // A build before the ownership merge stored "project" as a toggleable
+    // field. It is permanent now, so the stored array must not smuggle it
+    // back into the store.
+    expect(
+      knownFields(MANUAL_CREATE_FIELDS, ["project", "labels", "status"], DEFAULT_MANUAL_CREATE_FIELDS),
+    ).toEqual(["status", "labels"]);
+    expect(knownFields(QUICK_CREATE_FIELDS, ["project"], DEFAULT_QUICK_CREATE_FIELDS)).toEqual([]);
+  });
+
+  it("falls back to the defaults when nothing usable was stored", () => {
+    expect(knownFields(MANUAL_CREATE_FIELDS, undefined, DEFAULT_MANUAL_CREATE_FIELDS)).toEqual(
+      DEFAULT_MANUAL_CREATE_FIELDS,
+    );
+    // An empty array is a real answer ("everything hidden"), not a missing one.
+    expect(knownFields(MANUAL_CREATE_FIELDS, [], DEFAULT_MANUAL_CREATE_FIELDS)).toEqual([]);
   });
 });

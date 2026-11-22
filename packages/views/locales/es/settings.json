@@ -329,7 +329,6 @@
       "priority": "Prioridad",
       "assignee": "Asignado",
       "labels": "Etiquetas",
-      "project": "Proyecto",
       "due_date": "Fecha de entrega",
       "start_date": "Fecha de inicio"
     },

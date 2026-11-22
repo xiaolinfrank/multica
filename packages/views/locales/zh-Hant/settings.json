@@ -352,7 +352,6 @@
       "priority": "優先順序",
       "assignee": "負責人",
       "labels": "標籤",
-      "project": "專案",
       "due_date": "截止日期",
       "start_date": "開始日期"
     }

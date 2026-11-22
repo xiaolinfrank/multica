@@ -5,39 +5,38 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { createWorkspaceAwareStorage, registerForWorkspaceRehydration } from "../../platform/workspace-storage";
 import { defaultStorage } from "../../platform/storage";
 
-export type QuickCreateField = "project" | "priority" | "due_date";
+export type QuickCreateField = "priority" | "due_date";
 export type ManualCreateField =
   | "status"
   | "priority"
   | "assignee"
   | "labels"
-  | "project"
   | "due_date"
   | "start_date";
+// Ownership (project → module → work item) is one permanent pill in both
+// dialogs — the only entry to a work item — so it is not a toggleable field.
 
 // Canonical field order — the settings tab renders rows in this order and
 // setters normalize persisted arrays against it, so a toggle sequence never
 // produces two different persisted encodings of the same selection.
-export const QUICK_CREATE_FIELDS: QuickCreateField[] = ["project", "priority", "due_date"];
+export const QUICK_CREATE_FIELDS: QuickCreateField[] = ["priority", "due_date"];
 export const MANUAL_CREATE_FIELDS: ManualCreateField[] = [
   "status",
   "priority",
   "assignee",
   "labels",
-  "project",
   "due_date",
   "start_date",
 ];
 
-export const DEFAULT_QUICK_CREATE_FIELDS: QuickCreateField[] = ["project"];
-// Mirrors the manual dialog's historical toolbar: these five always rendered,
+export const DEFAULT_QUICK_CREATE_FIELDS: QuickCreateField[] = [];
+// Mirrors the manual dialog's historical toolbar: these four always rendered,
 // while due/start date lived behind the ⋯ overflow.
 export const DEFAULT_MANUAL_CREATE_FIELDS: ManualCreateField[] = [
   "status",
   "priority",
   "assignee",
   "labels",
-  "project",
 ];
 
 // Which optional fields each create-issue mode keeps on its toolbar. Owned by
@@ -56,6 +55,15 @@ interface IssueCreateSettingsState {
 
 function toggle<F extends string>(all: F[], current: F[], field: F, visible: boolean): F[] {
   return all.filter((f) => (f === field ? visible : current.includes(f)));
+}
+
+// A stored array is JSON, not a type: it can still list a field this build no
+// longer has (the project pill became the permanent ownership pill). Keep only
+// what the canonical order knows, so a retired field neither re-appears nor
+// keeps an unknown id alive in the store.
+export function knownFields<F extends string>(all: F[], stored: unknown, fallback: F[]): F[] {
+  if (!Array.isArray(stored)) return fallback;
+  return all.filter((f) => stored.includes(f));
 }
 
 export const useIssueCreateSettingsStore = create<IssueCreateSettingsState>()(
@@ -80,8 +88,8 @@ export const useIssueCreateSettingsStore = create<IssueCreateSettingsState>()(
         return {
           ...currentState,
           ...persisted,
-          quickCreateFields: persisted.quickCreateFields ?? DEFAULT_QUICK_CREATE_FIELDS,
-          manualCreateFields: persisted.manualCreateFields ?? DEFAULT_MANUAL_CREATE_FIELDS,
+          quickCreateFields: knownFields(QUICK_CREATE_FIELDS, persisted.quickCreateFields, DEFAULT_QUICK_CREATE_FIELDS),
+          manualCreateFields: knownFields(MANUAL_CREATE_FIELDS, persisted.manualCreateFields, DEFAULT_MANUAL_CREATE_FIELDS),
         };
       },
     },

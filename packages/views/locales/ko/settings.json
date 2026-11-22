@@ -360,7 +360,6 @@
       "priority": "우선순위",
       "assignee": "담당자",
       "labels": "레이블",
-      "project": "프로젝트",
       "due_date": "마감일",
       "start_date": "시작일"
     }

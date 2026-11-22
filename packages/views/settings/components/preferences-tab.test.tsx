@@ -392,11 +392,12 @@ describe("PreferencesTab — Create-issue fields", () => {
   it("shows one row per field with a column per create dialog", () => {
     render(<PreferencesTab />, { wrapper: I18nWrapper });
     const table = screen.getByRole("table");
-    // 7 fields; quick create supports 3 of them, manual create all 7.
-    expect(within(table).getAllByRole("checkbox")).toHaveLength(10);
+    // 6 toggleable fields; quick create supports 2 of them, manual create all
+    // 6. Ownership is not a row: it is permanent in both dialogs.
+    expect(within(table).getAllByRole("checkbox")).toHaveLength(8);
     expect(
-      within(table).getByRole("checkbox", { name: "Project · Create with agent" }),
-    ).toBeChecked();
+      within(table).getByRole("checkbox", { name: "Priority · Create with agent" }),
+    ).not.toBeChecked();
     expect(
       within(table).getByRole("checkbox", { name: "Due date · Manual create" }),
     ).not.toBeChecked();
@@ -404,6 +405,7 @@ describe("PreferencesTab — Create-issue fields", () => {
     expect(
       within(table).getAllByLabelText(enSettings.preferences.issue_fields.unsupported),
     ).toHaveLength(4);
+    expect(within(table).queryByText("Project")).not.toBeInTheDocument();
   });
 
   it("persists each dialog's fields independently", async () => {
@@ -413,15 +415,11 @@ describe("PreferencesTab — Create-issue fields", () => {
     await user.click(screen.getByRole("checkbox", { name: "Priority · Create with agent" }));
     await user.click(screen.getByRole("checkbox", { name: "Labels · Manual create" }));
 
-    expect(useIssueCreateSettingsStore.getState().quickCreateFields).toEqual([
-      "project",
-      "priority",
-    ]);
+    expect(useIssueCreateSettingsStore.getState().quickCreateFields).toEqual(["priority"]);
     expect(useIssueCreateSettingsStore.getState().manualCreateFields).toEqual([
       "status",
       "priority",
       "assignee",
-      "project",
     ]);
   });
 });

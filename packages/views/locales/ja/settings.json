@@ -360,7 +360,6 @@
       "priority": "優先度",
       "assignee": "担当者",
       "labels": "ラベル",
-      "project": "プロジェクト",
       "due_date": "期限",
       "start_date": "開始日"
     }
