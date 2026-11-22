@@ -1,12 +1,17 @@
 "use client";
 
-import { type ReactNode, useMemo, useState } from "react";
-import { Boxes, ChevronRight, Plus } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Blocks, ChevronRight, Plus } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useModalStore } from "@multica/core/modals";
+import {
+  cockpitNodeDetailOptions,
+  cockpitScopeNodesOptions,
+  EMPTY_COCKPIT_SCOPE,
+} from "@multica/core/cockpit";
 import type { Module, Project } from "@multica/core/types";
 import { cn } from "@multica/ui/lib/utils";
 import {
@@ -30,29 +35,109 @@ function isOnProject(pathname: string, projectHref: string) {
   return pathname === projectHref || pathname.startsWith(projectHref + "/");
 }
 
+/** One module's work items, read when (and only when) that module is open.
+ *  Twenty a page from the server selector — the sidebar never reads a whole
+ *  workspace plan to draw a navigation list. */
+function ModuleWorkItems({
+  wsId,
+  moduleId,
+  projectHref,
+  activeNodeId,
+}: {
+  wsId: string;
+  moduleId: string;
+  projectHref: string;
+  activeNodeId: string | null;
+}) {
+  const { t } = useT("projects");
+  const [cursors, setCursors] = useState<string[]>([""]);
+  const query = useQuery(
+    cockpitScopeNodesOptions(wsId, {
+      module_id: moduleId,
+      eligible: false,
+      page_size: 20,
+      cursor: cursors.at(-1) || undefined,
+    }),
+  );
+  // An unreconciled board has no rows to name, and a refused read is not the
+  // reader's problem to fix from a navigation list: both stay silent.
+  if (query.isError || (query.isSuccess && !query.data)) return null;
+  const items = query.data?.items ?? [];
+  if (query.isPending) return null;
+  if (items.length === 0) return null;
+  return (
+    <>
+      {items.map((item) => (
+        <SidebarMenuItem key={item.id}>
+          <SidebarMenuButton
+            size="sm"
+            isActive={activeNodeId === item.id}
+            render={<AppLink href={`${projectHref}?node=${encodeURIComponent(item.id)}`} />}
+            className={cn("pl-12", ROW_CLASS_NAME)}
+          >
+            <span className="truncate text-caption">{`${item.code} ${item.title}`.trim()}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+      {query.data?.next_cursor ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className="pl-12"
+            disabled={query.isFetching}
+            onClick={() => {
+              const next = query.data?.next_cursor;
+              if (next) setCursors((old) => [...old, next]);
+            }}
+          >
+            <span className="truncate text-caption text-muted-foreground">{t(($) => $.module.more_work_items)}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
+    </>
+  );
+}
+
 function ProjectTreeRow({
   project,
   modules,
   pathname,
   activeModuleId,
+  activeNodeId,
+  activeNodeModuleId,
   projectHref,
+  wsId,
 }: {
   project: Project;
   modules: Module[];
   pathname: string;
   activeModuleId: string | null;
+  activeNodeId: string | null;
+  /** The module holding the selected work item, so its list opens on arrival. */
+  activeNodeModuleId: string | null;
   projectHref: string;
+  wsId: string | null;
 }) {
   const { t } = useT("projects");
   // null = untouched, so the auto-open (the active module lives here) can
   // still be overridden by an explicit collapse.
-  const route = pathname + "?module=" + (activeModuleId ?? "");
+  const route = pathname + "?module=" + (activeModuleId ?? "") + "&node=" + (activeNodeId ?? "");
   const [override, setOverride] = useState<{ route: string; open: boolean } | null>(null);
   const inProject = isOnProject(pathname, projectHref);
-  const autoOpen = inProject && modules.some((m) => m.id === activeModuleId);
+  const autoOpen =
+    inProject &&
+    (modules.some((m) => m.id === activeModuleId) ||
+      (activeNodeModuleId !== null && modules.some((m) => m.id === activeNodeModuleId)));
   const open = override?.route === route ? override.open : autoOpen;
   const activeProject =
-    inProject && !modules.some((m) => m.id === activeModuleId);
+    inProject && !modules.some((m) => m.id === activeModuleId) && !activeNodeId;
+  // A module's own work items open on demand; the selected work item's module
+  // opens itself so the highlight is visible on arrival.
+  const [openModules, setOpenModules] = useState<string[]>([]);
+  useEffect(() => {
+    if (!activeNodeModuleId) return;
+    setOpenModules((old) => (old.includes(activeNodeModuleId) ? old : [...old, activeNodeModuleId]));
+  }, [activeNodeModuleId]);
 
   return (
     <SidebarMenuItem className="group/project-row">
@@ -100,24 +185,52 @@ function ProjectTreeRow({
         <SidebarMenu className="gap-0.5">
           {modules.map((m) => (
             <SidebarMenuItem key={m.id}>
-              <SidebarMenuButton
-                size="sm"
-                isActive={inProject && activeModuleId === m.id}
-                render={
-                  <AppLink
-                    href={`${projectHref}?module=${encodeURIComponent(m.id)}`}
+              <div className="flex items-center">
+                <button
+                  type="button"
+                  aria-expanded={openModules.includes(m.id)}
+                  aria-label={`${t(($) => $.module.toggle_work_items_aria)} ${m.title}`}
+                  onClick={() =>
+                    setOpenModules((old) =>
+                      old.includes(m.id) ? old.filter((id) => id !== m.id) : [...old, m.id],
+                    )
+                  }
+                  className="grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <ChevronRight
+                    className={cn(
+                      "size-3 stroke-[2.5] transition-transform duration-200",
+                      openModules.includes(m.id) && "rotate-90",
+                    )}
                   />
-                }
-                className={cn("pl-7", ROW_CLASS_NAME)}
-              >
-                <Boxes className="!size-3.5 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{m.title}</span>
-                <CappedNumberFlow
-                  value={m.issue_count}
-                  animated={false}
-                  className="ml-auto shrink-0 text-caption"
+                </button>
+                <SidebarMenuButton
+                  size="sm"
+                  isActive={inProject && activeModuleId === m.id}
+                  render={
+                    <AppLink
+                      href={`${projectHref}?module=${encodeURIComponent(m.id)}`}
+                    />
+                  }
+                  className={cn("min-w-0 flex-1", ROW_CLASS_NAME)}
+                >
+                  <Blocks className="!size-3.5 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">{m.title}</span>
+                  <CappedNumberFlow
+                    value={m.issue_count}
+                    animated={false}
+                    className="ml-auto shrink-0 text-caption"
+                  />
+                </SidebarMenuButton>
+              </div>
+              {openModules.includes(m.id) && wsId ? (
+                <ModuleWorkItems
+                  wsId={wsId}
+                  moduleId={m.id}
+                  projectHref={projectHref}
+                  activeNodeId={activeNodeId}
                 />
-              </SidebarMenuButton>
+              ) : null}
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
@@ -143,6 +256,15 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
     enabled: wsId !== null,
   });
   const activeModuleId = searchParams?.get("module") ?? null;
+  const activeNodeId = searchParams?.get("node") ?? null;
+
+  // Which module holds the selected work item. One single-node read, and only
+  // while a row is selected — the sidebar draws no tree of its own.
+  const activeNode = useQuery({
+    ...cockpitNodeDetailOptions(wsId ?? "", activeNodeId ?? "", EMPTY_COCKPIT_SCOPE),
+    enabled: Boolean(wsId && activeNodeId && activeNodeId !== "none"),
+  });
+  const activeNodeModuleId = activeNode.data?.binding.module_id ?? null;
 
   const modulesByProject = useMemo(() => {
     const map = new Map<string, Module[]>();
@@ -169,7 +291,7 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
     [pathname, projects, wsPaths],
   );
 
-  const route = pathname + "?module=" + (activeModuleId ?? "");
+  const route = pathname + "?module=" + (activeModuleId ?? "") + "&node=" + (activeNodeId ?? "");
   const [override, setOverride] = useState<{ route: string; open: boolean } | null>(null);
   const inProjects = pathname === href || pathname.startsWith(href + "/");
   const open = override?.route === route ? override.open : inProjects;
@@ -197,7 +319,10 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
               modules={modulesByProject.get(project.id) ?? []}
               pathname={pathname}
               activeModuleId={activeModuleId}
+              activeNodeId={activeNodeId}
+              activeNodeModuleId={activeNodeModuleId}
               projectHref={wsPaths.projectDetail(project.id)}
+              wsId={wsId}
             />
           ))}
         </SidebarMenu>
