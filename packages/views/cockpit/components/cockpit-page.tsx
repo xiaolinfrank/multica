@@ -29,6 +29,7 @@ import {
   cockpitDestination,
   cockpitScope,
   cockpitOverallProgress,
+  cockpitSubtreeAverage,
   splitCockpitVendors,
   flattenCockpitTree,
   useCreateCockpitMeeting,
@@ -41,6 +42,7 @@ import {
   useUpsertCockpitDirectoryCompact,
   useUpdateCockpitMilestone,
   useUpdateCockpitNode,
+  type CockpitTreeNode,
 } from "@multica/core/cockpit";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
@@ -405,6 +407,20 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   }, [planState.seeded, flat, setCollapsed]);
 
   useEffect(() => { if (selectedId && nodes.some((node) => node.id === selectedId)) focusTask(selectedId); }, [selectedId, nodes, focusTask]);
+
+  // The panel's branch percentage is the gantt row's: the mean of the leaves
+  // under the row, with each work item counting its issues where it has any.
+  const treeIndex = useMemo(() => {
+    const index = new Map<string, CockpitTreeNode>();
+    const walk = (entry: CockpitTreeNode) => { index.set(entry.node.id, entry); entry.children.forEach(walk); };
+    buildCockpitTree(nodes).forEach(walk);
+    return index;
+  }, [nodes]);
+  const selectedEntry = selectedId ? treeIndex.get(selectedId) : undefined;
+  const selectedSubtreeProgress = useMemo(
+    () => (selectedEntry && selectedEntry.children.length > 0 ? cockpitSubtreeAverage(selectedEntry, taskCounts) : null),
+    [selectedEntry, taskCounts],
+  );
 
   const overall = useMemo(
     () => cockpitOverallProgress(nodes, today, board?.cockpit.goal_date ?? null, taskCounts),
@@ -887,6 +903,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
 
         {tab !== "meetings" && selectedId && <CockpitSelectedNode key={selectedId} wsId={wsId} nodeId={selectedId} scope={scope} planView={planView}
           section={destination.nodeView ?? "tasks"} issueCounts={taskCounts.get(selectedId) ?? null}
+          subtreeProgress={selectedSubtreeProgress}
           onClose={() => navigation.push(cockpitSurfacePath(navigation.pathname, "plan", scope, planView))} />}
 
       </div>

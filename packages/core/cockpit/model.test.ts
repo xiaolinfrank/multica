@@ -7,6 +7,8 @@ import {
   cockpitAggStatusColor,
   cockpitCoreNodes,
   cockpitEffectiveProgress,
+  cockpitAggregateProgress,
+  cockpitWorkProgress,
   cockpitGoalProgress,
   cockpitMissingFields,
   cockpitModuleHighlights,
@@ -163,16 +165,33 @@ describe("progress from issues", () => {
   const tree = buildCockpitTree([
     node({ id: "p", code: "01", kind: "project" }),
     node({ id: "m", code: "01.01", parent_id: "p", kind: "module" }),
-    node({ id: "w", code: "01.01.01", parent_id: "m", progress: 10, status: "进行中", start_date: "2026-09-01", end_date: "2026-09-30" }),
-    node({ id: "w2", code: "01.01.02", parent_id: "m", progress: 40, status: "进行中", start_date: "2026-09-01", end_date: "2026-09-30" }),
+    node({ id: "w", code: "01.01.01", parent_id: "m", progress: 10, status: "进行中", start_date: "2026-10-01", end_date: "2026-10-31" }),
+    node({ id: "w2", code: "01.01.02", parent_id: "m", progress: 40, status: "进行中", start_date: "2026-10-01", end_date: "2026-10-31" }),
   ]);
   const counts = new Map([["w", { node_id: "w", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 }]]);
 
-  it("weighs a work item by its issues in the roll-up, not by the typed number", () => {
-    const rollups = computeCockpitRollups(tree, "2026-10-14", counts);
-    expect(rollups.get("w")!.progress).toBe(75);
-    // The parent is the leaf average, so its figure moves with the work item.
-    expect(rollups.get("m")!.progress).toBe(Math.round((75 + 40) / 2 * 100) / 100);
+  it("counts the issues' ratio in a branch average and in the goal's actual", () => {
+    // The gantt's module row, its bar and the overview card all read this.
+    expect(cockpitSubtreeAverage(tree[0]!, counts)).toBe(58);
+    expect(cockpitSubtreeAverage(tree[0]!.children[0]!, counts)).toBe(58);
+    expect(cockpitGoalProgress(tree[0]!, "2026-10-14", null, counts).actual).toBe(58);
+  });
+
+  it("shows the ratio in the digest card and orders by it", () => {
+    const allNodes = [tree[0]!.node, ...tree[0]!.children.flatMap((m) => [m.node, ...m.children.map((w) => w.node)])];
+    const digest = computeCockpitDigest(board({ nodes: allNodes }), "2026-10-14", undefined, counts);
+    const items = digest.overall.items.filter((item) => item.kind === "task");
+    expect(items.map((item) => item.key)).toEqual(["w", "w2"]);
+    // Typed 10%, but three of four issues are done: 75%.
+    expect(items[0]!.progress).toBe(75);
+    expect(items[1]!.progress).toBe(40);
+  });
+
+  it("falls back to the typed value when every issue is cancelled", () => {
+    const allClosed = { node_id: "w", primary_total: 4, reference_total: 0, active: 0, done: 0, closed: 4 };
+    const work = node({ id: "w", code: "01.01.01", progress: 10 });
+    expect(cockpitWorkProgress(work, allClosed)).toBe(10);
+    expect(cockpitAggregateProgress(work, allClosed)).toBe(10);
   });
 
   it("fills the gantt bar from the issues too", () => {
@@ -222,10 +241,9 @@ describe("computeCockpitRollups", () => {
     expect(rollups.get("r")!.end).toBe("2026-03-20");
   });
 
-  it("counts leaves, not branch rows, and weights progress by leaf count", () => {
+  it("counts leaves, not branch rows", () => {
     expect(rollups.get("r")!.leafCount).toBe(2);
     expect(rollups.get("r")!.doneCount).toBe(1);
-    expect(rollups.get("r")!.progress).toBe(50);
   });
 
   it("counts a task past its end date and not done as late", () => {
@@ -246,22 +264,6 @@ describe("computeCockpitRollups", () => {
     expect(active.get("r2")!.activeCount).toBe(2);
   });
 
-  // A branch with 40 tasks must not weigh the same as its sibling with 2.
-  it("weights a deep branch by how much work it holds", () => {
-    const nodes: CockpitNode[] = [node({ id: "root", code: "ROOT" })];
-    nodes.push(node({ id: "big", code: "BIG", parent_id: "root", kind: "module" }));
-    nodes.push(node({ id: "small", code: "SMALL", parent_id: "root", kind: "module" }));
-    for (let i = 0; i < 9; i++) {
-      nodes.push(
-        node({ id: `big-${i}`, code: `BIG-${i}`, parent_id: "big", progress: 0, status: "未开始" }),
-      );
-    }
-    nodes.push(node({ id: "small-0", code: "SMALL-0", parent_id: "small", progress: 100, status: "已完成" }));
-
-    const rolled = computeCockpitRollups(buildCockpitTree(nodes), "2026-01-01");
-    expect(rolled.get("root")!.leafCount).toBe(10);
-    expect(rolled.get("root")!.progress).toBe(10);
-  });
 });
 
 describe("isCockpitNodeLate", () => {
@@ -877,6 +879,17 @@ describe("cockpitPaymentTone", () => {
 });
 
 describe("cockpitCoreNodes", () => {
+  it("marks a leaf whose issues are ahead of a low typed number", () => {
+    const tree = buildCockpitTree([
+      node({ id: "r", code: "R", kind: "project" }),
+      node({ id: "w", code: "W", parent_id: "r", status: "进行中", progress: 20, end_date: "2026-09-01" }),
+    ]);
+    const counts = new Map([["w", { node_id: "w", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 }]]);
+    // 20% typed is under the floor; three of four issues done is not.
+    expect(cockpitCoreNodes(tree[0]!, "2026-06-15").flatMap((group) => group.nodes.map((n) => n.id))).toEqual([]);
+    expect(cockpitCoreNodes(tree[0]!, "2026-06-15", counts).flatMap((group) => group.nodes.map((n) => n.id))).toEqual(["w"]);
+  });
+
   it("groups leaves by day and kind, with inclusive horizon and progress thresholds", () => {
     const specs: Partial<CockpitNode>[] = [
       { status: "已完成", end_date: "2026-05-01" },
@@ -980,7 +993,7 @@ describe("unscheduled rows stay out of every progress tally", () => {
 
   it("drops them from roll-up counts and averages, even when a progress figure was typed", () => {
     const rollups = computeCockpitRollups(tree, "2026-06-01");
-    expect(rollups.get("r")!).toMatchObject({ leafCount: 1, doneCount: 1, progress: 100, lateCount: 0 });
+    expect(rollups.get("r")!).toMatchObject({ leafCount: 1, doneCount: 1, lateCount: 0 });
     expect(rollups.get("r")!.live).toMatchObject({ leafCount: 1, doneCount: 1, doneRatio: 100 });
     expect(cockpitSubtreeAverage(tree[0]!)).toBe(100);
   });

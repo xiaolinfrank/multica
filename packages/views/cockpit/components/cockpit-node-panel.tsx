@@ -46,6 +46,9 @@ export interface CockpitNodePanelProps {
   /** The issue roll-up the plan read already has for this row. A work item
    *  with issues takes its progress from them instead of a typed number. */
   issueCounts?: CockpitPlanTaskCount | null;
+  /** A branch's percentage: the mean of the leaves under it (the gantt row's
+   *  number). Read-only, because the next roll-up overwrites anything typed. */
+  subtreeProgress?: number | null;
   /** Meetings that discussed this node: a count link into the register. */
   meetingCount: number;
   meetingsHref: string;
@@ -75,6 +78,7 @@ export function CockpitNodePanel({
   displayCode,
   parent,
   issueCounts,
+  subtreeProgress,
   meetingCount,
   meetingsHref,
   isBranch,
@@ -141,10 +145,11 @@ export function CockpitNodePanel({
   const unset = t(($) => $.common.unset);
   // A work item that owns issues takes its progress from them: the ratio is
   // a read-out, not a field. Without issues the typed value stays.
-  const issueRatio = !isBranch && (issueCounts?.primary_total ?? 0) > 0
-    ? cockpitIssueProgress(issueCounts ?? null)
-    : null;
-  const progressFromIssues = !isBranch && (issueCounts?.primary_total ?? 0) > 0;
+  // "Has issues" is the same question everywhere: is there a countable
+  // ratio? A work item whose issues are all cancelled has none, so it keeps
+  // the typed value the summaries also fall back to.
+  const issueRatio = !isBranch ? cockpitIssueProgress(issueCounts ?? null) : null;
+  const progressFromIssues = issueRatio != null;
 
   return (
     <aside className={cn("cockpit-workbench cockpit-panel-enter @container/node-panel flex min-w-0 max-w-full shrink-0 flex-col border-l border-border bg-card @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0",
@@ -256,15 +261,21 @@ export function CockpitNodePanel({
                 </span>
                 <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.progress_issue_hint)}</p>
               </>
+            ) : isBranch ? (
+              <>
+                <span className="text-body font-medium tabular-nums">
+                  {subtreeProgress == null ? "—" : `${subtreeProgress}%`}
+                </span>
+                <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.progress_branch_hint)}</p>
+              </>
             ) : (
               <ProgressField
                 value={node.progress}
                 onCommit={(progress) => onPatch({ progress })}
                 label={t(($) => $.node.progress)}
-                disabled={readOnly || isBranch}
+                disabled={readOnly}
               />
             )}
-            {isBranch && <p className="mt-1 text-caption text-muted-foreground">{t(($) => $.node.progress_branch_hint)}</p>}
           </CockpitField>
         </div>
 

@@ -18,11 +18,13 @@ import { CockpitNodeTasks } from "./cockpit-node-tasks";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 
-export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, issueCounts, onClose }: {
+export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, issueCounts, subtreeProgress, onClose }: {
   wsId: string; nodeId: string; scope: CockpitScope; planView: CockpitPlanView; section: CockpitNodeView;
   /** The plan read's issue roll-up for this row: a work item with issues
    *  takes its progress from them. */
   issueCounts?: CockpitPlanTaskCount | null;
+  /** A branch's rolled-up percentage, from the same leaves the gantt counts. */
+  subtreeProgress?: number | null;
   onClose: () => void;
 }) {
   const { t } = useT("cockpit"); const navigation = useNavigation();
@@ -49,7 +51,7 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
   const parent = detail.ancestors.find((entry) => entry.id === node.parent_id);
   return <><CockpitNodePanel node={node} section={section} onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view, planView }, scope))}
     displayCode={node.code} parent={parent} isBranch={detail.children_count > 0} depth={detail.ancestors.length}
-    issueCounts={issueCounts ?? null} meetingCount={detail.meetings.total} meetingsHref={meetingsHref}
+    issueCounts={issueCounts ?? null} subtreeProgress={subtreeProgress ?? null} meetingCount={detail.meetings.total} meetingsHref={meetingsHref}
     referenceWorkspace={<CockpitNodeTasks wsId={wsId} node={node} userId={detail.actor.user_id} readOnly={readonly} referenceOnly />}
     taskWorkspace={executionSurface ? <CockpitNodeTasks wsId={wsId} node={node} userId={detail.actor.user_id} readOnly={readonly} /> : undefined}
     notice={!detail.scope_match ? <div role="status" className="space-y-2 text-caption"><p>{t(($) => $.shell.scope_outside)}</p><AppLink href={cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view: section, planView }, { projectId: detail.binding.project_id, moduleId: detail.binding.module_id })} className="text-primary hover:underline">{t(($) => $.shell.show_object_scope)}</AppLink></div>

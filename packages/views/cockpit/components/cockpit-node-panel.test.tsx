@@ -119,6 +119,13 @@ describe("CockpitNodePanel", () => {
     expect(screen.queryByRole("button", { name: "Progress" })).not.toBeInTheDocument();
   });
 
+  it("shows a branch's rolled-up progress instead of its own typed number", () => {
+    setup({ isBranch: true, subtreeProgress: 58 });
+    expect(screen.getByText("58%")).toBeInTheDocument();
+    expect(screen.getByText(enCockpit.node.progress_branch_hint)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Progress" })).not.toBeInTheDocument();
+  });
+
   it("offers only the task and plan-detail tabs, and does not advertise hidden sections", () => {
     // §9 hides artifacts and acceptance: an old URL that still asks for one
     // lands on the plan details instead of a tab or an unavailable notice.
@@ -126,6 +133,14 @@ describe("CockpitNodePanel", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Tasks", "Plan details"]);
     expect(screen.getByRole("tab", { name: "Plan details" })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByText(enCockpit.feature_availability.unavailable)).not.toBeInTheDocument();
+  });
+
+  it("keeps typed progress when every issue under the work item is cancelled", () => {
+    // No countable work: the panel, the gantt and the summaries all fall back
+    // to the same typed value instead of showing a dash over a hidden number.
+    setup({ issueCounts: { node_id: "task", primary_total: 4, reference_total: 0, active: 0, done: 0, closed: 4 } });
+    expect(screen.queryByText(enCockpit.node.progress_issue_hint)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Progress" })).toBeInTheDocument();
   });
 
   it("keeps typed progress for a work item that owns no issues", () => {

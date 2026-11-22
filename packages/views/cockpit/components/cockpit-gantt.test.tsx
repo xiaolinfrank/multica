@@ -239,6 +239,19 @@ describe("CockpitGantt responsive identity", () => {
     expect(mocks.deleteModule).not.toHaveBeenCalled();
   });
 
+  it("fills a work item's bar from its issues, not the typed number", () => {
+    const taskCounts = new Map([["leaf", { node_id: "leaf", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 }]]);
+    const { viewport, update } = show({ renderAllRows: true, taskCounts });
+    // The bars live in the timeline pane, a sibling of the name column.
+    const tail = () => viewport.querySelector<HTMLElement>('[data-cockpit-node="leaf"] [data-progress]')!;
+    // 75% done leaves a 25% veil; the typed 40 would leave 60%.
+    expect(tail()).toHaveAttribute("data-progress", "75");
+    expect(tail().style.width).toBe("25%");
+    // The wiring is what makes it so: without the counts the bar falls back.
+    update({ taskCounts: new Map() });
+    expect(tail()).toHaveAttribute("data-progress", "40");
+  });
+
   it("locks the structure controls on a board that is not reconciled yet", () => {
     const unreconciled = { ...board, cockpit: { ...board.cockpit, plan_reconciled_at: null } };
     const { tree } = show({ board: unreconciled, renderAllRows: true });

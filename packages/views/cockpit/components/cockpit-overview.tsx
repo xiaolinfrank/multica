@@ -408,7 +408,7 @@ export function CockpitOverview({
   const locale = useLocale();
 
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  const rollups = useMemo(() => computeCockpitRollups(tree, today, taskCounts), [tree, today, taskCounts]);
+  const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
   const finance = useMemo(
     () => computeCockpitFinance(board, contextNodeIds, OVERVIEW_FINANCE_YEAR),
     [board, contextNodeIds],
@@ -421,7 +421,7 @@ export function CockpitOverview({
     () => computeCockpitMonths(board, contextNodeIds, OVERVIEW_FINANCE_YEAR),
     [board, contextNodeIds],
   );
-  const digest = useMemo(() => computeCockpitDigest(board, today), [board, today]);
+  const digest = useMemo(() => computeCockpitDigest(board, today, undefined, taskCounts), [board, today, taskCounts]);
   const milestones = useMemo(() => sortCockpitMilestones(board.milestones), [board.milestones]);
   const nodeById = useMemo(() => new Map(board.nodes.map((n) => [n.id, n])), [board.nodes]);
   const nodeByCode = useMemo(() => new Map(board.nodes.map((n) => [n.code, n])), [board.nodes]);
@@ -547,6 +547,7 @@ export function CockpitOverview({
               rollup={rollups.get(entry.node.id)}
               today={today}
               readOnly={readOnly || contextNodeIds.has(entry.node.id)}
+              taskCounts={taskCounts}
               emptyLabel={emptyLabel}
               ownerSuggestions={ownerSuggestions}
               onOpenBranch={onOpenBranch}
@@ -564,6 +565,7 @@ export function CockpitOverview({
               rollup={rollups.get(entry.node.id)}
               today={today}
               readOnly={readOnly || contextNodeIds.has(entry.node.id)}
+              taskCounts={taskCounts}
               emptyLabel={emptyLabel}
               ownerSuggestions={ownerSuggestions}
               onOpenBranch={onOpenBranch}
@@ -944,6 +946,8 @@ interface ModuleCardProps {
   /** When the host wires it, the whole card opens the module's gantt slice. */
   onOpenModule?: (rootCode: string) => void;
   onPatchNode: (id: string, patch: CockpitNodePatch) => void;
+  /** The plan read's issue roll-up: a module's percentage is its leaves'. */
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>;
 }
 
 function ModuleBigCard({
@@ -957,12 +961,13 @@ function ModuleBigCard({
   onOpenBranch,
   onOpenModule,
   onPatchNode,
+  taskCounts,
 }: ModuleCardProps) {
   const { t } = useT("cockpit");
   // One number, one answer: the card's progress is the gantt row's — the mean
   // effective progress of the module's live leaves, and zero where the gantt
   // draws none. The done/total tile next to it keeps the completion count.
-  const pct = cockpitSubtreeAverage(entry) ?? 0;
+  const pct = cockpitSubtreeAverage(entry, taskCounts) ?? 0;
   const color = entry.color || "var(--color-brand)";
   const highlights = useMemo(() => cockpitModuleHighlights(entry, today), [entry, today]);
   const interaction = onOpenModule
@@ -1074,9 +1079,10 @@ function ModuleSmallCard({
   onOpenBranch,
   onOpenModule,
   onPatchNode,
+  taskCounts,
 }: ModuleCardProps) {
   const { t } = useT("cockpit");
-  const pct = cockpitSubtreeAverage(entry) ?? 0;
+  const pct = cockpitSubtreeAverage(entry, taskCounts) ?? 0;
   const color = entry.color || "var(--color-brand)";
   const interaction = onOpenModule
     ? moduleCardInteraction(

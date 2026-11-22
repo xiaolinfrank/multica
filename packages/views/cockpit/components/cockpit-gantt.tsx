@@ -459,6 +459,7 @@ function CoreMarker({
   count,
   nodes,
   goalTitle,
+  taskCounts,
   left,
   onSelect,
 }: {
@@ -467,6 +468,7 @@ function CoreMarker({
   count: number;
   nodes: CockpitNode[];
   goalTitle: string | null;
+  taskCounts: ReadonlyMap<string, CockpitPlanTaskCount>;
   left: number;
   onSelect: (nodeId: string) => void;
 }) {
@@ -538,7 +540,7 @@ function CoreMarker({
                 </div>
                 <div className="text-caption text-muted-foreground">
                   {t(($) => $.node.owner)}: {node.owner || "—"} ·{" "}
-                  {t(($) => $.node.progress)}: {node.progress}%
+                  {t(($) => $.node.progress)}: {cockpitEffectiveProgress(node, taskCounts.get(node.id))}%
                 </div>
                 {node.deliverable && (
                   <div className="text-caption text-muted-foreground">
@@ -701,7 +703,7 @@ export function CockpitGantt({
 
   // Row codes are addresses, so they are built once over the whole tree: a
   // filtered or searched view must not renumber the rows under the reader.
-  const rollups = useMemo(() => computeCockpitRollups(tree, today, taskCounts), [tree, today, taskCounts]);
+  const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
   const rows = useMemo(
     () => visibleRows(scopedTree, collapsed, query),
     [scopedTree, collapsed, query],
@@ -811,9 +813,9 @@ export function CockpitGantt({
   const goalProgress = useMemo(() => {
     const map = new Map<string, CockpitGoalProgress>();
     if (!goalDate) return map;
-    for (const entry of tree) map.set(entry.node.id, cockpitGoalProgress(entry, today, goalDate));
+    for (const entry of tree) map.set(entry.node.id, cockpitGoalProgress(entry, today, goalDate, taskCounts));
     return map;
-  }, [tree, today, goalDate]);
+  }, [tree, today, goalDate, taskCounts]);
 
   // The objective stands at the end of its month, flag and line both.
   const goalOffset = useMemo(() => {
@@ -1090,7 +1092,7 @@ export function CockpitGantt({
               const goal = isMainline ? goalProgress.get(node.id) : undefined;
               // The branch read is the subtask average, the figure the source
               // sheet scores merged groups by.
-              const subtreeAvg = isBranch ? cockpitSubtreeAverage(entry) : null;
+              const subtreeAvg = isBranch ? cockpitSubtreeAverage(entry, taskCounts) : null;
               const inheritedOwner =
                 depth === 1 && !node.owner
                   ? (rootOwner.get(rootOf.byId.get(node.id) ?? "") ?? "")
@@ -1099,8 +1101,10 @@ export function CockpitGantt({
               // A work item with issues reports their ratio and has no typed
               // field here either; the panel and this column must agree.
               const workCounts = taskCounts.get(node.id);
-              const hasIssues = !isBranch && (workCounts?.primary_total ?? 0) > 0;
-              const workRatio = hasIssues ? cockpitIssueProgress(workCounts) : null;
+              // Same rule as the panel and the summaries: a countable ratio
+              // means the issues own the number; none means the typed one.
+              const workRatio = isBranch ? null : cockpitIssueProgress(workCounts);
+              const hasIssues = workRatio != null;
               return (
                 <div
                   key={node.id}
@@ -1370,9 +1374,7 @@ export function CockpitGantt({
                         <span className="text-caption text-faint-foreground">—</span>
                       )
                     ) : hasIssues ? (
-                      <span className="text-caption tabular-nums text-muted-foreground">
-                        {workRatio == null ? "—" : `${workRatio}%`}
-                      </span>
+                      <span className="text-caption tabular-nums text-muted-foreground">{workRatio}%</span>
                     ) : (
                       <ProgressField
                         value={node.progress}
@@ -1602,7 +1604,7 @@ export function CockpitGantt({
                   ? cockpitAggStatusColor(entry)
                   : cockpitStatusColor(node.status);
                 const progress = isBranch
-                  ? (cockpitSubtreeAverage(entry) ?? 0)
+                  ? (cockpitSubtreeAverage(entry, taskCounts) ?? 0)
                   : cockpitEffectiveProgress(node, taskCounts.get(node.id));
 
                 // Clamped to the axis on both edges: a bar that starts before
@@ -1674,6 +1676,7 @@ export function CockpitGantt({
                                 <span
                                   className="absolute inset-y-0 right-0 bg-background/70"
                                   style={{ width: `${100 - Math.max(progress, 0)}%` }}
+                                  data-progress={Math.max(progress, 0)}
                                   aria-hidden
                                 />
                               )}
@@ -1815,6 +1818,7 @@ export function CockpitGantt({
                         count={mark.nodes.length}
                         nodes={mark.nodes}
                         goalTitle={board.cockpit.goal_title}
+                        taskCounts={taskCounts}
                         left={markerX(mark.date)}
                         onSelect={onSelect}
                       />

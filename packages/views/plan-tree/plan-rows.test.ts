@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { CockpitNodeSchema } from "@multica/core/api/schemas";
-import { buildPlanRows, planIssueProgress, planModules } from "./plan-rows";
+import { buildPlanRows, planModules } from "./plan-rows";
+import { cockpitIssueProgress } from "@multica/core/cockpit";
 
 const n = (o: Record<string, unknown>) => CockpitNodeSchema.parse(o);
 
@@ -51,9 +52,9 @@ describe("buildPlanRows", () => {
   it("counts a work item's progress without cancelled work in the denominator", () => {
     const rows = buildPlanRows({ nodes, counts, expanded: allOpen });
     // 4 primary − 1 closed = 3 countable, 2 done → 67%.
-    expect(planIssueProgress(rows.find((r) => r.node.id === "w1")!.counts)).toBe(67);
-    expect(planIssueProgress(rows.find((r) => r.node.id === "w2")!.counts)).toBeNull();
-    expect(planIssueProgress({ node_id: "x", primary_total: 3, reference_total: 0, active: 0, done: 0, closed: 3 })).toBeNull();
+    expect(cockpitIssueProgress(rows.find((r) => r.node.id === "w1")!.counts)).toBe(67);
+    expect(cockpitIssueProgress(rows.find((r) => r.node.id === "w2")!.counts)).toBeNull();
+    expect(cockpitIssueProgress({ node_id: "x", primary_total: 3, reference_total: 0, active: 0, done: 0, closed: 3 })).toBeNull();
   });
 
   it("lists modules in plan order for the move menu", () => {

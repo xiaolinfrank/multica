@@ -194,8 +194,6 @@ export interface CockpitRollup {
   /** Leaves with work underway (in progress or under review). */
   activeCount: number;
   lateCount: number;
-  /** Mean leaf progress, 0-100. A branch with no leaves reports its own progress. */
-  progress: number;
   /** Summed budget over the subtree, in the board's own unit. */
   budget: number;
   /** Earliest start and latest end across the subtree, for the branch's bar. */
@@ -319,10 +317,6 @@ function maxDate(a: string | null, b: string | null): string | null {
   return a > b ? a : b;
 }
 
-/**
- * Roll-ups for every node, keyed by id. Computed in one pass over the tree so a
- * board of a few hundred nodes costs one traversal, not one per rendered row.
- */
 /** Percentage of a work item's issues that are done, or null when nothing is
  *  countable. `closed` (cancelled) is not work: it leaves the denominator so
  *  cancelling an issue never reads as progress. */
@@ -335,9 +329,9 @@ export function cockpitIssueProgress(counts: CockpitPlanTaskCount | null | undef
 
 /**
  * The number a work item reports as its progress: the issues' ratio when it
- * owns any, otherwise the typed value. Every surface — panel, tree, gantt,
- * roll-up, overall — asks this one function, so a work item cannot read 75%
- * in one place and 10% in another.
+ * has countable ones, otherwise the typed value. The panel, the plan tree and
+ * the digest ask this one function, so a work item cannot read 75% in one
+ * place and 10% in another.
  */
 export function cockpitWorkProgress(
   node: CockpitNode,
@@ -347,10 +341,13 @@ export function cockpitWorkProgress(
   return ratio == null ? node.progress : ratio;
 }
 
+/**
+ * Roll-ups for every node, keyed by id. Computed in one pass over the tree so a
+ * board of a few hundred nodes costs one traversal, not one per rendered row.
+ */
 export function computeCockpitRollups(
   tree: CockpitTreeNode[],
   today: string,
-  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): Map<string, CockpitRollup> {
   const rollups = new Map<string, CockpitRollup>();
 
@@ -361,7 +358,6 @@ export function computeCockpitRollups(
       doneCount: 0,
       activeCount: 0,
       lateCount: 0,
-      progress: node.progress,
       // Budget lives on the tasks that spend it. A branch that also carries a
       // figure would otherwise be counted twice — once as its own line and
       // once through the children it summarises.
@@ -398,14 +394,10 @@ export function computeCockpitRollups(
           own.live.doneRatio = own.live.doneCount * 100;
         }
       }
-      // The leaf's own number follows its issues when it has any; the typed
-      // value is only the fallback for a work item nobody filed work under.
-      own.progress = cockpitWorkProgress(node, taskCounts?.get(node.id));
       rollups.set(node.id, own);
       return own;
     }
 
-    let progressSum = 0;
     for (const child of children) {
       const childRollup = visit(child);
       own.leafCount += childRollup.leafCount;
@@ -415,16 +407,12 @@ export function computeCockpitRollups(
       own.budget += childRollup.budget;
       own.start = minDate(own.start, childRollup.start);
       own.end = maxDate(own.end, childRollup.end);
-      progressSum += childRollup.progress * childRollup.leafCount;
       own.live.leafCount += childRollup.live.leafCount;
       own.live.doneCount += childRollup.live.doneCount;
       own.live.activeCount += childRollup.live.activeCount;
       own.live.lateCount += childRollup.live.lateCount;
       own.live.blockedCount += childRollup.live.blockedCount;
     }
-    // Weighted by leaf count, so a branch with 40 tasks does not weigh the same
-    // as its sibling with 2.
-    own.progress = own.leafCount > 0 ? progressSum / own.leafCount : node.progress;
     own.live.doneRatio =
       own.live.leafCount > 0 ? Math.round((own.live.doneCount * 100) / own.live.leafCount) : 0;
     rollups.set(node.id, own);
@@ -1083,6 +1071,7 @@ export function computeCockpitDigest(
   board: Pick<CockpitBoard, "nodes" | "payments" | "milestones">,
   today: string,
   options?: { trailingDays?: number; leadingDays?: number; limit?: number },
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): CockpitDigest {
   const trailingDays = options?.trailingDays ?? 7;
   const leadingDays = options?.leadingDays ?? 14;
@@ -1165,7 +1154,10 @@ export function computeCockpitDigest(
       active.push(leaf);
     }
   }
-  active.sort((a, b) => b.progress - a.progress || a.name.localeCompare(b.name));
+  // The card quotes the same number the panel and the gantt do, and sorts by
+  // it: a work item's issues decide its progress when it has any.
+  const shownProgress = (node: CockpitNode) => cockpitWorkProgress(node, taskCounts?.get(node.id));
+  active.sort((a, b) => shownProgress(b) - shownProgress(a) || a.name.localeCompare(b.name));
   done.sort((a, b) => (b.end_date ?? "").localeCompare(a.end_date ?? ""));
 
   // Money reads off instalments, not budget lines: what actually left the
@@ -1195,7 +1187,7 @@ export function computeCockpitDigest(
     milestoneCount: board.milestones.filter((m) => inPast(m.actual_date)).length,
     paidAmount,
     paidCount,
-    items: core.map((node) => taskItem(node, { progress: node.progress, rootCode: false })),
+    items: core.map((node) => taskItem(node, { progress: shownProgress(node), rootCode: false })),
     totalCount: active.length + done.length,
   };
 
@@ -1383,6 +1375,22 @@ const SUBTREE_STATUS_PROGRESS: Record<string, number> = {
 };
 
 /**
+ * A work item's progress as a summary counts it: its issues' ratio when it
+ * has any, else the typed value, else the status fallback the source sheet
+ * uses. The panel and the digest show the typed value instead (no status
+ * guess); a branch, a goal and the toolbar average use this one.
+ */
+export function cockpitAggregateProgress(
+  node: CockpitNode,
+  counts: CockpitPlanTaskCount | null | undefined,
+): number {
+  const ratio = cockpitIssueProgress(counts);
+  if (ratio != null) return ratio;
+  if (node.progress > 0) return Math.min(node.progress, 100);
+  return SUBTREE_STATUS_PROGRESS[node.status] ?? 0;
+}
+
+/**
  * The mean effective progress of a branch's execution leaves: the level a
  * summary bar fills to and the percentage an L2 row badge shows. Unlike
  * cockpitEffectiveProgress, review and waiting count as 0 here — the source
@@ -1390,7 +1398,10 @@ const SUBTREE_STATUS_PROGRESS: Record<string, number> = {
  * and unscheduled leaves are skipped entirely rather than scored as zero:
  * they are not work the plan currently weighs.
  */
-export function cockpitSubtreeAverage(entry: CockpitTreeNode): number | null {
+export function cockpitSubtreeAverage(
+  entry: CockpitTreeNode,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
+): number | null {
   let sum = 0;
   let count = 0;
   const walk = (branch: CockpitTreeNode) => {
@@ -1401,10 +1412,7 @@ export function cockpitSubtreeAverage(entry: CockpitTreeNode): number | null {
     const node = branch.node;
     if (!isCockpitWorkItem(node, branch.depth) || isCockpitNodeCancelled(node)) return;
     if (isCockpitNodeUnscheduled(node)) return;
-    sum +=
-      node.progress > 0
-        ? Math.min(node.progress, 100)
-        : (SUBTREE_STATUS_PROGRESS[node.status] ?? 0);
+    sum += cockpitAggregateProgress(node, taskCounts?.get(node.id));
     count += 1;
   };
   walk(entry);
@@ -1476,6 +1484,7 @@ const CORE_PROGRESS_FLOOR = 40;
 export function cockpitCoreNodes(
   entry: CockpitTreeNode,
   today: string,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): CockpitCoreNodeGroup[] {
   const todayDate = parseDay(today);
   const horizon = todayDate ? formatDay(addDays(todayDate, CORE_HORIZON_DAYS)) : null;
@@ -1506,7 +1515,7 @@ export function cockpitCoreNodes(
     }
     if (!isCockpitNodeActive(node)) return;
     const soon = horizon != null && date >= today && date <= horizon;
-    if (cockpitEffectiveProgress(node) >= CORE_PROGRESS_FLOOR || soon) {
+    if (cockpitEffectiveProgress(node, taskCounts?.get(node.id)) >= CORE_PROGRESS_FLOOR || soon) {
       push("upcoming", date, node);
     }
   };
@@ -1561,6 +1570,7 @@ export function cockpitGoalProgress(
   entry: CockpitTreeNode,
   today: string,
   goalDate: string | null,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): CockpitGoalProgress {
   const inYear: CockpitNode[] = [];
   let crossYearCount = 0;
@@ -1597,16 +1607,13 @@ export function cockpitGoalProgress(
   };
   if (inYear.length === 0) return empty;
 
-  // Scored as the source sheet does: a typed percentage, else the status
-  // map — review and waiting have not started, so they read as 0 here even
-  // though the row chip paints them as in flight.
+  // Scored as the source sheet does: the work item's issues when it has any,
+  // else its typed percentage, else the status map — review and waiting have
+  // not started, so they read as 0 here even though the row chip paints them
+  // as in flight.
   const actual = Math.round(
     inYear.reduce(
-      (sum, node) =>
-        sum +
-        (node.progress > 0
-          ? Math.min(node.progress, 100)
-          : (SUBTREE_STATUS_PROGRESS[node.status] ?? 0)),
+      (sum, node) => sum + cockpitAggregateProgress(node, taskCounts?.get(node.id)),
       0,
     ) / inYear.length,
   );
@@ -1679,11 +1686,7 @@ export function cockpitOverallProgress(
     if (isCockpitNodeUnscheduled(node)) continue;
     // A work item with issues reports their ratio here too, or the toolbar
     // would average a number the rows no longer show.
-    const ratio = cockpitIssueProgress(taskCounts?.get(node.id));
-    const progress = ratio ??
-      (node.progress > 0
-        ? Math.min(node.progress, 100)
-        : (SUBTREE_STATUS_PROGRESS[node.status] ?? 0));
+    const progress = cockpitAggregateProgress(node, taskCounts?.get(node.id));
     allSum += progress;
     allCount += 1;
     if (goalDate) {

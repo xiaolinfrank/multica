@@ -8,11 +8,14 @@
 import type { CockpitBoard, CockpitIssueLink, CockpitNode } from "../types";
 import {
   buildCockpitTree,
+  cockpitIssueProgress,
   computeCockpitFinanceRows,
   flattenCockpitTree,
   groupPaymentsByNode,
+  isCockpitWorkItem,
   type CockpitTreeNode,
 } from "./model";
+import type { CockpitPlanTaskCount } from "../types/cockpit-read";
 
 /**
  * Excel reads a bare `01.02` as a date and `=cmd` as a formula. Leading-zero
@@ -39,7 +42,12 @@ function layerLabel(depth: number): string {
 
 type CsvIssueLink = Pick<CockpitIssueLink, "node_id" | "issue_identifier">;
 export type CockpitCsvData = Pick<CockpitBoard, "nodes" | "payments"> & { issue_links: readonly CsvIssueLink[] };
-export interface CockpitCsvOptions { contextNodeIds?: ReadonlySet<string> }
+export interface CockpitCsvOptions {
+  contextNodeIds?: ReadonlySet<string>;
+  /** The plan read's issue roll-up: a work item with issues exports their
+   *  ratio, the same number the board shows. */
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>;
+}
 function groupCsvLinks(links: readonly CsvIssueLink[]): Map<string, CsvIssueLink[]> {
   const grouped = new Map<string, CsvIssueLink[]>();
   for (const link of links) { const items = grouped.get(link.node_id); if (items) items.push(link); else grouped.set(link.node_id, [link]); }
@@ -107,7 +115,9 @@ export function cockpitTasksCsv(board: CockpitCsvData, options: CockpitCsvOption
         n.start_date ?? "",
         n.end_date ?? "",
         n.status,
-        n.progress,
+        isCockpitWorkItem(n, entry.depth) && (cockpitIssueProgress(options.taskCounts?.get(n.id)) != null)
+          ? cockpitIssueProgress(options.taskCounts?.get(n.id))
+          : n.progress,
         n.deliverable,
         n.current_progress,
         n.dependencies,

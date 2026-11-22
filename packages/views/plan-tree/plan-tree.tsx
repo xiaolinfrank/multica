@@ -4,6 +4,7 @@ import {
   cockpitNodeTasksOptions,
   cockpitPlanOptions,
   cockpitScopeViewKey,
+  cockpitIssueProgress,
   useCockpitScopeViewStore,
   useCreateCockpitWorkItem,
   useDeleteCockpitWorkItem,
@@ -21,7 +22,7 @@ import { formatDateOnly } from "@multica/core/issues/date";
 import type { CockpitNodePatch } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { useNavigation } from "../navigation";
-import { buildPlanRows, planIssueProgress, planModules, planNodeKind, type PlanRow } from "./plan-rows";
+import { buildPlanRows, planModules, planNodeKind, type PlanRow } from "./plan-rows";
 import { planRowRenameTarget, usePlanRowRename } from "./use-plan-row-rename";
 import { PlanRowName } from "./plan-row-name";
 import { CreateRow, PlanRowActions } from "./plan-row-actions";
@@ -298,7 +299,7 @@ export function PlanTree({
         onKeyDown={onGridKeyDown} className={cn("flex flex-col outline-none", table && "min-h-0 flex-1 overflow-y-auto")}>
         {rows.map((row) => {
           const open = expanded.has(row.node.id);
-          const progress = row.kind === "work_item" ? planIssueProgress(row.counts) : null;
+          const progress = row.kind === "work_item" ? cockpitIssueProgress(row.counts) : null;
           const editable = !structureLocked && !contextNodeIds.has(row.node.id);
           const patchable = !readOnly && onPatchNode != null && !contextNodeIds.has(row.node.id);
           const isActive = activeId != null ? activeId === row.node.id : selectedId === row.node.id;
@@ -448,8 +449,6 @@ export function PlanTree({
     </div>
   );
 }
-
-export { planIssueProgress };
 
 /** Issue rows under one work item: paged (20 a page) as the reader scrolls,
  *  never the whole list up front. */

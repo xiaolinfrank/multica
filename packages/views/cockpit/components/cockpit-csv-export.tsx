@@ -22,7 +22,7 @@ export function CockpitCsvExport({ wsId, scope, initialMode = "tasks" }: { wsId:
   function download() {
     if (!data || !sameScope || prepare.isPending) return;
     const context = new Set(data.context_node_ids);
-    const options = { contextNodeIds: context };
+    const options = { contextNodeIds: context, taskCounts: new Map(data.task_counts.map((count) => [count.node_id, count])) };
     const csv = mode === "finance" ? cockpitFinanceCsv(data, options) : cockpitTasksCsv(data, options);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob);
     const title = [data.scope.project_title, data.scope.module_title].filter(Boolean).join("_") || data.cockpit?.title || "cockpit";
