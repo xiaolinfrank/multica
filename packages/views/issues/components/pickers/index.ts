@@ -6,3 +6,4 @@ export { AssigneePicker, AssigneePickerPanel, canAssignAgent } from "./assignee-
 export { StartDatePicker } from "./start-date-picker";
 export { DueDatePicker } from "./due-date-picker";
 export { LabelPicker } from "./label-picker";
+export { IssueScopePicker, EMPTY_ISSUE_SCOPE, type IssueScopeValue } from "./issue-scope-picker";

@@ -441,7 +441,8 @@
       "created_at": "创建时间",
       "updated_at": "更新时间",
       "child_progress": "子任务进度",
-      "creator": "创建者"
+      "creator": "创建者",
+      "work_item": "工作项"
     },
     "calculation": {
       "label": "计算",
@@ -450,7 +451,8 @@
       "sum": "总和",
       "average": "平均值",
       "count": "计数"
-    }
+    },
+    "no_work_item": "无工作项"
   },
   "gantt": {
     "header_issue": "任务",
@@ -1090,6 +1092,22 @@
     "status": {
       "mark_duplicate": "标记为重复",
       "change_original": "更改原始任务"
+    },
+    "scope": {
+      "label": "归属",
+      "none": "无归属",
+      "search": "搜索工作项…",
+      "toggle_project": "展开或收起项目",
+      "toggle_module": "展开或收起模块",
+      "no_projects": "还没有项目",
+      "no_modules": "还没有模块",
+      "no_work_items": "没有工作项",
+      "loading": "加载中…",
+      "more": "更多",
+      "unavailable": "看板尚未对账，暂时不能选择工作项。",
+      "unavailable_unreconciled": "看板尚未对账，暂时不能选择工作项。",
+      "unavailable_error": "读不到计划，暂时不能选择工作项。",
+      "work_items_failed": "工作项读取失败。"
     }
   },
   "labels_panel": {

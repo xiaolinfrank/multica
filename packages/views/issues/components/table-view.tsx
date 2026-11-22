@@ -170,11 +170,14 @@ import { ProgressRing } from "./progress-ring";
 import {
   AssigneePicker,
   DueDatePicker,
+  IssueScopePicker,
   LabelPicker,
+  type IssueScopeValue,
   PriorityPicker,
   StartDatePicker,
   StatusPicker,
 } from "./pickers";
+import { cockpitPlanOptions } from "@multica/core/cockpit";
 import { CustomPropertyValueEditor } from "./pickers/custom-property-picker";
 import {
   buildIssueTableCsv,
@@ -306,6 +309,9 @@ function tableGroupSpec(
   if (grouping === "assignee") return { kind: "assignee" };
   if (grouping === "project") return { kind: "project" };
   if (grouping === "module") return issueTableModuleGroupSpec(query);
+  // Work-item groups need no catalog flag: only the work items that hold an
+  // issue are levels of the table, so "include_empty" has nothing to add.
+  if (grouping === "work_item") return { kind: "work_item" };
   const propertyId = propertyIdFromViewKey(grouping);
   if (propertyId) return { kind: "property", property_id: propertyId };
   return { kind: "none" };
@@ -320,6 +326,7 @@ type ColumnLabelKey =
   | "labels"
   | "project"
   | "module"
+  | "work_item"
   | "start_date"
   | "due_date"
   | "created_at"
@@ -1047,6 +1054,10 @@ type TableViewMeta = {
   handleIssueSelection: (issueId: string, shiftKey: boolean) => void;
   getActorName: (actorType: string, actorId: string) => string;
   columnLabel: (key: TableColumnKey) => string;
+  /** "code name" of one work item, from the plan read the table already made.
+   *  Undefined when the plan has not resolved that id (unreconciled board,
+   *  deleted row) — the cell then reads "…" only while it fetches. */
+  workItemLabel: (id: string) => string | undefined;
   sortBy: SortField;
   sortDirection: "asc" | "desc";
   onSort: (field: SortField, direction: "asc" | "desc") => void;
@@ -1344,6 +1355,36 @@ function IssueTableBodyCell({
           />
         </div>
       );
+    case "work_item": {
+      // The same ownership selector the detail row and every create entry use.
+      // Picking a work item writes only that field: the server resolves the
+      // module and project it implies, and clearing writes the null back.
+      const current: IssueScopeValue = {
+        project_id: issue.project_id ?? null,
+        module_id: issue.module_id ?? null,
+        work_item_id: issue.work_item_id ?? null,
+      };
+      return (
+        <div onClick={stopRowNavigation} onAuxClick={stopRowNavigation}>
+          <IssueScopePicker
+            value={current}
+            display="leaf"
+            workItemLabel={issue.work_item_id ? meta.workItemLabel(issue.work_item_id) ?? null : null}
+            onUpdate={(next) => {
+              const updates: Partial<UpdateIssueRequest> = {};
+              if (next.project_id !== current.project_id) updates.project_id = next.project_id;
+              if (next.module_id !== current.module_id) updates.module_id = next.module_id;
+              if (next.work_item_id !== current.work_item_id) updates.work_item_id = next.work_item_id;
+              if (Object.keys(updates).length > 0) onUpdate(updates);
+            }}
+            readOnly={!issueOperationAllowed(observation.basis, "scope")}
+            restriction={<IssueOperationRestriction observation={observation} operation="scope" />}
+            open={editorOpen}
+            onOpenChange={setEditorOpen}
+          />
+        </div>
+      );
+    }
     case "start_date":
       return (
         <div onClick={stopRowNavigation} onAuxClick={stopRowNavigation}>
@@ -1574,6 +1615,34 @@ export function TableView({
     () => serverGroupsData?.pages.flatMap((page) => page.groups) ?? [],
     [serverGroupsData?.pages],
   );
+  // Work items are named by "code name", which no group value carries — it is
+  // the plan's own address book. One project read covers every row and header
+  // of a project surface (the same read the project page's tree uses); the
+  // workspace surface pays for it only when the column or the grouping asks.
+  const workItemNamesNeeded =
+    tableColumns.some((column) => column.key === "work_item") ||
+    effectiveTableGrouping === "work_item";
+  const workItemPlanQuery = useQuery({
+    ...cockpitPlanOptions(wsId, {
+      projectId: serverQuery.scope.kind === "project" ? serverQuery.scope.project_id ?? null : null,
+      moduleId: null,
+    }),
+    enabled: workItemNamesNeeded,
+    retry: false,
+  });
+  const workItemLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const node of workItemPlanQuery.data?.nodes ?? []) {
+      if (node.kind !== "work_item") continue;
+      map.set(node.id, `${node.code} ${node.name}`.trim());
+    }
+    return map;
+  }, [workItemPlanQuery.data]);
+  const workItemLabel = useCallback(
+    (id: string) => workItemLabelById.get(id),
+    [workItemLabelById],
+  );
+
   // Dropping a row under another module is only a move the user means when the
   // headers stand for modules; every other grouping shows a value the row
   // carries, which the cell editors own.
@@ -1984,9 +2053,13 @@ export function TableView({
         return value.parent?.title ?? t(($) => $.table.value_unavailable);
       }
       if (value.kind === "work_item") {
-        // S4 adds the work-item dimension; its label is the work item's name,
-        // which this table has no reader for yet (S5 wires the surface).
-        return t(($) => $.table.value_unavailable);
+        if (!value.work_item_id) return t(($) => $.table.no_work_item);
+        // The header names the row the way the plan does — "code name" — so
+        // the same work item reads identically here and in the tree.
+        return (
+          workItemLabelById.get(value.work_item_id) ??
+          t(($) => $.table.value_unavailable)
+        );
       }
       if (value.value_state === "unset") return t(($) => $.table.no_value);
       if (value.value_state === "unavailable") {
@@ -2003,7 +2076,7 @@ export function TableView({
           ?.name ?? String(value.value ?? "")
       );
     },
-    [getActorName, groupModuleMap, groupProjectMap, propertyById, t],
+    [getActorName, groupModuleMap, groupProjectMap, propertyById, t, workItemLabelById],
   );
 
   const serverDisplayRows = useMemo<IssueTableDisplayRow[]>(() => {
@@ -2438,6 +2511,7 @@ export function TableView({
     handleIssueSelection,
     getActorName,
     columnLabel,
+    workItemLabel,
     sortBy,
     sortDirection,
     onSort,
@@ -2625,7 +2699,10 @@ export function TableView({
       // The module column exports titles, mirroring the project column: the
       // modules query is the same read the grouping headers use.
       const needsModules = csvColumns.some((column) => column.key === "module");
-      const [rows, exportLookups, exportActorName, exportModules] = await Promise.all([
+      // Work item cells export "code name", which only the plan read names;
+      // a failed read fails the export like every other lookup here.
+      const needsWorkItems = csvColumns.some((column) => column.key === "work_item");
+      const [rows, exportLookups, exportActorName, exportModules, exportWorkItems] = await Promise.all([
         mode === "all" ? exportIssues() : Promise.resolve(selectedIssues),
         resolveExportLookups({
           projects: csvColumns.some((column) => column.key === "project"),
@@ -2649,9 +2726,20 @@ export function TableView({
               .fetchQuery(moduleListOptions(wsId))
               .then((response) => response.modules)
           : Promise.resolve([] as Module[]),
+        needsWorkItems
+          ? queryClient
+              .fetchQuery(cockpitPlanOptions(wsId, {
+                projectId: serverQuery.scope.kind === "project" ? serverQuery.scope.project_id ?? null : null,
+                moduleId: null,
+              }))
+              .then((plan) => plan.nodes.filter((node) => node.kind === "work_item"))
+          : Promise.resolve([] as { id: string; code: string; name: string }[]),
       ]);
       const exportModuleTitleById = new Map(
         exportModules.map((module) => [module.id, module.title]),
+      );
+      const exportWorkItemLabelById = new Map(
+        exportWorkItems.map((node) => [node.id, `${node.code} ${node.name}`.trim()]),
       );
       const headers = csvColumns.map((column) => {
         const propertyId = propertyIdFromViewKey(column.key);
@@ -2695,6 +2783,10 @@ export function TableView({
               // exports an empty cell — same fallback the project column uses.
               return issue.module_id
                 ? exportModuleTitleById.get(issue.module_id) ?? ""
+                : "";
+            case "work_item":
+              return issue.work_item_id
+                ? exportWorkItemLabelById.get(issue.work_item_id) ?? ""
                 : "";
             case "start_date":
             case "due_date":

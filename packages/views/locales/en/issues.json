@@ -447,7 +447,8 @@
       "created_at": "Created",
       "updated_at": "Updated",
       "child_progress": "Sub-issue progress",
-      "creator": "Created by"
+      "creator": "Created by",
+      "work_item": "Work item"
     },
     "calculation": {
       "label": "Calculate",
@@ -456,7 +457,8 @@
       "sum": "Sum",
       "average": "Average",
       "count": "Count"
-    }
+    },
+    "no_work_item": "No work item"
   },
   "gantt": {
     "header_issue": "Issue",
@@ -1135,6 +1137,22 @@
     "status": {
       "mark_duplicate": "Mark as duplicate",
       "change_original": "Change original"
+    },
+    "scope": {
+      "label": "Filing",
+      "none": "No filing",
+      "search": "Search work items…",
+      "toggle_project": "Toggle project",
+      "toggle_module": "Toggle module",
+      "no_projects": "No projects yet",
+      "no_modules": "No modules yet",
+      "no_work_items": "No work items",
+      "loading": "Loading…",
+      "more": "More",
+      "unavailable": "The plan board has not been reconciled, so work items cannot be picked yet.",
+      "unavailable_unreconciled": "The plan board has not been reconciled, so work items cannot be picked yet.",
+      "unavailable_error": "The plan could not be read, so work items cannot be picked.",
+      "work_items_failed": "Work items could not be loaded."
     }
   },
   "labels_panel": {

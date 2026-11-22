@@ -441,7 +441,8 @@
       "created_at": "생성일",
       "updated_at": "수정일",
       "child_progress": "하위 태스크 진행률",
-      "creator": "작성자"
+      "creator": "작성자",
+      "work_item": "작업 항목"
     },
     "calculation": {
       "label": "계산",
@@ -450,7 +451,8 @@
       "sum": "합계",
       "average": "평균",
       "count": "개수"
-    }
+    },
+    "no_work_item": "작업 항목 없음"
   },
   "gantt": {
     "header_issue": "태스크",
@@ -1090,6 +1092,22 @@
     "status": {
       "mark_duplicate": "중복으로 표시",
       "change_original": "원본 변경"
+    },
+    "scope": {
+      "label": "소속",
+      "none": "소속 없음",
+      "search": "작업 항목 검색…",
+      "toggle_project": "프로젝트 펼치기/접기",
+      "toggle_module": "모듈 펼치기/접기",
+      "no_projects": "프로젝트가 없습니다",
+      "no_modules": "모듈이 없습니다",
+      "no_work_items": "작업 항목이 없습니다",
+      "loading": "불러오는 중…",
+      "more": "더보기",
+      "unavailable": "계획 보드가 아직 대조되지 않아 작업 항목을 선택할 수 없습니다.",
+      "unavailable_unreconciled": "계획 보드가 아직 대조되지 않아 작업 항목을 선택할 수 없습니다.",
+      "unavailable_error": "계획을 읽을 수 없어 작업 항목을 선택할 수 없습니다.",
+      "work_items_failed": "작업 항목을 불러오지 못했습니다."
     }
   },
   "labels_panel": {

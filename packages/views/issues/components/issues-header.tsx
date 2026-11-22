@@ -2202,6 +2202,7 @@ export function IssueDisplayControls({
                       { value: "assignee", label: t(($) => $.table.columns.assignee) },
                       { value: "project", label: t(($) => $.table.columns.project) },
                       { value: "module", label: t(($) => $.table.columns.module) },
+                      { value: "work_item", label: t(($) => $.table.columns.work_item) },
                       ...tableGroupableProperties.map((p) => ({
                         value: `property:${p.id}`,
                         label: p.name,
@@ -2222,6 +2223,7 @@ export function IssueDisplayControls({
                         <SelectItem value="assignee">{t(($) => $.table.columns.assignee)}</SelectItem>
                         <SelectItem value="project">{t(($) => $.table.columns.project)}</SelectItem>
                         <SelectItem value="module">{t(($) => $.table.columns.module)}</SelectItem>
+                        <SelectItem value="work_item">{t(($) => $.table.columns.work_item)}</SelectItem>
                         {tableGroupableProperties.map((property) => (
                           <SelectItem key={property.id} value={`property:${property.id}`}>
                             <PropertyIcon property={property} className="size-3.5 text-caption" />

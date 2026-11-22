@@ -75,6 +75,7 @@ export type TableSystemColumnKey =
   | "labels"
   | "project"
   | "module"
+  | "work_item"
   | "start_date"
   | "due_date"
   | "created_at"
@@ -92,6 +93,7 @@ export type TableGrouping =
   | "assignee"
   | "project"
   | "module"
+  | "work_item"
   | `property:${string}`;
 export type TableCalculation = "none" | "sum" | "average" | "count";
 
@@ -104,6 +106,7 @@ export const TABLE_SYSTEM_COLUMNS: readonly TableSystemColumnKey[] = [
   "labels",
   "project",
   "module",
+  "work_item",
   "start_date",
   "due_date",
   "created_at",

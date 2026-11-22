@@ -441,7 +441,8 @@
       "created_at": "作成日",
       "updated_at": "更新日",
       "child_progress": "サブタスクの進捗",
-      "creator": "作成者"
+      "creator": "作成者",
+      "work_item": "作業項目"
     },
     "calculation": {
       "label": "計算",
@@ -450,7 +451,8 @@
       "sum": "合計",
       "average": "平均",
       "count": "件数"
-    }
+    },
+    "no_work_item": "作業項目なし"
   },
   "gantt": {
     "header_issue": "タスク",
@@ -1090,6 +1092,22 @@
     "status": {
       "mark_duplicate": "重複としてマーク",
       "change_original": "元のタスクを変更"
+    },
+    "scope": {
+      "label": "所属",
+      "none": "所属なし",
+      "search": "作業項目を検索…",
+      "toggle_project": "プロジェクトを開閉",
+      "toggle_module": "モジュールを開閉",
+      "no_projects": "プロジェクトはまだありません",
+      "no_modules": "モジュールはまだありません",
+      "no_work_items": "作業項目はありません",
+      "loading": "読み込み中…",
+      "more": "さらに表示",
+      "unavailable": "計画ボードが未照合のため、作業項目はまだ選択できません。",
+      "unavailable_unreconciled": "計画ボードが未照合のため、作業項目はまだ選択できません。",
+      "unavailable_error": "計画を読み取れないため、作業項目を選択できません。",
+      "work_items_failed": "作業項目を読み込めませんでした。"
     }
   },
   "labels_panel": {
