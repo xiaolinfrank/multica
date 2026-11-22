@@ -225,6 +225,9 @@ export function CockpitTable({
               const row = financeRows[virtual.index]!;
               const node = row.node;
               const payment = row.payment;
+              // Money is a work item's: a structural row's legacy instalments
+              // and figures are shown, never edited.
+              const moneyEditable = row.editable && !readOnly && !contextNodeIds.has(node.id);
               return (
                 <tr
                   key={payment?.id ?? `node:${node.id}`}
@@ -265,7 +268,7 @@ export function CockpitTable({
                       onCommit={(name) => onPatchNode(node.id, { name })}
                       label={t(($) => $.node.name)}
                       placeholder={t(($) => $.node.name_placeholder)}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      disabled={!moneyEditable}
                       displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
@@ -276,7 +279,7 @@ export function CockpitTable({
                         onCommit={(label) => patchPayment.mutate({ id: payment.id, patch: { label } })}
                         label={t(($) => $.payment.label)}
                         placeholder={t(($) => $.payment.label)}
-                        disabled={readOnly}
+                        disabled={!moneyEditable}
                         displayClassName="w-24 text-caption"
                       />
                     ) : <span className="text-caption text-faint-foreground">—</span>}
@@ -287,7 +290,7 @@ export function CockpitTable({
                       onCommit={(contract) => onPatchNode(node.id, { contract })}
                       label={t(($) => $.node.contract)}
                       placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      disabled={!moneyEditable}
                       displayClassName="line-clamp-2 text-caption"
                     />
                   </Td>
@@ -299,7 +302,7 @@ export function CockpitTable({
                         onCommit={(pay_date) => patchPayment.mutate({ id: payment.id, patch: { pay_date } })}
                         label={t(($) => $.payment.date)}
                         placeholder={emptyLabel}
-                        disabled={readOnly}
+                        disabled={!moneyEditable}
                       />
                     ) : <span className="text-caption text-faint-foreground">—</span>}
                   </Td>
@@ -312,7 +315,7 @@ export function CockpitTable({
                       onCommit={(budget_amount) => onPatchNode(node.id, { budget_amount })}
                       label={t(($) => $.node.budget)}
                       placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      disabled={!moneyEditable}
                       className="text-right"
                     />
                   </Td>
@@ -323,7 +326,7 @@ export function CockpitTable({
                         onCommit={(amount) => patchPayment.mutate({ id: payment.id, patch: { amount: amount ?? 0 } })}
                         label={t(($) => $.payment.amount)}
                         placeholder="0"
-                        disabled={readOnly}
+                        disabled={!moneyEditable}
                         className="text-right"
                       />
                     ) : <span className="text-caption text-faint-foreground">—</span>}
@@ -336,7 +339,7 @@ export function CockpitTable({
                       suggestions={vendorSuggestions}
                       label={t(($) => $.node.vendor)}
                       placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      disabled={!moneyEditable}
                     />
                   </Td>
                   <Td>
@@ -346,7 +349,7 @@ export function CockpitTable({
                       suggestions={budgetCategorySuggestions}
                       label={t(($) => $.node.budget_category)}
                       placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      disabled={!moneyEditable}
                     />
                   </Td>
                   <Td>
@@ -356,7 +359,7 @@ export function CockpitTable({
                       suggestions={execStatusSuggestions}
                       label={t(($) => $.node.exec_status)}
                       placeholder={emptyLabel}
-                      disabled={readOnly || contextNodeIds.has(node.id)}
+                      disabled={!moneyEditable}
                       renderDisplay={(value) =>
                         value ? (
                           <ExecStatusChip status={value} />
@@ -378,14 +381,14 @@ export function CockpitTable({
                       >
                         {row.paid ? t(($) => $.finance.payment_paid) : t(($) => $.finance.payment_planned)}
                       </span>
-                      {payment ? (
-                        <button type="button" disabled={readOnly} aria-label={t(($) => $.payment.delete)}
+                      {payment && moneyEditable ? (
+                        <button type="button" aria-label={t(($) => $.payment.delete)}
                           onClick={() => { setRemoveError(""); setRemoving({ id: payment.id, label: payment.label }); }}
                           className="rounded-sm p-0.5 text-muted-foreground hover:text-destructive disabled:opacity-40">
                           <Trash2 className="size-3" aria-hidden />
                         </button>
-                      ) : (
-                        <button type="button" disabled={readOnly || createPayment.isPending} aria-label={t(($) => $.node.add_payment)}
+                      ) : payment ? null : moneyEditable ? (
+                        <button type="button" disabled={createPayment.isPending} aria-label={t(($) => $.node.add_payment)}
                           onClick={() => createPayment.mutate({
                             nodeId: node.id,
                             body: { label: t(($) => $.payment.new_label, { index: (board.payments.filter((item) => item.node_id === node.id).length || 0) + 1 }), amount: 0, position: 0 },
@@ -393,7 +396,7 @@ export function CockpitTable({
                           className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40">
                           <Plus className="size-3" aria-hidden />
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </Td>
                 </tr>

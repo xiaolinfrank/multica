@@ -195,3 +195,33 @@ describe("CockpitTable work items without instalments", () => {
     await waitFor(() => expect(apiMock.deleteCockpitPayment).toHaveBeenCalledWith("p1"));
   });
 });
+
+describe("CockpitTable money ownership", () => {
+  const legacyModulePayment = { id: "p9", node_id: "module", label: "Legacy", pay_date: null, amount: 5, position: 0 };
+
+  it("keeps a structural row's legacy instalment and money fields read-only", () => {
+    show({ board: ledgerBoard([legacyModulePayment]) });
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    const row = rows.find((candidate) => candidate.getAttribute("data-node-id") === "module")!;
+    expect(within(row).getByText("Legacy")).toBeInTheDocument();
+    // Visible as a record, never a field: no add, no delete, nothing editable.
+    expect(within(row).getByRole("button", { name: enCockpit.payment.amount })).toBeDisabled();
+    expect(within(row).queryByRole("button", { name: enCockpit.node.add_payment })).toBeNull();
+    expect(within(row).queryByRole("button", { name: enCockpit.payment.delete })).toBeNull();
+    expect(within(row).getByRole("button", { name: enCockpit.node.vendor })).toBeDisabled();
+    // Text loses its editor entirely; the suggestion fields keep a button
+    // that refuses to open.
+    expect(within(row).queryByRole("button", { name: enCockpit.node.contract })).toBeNull();
+    expect(within(row).getByRole("button", { name: enCockpit.node.budget_category })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: enCockpit.node.exec_status })).toBeDisabled();
+  });
+
+  it("keeps a work item's money read-only when the board itself is", () => {
+    const board = ledgerBoard([{ id: "p1", node_id: "work", label: "First", pay_date: null, amount: 30, position: 0 }]);
+    show({ board, readOnly: true });
+    const row = within(screen.getByRole("table")).getAllByRole("row").find((candidate) => candidate.getAttribute("data-node-id") === "work")!;
+    expect(within(row).getByRole("button", { name: enCockpit.payment.amount })).toBeDisabled();
+    expect(within(row).queryByRole("button", { name: enCockpit.node.add_payment })).toBeNull();
+    expect(within(row).queryByRole("button", { name: enCockpit.payment.delete })).toBeNull();
+  });
+});

@@ -2036,6 +2036,9 @@ export interface CockpitFinanceLedgerRow {
   payment: CockpitPayment | null;
   amount: number;
   paid: boolean;
+  /** Money belongs to work items. A structural row keeps the instalments
+   *  older data filed on it as a read-only record. */
+  editable: boolean;
 }
 
 export function computeCockpitFinanceLedger(
@@ -2050,16 +2053,18 @@ export function computeCockpitFinanceLedger(
     const own = paymentsByNode.get(entry.node.id) ?? [];
     if (!contextNodeIds?.has(entry.node.id)) {
       const paid = cockpitPaymentTone(entry.node.exec_status) === "paid";
+      const editable = isCockpitWorkItem(entry.node, entry.depth);
       const base = {
         node: entry.node,
         rootCode,
         rootColor,
         budget: entry.node.budget_amount ?? 0,
         paid,
+        editable,
       };
       if (own.length > 0) {
         for (const payment of own) rows.push({ ...base, payment, amount: payment.amount });
-      } else if (isCockpitWorkItem(entry.node, entry.depth)) {
+      } else if (editable) {
         rows.push({ ...base, payment: null, amount: 0 });
       }
     }

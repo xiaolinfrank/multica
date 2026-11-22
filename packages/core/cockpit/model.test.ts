@@ -702,15 +702,15 @@ describe("computeCockpitFinanceLedger", () => {
       ["01.01.01", "p1", 60],
       ["01.01.02", null, 0],
     ]);
-    expect(rows[1]).toMatchObject({ budget: 40, paid: false, rootCode: "L1-01", rootColor: "#2563eb" });
+    expect(rows[1]).toMatchObject({ budget: 40, paid: false, rootCode: "L1-01", rootColor: "#2563eb", editable: true });
   });
 
   it("keeps an instalment filed on a structural row, and drops context rows", () => {
     const legacy = [{ id: "p9", node_id: "m", label: "旧", pay_date: "2026-01-01", amount: 5, position: 0 }];
     const rows = computeCockpitFinanceLedger(tree, legacy, new Set(["w2"]));
-    expect(rows.map((row) => [row.node.code, row.payment?.id ?? null])).toEqual([
-      ["01.01", "p9"],
-      ["01.01.01", null],
+    expect(rows.map((row) => [row.node.code, row.payment?.id ?? null, row.editable])).toEqual([
+      ["01.01", "p9", false],
+      ["01.01.01", null, true],
     ]);
   });
 });
