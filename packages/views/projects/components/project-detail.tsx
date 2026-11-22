@@ -328,7 +328,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       return { module_id: legacyModuleRecord.id };
     }
     return undefined;
-  }, [legacyModuleRecord, planById, planReady, projectId, selectedKind, selectedNode]);
+  }, [legacyModuleRecord, planById, planReady, selectedKind, selectedNode]);
 
   // ---- `?module=` → `?node=` (replace, no extra history entry) -------------
   useEffect(() => {
