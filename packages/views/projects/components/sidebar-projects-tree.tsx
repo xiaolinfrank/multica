@@ -40,11 +40,14 @@ function isOnProject(pathname: string, projectHref: string) {
  *  workspace plan to draw a navigation list. */
 function ModuleWorkItems({
   wsId,
+  projectId,
   moduleId,
   projectHref,
   activeNodeId,
 }: {
   wsId: string;
+  /** The module's project: the selector refuses a module on its own. */
+  projectId: string;
   moduleId: string;
   projectHref: string;
   activeNodeId: string | null;
@@ -53,6 +56,7 @@ function ModuleWorkItems({
   const [cursors, setCursors] = useState<string[]>([""]);
   const query = useQuery(
     cockpitScopeNodesOptions(wsId, {
+      project_id: projectId,
       module_id: moduleId,
       eligible: false,
       page_size: 20,
@@ -226,6 +230,7 @@ function ProjectTreeRow({
               {openModules.includes(m.id) && wsId ? (
                 <ModuleWorkItems
                   wsId={wsId}
+                  projectId={project.id}
                   moduleId={m.id}
                   projectHref={projectHref}
                   activeNodeId={activeNodeId}

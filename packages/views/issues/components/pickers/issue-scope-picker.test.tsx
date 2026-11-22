@@ -6,7 +6,7 @@
  * and project; a module or project clears the levels below it).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setApiInstance } from "@multica/core/api";
 import type { ApiClient } from "@multica/core/api/client";
@@ -136,6 +136,47 @@ describe("IssueScopePicker", () => {
     expect(await screen.findByText("Programme")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Toggle project Programme" }));
     expect(await screen.findByText("01.02 Docking")).toBeTruthy();
+  });
+
+  it("names the module's project with it — the selector refuses a module on its own", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    setApiInstance({
+      listProjects: async () => ({ projects: [project], total: 1 }),
+      listModules: async () => ({ modules, total: modules.length }),
+      getCockpitContext: async () => ({
+        workspace_id: "ws-1",
+        scope: { project_id: null, module_id: null, project_title: "", module_title: "" },
+        cockpit: {
+          id: "cp",
+          workspace_id: "ws-1",
+          goal_date: null,
+          plan_reconciled_at: "2026-11-20T00:00:00Z",
+        },
+        actor: { user_id: "user-1", role: "owner", is_human: true },
+        has_meeting_workflows: false,
+        has_stable_bindings: false,
+      }),
+      searchCockpitScopeNodes: async (_wsId: string, query: Record<string, unknown>) => {
+        calls.push(query);
+        return {
+          workspace_id: "ws-1",
+          scope: { project_id: PROJECT_ID, module_id: MODULE_ID, q: "", eligible: true },
+          items: [workItem],
+          total: 1,
+          filtered_total: 1,
+          next_cursor: null,
+        };
+      },
+    } as unknown as ApiClient);
+
+    show(vi.fn());
+    fireEvent.click(screen.getByRole("button", { name: "Filing" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Toggle project Programme" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Toggle module 01.02 Docking" }));
+
+    await waitFor(() =>
+      expect(calls.at(-1)).toMatchObject({ project_id: PROJECT_ID, module_id: MODULE_ID }),
+    );
   });
 
   it("files under a work item by its code and name, carrying its module and project", async () => {

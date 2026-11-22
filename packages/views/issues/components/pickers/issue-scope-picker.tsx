@@ -136,7 +136,14 @@ export function IssueScopePicker({
   const searchMode = query !== "";
   const workItemParams = searchMode
     ? { q: query, cursor: cursors.at(-1) || undefined, page_size: PAGE_SIZE }
-    : { module_id: expandedModule ?? undefined, cursor: cursors.at(-1) || undefined, page_size: PAGE_SIZE };
+    // The selector refuses a module without its project, so the open project
+    // travels with the module even though the server could derive it.
+    : {
+        project_id: expandedProject ?? undefined,
+        module_id: expandedModule ?? undefined,
+        cursor: cursors.at(-1) || undefined,
+        page_size: PAGE_SIZE,
+      };
   const workItems = useQuery({
     ...cockpitScopeNodesOptions(wsId, workItemParams),
     enabled:

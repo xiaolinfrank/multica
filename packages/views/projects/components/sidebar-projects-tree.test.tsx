@@ -193,7 +193,12 @@ describe("SidebarProjectsTree", () => {
     await expandProject();
     fireEvent.click(await screen.findByRole("button", { name: "Toggle work items in Parser rewrite" }));
     expect(await screen.findByText("01.01.01 Grammar pass")).toBeInTheDocument();
-    expect(mocks.scopeNodeQueries[0]).toMatchObject({ module_id: MODULE.id, page_size: 20 });
+    // The selector refuses a module on its own, so the project travels with it.
+    expect(mocks.scopeNodeQueries[0]).toMatchObject({
+      project_id: PROJECT.id,
+      module_id: MODULE.id,
+      page_size: 20,
+    });
   });
 
   it("links a work item to the project page by ?node=", async () => {
