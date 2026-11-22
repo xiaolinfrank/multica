@@ -161,7 +161,10 @@ export function IssueScopePicker({
   const selectedModule = value.module_id
     ? allModules.find((module) => module.id === value.module_id)
     : undefined;
-  const selectedProject = value.project_id ? projectById.get(value.project_id) : undefined;
+  // A module names its project, and a seeded value may carry only the module
+  // (the project page's "+" does). The path still reads in full.
+  const effectiveProjectId = value.project_id ?? selectedModule?.project_id ?? null;
+  const selectedProject = effectiveProjectId ? projectById.get(effectiveProjectId) : undefined;
 
   const commit = (next: IssueScopeValue) => {
     onUpdate(next);
@@ -196,7 +199,7 @@ export function IssueScopePicker({
                 : <span className="text-muted-foreground">{t(($) => $.table.no_work_item)}</span>
             ) : (
               <>
-                {selectedProject?.title ?? (value.project_id ? "…" : "")}
+                {selectedProject?.title ?? (effectiveProjectId ? "…" : "")}
                 {value.module_id && ` / ${selectedModule?.title ?? "…"}`}
                 {value.work_item_id && ` / ${selectedWorkItem ? `${selectedWorkItem.code} ${selectedWorkItem.name}`.trim() : "…"}`}
               </>

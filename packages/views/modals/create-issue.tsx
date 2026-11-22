@@ -14,7 +14,6 @@ import {
   Check,
   ChevronRight,
   CircleUser,
-  FolderKanban,
   Maximize2,
   Minimize2,
   MoreHorizontal,
@@ -57,13 +56,8 @@ import { useIssueCreateUploads } from "./use-issue-create-uploads";
 import { useShortcut } from "@multica/core/shortcuts";
 import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { StatusIcon, StatusPicker, PriorityIcon, PriorityPicker, StagePicker, AssigneePicker, StartDatePicker, DueDatePicker, LabelPicker } from "../issues/components";
+import { IssueScopePicker, type IssueScopeValue } from "../issues/components/pickers/issue-scope-picker";
 import { maxSiblingStage } from "../issues/components/pickers/stage-picker";
-import { ProjectPicker } from "../projects/components/project-picker";
-import { ModulePicker } from "../projects/components/module-picker";
-import {
-  CockpitNodeIssuePicker,
-  type CockpitNodeIssueOption,
-} from "../cockpit/components/cockpit-node-issue-picker";
 import { cockpitKeys, cockpitReadKeys } from "@multica/core/cockpit";
 import { useIssueTriggerPreview } from "../issues/hooks/use-issue-trigger-preview";
 import { useActorName } from "@multica/core/workspace/hooks";
@@ -98,7 +92,7 @@ import {
 } from "@multica/core/api";
 import { FileUploadButton } from "@multica/ui/components/common/file-upload-button";
 import { BorderBeam } from "@multica/ui/components/common/border-beam";
-import { ClearablePillButton, PillButton } from "../common/pill-button";
+import { PillButton } from "../common/pill-button";
 import { ActorAvatar } from "../common/actor-avatar";
 import { PropertyIcon } from "../common/property-icon";
 import {
@@ -249,7 +243,6 @@ export function ManualCreatePanel({
   const { t } = useT("modals");
   const { t: tIssues } = useT("issues");
   const { t: tEditor } = useT("editor");
-  const { t: tProjects } = useT("projects");
   const router = useNavigation();
   const p = useWorkspacePaths();
   const workspaceName = useCurrentWorkspace()?.name;
@@ -280,10 +273,10 @@ export function ManualCreatePanel({
   const manualFields = useIssueCreateSettingsStore((s) => s.manualCreateFields);
 
   const sendShortcut = useShortcut("send");
-  // A seeded title says where the issue is being created — the outline number
-  // of the module whose "+" was clicked, for teams that number their work. The
-  // persisted draft wins over it: that is a sentence the user started typing,
-  // and seeding over it would delete their text.
+  // An opener may still seed the title with a sentence ("Review the contract").
+  // The persisted draft wins over it: that is a sentence the user started
+  // typing, and seeding over it would delete their text. A work item's plan
+  // number is deliberately NOT a seed — it lives in the ownership pill.
   const [title, setTitle] = useState(() =>
     draft.manual.title.trim()
       ? draft.manual.title
@@ -322,30 +315,31 @@ export function ManualCreatePanel({
   const [customPropertyPickerId, setCustomPropertyPickerId] = useState<string | null>(null);
   const [propertyErrorId, setPropertyErrorId] = useState<string | null>(null);
   const [unavailablePropertyRemoved, setUnavailablePropertyRemoved] = useState(false);
-  const [projectId, setProjectId] = useState<string | undefined>(() => {
-    if (data && "project_id" in data) {
-      return (data.project_id as string | null) ?? undefined;
+  // Where the new issue files: one value for all three levels, because a work
+  // item names its module, which names its project. Every opener seeds it —
+  // a module from the plan tree, a work item from a row's "+", nothing from
+  // the neutral entries (which then fall back to the draft's project).
+  const [scope, setScope] = useState<IssueScopeValue>(() => {
+    // The plan tree's work item, whole: the opener had already resolved its
+    // module and project to decide where the dialog opens.
+    const node = data?.cockpit_node as
+      | { node_id: string; project_id: string; module_id: string }
+      | undefined;
+    if (node) {
+      return { project_id: node.project_id, module_id: node.module_id, work_item_id: node.node_id };
     }
-    return draft.shared.projectId;
+    const projectId = data && "project_id" in data
+      ? (data.project_id as string | null) ?? null
+      : draft.shared.projectId ?? null;
+    const moduleId = data && "module_id" in data ? (data.module_id as string | null) ?? null : null;
+    // A work item carried over from the agent panel (a mode flip) arrives as
+    // a bare id; the picker names it from the node read.
+    const workItemId = data && "work_item_id" in data ? (data.work_item_id as string | null) ?? null : null;
+    return { project_id: projectId, module_id: moduleId, work_item_id: workItemId };
   });
   const [parentIssueId, setParentIssueId] = useState<string | undefined>(
     (data?.parent_issue_id as string) || undefined,
   );
-  // Kept local (not in the persisted draft): modules are per-project, and a
-  // project change below clears it, so there is nothing durable to restore.
-  const [moduleId, setModuleId] = useState<string | undefined>(() =>
-    data && "module_id" in data
-      ? (data.module_id as string | null) ?? undefined
-      : undefined,
-  );
-  // The work item this issue is being opened against, when the create came
-  // from one. Seeded whole rather than as an id: the field names the row
-  // before the board query has answered, and the opener had already resolved
-  // it to decide the project, the module and the title's number.
-  const [cockpitNode, setCockpitNode] = useState<CockpitNodeIssueOption | null>(() =>
-    (data?.cockpit_node as CockpitNodeIssueOption | undefined) ?? null,
-  );
-  const cockpitNodeSeeded = data != null && "cockpit_node" in data;
   const parentIssueLocked = anchorCommentId !== null
     && typeof data?.parent_issue_id === "string"
     && data.parent_issue_id.length > 0;
@@ -468,13 +462,14 @@ export function ManualCreatePanel({
     setAssigneeType("agent");
     setAssigneeId(match.id);
   }, [workspaceAgents, defaultAssigneeAgentName, assigneeType, assigneeId]);
-  const updateProject = (id?: string) => {
-    setProjectId(id);
-    setShared({ projectId: id });
-    // A module belongs to exactly one project; any project switch orphans
-    // the old choice, and the server would reject the pair on create.
-    setModuleId(undefined);
+  /** The project stays mirrored into the shared draft — that is what the
+   *  agent panel reads as its project. Module and work item are per-project
+   *  state the picker owns. */
+  const updateScope = (next: IssueScopeValue) => {
+    setScope(next);
+    setShared({ projectId: next.project_id ?? undefined });
   };
+  const projectId = scope.project_id ?? undefined;
   const updateParent = (id?: string) => {
     setParentIssueId(id);
     setStage(null);
@@ -490,38 +485,21 @@ export function ManualCreatePanel({
     }
   }, [createWorkflow, status]);
 
-  /**
-   * Choosing a different work item is the same act as choosing the first one,
-   * so it carries the same three consequences: the issue files into that row's
-   * module (which names its project), and the title is renumbered.
-   *
-   * The renumber only rewrites the number the field opened on — everything
-   * typed after it is the user's sentence and is kept. A title the user has
-   * replaced outright no longer starts with the old code, and is left alone.
-   */
-  const updateCockpitNode = (next: CockpitNodeIssueOption | null) => {
-    const previous = cockpitNode;
-    setCockpitNode(next);
-    if (!next) return;
-    setProjectId(next.project_id);
-    setShared({ projectId: next.project_id });
-    setModuleId(next.module_id);
-    if (previous && title.startsWith(previous.code)) {
-      updateTitle(next.code + title.slice(previous.code.length));
-    }
-  };
-
   // A sub-issue is filed where its parent is, so a chosen parent owns the
-  // project and module of the issue being created. Both pickers lock below
-  // rather than offering a choice the server would refuse
-  // (`child_module_mismatch`); removing the parent gives them back.
+  // whole filing of the issue being created. The picker locks below rather
+  // than offering a choice the server would refuse (`child_module_mismatch`,
+  // `child_work_item_mismatch`); removing the parent gives it back.
   const parentProjectId = parentIssue?.project_id ?? undefined;
   const parentModuleId = parentIssue?.module_id ?? undefined;
+  const parentWorkItemId = parentIssue?.work_item_id ?? undefined;
   useEffect(() => {
     if (!parentIssueId || !parentIssue) return;
-    setProjectId(parentProjectId);
-    setModuleId(parentModuleId);
-  }, [parentIssueId, parentIssue, parentProjectId, parentModuleId]);
+    setScope({
+      project_id: parentProjectId ?? null,
+      module_id: parentModuleId ?? null,
+      work_item_id: parentWorkItemId ?? null,
+    });
+  }, [parentIssueId, parentIssue, parentProjectId, parentModuleId, parentWorkItemId]);
   const updateStartDate = (v: string | null) => { setStartDate(v); setManual({ startDate: v }); };
   const updateDueDate = (v: string | null) => { setDueDate(v); setShared({ dueDate: v }); };
   const updateLabelIds = (ids: string[]) => { setLabelIds(ids); setManual({ labelIds: ids }); };
@@ -543,7 +521,6 @@ export function ManualCreatePanel({
     priority: manualFields.includes("priority") || priority !== "none" || fieldPickerOpen === "priority",
     assignee: manualFields.includes("assignee") || assigneeId != null || fieldPickerOpen === "assignee",
     labels: manualFields.includes("labels") || labelIds.length > 0 || fieldPickerOpen === "labels",
-    project: manualFields.includes("project") || projectId != null || fieldPickerOpen === "project",
     due_date: manualFields.includes("due_date") || dueDate !== null || dueDatePickerOpen,
     start_date: manualFields.includes("start_date") || startDate !== null || startDatePickerOpen,
   };
@@ -553,13 +530,12 @@ export function ManualCreatePanel({
   const updateIssueMutation = useUpdateIssue();
   const attachLabelMutation = useAttachLabelToIssue();
   const resetForNextIssue = () => {
-    // A held work item survives the batch: "Create another" under a cockpit
-    // row means the next task belongs to the same row, so its filing and its
-    // number are the next issue's starting point rather than a blank field.
-    setTitle(cockpitNode?.code ?? "");
-    // Status carries over into the next issue (upstream); a cockpit continuation
-    // starts the next task at todo, as the held row's code implies.
-    setStatus(cockpitNode ? "todo" : status);
+    // "Create another" keeps the filing and drops the sentence: the next task
+    // usually belongs to the same row. `scope` is left untouched on purpose —
+    // it is not derived from the title any more, so there is nothing to
+    // re-seed. Status carries over into the next issue (upstream).
+    setTitle("");
+    setStatus(status);
     setPriority("none");
     setStartDate(null);
     setDueDate(null);
@@ -568,10 +544,6 @@ export function ManualCreatePanel({
     setCustomPropertyPickerId(null);
     setPropertyErrorId(null);
     setUnavailablePropertyRemoved(false);
-    // Outside a cockpit continuation `cockpitNode` is null, so the project —
-    // and the module — reset to unset, matching upstream's `setProjectId(undefined)`.
-    setProjectId(cockpitNode?.project_id);
-    setModuleId(cockpitNode?.module_id);
     // Parent and stage stay for the next issue in the batch — they came from
     // the opener's `data`, not from user input, so carrying them matches
     // "create another sub-issue of the same parent at the same stage".
@@ -590,7 +562,7 @@ export function ManualCreatePanel({
     });
     setShared({
       priority: "none",
-      projectId: cockpitNode?.project_id,
+      projectId: scope.project_id ?? undefined,
       dueDate: null,
       attachments: [],
     });
@@ -670,10 +642,10 @@ export function ManualCreatePanel({
               ...(Object.keys(propertyValues).length > 0 ? { properties: propertyValues } : {}),
               stage: parentIssueId && stage != null ? stage : undefined,
               project_id: projectId,
-              module_id: moduleId,
+              module_id: scope.module_id ?? undefined,
               // The work item is the filing, not a follow-up link: the server
               // resolves its module/project and rejects a mismatching pair.
-              ...(cockpitNode ? { work_item_id: cockpitNode.node_id } : {}),
+              ...(scope.work_item_id ? { work_item_id: scope.work_item_id } : {}),
             },
           },
         });
@@ -699,19 +671,19 @@ export function ManualCreatePanel({
           // Stage is only meaningful for a sub-issue (relative to its siblings).
           stage: parentIssueId && stage != null ? stage : undefined,
           project_id: projectId,
-          module_id: moduleId,
+          module_id: scope.module_id ?? undefined,
           // Same filing as the ordinary path: a source-context create opened
           // from a work item lands under it too.
-          ...(cockpitNode ? { work_item_id: cockpitNode.node_id } : {}),
+          ...(scope.work_item_id ? { work_item_id: scope.work_item_id } : {}),
         });
       }
 
       // A create opened on a work item changes that row's issue list and the
       // plan's tallies. Nothing else invalidates the cockpit reads on an issue
       // create, so without this the new row would not show until a remount.
-      if (cockpitNode) {
+      if (scope.work_item_id) {
         void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
-        void queryClient.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, cockpitNode.node_id) });
+        void queryClient.invalidateQueries({ queryKey: cockpitKeys.nodeTasks(wsId, scope.work_item_id) });
       }
 
       // An opener that files the new issue somewhere of its own — the cockpit's
@@ -727,7 +699,7 @@ export function ManualCreatePanel({
           await (onCreated as (
             created: Issue,
             state: { cockpit_node_id: string | null },
-          ) => unknown)(issue, { cockpit_node_id: cockpitNode?.node_id ?? null });
+          ) => unknown)(issue, { cockpit_node_id: scope.work_item_id });
         } catch (err) {
           console.error("[create-issue] on_created hook failed", err);
         }
@@ -1035,9 +1007,12 @@ export function ManualCreatePanel({
     const carry: Record<string, unknown> = {};
     if (parentIssueId) carry.parent_issue_id = parentIssueId;
     if (carryParentIdentifier) carry.parent_issue_identifier = carryParentIdentifier;
-    // The work item rides along so a flip back to manual restores the field
-    // rather than silently dropping the row this create belongs to.
-    if (cockpitNode) carry.cockpit_node = cockpitNode;
+    // The filing rides along so a flip back to manual restores it rather than
+    // silently dropping the row this create belongs to. Flat ids, because the
+    // agent panel keeps no dedicated work-item field: it reads the project
+    // from the draft and passes module/work item on to the manual form.
+    if (scope.module_id) carry.module_id = scope.module_id;
+    if (scope.work_item_id) carry.work_item_id = scope.work_item_id;
     onSwitchMode?.(Object.keys(carry).length > 0 ? carry : null);
   };
 
@@ -1154,8 +1129,7 @@ export function ManualCreatePanel({
                 ref={titleEditorRef}
                 autoFocus
                 // `title`, not the draft: the draft is only one of the two
-                // things this field can open on. A seeded title (the outline
-                // number of the module or work item the create came from) is
+                // things this field can open on. An opener's seeded title is
                 // never written to the persisted draft — it belongs to this
                 // invocation, not to the next one — so reading the draft here
                 // left the field looking empty while the issue would have been
@@ -1270,64 +1244,18 @@ export function ManualCreatePanel({
                 />
               )}
 
-              {/* Project */}
-              {showField.project && (
-                <ProjectPicker
-                  projectId={projectId ?? null}
-                  onUpdate={(u) => updateProject(u.project_id ?? undefined)}
-                  disabled={!!parentIssueId}
-                  triggerRender={
-                    <ClearablePillButton
-                      onClear={
-                        projectId && !parentIssueId
-                          ? () => updateProject(undefined)
-                          : undefined
-                      }
-                      clearLabel={tProjects(($) => $.picker.clear_aria)}
-                    />
-                  }
-                  tooltip={tIssues(($) => $.detail.prop_project)}
-                  align="start"
-                  open={fieldPickerOpen === "project" ? true : undefined}
-                  onOpenChange={(open) => setFieldPickerOpen(open ? "project" : null)}
-                />
-              )}
-
-              {/* Module — meaningful only once a project is chosen (a module
-                  belongs to exactly one project), so it rides the project pill. */}
-              {(projectId != null || moduleId != null) && (
-                <ModulePicker
-                  moduleId={moduleId ?? null}
-                  projectId={projectId ?? null}
-                  onUpdate={(u) => setModuleId(u.module_id ?? undefined)}
-                  disabled={!!parentIssueId}
-                  triggerRender={
-                    <ClearablePillButton
-                      onClear={
-                        moduleId && !parentIssueId
-                          ? () => setModuleId(undefined)
-                          : undefined
-                      }
-                      clearLabel={tProjects(($) => $.picker.clear_aria)}
-                    />
-                  }
-                  align="start"
-                />
-              )}
-
-              {/* Work item — the cockpit row this issue was opened against, and
-                  what decided the module and the title's number. Shown only
-                  when the create came from one; elsewhere the board is linked
-                  from its own panel. */}
-              {cockpitNodeSeeded && (
-                <CockpitNodeIssuePicker
-                  value={cockpitNode}
-                  onUpdate={updateCockpitNode}
-                  disabled={!!parentIssueId}
-                  triggerRender={<PillButton />}
-                  align="start"
-                />
-              )}
+              {/* Ownership — project → module → work item in one pill, in every
+                  entry and never hidden: the work item has no other way in.
+                  Picking a work item fills the module and project above it.
+                  A sub-issue is filed where its parent is, so the menu stays
+                  shut while a parent is set. */}
+              <IssueScopePicker
+                value={scope}
+                onUpdate={updateScope}
+                readOnly={!!parentIssueId}
+                triggerRender={<PillButton />}
+                align="start"
+              />
 
               {/* Stage — only relevant when creating a sub-issue under a parent */}
               {parentIssueId && (
@@ -1527,12 +1455,6 @@ export function ManualCreatePanel({
                     <DropdownMenuItem onClick={() => setFieldPickerOpen("labels")}>
                       <Tag className="h-3.5 w-3.5" />
                       {t(($) => $.create_issue.set_labels)}
-                    </DropdownMenuItem>
-                  )}
-                  {!showField.project && (
-                    <DropdownMenuItem onClick={() => setFieldPickerOpen("project")}>
-                      <FolderKanban className="h-3.5 w-3.5" />
-                      {t(($) => $.create_issue.set_project)}
                     </DropdownMenuItem>
                   )}
                   {!showField.due_date && (

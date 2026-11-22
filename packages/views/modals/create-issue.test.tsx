@@ -523,43 +523,43 @@ vi.mock("../issues/components/pickers/custom-property-picker", () => ({
   CustomPropertyValueDisplay: ({ value }: any) => <span>{String(value)}</span>,
 }));
 
-vi.mock("../projects/components/project-picker", () => ({
-  ProjectPicker: ({ projectId, onUpdate }: any) => (
-    <button
-      type="button"
-      data-testid="project-picker"
-      data-project-id={projectId ?? "none"}
-      onClick={() => onUpdate({ project_id: "proj-1" })}
-    >
-      Project {projectId ?? "none"}
-    </button>
-  ),
-}));
-
-// The picker's own list (which rows the board can file into, how they search)
-// is covered in cockpit/components/cockpit-node-issue-picker.test.tsx. Here it
-// stands in for "the user moved the issue to another row".
-vi.mock("../cockpit/components/cockpit-node-issue-picker", () => ({
-  CockpitNodeIssuePicker: ({ value, onUpdate }: any) => (
+// The picker's own tree (which rows the board offers, paging, search) is
+// covered in issues/components/pickers/issue-scope-picker.test.tsx. Here it
+// stands in for the user choosing a level, and names the current one.
+vi.mock("../issues/components/pickers/issue-scope-picker", () => ({
+  IssueScopePicker: ({ value, onUpdate, readOnly }: any) => (
     <div>
-      <span data-testid="work-item">{value ? value.label : "none"}</span>
-      <button
-        type="button"
-        onClick={() =>
-          onUpdate({
-            node_id: "node-b",
-            code: "01.02.03",
-            label: "01.02.03 Cohort handover",
-            project_id: "proj-b",
-            module_id: "mod-b",
-          })
-        }
-      >
-        Change work item
-      </button>
-      <button type="button" onClick={() => onUpdate(null)}>
-        Clear work item
-      </button>
+      <span data-testid="issue-scope">
+        {value.work_item_id ?? value.module_id ?? value.project_id ?? "none"}
+      </span>
+      {readOnly ? null : (
+        <>
+          <button
+            type="button"
+            onClick={() => onUpdate({ project_id: "proj-1", module_id: null, work_item_id: null })}
+          >
+            Pick project
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdate({ project_id: "proj-a", module_id: "mod-a", work_item_id: null })}
+          >
+            Pick module
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdate({ project_id: "proj-b", module_id: "mod-b", work_item_id: "node-b" })}
+          >
+            Change work item
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdate({ project_id: null, module_id: null, work_item_id: null })}
+          >
+            Clear scope
+          </button>
+        </>
+      )}
     </div>
   ),
 }));
@@ -877,7 +877,7 @@ describe("CreateIssueModal", () => {
       />,
     );
 
-    expect(screen.getByTestId("work-item")).toHaveTextContent(WORK_ITEM.label);
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent("node-a");
   });
 
   it("files the new issue under the work item, not only as a related link", async () => {
@@ -963,7 +963,7 @@ describe("CreateIssueModal", () => {
     ));
   });
 
-  it("refiles and renumbers when the issue is moved to another work item", async () => {
+  it("refiles when the issue is moved to another work item, leaving the title as typed", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();
 
@@ -971,7 +971,6 @@ describe("CreateIssueModal", () => {
       <CreateIssueModal
         onClose={vi.fn()}
         data={{
-          title: WORK_ITEM.code,
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
           cockpit_node: WORK_ITEM,
@@ -981,7 +980,7 @@ describe("CreateIssueModal", () => {
     );
 
     fireEvent.change(screen.getByPlaceholderText("Issue title"), {
-      target: { value: "01.01.01 Governance agreement" },
+      target: { value: "Governance agreement" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Change work item" }));
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
@@ -989,11 +988,11 @@ describe("CreateIssueModal", () => {
     await waitFor(() =>
       expect(mockCreateIssue).toHaveBeenCalledWith(
         expect.objectContaining({
-          // Only the number the field opened on is rewritten; the sentence
-          // after it is the user's.
-          title: "01.02.03 Governance agreement",
+          // The plan code lives in the ownership pill, never in the sentence.
+          title: "Governance agreement",
           project_id: "proj-b",
           module_id: "mod-b",
+          work_item_id: "node-b",
         }),
       ),
     );
@@ -1003,7 +1002,7 @@ describe("CreateIssueModal", () => {
     );
   });
 
-  it("leaves the title and the filing alone when the work item is cleared", async () => {
+  it("files under the module when the work item is dropped", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();
 
@@ -1011,7 +1010,6 @@ describe("CreateIssueModal", () => {
       <CreateIssueModal
         onClose={vi.fn()}
         data={{
-          title: WORK_ITEM.code,
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
           cockpit_node: WORK_ITEM,
@@ -1021,25 +1019,53 @@ describe("CreateIssueModal", () => {
     );
 
     fireEvent.change(screen.getByPlaceholderText("Issue title"), {
-      target: { value: "01.01.01 Governance agreement" },
+      target: { value: "Governance agreement" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Clear work item" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick module" }));
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() =>
       expect(mockCreateIssue).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "01.01.01 Governance agreement",
+          title: "Governance agreement",
           project_id: "proj-a",
           module_id: "mod-a",
         }),
       ),
     );
-    // Nothing to file it against, so the board is not written to at all.
+    // No work item left to write to, so the board is not touched.
+    expect(mockCreateIssue.mock.calls.at(-1)?.[0]).not.toHaveProperty("work_item_id");
     expect(onCreated).toHaveBeenCalledWith(
       expect.objectContaining({ id: "issue-123" }),
       { cockpit_node_id: null },
     );
+  });
+
+  it("creates an unfiled issue when the ownership is cleared", async () => {
+    const user = userEvent.setup();
+
+    renderModal(
+      <CreateIssueModal
+        onClose={vi.fn()}
+        data={{
+          project_id: WORK_ITEM.project_id,
+          module_id: WORK_ITEM.module_id,
+          cockpit_node: WORK_ITEM,
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+      target: { value: "Governance agreement" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Clear scope" }));
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() => expect(mockCreateIssue).toHaveBeenCalled());
+    const payload = mockCreateIssue.mock.calls.at(-1)?.[0];
+    expect(payload.project_id).toBeUndefined();
+    expect(payload.module_id).toBeUndefined();
+    expect(payload.work_item_id).toBeUndefined();
   });
 
   it("keeps a committed issue committed when the opener's follow-up fails", async () => {
@@ -2023,15 +2049,15 @@ describe("CreateIssueModal", () => {
     const user = userEvent.setup();
 
     const firstOpen = renderModal(<CreateIssueModal onClose={vi.fn()} />);
-    expect(screen.getByTestId("project-picker")).toHaveAttribute("data-project-id", "none");
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent("none");
 
-    await user.click(screen.getByTestId("project-picker"));
+    await user.click(screen.getByRole("button", { name: "Pick project" }));
     expect(mockSetShared).toHaveBeenCalledWith({ projectId: "proj-1" });
 
     firstOpen.unmount();
     renderModal(<CreateIssueModal onClose={vi.fn()} />);
 
-    expect(screen.getByTestId("project-picker")).toHaveAttribute("data-project-id", "proj-1");
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent("proj-1");
   });
 
   // Manual → agent must forward parent_issue_id when the modal was opened

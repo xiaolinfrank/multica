@@ -6,7 +6,6 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
-  FolderKanban,
   Maximize2,
   Minimize2,
   MoreHorizontal,
@@ -64,10 +63,9 @@ import {
   type Squad,
 } from "@multica/core/types";
 import { ActorAvatar } from "../common/actor-avatar";
-import { ClearablePillButton, PillButton } from "../common/pill-button";
-import { ProjectPicker } from "../projects/components/project-picker";
-import { ModulePicker } from "../projects/components/module-picker";
+import { PillButton } from "../common/pill-button";
 import { DueDatePicker, PriorityIcon, PriorityPicker } from "../issues/components";
+import { IssueScopePicker, type IssueScopeValue } from "../issues/components/pickers/issue-scope-picker";
 import { canAssignAgent } from "../issues/components/pickers/assignee-picker";
 import { isAgentRuntimeBound } from "@multica/core/agents";
 import {
@@ -287,31 +285,27 @@ export function AgentCreatePanel({
   // project page (or manual panel) the modal was opened from, and the user's
   // own unfinished draft. It is deliberately NOT seeded from the last create
   // — see quick-create-store (MUL-5862).
-  const [projectId, setProjectId] = useState<string | null>(() => {
-    const seed = (data?.project_id as string | undefined) ?? draft.shared.projectId;
-    return seed ?? null;
-  });
+  // One filing for all three levels. The agent quick-create endpoint takes
+  // only a project, so a module or work item picked here rides the manual
+  // switch (see `carry`); the pill says so while one is set.
+  const [scope, setScope] = useState<IssueScopeValue>(() => ({
+    project_id: (data?.project_id as string | undefined) ?? draft.shared.projectId ?? null,
+    module_id: (data?.module_id as string | undefined) ?? null,
+    work_item_id: (data?.work_item_id as string | undefined) ?? null,
+  }));
+  const projectId = scope.project_id;
   const [priority, setPriority] = useState<IssuePriority>(
     (data?.priority as IssuePriority | undefined) ?? draft.shared.priority,
-  );
-  // Module context, seeded like projectId. The agent quick-create endpoint
-  // has no module field, so this only rides the manual switch (see carry) —
-  // the pill says so.
-  const [moduleId, setModuleId] = useState<string | null>(
-    (data?.module_id as string | undefined) ?? null,
   );
   const [dueDate, setDueDate] = useState<string | null>(
     (data?.due_date as string | undefined) ?? draft.shared.dueDate,
   );
   const [fieldPickerOpen, setFieldPickerOpen] = useState<QuickCreateField | null>(null);
-  // Local state + shared draft always move together, so both the picker rows
-  // and the pill's quick-clear go through here.
-  const commitProject = (next: string | null) => {
-    setProjectId(next);
-    setShared({ projectId: next ?? undefined });
-    // A module belongs to exactly one project — any project change (or
-    // clear) orphans the previous module choice.
-    setModuleId(null);
+  // Local state + shared draft always move together: the project half is what
+  // the agent panel reads, and the draft is its persisted copy.
+  const commitScope = (next: IssueScopeValue) => {
+    setScope(next);
+    setShared({ projectId: next.project_id ?? undefined });
   };
 
   // Parent-issue context — seeded by `openCreateSubIssue` when the modal is
@@ -333,7 +327,9 @@ export function AgentCreatePanel({
   useEffect(() => {
     if (!projectsLoaded || projectId === null) return;
     if (projects.some((p) => p.id === projectId)) return;
-    setProjectId(null);
+    // The module and work item hang off the dead project, so the whole filing
+    // goes with it.
+    setScope({ project_id: null, module_id: null, work_item_id: null });
     if (draft.shared.projectId === projectId) {
       setShared({ projectId: undefined });
     }
@@ -640,7 +636,8 @@ export function AgentCreatePanel({
     setLastMode("manual");
     setActiveMode("manual");
     const carry: Record<string, unknown> = {};
-    if (moduleId) carry.module_id = moduleId;
+    if (scope.module_id) carry.module_id = scope.module_id;
+    if (scope.work_item_id) carry.work_item_id = scope.work_item_id;
     if (parentIssueId) carry.parent_issue_id = parentIssueId;
     if (parentIssueIdentifier) carry.parent_issue_identifier = parentIssueIdentifier;
     onSwitchMode?.(Object.keys(carry).length > 0 ? carry : null);
@@ -837,44 +834,24 @@ export function AgentCreatePanel({
             it non-editable: changing the parent is a `Set parent` action on
             the parent itself, not a knob in the quick-create flow. */}
         <div className="flex items-center gap-1.5 px-4 pb-2 shrink-0 flex-wrap">
-          {(visibleFields.includes("project") ||
-            projectId !== null ||
-            fieldPickerOpen === "project") && (
-            <ProjectPicker
-              projectId={projectId}
-              onUpdate={(u) => commitProject(u.project_id ?? null)}
-              triggerRender={
-                <ClearablePillButton
-                  onClear={projectId !== null ? () => commitProject(null) : undefined}
-                  clearLabel={tProjects(($) => $.picker.clear_aria)}
-                />
-              }
-              tooltip={tIssues(($) => $.detail.prop_project)}
+          {/* Ownership — the same pill as the manual form, permanent here
+              too. Only the project reaches the agent request; a module or
+              work item travels with a switch to manual, and the tooltip says
+              so rather than letting a submit silently drop it. */}
+          <span
+            title={
+              scope.module_id || scope.work_item_id
+                ? tProjects(($) => $.module.agent_carry_hint)
+                : undefined
+            }
+          >
+            <IssueScopePicker
+              value={scope}
+              onUpdate={commitScope}
+              triggerRender={<PillButton />}
               align="start"
-              open={fieldPickerOpen === "project" ? true : undefined}
-              onOpenChange={(open) => setFieldPickerOpen(open ? "project" : null)}
             />
-          )}
-          {/* Module rides the project pill (a module belongs to exactly one
-              project). The agent quick-create contract has no module field,
-              so the choice only survives a switch to manual — the tooltip
-              says so instead of letting a submit silently drop it. */}
-          {(projectId !== null || moduleId !== null) && (
-            <span title={tProjects(($) => $.module.agent_carry_hint)}>
-              <ModulePicker
-                moduleId={moduleId}
-                projectId={projectId}
-                onUpdate={(u) => setModuleId(u.module_id ?? null)}
-                triggerRender={
-                  <ClearablePillButton
-                    onClear={moduleId !== null ? () => setModuleId(null) : undefined}
-                    clearLabel={tProjects(($) => $.picker.clear_aria)}
-                  />
-                }
-                align="start"
-              />
-            </span>
-          )}
+          </span>
           {(visibleFields.includes("priority") ||
             priority !== "none" ||
             fieldPickerOpen === "priority") && (
@@ -921,12 +898,6 @@ export function AgentCreatePanel({
               />
             </TooltipHint>
             <DropdownMenuContent align="start" className="w-52">
-              {!visibleFields.includes("project") && projectId === null && (
-                <DropdownMenuItem onClick={() => setFieldPickerOpen("project")}>
-                  <FolderKanban className="size-3.5 text-muted-foreground" />
-                  {t(($) => $.create_issue.agent.set_project)}
-                </DropdownMenuItem>
-              )}
               {!visibleFields.includes("priority") && priority === "none" && (
                 <DropdownMenuItem onClick={() => setFieldPickerOpen("priority")}>
                   <PriorityIcon priority="none" className="size-3.5" />
