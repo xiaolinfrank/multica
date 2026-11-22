@@ -260,6 +260,17 @@ describe("PlanTree", () => {
     expect(apiMock.getCockpitNodeTasks).toHaveBeenCalledTimes(1);
   });
 
+  it("expands a work item hit when its row is clicked during a search", async () => {
+    apiMock.getCockpitPlan.mockResolvedValue(reconciled);
+    show({ query: "工作项一" });
+    await screen.findAllByRole("row");
+    // Clicking the row itself (not a control) folds a work item even while a
+    // query runs: its issues are a read, not part of the filtered set.
+    fireEvent.click(rowOf("work_item"));
+    expect(await screen.findByText(/首个任务/)).toBeInTheDocument();
+    expect(rowOf("work_item")).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("keeps an expanded work item's issues on screen while it is a search hit", async () => {
     apiMock.getCockpitPlan.mockResolvedValue(reconciled);
     const { rerenderWithQuery } = show();
