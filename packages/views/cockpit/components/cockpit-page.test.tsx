@@ -5,6 +5,7 @@ beforeLayout(() => { restoreLayout = installCockpitTestLayout(); });
 afterLayout(() => restoreLayout());
 import { useCockpitScopeViewStore, cockpitContextOptions, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
 import { readCockpitFixture, readCockpitMembersFixture } from "./test/cockpit-read-mocks-fixture";
+import { cockpitPlanFixture } from "./cockpit-read-test-fixture";
 import { resetCockpitTestNavigation } from "./cockpit-navigation-test-fixture";
 import { workflowSummary } from "./workflow-test-fixtures";
 import { EMPTY_COCKPIT_MEETING_WORKFLOW } from "@multica/core/api/schemas";
@@ -200,7 +201,7 @@ const board: CockpitBoard = {
     {
       id: "ms-1",
       name: "Dataset acceptance",
-      plan_date: "2026-11-30",
+      plan_date: upcomingDate(5),
       actual_date: null,
       status: "On track",
       node_id: "root",
@@ -350,15 +351,28 @@ describe("CockpitPage", () => {
     expect(await screen.findByRole("button", { name: "Annual objective" })).toHaveTextContent(
       "End-to-end demo",
     );
-    expect(screen.getByText("Dataset acceptance")).toBeInTheDocument();
+    // The milestone is printed twice on purpose: once on its track card and
+    // once in the "coming up" card, which interleaves dated work, milestones
+    // and money. Scope the read to the track instead of matching either.
+    const milestones = screen
+      .getByRole("heading", { name: enCockpit.overview.milestones })
+      .closest("section")!;
+    expect(within(milestones).getByRole("button", { name: "Milestone" })).toHaveTextContent(
+      "Dataset acceptance",
+    );
+    const upcoming = screen
+      .getByRole("heading", { name: enCockpit.overview.card_next })
+      .closest("section")!;
+    expect(within(upcoming).getByText("Dataset acceptance")).toBeInTheDocument();
     // The module name is printed twice on purpose: once on the module card and
     // once in the spend-by-module table.
     expect(screen.getAllByText("High-quality datasets").length).toBeGreaterThan(0);
     expect(await screen.findByText("Working group weekly")).toBeInTheDocument();
 
-    // Budget rolls up from the leaf, quoted in the board's 万元 unit.
-    const finance = screen.getByText("2026 budget total (per master sheet)").closest("div")!;
-    expect(within(finance).getByText("30万")).toBeInTheDocument();
+    // The annual figure is the instalment ledger's — one 15万 line here —
+    // quoted in the board's 万元 unit.
+    const finance = screen.getByText(/2026 budget total/).closest("div")!;
+    expect(within(finance).getByText("15万")).toBeInTheDocument();
   });
 
   // Regression: the module card's progress used to be the done ratio (0% here
@@ -398,6 +412,74 @@ describe("CockpitPage", () => {
     // The third module falls past MODULE_BIG_COUNT into the small grid; its
     // summary line carries the same subtree average, not the done ratio (0%).
     expect(await screen.findByText(/0\/1 items · 40%/)).toBeInTheDocument();
+  });
+
+  it("reads the overview and the panel from the plan's issue counts", async () => {
+    const withCounts = structuredClone(board);
+    withCounts.nodes = [
+      node({ id: "root", code: "L1-01", name: "High-quality datasets", owner: "Li", color: "#2563eb" }),
+      node({
+        id: "module", code: "L2-01-01", kind: "module", parent_id: "root", name: "Governance",
+        start_date: upcomingDate(-10), end_date: upcomingDate(10),
+      }),
+      // A: three of four issues done. B: typed 40. C: every issue cancelled,
+      // so it keeps the typed 60. (75 + 40 + 60) / 3 = 58.
+      node({
+        id: "task", code: "L3-01-08", kind: "work_item", name: "Sign the governance agreement",
+        parent_id: "module", owner: "Li", status: "In progress", progress: 10,
+        start_date: upcomingDate(-10), end_date: upcomingDate(10),
+      }),
+      node({
+        id: "task-2", code: "L3-01-09", kind: "work_item", name: "Second task",
+        parent_id: "module", owner: "Li", status: "In progress", progress: 40,
+        start_date: upcomingDate(-10), end_date: upcomingDate(10),
+      }),
+      node({
+        id: "task-3", code: "L3-01-10", kind: "work_item", name: "Third task",
+        parent_id: "module", owner: "Li", status: "In progress", progress: 60,
+        start_date: upcomingDate(-10), end_date: upcomingDate(10),
+      }),
+    ];
+    withCounts.payments = [];
+    withCounts.issue_links = [];
+    withCounts.milestones = [];
+    withCounts.meetings = [];
+    withCounts.meeting_issues = [];
+    withCounts.meeting_nodes = [];
+    readCockpitFixture.mockResolvedValue(withCounts);
+    // Once, not for good: the other tests in this file read the fixture's own
+    // plan, and a standing override would hand them this board instead.
+    vi.mocked(api.getCockpitPlan).mockImplementationOnce(async (_wsId, scope) => ({
+      ...cockpitPlanFixture(withCounts, scope),
+      task_counts: [
+        { node_id: "task", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 },
+        { node_id: "task-3", primary_total: 4, reference_total: 0, active: 0, done: 0, closed: 4 },
+      ],
+    }));
+    renderPage();
+
+    // The module card quotes the same average the gantt row does.
+    await screen.findAllByText("High-quality datasets");
+    const tile = screen.getByText("Progress").closest("div")!;
+    expect(within(tile).getByText("58%")).toBeInTheDocument();
+
+    // "Current progress" reads the work item's issues, not the typed 10.
+    const current = screen
+      .getByRole("heading", { name: enCockpit.overview.card_overall })
+      .closest("section")!;
+    expect(within(current).getByText("75%")).toBeInTheDocument();
+
+    // Selecting the module row hands the panel the same leaf average.
+    fireEvent.click(await screen.findByRole("link", { name: "Gantt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open L2-01-01" }));
+    const panel = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>("aside.cockpit-workbench");
+      if (!element) throw new Error("the selected row's panel is not ready");
+      return element;
+    });
+    expect(within(panel).getByText("58%")).toBeInTheDocument();
+    expect(within(panel).getByText(enCockpit.node.progress_branch_hint)).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Progress" })).toBeNull();
   });
 
   // The v1.2 summary merge folds 02.02-09 into one "02.02" row and displays
