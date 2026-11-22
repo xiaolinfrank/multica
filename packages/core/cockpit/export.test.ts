@@ -127,6 +127,45 @@ describe("cockpitTasksCsv", () => {
   it("starts with a BOM so Excel opens it as UTF-8", () => {
     expect(cockpitTasksCsv(board({}))).toMatch(/^\uFEFF/);
   });
+
+  it("quotes the same progress the board shows: the ratio, the typed value, the branch average", () => {
+    const csv = cockpitTasksCsv(
+      board({
+        nodes: [
+          // The stored 90 on the project row is not what the gantt draws.
+          node({ id: "r", code: "L1-01", name: "Root", progress: 90 }),
+          node({ id: "a", code: "01.01", parent_id: "r", kind: "work_item", name: "A", status: "In progress", progress: 10 }),
+          node({ id: "b", code: "01.02", parent_id: "r", kind: "work_item", name: "B", status: "In progress", progress: 40 }),
+          node({ id: "c", code: "01.03", parent_id: "r", kind: "work_item", name: "C", status: "In progress", progress: 60 }),
+        ],
+      }),
+      { taskCounts: new Map([["a", { node_id: "a", primary_total: 4, reference_total: 0, active: 1, done: 3, closed: 0 }]]) },
+    );
+    const lines = csv.split("\r\n").filter(Boolean);
+    // L1: (75 + 40 + 60) / 3 = 58, the gantt's summary figure.
+    expect(lines[1]!.split(",")[9]).toBe("58");
+    // A work item with issues: their ratio.
+    expect(lines[2]!.split(",")[9]).toBe("75");
+    // No issues: the typed value.
+    expect(lines[3]!.split(",")[9]).toBe("40");
+    // Without the counts the project row falls back to what it has stored.
+    const typed = cockpitTasksCsv(
+      board({
+        nodes: [
+          node({ id: "r", code: "L1-01", name: "Root", progress: 90 }),
+          node({ id: "a", code: "01.01", parent_id: "r", kind: "work_item", name: "A", status: "In progress", progress: 10 }),
+        ],
+      }),
+    );
+    expect(typed.split("\r\n").filter(Boolean)[1]!.split(",")[9]).toBe("10");
+  });
+
+  it("leaves the progress cell empty on a structure row with nothing under it", () => {
+    const csv = cockpitTasksCsv(
+      board({ nodes: [node({ id: "r", code: "L1-01", name: "Empty", progress: 40 })] }),
+    );
+    expect(csv.split("\r\n").filter(Boolean)[1]!.split(",")[9]).toBe("");
+  });
 });
 
 describe("cockpitFinanceCsv", () => {

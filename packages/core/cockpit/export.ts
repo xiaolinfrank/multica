@@ -9,6 +9,7 @@ import type { CockpitBoard, CockpitIssueLink, CockpitNode } from "../types";
 import {
   buildCockpitTree,
   cockpitIssueProgress,
+  cockpitSubtreeAverage,
   computeCockpitFinanceRows,
   flattenCockpitTree,
   groupPaymentsByNode,
@@ -104,6 +105,13 @@ export function cockpitTasksCsv(board: CockpitCsvData, options: CockpitCsvOption
 
   for (const entry of rows) {
     const n = entry.node;
+    // The progress column quotes what the board shows: a work item's issues
+    // when it has any, otherwise the typed number; a structure row has no
+    // number of its own, only its leaves' average — and a dash (an empty
+    // cell here) when nobody has broken it down yet.
+    const progress = isCockpitWorkItem(n, entry.depth)
+      ? (cockpitIssueProgress(options.taskCounts?.get(n.id)) ?? n.progress)
+      : (cockpitSubtreeAverage(entry, options.taskCounts) ?? "");
     out.push(
       csvRow([
         layerLabel(entry.depth),
@@ -115,9 +123,7 @@ export function cockpitTasksCsv(board: CockpitCsvData, options: CockpitCsvOption
         n.start_date ?? "",
         n.end_date ?? "",
         n.status,
-        isCockpitWorkItem(n, entry.depth) && (cockpitIssueProgress(options.taskCounts?.get(n.id)) != null)
-          ? cockpitIssueProgress(options.taskCounts?.get(n.id))
-          : n.progress,
+        progress,
         n.deliverable,
         n.current_progress,
         n.dependencies,
