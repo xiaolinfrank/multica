@@ -239,6 +239,27 @@ describe("PlanTree", () => {
     expect(apiMock.getCockpitNodeTasks).not.toHaveBeenCalled();
   });
 
+  it("still expands a work item hit while the search runs", async () => {
+    apiMock.getCockpitPlan.mockResolvedValue(reconciled);
+    show({ query: "工作项一" });
+    await screen.findAllByRole("row");
+    const workItem = () => rowOf("work_item");
+    expect(workItem()).toHaveAttribute("aria-expanded", "false");
+    // Its chevron is a real control, unlike the containers' placeholders.
+    expect(within(workItem()).getByRole("button", { name: enCockpit.plan_tree.expand })).toBeInTheDocument();
+    // A work item's issues are not part of the filtered set, so its fold stays
+    // live: opening it is a read, not a change to what the query shows.
+    workItem().focus();
+    await waitFor(() => expect(workItem()).toHaveAttribute("data-active", "true"));
+    fireEvent.keyDown(workItem(), { key: "ArrowRight" });
+    expect(await screen.findByText(/首个任务/)).toBeInTheDocument();
+    expect(workItem()).toHaveAttribute("aria-expanded", "true");
+    fireEvent.keyDown(workItem(), { key: "ArrowLeft" });
+    await waitFor(() => expect(workItem()).toHaveAttribute("aria-expanded", "false"));
+    expect(screen.queryByText(/首个任务/)).not.toBeInTheDocument();
+    expect(apiMock.getCockpitNodeTasks).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps an expanded work item's issues on screen while it is a search hit", async () => {
     apiMock.getCockpitPlan.mockResolvedValue(reconciled);
     const { rerenderWithQuery } = show();

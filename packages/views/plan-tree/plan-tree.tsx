@@ -206,30 +206,33 @@ export function PlanTree({
     // A work item has no node children, but its issues load under it: it
     // expands like a branch for every keyboard and pointer purpose.
     const expandable = row.hasChildren || row.kind === "work_item";
+    // A search owns the visible set, so it locks the containers' folds. A
+    // work item's issues are not part of that set: expanding one is a read
+    // the query does not contradict, so it stays available.
+    const foldable = !searching || row.kind === "work_item";
     switch (event.key) {
       case "ArrowDown": event.preventDefault(); focusRow(rows[Math.min(rows.length - 1, index + 1)]!.node.id); break;
       case "ArrowUp": event.preventDefault(); focusRow(rows[Math.max(0, index - 1)]!.node.id); break;
       case "Home": event.preventDefault(); focusRow(rows[0]!.node.id); break;
       case "End": event.preventDefault(); focusRow(rows[rows.length - 1]!.node.id); break;
-      // While a search filters the tree, folding is not the reader's call:
-      // the query decides what shows, so the arrows only move the cursor and
-      // never write a fold the cleared search would then reveal.
+      // While a search filters the tree, a container's fold is not the
+      // reader's call: the query decides what shows, so its arrows only move
+      // the cursor. A work item folds as usual — its issues are a read.
       case "ArrowRight":
         event.preventDefault();
-        if (searching) focusRow(rows[Math.min(rows.length - 1, index + 1)]!.node.id);
-        else if (expandable && !expanded.has(row.node.id)) setRowOpen(row, true);
+        if (foldable && expandable && !expanded.has(row.node.id)) setRowOpen(row, true);
         else if (expandable) focusRow(rows[Math.min(rows.length - 1, index + 1)]!.node.id);
         break;
       case "ArrowLeft":
         event.preventDefault();
-        if (searching || !expandable || !expanded.has(row.node.id)) {
+        if (!foldable || !expandable || !expanded.has(row.node.id)) {
           const parent = rows.find((candidate) => candidate.node.id === row.node.parent_id);
           if (parent) focusRow(parent.node.id);
         } else setRowOpen(row, false);
         break;
       case "Enter": event.preventDefault(); onSelect(row.node.id); break;
       case " ":
-        if (expandable && !searching) { event.preventDefault(); setRowOpen(row, !expanded.has(row.node.id)); }
+        if (expandable && foldable) { event.preventDefault(); setRowOpen(row, !expanded.has(row.node.id)); }
         break;
       default: break;
     }
@@ -321,7 +324,8 @@ export function PlanTree({
                 // on a control — the gantt's rule, kept identical here. A
                 // search is a filter, not a fold: the query decides what is
                 // visible, so the click does nothing until it is cleared.
-                if (!expandable || searching) return;
+                if (!expandable) return;
+                if (searching && row.kind !== "work_item") return;
                 if ((event.target as HTMLElement).closest("button, a, input, textarea, select, [contenteditable=true]")) return;
                 setRowOpen(row, !open);
               }}
@@ -332,7 +336,7 @@ export function PlanTree({
                 row={row}
                 open={shownOpen}
                 locked={!editable || !canRename}
-                foldDisabled={searching}
+                foldDisabled={searching && row.kind !== "work_item"}
                 renaming={renaming === row.node.id}
                 onToggle={() => setRowOpen(row, !open)}
                 onSelect={() => onSelect(row.node.id)}
