@@ -87,7 +87,15 @@
     "toast_move_issue_failed": "태스크를 이동하지 못했습니다",
     "not_found_description": "삭제되었거나 접근 권한이 없을 수 있습니다.",
     "back_to_list": "모든 프로젝트",
-    "empty_issues_add_existing": "기존 태스크 추가"
+    "empty_issues_add_existing": "기존 태스크 추가",
+    "plan_title": "계획",
+    "plan_toggle": "계획 표시 전환",
+    "plan_unreconciled": "계획 보드가 아직 대조되지 않아 이 트리는 모듈만 표시합니다. 작업 항목은 보드가 대조된 후 표시됩니다.",
+    "plan_unavailable": "계획을 읽을 수 없어 이 트리는 모듈만 표시합니다.",
+    "plan_empty": "이 프로젝트에는 아직 계획 행이 없습니다.",
+    "all_issues": "모든 이슈",
+    "no_module_row": "모듈 없음",
+    "selected_node_clear": "모든 이슈 표시"
   },
   "collab_path": {
     "label": "협업 공간 경로",

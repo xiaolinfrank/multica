@@ -1,19 +1,22 @@
 import { containerOperationFixture } from "../../issues/container-operation-test-fixture";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, screen } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project } from "@multica/core/types";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useModalStore } from "@multica/core/modals";
 import { useCreateModeStore } from "@multica/core/issues/stores";
 import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider, type NavigationAdapter } from "../../navigation";
 import { ProjectDetail } from "./project-detail";
+import { PlanTree } from "../../plan-tree/plan-tree";
 
 const mocks = vi.hoisted(() => ({
   role: "admin",
   operationBlocked: false,
   modules: { current: [] as Array<Record<string, unknown>> },
+  plan: { current: null as Record<string, unknown> | null },
   issueSurface: { current: null as Record<string, unknown> | null },
   copyText: vi.fn(),
   deleteProject: vi.fn(),
@@ -50,6 +53,12 @@ vi.mock("@tanstack/react-query", async (original) => ({
         return { data: [], isLoading: false };
       case "modules":
         return { data: mocks.modules.current, isLoading: false, isSuccess: true };
+      case "cockpit":
+        // The left column's plan read (S6). A null fixture means the board is
+        // unreconciled or unreadable — the page then lists modules only.
+        return mocks.plan.current
+          ? { data: mocks.plan.current, isLoading: false, isSuccess: true }
+          : { data: undefined, isLoading: false, isSuccess: true };
       default:
         return { data: undefined, isLoading: false };
     }
@@ -340,6 +349,20 @@ const PROJECT: Project = {
   resource_count: 0,
 };
 
+// The plan tree's own mutations read the query client, so the page renders
+// inside one even though this file answers every `useQuery` from fixtures.
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+function withNav(adapter: NavigationAdapter) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <NavigationProvider value={adapter}>
+        <ProjectDetail projectId={PROJECT.id} />
+      </NavigationProvider>
+    </QueryClientProvider>
+  );
+}
+
 function renderProjectDetail(search = "") {
   const adapter: NavigationAdapter = {
     push: mocks.push,
@@ -351,16 +374,14 @@ function renderProjectDetail(search = "") {
     getShareableUrl: mocks.getShareableUrl,
   };
 
-  renderWithI18n(
-    <NavigationProvider value={adapter}>
-      <ProjectDetail projectId={PROJECT.id} />
-    </NavigationProvider>,
-  );
+  renderWithI18n(withNav(adapter));
+  return adapter;
 }
 
 beforeEach(() => {
   mocks.role = "admin";
   mocks.operationBlocked = false;
+  mocks.plan.current = null;
   mocks.copyText.mockReset().mockResolvedValue(true);
   mocks.deleteProject.mockReset();
   mocks.updateProject.mockReset();
@@ -489,11 +510,13 @@ describe("ProjectDetail module filtering", () => {
     const user = userEvent.setup();
     renderProjectDetail("module=module-1");
 
-    // The breadcrumb chip is the "you are inside this folder" affordance
-    // now that the module strip is gone.
-    expect(screen.getByText("Parser rewrite")).toBeInTheDocument();
+    // The header chip is the "you are inside this folder" affordance now that
+    // the module strip is gone; the left column also lists the module, so the
+    // assertion reads the chip itself.
+    const clear = screen.getByRole("button", { name: "Clear module" });
+    expect(clear.parentElement).toHaveTextContent("Parser rewrite");
 
-    await user.click(screen.getByRole("button", { name: "Clear module" }));
+    await user.click(clear);
     expect(mocks.push).toHaveBeenCalledWith(
       "/test-workspace/projects/project-1",
     );
@@ -520,7 +543,7 @@ describe("ProjectDetail module filtering", () => {
     await user.click(screen.getByRole("button", { name: "Manage modules" }));
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText("Parser rewrite")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByText("Parser rewrite")).toBeInTheDocument();
   });
 
   // The inline rename covers the one-field case; description and the
@@ -687,4 +710,241 @@ it("does not navigate or close the new context when an old project delete return
   view.rerender(show("/test-workspace/projects/another-project")); view.rerender(show(adapter.pathname));
   await act(async () => { callbacks.onSuccess(); callbacks.onSettled(); });
   expect(mocks.push).not.toHaveBeenCalled(); expect(mocks.toastSuccess).not.toHaveBeenCalled(); expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------
+// S6: the plan column, `?node=` selection, and the degraded module-only tree.
+
+const PLAN = {
+  cockpit: { id: "cp", title: "Programme", plan_reconciled_at: "2026-11-20T00:00:00Z", goal_date: null },
+  nodes: [
+    { id: "plan-project", code: "00", name: "Launch Plan", kind: "project", position: 0, parent_id: null, project_id: PROJECT.id, module_id: null },
+    { id: "plan-module", code: "00.01", name: "Parser rewrite", kind: "module", parent_id: "plan-project", position: 0, module_id: "module-1", project_id: PROJECT.id },
+    { id: "plan-item", code: "00.01.01", name: "Grammar pass", kind: "work_item", parent_id: "plan-module", position: 0, module_id: null, project_id: null },
+    { id: "plan-module-2", code: "00.02", name: "Rollout", kind: "module", parent_id: "plan-project", position: 1, module_id: "module-2", project_id: PROJECT.id },
+  ],
+  task_counts: [],
+  context_node_ids: [],
+  payments: [],
+  milestones: [],
+  node_index: [],
+  meetings: [],
+  meeting_issues: [],
+  meeting_nodes: [],
+  issue_links: [],
+};
+
+/** Rows of the page's plan column: id, address, and the name the row reads —
+ *  the three things "the two views agree" is about. The fixture carries no
+ *  issue counts, so the row's text is exactly code + name. */
+function planRows() {
+  const column = screen.getByRole("complementary", { name: "Plan" });
+  return [...column.querySelectorAll<HTMLElement>('[role="row"][data-node-id]')].map((row) => {
+    const code = row.querySelector("button[title]")?.textContent?.trim() ?? "";
+    return {
+      id: row.getAttribute("data-node-id"),
+      code,
+      name: (row.textContent ?? "").slice(code.length).trim(),
+    };
+  });
+}
+
+describe("ProjectDetail plan column", () => {
+  beforeEach(() => {
+    mocks.plan.current = structuredClone(PLAN);
+    mocks.modules.current = [
+      { id: "module-1", workspace_id: "workspace-1", project_id: PROJECT.id, title: "Parser rewrite", description: null, position: 0, created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z", issue_count: 0, done_count: 0 },
+      { id: "module-2", workspace_id: "workspace-1", project_id: PROJECT.id, title: "Rollout", description: null, position: 1, created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z", issue_count: 0, done_count: 0 },
+    ];
+  });
+
+  it("lists the project's plan rows, in plan order, down to the work item", () => {
+    renderProjectDetail();
+    expect(planRows().map((row) => row.id)).toEqual([
+      "plan-project",
+      "plan-module",
+      "plan-item",
+      "plan-module-2",
+    ]);
+    expect(planRows()[1]).toMatchObject({ code: "00.01", name: "Parser rewrite" });
+  });
+
+  it("selects a module row into `?node=` and narrows the surface to it", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail();
+    // The row's address is its select affordance (the same one the cockpit
+    // tree uses); the name field is the rename target.
+    await user.click(screen.getByRole("button", { name: "Open 00.01" }));
+    expect(mocks.push).toHaveBeenCalledWith("/test-workspace/projects/project-1?node=plan-module");
+  });
+
+  it("narrows by module when the URL already names that row", () => {
+    renderProjectDetail("node=plan-module");
+    expect(mocks.issueSurface.current?.moduleFilter).toEqual({ module_ids: ["module-1"] });
+    expect(mocks.issueSurface.current?.createDefaults).toEqual({ module_id: "module-1" });
+  });
+
+  it("narrows by work item and seeds the create with it", () => {
+    renderProjectDetail("node=plan-item");
+    expect(mocks.issueSurface.current?.moduleFilter).toEqual({ work_item_ids: ["plan-item"] });
+    expect(mocks.issueSurface.current?.createDefaults).toMatchObject({
+      module_id: "module-1",
+      cockpit_node: {
+        node_id: "plan-item",
+        code: "00.01.01",
+        label: "00.01.01 Grammar pass",
+        module_id: "module-1",
+      },
+    });
+  });
+
+  it("filters nothing when the project's own row is selected", () => {
+    renderProjectDetail("node=plan-project");
+    expect(mocks.issueSurface.current?.moduleFilter).toBeUndefined();
+  });
+
+  it("pages the table by work item when the plan has any", () => {
+    renderProjectDetail();
+    expect(mocks.issueSurface.current?.defaultTableGrouping).toBe("work_item");
+  });
+});
+
+describe("ProjectDetail plan parity with the cockpit", () => {
+  it("shows the rows the cockpit's plan tree shows at the same scope", () => {
+    mocks.plan.current = structuredClone(PLAN);
+    renderProjectDetail();
+    // Code, name and order — the three things the two views must agree on.
+    const fromPage = planRows();
+
+    const cockpit = renderWithI18n(
+      <QueryClientProvider client={queryClient}>
+        <PlanTree
+          wsId="workspace-1"
+          scope={{ projectId: PROJECT.id, moduleId: null }}
+          query=""
+          readOnly={false}
+          selectedId={null}
+          onSelect={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    const fromCockpit = [
+      ...cockpit.container.querySelectorAll<HTMLElement>('[role="row"][data-node-id]'),
+    ].map((row) => ({
+      id: row.getAttribute("data-node-id"),
+      code: row.querySelector("button[title]")?.textContent?.trim(),
+    }));
+
+    expect(fromPage.map((row) => row.id)).toEqual(fromCockpit.map((row) => row.id));
+    expect(fromPage.map((row) => row.code)).toEqual(fromCockpit.map((row) => row.code));
+    expect(fromPage.map((row) => row.name)).toEqual([
+      "Launch Plan",
+      "Parser rewrite",
+      "Grammar pass",
+      "Rollout",
+    ]);
+  });
+});
+
+describe("ProjectDetail option conversion", () => {
+  beforeEach(() => {
+    mocks.plan.current = structuredClone(PLAN);
+  });
+
+  it("rewrites a legacy ?module= to the module's own row without a history entry", () => {
+    const replace = vi.fn();
+    const adapter: NavigationAdapter = {
+      push: mocks.push,
+      replace,
+      back: vi.fn(),
+      pathname: "/test-workspace/projects/project-1",
+      searchParams: new URLSearchParams("module=module-1"),
+      hash: "",
+      getShareableUrl: mocks.getShareableUrl,
+    };
+    renderWithI18n(withNav(adapter));
+    expect(replace).toHaveBeenCalledWith("/test-workspace/projects/project-1?node=plan-module");
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("rewrites ?module=none to ?node=none", () => {
+    const replace = vi.fn();
+    const adapter: NavigationAdapter = {
+      push: mocks.push,
+      replace,
+      back: vi.fn(),
+      pathname: "/test-workspace/projects/project-1",
+      searchParams: new URLSearchParams("module=none"),
+      hash: "",
+      getShareableUrl: mocks.getShareableUrl,
+    };
+    renderWithI18n(withNav(adapter));
+    expect(replace).toHaveBeenCalledWith("/test-workspace/projects/project-1?node=none");
+  });
+
+  it("drops a ?node= the plan no longer has, and shows everything", () => {
+    const replace = vi.fn();
+    const adapter: NavigationAdapter = {
+      push: mocks.push,
+      replace,
+      back: vi.fn(),
+      pathname: "/test-workspace/projects/project-1",
+      searchParams: new URLSearchParams("node=deleted-node"),
+      hash: "",
+      getShareableUrl: mocks.getShareableUrl,
+    };
+    renderWithI18n(withNav(adapter));
+    expect(mocks.issueSurface.current?.moduleFilter).toBeUndefined();
+    expect(replace).toHaveBeenCalledWith("/test-workspace/projects/project-1");
+  });
+
+  it("keeps the unfiled bucket on the tree's own parameter", () => {
+    renderProjectDetail("node=none");
+    expect(mocks.issueSurface.current?.moduleFilter).toEqual({ include_no_module: true });
+  });
+});
+
+describe("ProjectDetail before reconciliation", () => {
+  it("lists modules only, says why, and still narrows by module", async () => {
+    mocks.plan.current = {
+      ...structuredClone(PLAN),
+      cockpit: { id: "cp", title: "Programme", plan_reconciled_at: null, goal_date: null },
+    };
+    mocks.modules.current = [
+      { id: "module-1", workspace_id: "workspace-1", project_id: PROJECT.id, title: "Parser rewrite", description: null, position: 0, created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z", issue_count: 0, done_count: 0 },
+    ];
+    const user = userEvent.setup();
+    renderProjectDetail();
+
+    // No plan rows: the column is a module list with the reason above it.
+    expect(screen.getByRole("status")).toHaveTextContent(/has not been reconciled/);
+    expect(screen.queryByText("Grammar pass")).toBeNull();
+    expect(mocks.issueSurface.current?.defaultTableGrouping).toBe("module");
+
+    await user.click(within(screen.getByRole("complementary", { name: "Plan" })).getByText("Parser rewrite"));
+    expect(mocks.push).toHaveBeenCalledWith("/test-workspace/projects/project-1?module=module-1");
+  });
+
+  it("hides the column where it would squeeze the surface", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    try {
+      mocks.plan.current = structuredClone(PLAN);
+      renderProjectDetail();
+      expect(screen.queryByRole("complementary", { name: "Plan" })).toBeNull();
+      // The surface is still there — nothing is pushed off-screen instead.
+      expect(mocks.issueSurface.current).not.toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
 });

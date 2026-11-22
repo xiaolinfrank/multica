@@ -87,7 +87,15 @@
     "toast_move_issue_failed": "タスクを移動できませんでした",
     "not_found_description": "削除されたか、アクセス権がない可能性があります。",
     "back_to_list": "すべてのプロジェクト",
-    "empty_issues_add_existing": "既存のタスクを追加"
+    "empty_issues_add_existing": "既存のタスクを追加",
+    "plan_title": "計画",
+    "plan_toggle": "計画の表示を切り替え",
+    "plan_unreconciled": "計画ボードが未照合のため、このツリーはモジュールのみ表示します。作業項目はボードの照合後に表示されます。",
+    "plan_unavailable": "計画を読み取れないため、このツリーはモジュールのみ表示します。",
+    "plan_empty": "このプロジェクトにはまだ計画行がありません。",
+    "all_issues": "すべてのタスク",
+    "no_module_row": "モジュールなし",
+    "selected_node_clear": "すべてのタスクを表示"
   },
   "collab_path": {
     "label": "協働スペースのパス",

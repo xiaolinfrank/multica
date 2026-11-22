@@ -88,7 +88,15 @@
     "toast_move_issue_failed": "Failed to move issue",
     "not_found_description": "It may have been deleted or you may not have access.",
     "back_to_list": "All projects",
-    "empty_issues_add_existing": "Add existing issue"
+    "empty_issues_add_existing": "Add existing issue",
+    "plan_title": "Plan",
+    "plan_toggle": "Show or hide the plan",
+    "plan_unreconciled": "The plan board has not been reconciled, so this tree lists modules only. Work items appear once the board is reconciled in the cockpit.",
+    "plan_unavailable": "The plan could not be read, so this tree lists modules only.",
+    "plan_empty": "This project has no plan rows yet.",
+    "all_issues": "All issues",
+    "no_module_row": "No module",
+    "selected_node_clear": "Show all issues"
   },
   "collab_path": {
     "label": "Collaboration space",

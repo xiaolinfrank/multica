@@ -4,7 +4,7 @@ import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useRegisterCommandBarContext } from "../../search/register-context";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
 import { Boxes } from "lucide-react";
-import { Check, ChevronRight, FileQuestion, Link2, Network, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus, X as XIcon } from "@multica/ui/icons";
+import { Blocks, Check, ChevronRight, FileQuestion, Link2, Network, PanelLeft, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus, X as XIcon } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -15,7 +15,6 @@ import { canDeleteProject } from "@multica/core/projects/deletion-permissions";
 import { projectDetailOptions } from "@multica/core/projects/queries";
 import { useModalStore } from "@multica/core/modals";
 import { moduleListOptions } from "@multica/core/modules/queries";
-import { moduleTitleNumberPrefix } from "@multica/core/modules/title-number";
 import { useUpdateProject, useDeleteProject } from "@multica/core/projects/mutations";
 import { pinListOptions } from "@multica/core/pins";
 import { useCreatePin, useDeletePin } from "@multica/core/pins";
@@ -43,6 +42,9 @@ import { ProjectDueDatePicker } from "./project-due-date-picker";
 import { ProjectWorkflowControl } from "../../workflows/project-workflow-row";
 import { ProjectWorkflowMenuHost } from "../../workflows/project-workflow-menu";
 import { IssueSurface } from "../../issues/surface/issue-surface";
+import { PlanTree } from "../../plan-tree/plan-tree";
+import { planNodeKind } from "../../plan-tree/plan-rows";
+import { cockpitPlanOptions } from "@multica/core/cockpit";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
@@ -90,9 +92,24 @@ import { useProjectStatusLabels, useProjectPriorityLabels } from "./labels";
 import { ModulesManageDialog } from "./modules-manage-dialog";
 import { matchesPinyin } from "../../editor/extensions/pinyin-match";
 
-/** URL sentinel for the ungrouped filter (module ids are UUIDs, so "none"
- *  can never collide with one). */
+/** URL sentinel for "issues filed under no module" — the tree's last row.
+ *  Ids are UUIDs, so "none" can never collide with one. */
 const NO_MODULE_FILTER = "none";
+
+const EMPTY_PLAN_NODES: never[] = [];
+
+/** True below the width where the plan column would squeeze the surface. */
+function useNarrowLayout() {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setNarrow(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return narrow;
+}
 
 // ---------------------------------------------------------------------------
 // Property row — sidebar property display
@@ -173,38 +190,177 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     () => ({ type: "project" as const, projectId, actorKind: issueTab }),
     [projectId, issueTab],
   );
-  // Module narrowing comes from the ?module= URL param so the strip, the
-  //  breadcrumb, deep links, and browser/tab back all agree on one source.
-  // Both platform adapters surface searchParams (web: useSearchParams,
-  // desktop: location.search), so no per-app wiring is needed here.
-  const activeModule = router.searchParams.get("module");
+  // Selection lives in `?node=` — a row of this project's plan. The old
+  // `?module=` (module strip, sidebar links from builds before S6) is still
+  // read, then rewritten to the module's own row with `replace`, so a saved
+  // tab keeps working without growing a history entry. Both platform adapters
+  // surface searchParams (web: useSearchParams, desktop: location.search), so
+  // no per-app wiring is needed here.
+  const nodeParam = router.searchParams.get("node");
+  const moduleParam = router.searchParams.get("module");
   const { data: stripModules = [], isSuccess: modulesLoaded } = useQuery(
     moduleListOptions(wsId, projectId),
   );
-  const activeModuleRecord = stripModules.find(
-    (module) => module.id === activeModule,
-  );
+
+  // The plan is the tree's only source. It is also what makes a row's kind
+  // (project / module / work item) knowable, so a `?node=` id names its filter
+  // without a second read.
+  const planScope = useMemo(() => ({ projectId, moduleId: null }), [projectId]);
+  const planQuery = useQuery({ ...cockpitPlanOptions(wsId, planScope), retry: false });
+  const planNodes = useMemo(() => planQuery.data?.nodes ?? EMPTY_PLAN_NODES, [planQuery.data]);
+  const planById = useMemo(() => new Map(planNodes.map((node) => [node.id, node])), [planNodes]);
+  // A board that has never been reconciled has no module rows to select, and
+  // a project may simply have no plan. Both fall back to the module list —
+  // the page must stay usable between R2 and R4, when production boards are
+  // not reconciled yet.
+  const planUnreconciled =
+    planQuery.isSuccess && planNodes.length > 0 && !planQuery.data?.cockpit?.plan_reconciled_at;
+  const planReady = planQuery.isSuccess && planNodes.length > 0 && !planUnreconciled;
+  const planFallbackReason = planQuery.isError
+    ? t(($) => $.detail.plan_unavailable)
+    : planUnreconciled
+      ? t(($) => $.detail.plan_unreconciled)
+      : planQuery.isSuccess && planNodes.length === 0
+        ? t(($) => $.detail.plan_empty)
+        : null;
+
+  const selectedNode =
+    nodeParam && nodeParam !== NO_MODULE_FILTER ? planById.get(nodeParam) ?? null : null;
+  const selectedKind = selectedNode ? planNodeKind(selectedNode, planById) : null;
+  const showingUnfiled = nodeParam === NO_MODULE_FILTER;
+
   const moduleFilter = useMemo(() => {
-    if (!activeModule) return undefined;
-    if (activeModule === NO_MODULE_FILTER) return { include_no_module: true };
-    // A stale ?module= id (module since deleted, hand-edited URL) must not
-    // filter the surface into silence. Once the list has loaded, an unknown
-    // id falls back to the unfiltered view instead of matching zero rows.
-    if (modulesLoaded && !activeModuleRecord) return undefined;
-    return { module_ids: [activeModule] };
-  }, [activeModule, activeModuleRecord, modulesLoaded]);
-  const handleSelectModule = useCallback(
+    if (planReady) {
+      if (showingUnfiled) return { include_no_module: true };
+      if (!selectedNode) return undefined;
+      if (selectedKind === "work_item") return { work_item_ids: [selectedNode.id] };
+      if (selectedKind === "module") {
+        return selectedNode.module_id ? { module_ids: [selectedNode.module_id] } : undefined;
+      }
+      // The project's own row is the whole page.
+      return undefined;
+    }
+    // Degraded tree: the legacy module narrowing still applies to the module
+    // list it shows. A stale id must not filter the surface into silence.
+    if (!moduleParam || moduleParam === NO_MODULE_FILTER) {
+      return moduleParam === NO_MODULE_FILTER ? { include_no_module: true } : undefined;
+    }
+    if (modulesLoaded && !stripModules.some((module) => module.id === moduleParam)) return undefined;
+    return { module_ids: [moduleParam] };
+  }, [
+    moduleParam,
+    modulesLoaded,
+    planReady,
+    selectedKind,
+    selectedNode,
+    showingUnfiled,
+    stripModules,
+  ]);
+
+  const selectNode = useCallback(
     (value: string | null) => {
       const params = new URLSearchParams(router.searchParams.toString());
-      if (value) params.set("module", value);
-      else params.delete("module");
+      params.delete("module");
+      if (value) params.set("node", value);
+      else params.delete("node");
       const qs = params.toString();
-      router.push(
-        wsPaths.projectDetail(projectId) + (qs ? "?" + qs : ""),
-      );
+      router.push(wsPaths.projectDetail(projectId) + (qs ? "?" + qs : ""));
     },
     [projectId, router, wsPaths],
   );
+  // Only the degraded tree still writes `?module=`: rows there are modules
+  // from the module list, and no plan row exists to name.
+  const selectLegacyModule = useCallback(
+    (moduleId: string | null) => {
+      const params = new URLSearchParams(router.searchParams.toString());
+      params.delete("node");
+      if (moduleId) params.set("module", moduleId);
+      else params.delete("module");
+      const qs = params.toString();
+      router.push(wsPaths.projectDetail(projectId) + (qs ? "?" + qs : ""));
+    },
+    [projectId, router, wsPaths],
+  );
+
+  const selectedNodeId = nodeParam && nodeParam !== NO_MODULE_FILTER ? nodeParam : null;
+  // The degraded tree (and a `?module=` link from before S6) still selects a
+  // module by its own id; that is what the chip names until rows can.
+  const legacyModuleRecord =
+    !planReady && moduleParam && moduleParam !== NO_MODULE_FILTER
+      ? stripModules.find((module) => module.id === moduleParam)
+      : undefined;
+  const planKindOf = useCallback(
+    (node: (typeof planNodes)[number]) => planNodeKind(node, planById),
+    [planById],
+  );
+
+  // The plan column folds by hand, and never opens where it would squeeze the
+  // surface into a horizontal scroll.
+  const narrow = useNarrowLayout();
+  const [planColumnOpen, setPlanColumnOpen] = useState(true);
+  const showPlanColumn = planColumnOpen && !narrow;
+
+  // Seeded create: the tree's selection decides where the new issue files.
+  // A module rides `module_id`; a work item rides the same `cockpit_node`
+  // field every other entry uses, so the dialog has one way to receive it.
+  const createDefaults = useMemo(() => {
+    if (planReady && selectedNode && selectedKind === "work_item") {
+      const module = selectedNode.parent_id ? planById.get(selectedNode.parent_id) : undefined;
+      if (module?.project_id && module.module_id) {
+        return {
+          project_id: module.project_id,
+          module_id: module.module_id,
+          cockpit_node: {
+            node_id: selectedNode.id,
+            code: selectedNode.code,
+            label: `${selectedNode.code} ${selectedNode.name}`.trim(),
+            project_id: module.project_id,
+            module_id: module.module_id,
+          },
+        };
+      }
+      return undefined;
+    }
+    if (planReady && selectedNode && selectedKind === "module" && selectedNode.module_id) {
+      return { module_id: selectedNode.module_id };
+    }
+    if (!planReady && legacyModuleRecord) {
+      return { module_id: legacyModuleRecord.id };
+    }
+    return undefined;
+  }, [legacyModuleRecord, planById, planReady, projectId, selectedKind, selectedNode]);
+
+  // ---- `?module=` → `?node=` (replace, no extra history entry) -------------
+  useEffect(() => {
+    if (!moduleParam) return;
+    const params = new URLSearchParams(router.searchParams.toString());
+    params.delete("module");
+    if (moduleParam === NO_MODULE_FILTER) {
+      params.set("node", NO_MODULE_FILTER);
+    } else if (planReady) {
+      const row = planNodes.find(
+        (node) => node.module_id === moduleParam && planNodeKind(node, planById) === "module",
+      );
+      // An id this project no longer has names nothing: show everything.
+      if (row) params.set("node", row.id);
+    } else {
+      // No rows to point at yet: keep the legacy filter until the plan names
+      // the module (the degraded tree's own selection relies on it).
+      return;
+    }
+    const qs = params.toString();
+    router.replace(wsPaths.projectDetail(projectId) + (qs ? "?" + qs : ""));
+  }, [moduleParam, planById, planNodes, planReady, projectId, router, wsPaths]);
+
+  // ---- a `?node=` id the plan does not have -------------------------------
+  useEffect(() => {
+    if (!planQuery.isSuccess || !nodeParam || nodeParam === NO_MODULE_FILTER) return;
+    if (planById.has(nodeParam)) return;
+    const params = new URLSearchParams(router.searchParams.toString());
+    params.delete("node");
+    const qs = params.toString();
+    router.replace(wsPaths.projectDetail(projectId) + (qs ? "?" + qs : ""));
+  }, [nodeParam, planById, planQuery.isSuccess, projectId, router, wsPaths]);
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
@@ -594,24 +750,91 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
 
   return (
     <>
-    <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0" defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
+    <div className="flex min-h-0 flex-1">
+      {showPlanColumn && (
+        <aside aria-label={t(($) => $.detail.plan_title)} className="flex w-64 shrink-0 flex-col border-r border-border">
+          <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+            <span className="min-w-0 flex-1 truncate text-caption font-medium">{t(($) => $.detail.plan_title)}</span>
+            <button
+              type="button"
+              onClick={() => selectNode(null)}
+              aria-pressed={!nodeParam && !moduleParam}
+              className="shrink-0 rounded px-1 text-caption text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:text-foreground"
+            >
+              {t(($) => $.detail.all_issues)}
+            </button>
+          </div>
+          {planFallbackReason && (
+            <p role="status" className="border-b border-border px-3 py-1.5 text-caption text-muted-foreground">
+              {planFallbackReason}
+            </p>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {planReady ? (
+              <PlanTree
+                wsId={wsId}
+                scope={planScope}
+                query=""
+                readOnly={false}
+                selectedId={selectedNodeId}
+                onSelect={selectNode}
+                showIssueRows={false}
+              />
+            ) : (
+              <div role="tree" aria-label={t(($) => $.detail.plan_title)}>
+                {stripModules.map((module) => (
+                  <button
+                    key={module.id}
+                    type="button"
+                    role="treeitem"
+                    aria-selected={moduleParam === module.id}
+                    onClick={() => selectLegacyModule(module.id)}
+                    className="flex w-full min-w-0 items-center gap-1.5 border-b border-border/60 px-2 py-1 text-left text-caption hover:bg-accent aria-selected:bg-accent"
+                  >
+                    <Blocks className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{module.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* The unfiled bucket closes the tree in both modes: it is a
+                filter, not a plan row, so no node id names it. */}
+            <button
+              type="button"
+              aria-pressed={showingUnfiled}
+              onClick={() => selectNode(NO_MODULE_FILTER)}
+              className="flex w-full min-w-0 items-center gap-1.5 border-b border-border/60 px-2 py-1 text-left text-caption text-muted-foreground hover:bg-accent aria-pressed:bg-accent aria-pressed:text-foreground"
+            >
+              {t(($) => $.detail.no_module_row)}
+            </button>
+          </div>
+        </aside>
+      )}
+      <ResizablePanelGroup orientation="horizontal" className="min-h-0 min-w-0 flex-1" defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
       <ResizablePanel id="content" minSize="50%">
         <div ref={rightSidebarShortcutTargetRef} className="flex h-full flex-col">
           <IssueSurface
             scope={issueScope}
             modes={["table", "board", "list", "swimlane", "gantt"]}
             moduleFilter={moduleFilter}
-            // Folder-style management: a project with modules shows them as
-            // table groups until the user picks a grouping explicitly. While
-            // modules load, no default applies, so the table never flaps.
+            // The tree decides what the table groups by: work items when the
+            // project has any (the plan read, not the issues), else modules,
+            // else nothing. While the plan and module list load, no default
+            // applies, so the table never flaps.
             defaultTableGrouping={
-              modulesLoaded
-                ? stripModules.length > 0
-                  ? "module"
-                  : "none"
-                : undefined
+              planReady
+                ? planNodes.some((node) => planKindOf(node) === "work_item")
+                  ? "work_item"
+                  : planNodes.some((node) => planKindOf(node) === "module")
+                    ? "module"
+                    : "none"
+                : modulesLoaded
+                  ? stripModules.length > 0
+                    ? "module"
+                    : "none"
+                  : undefined
             }
-            createDefaults={activeModuleRecord ? { module_id: activeModuleRecord.id } : undefined}
+            createDefaults={createDefaults}
             renderHeader={({ controller }) => (
               <ProjectWorkflowMenuHost project={project}>
                 {(workflowSubmenu) => (
@@ -666,33 +889,55 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                     }
                     trailing={
                       <>
-                        {/* The module scope chip used to live in the page
-                            breadcrumb; the shell header has no leaf slot, so it
-                            rides at the start of the trailing cluster instead —
-                            same job: show which folder narrows the surface, and
-                            clear back to "all". */}
-                        {activeModuleRecord && (
+                        {/* The selection chip used to show the module strip's
+                            folder; it now names whichever row the tree has
+                            selected, and clears back to the whole project. */}
+                        {(selectedNode || showingUnfiled || legacyModuleRecord) && (
                           <span className="flex min-w-0 items-center gap-0.5 rounded-full bg-accent px-2 py-0.5 text-caption">
-                            <Boxes className="size-3 shrink-0" />
-                            <span className="max-w-[10rem] truncate">{activeModuleRecord.title}</span>
+                            <Blocks className="size-3 shrink-0" />
+                            <span className="max-w-[10rem] truncate">
+                              {selectedNode
+                                ? `${selectedNode.code} ${selectedNode.name}`.trim()
+                                : legacyModuleRecord
+                                  ? legacyModuleRecord.title
+                                  : t(($) => $.detail.no_module_row)}
+                            </span>
                             <button
                               type="button"
-                              aria-label={t(($) => $.module.clear_aria)}
-                              onClick={() => handleSelectModule(null)}
+                              aria-label={selectedNode || showingUnfiled
+                                ? t(($) => $.detail.selected_node_clear)
+                                : t(($) => $.module.clear_aria)}
+                              onClick={() => (legacyModuleRecord ? selectLegacyModule(null) : selectNode(null))}
                               className="shrink-0 text-muted-foreground hover:text-foreground"
                             >
                               <XIcon className="size-3" />
                             </button>
                           </span>
                         )}
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant={showPlanColumn ? "secondary" : "ghost"}
+                                size="icon-sm"
+                                className={showPlanColumn ? "" : "text-muted-foreground"}
+                                aria-label={t(($) => $.detail.plan_toggle)}
+                                aria-pressed={showPlanColumn}
+                                onClick={() => setPlanColumnOpen((open) => !open)}
+                              >
+                                <PanelLeft />
+                              </Button>
+                            }
+                          />
+                          <TooltipContent side="bottom">{t(($) => $.detail.plan_toggle)}</TooltipContent>
+                        </Tooltip>
                         {/* Seeds the project the same way the `c` shortcut does on
                             this route (global-shortcuts.tsx), and goes through
                             the create-mode preference so agent/manual stays where
-                            the user left it. The active module rides along
-                            exactly like the surface create defaults above —
-                            activeModuleRecord is only set for a module that
-                            still exists in this project, so the "none" sentinel
-                            and dead ids seed nothing. */}
+                            the user left it. The tree's selection rides along as
+                            the same defaults the surface hands its own create
+                            button; the issue title no longer carries a module's
+                            number (S6: numbering lives in the picker only). */}
                         <Button
                           size="sm"
                           variant="outline"
@@ -701,15 +946,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                           onClick={() =>
                             openCreateIssueWithPreference({
                               project_id: projectId,
-                              ...(activeModuleRecord && {
-                                module_id: activeModuleRecord.id,
-                                // Numbered modules number the work inside them,
-                                // so a create while the strip is narrowed to one
-                                // opens on that module's own number.
-                                ...(moduleTitleNumberPrefix(activeModuleRecord.title)
-                                  ? { title: moduleTitleNumberPrefix(activeModuleRecord.title) }
-                                  : {}),
-                              }),
+                              ...(createDefaults ?? {}),
                             })
                           }
                         >
@@ -787,6 +1024,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           </Sheet>
         )}
       </ResizablePanelGroup>
+    </div>
 
       {/* Module folder management (rename / reorder / delete / create) */}
       {isWorkspaceAdmin && (
