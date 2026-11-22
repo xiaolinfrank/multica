@@ -369,8 +369,13 @@ Once a board has bound nodes, whole-board import and snapshot restore return 409
   accepted. A work item that files primary issues shows their completion
   ratio instead (cancelled issues leave the denominator), and the stored value
   is only the fallback for a work item with none — do not propose it there.
-  L1/L2 rows are rolled up from their work items and are read-only. Anything
-  outside 0-100 is rejected with 400 rather than clamped.
+  The read endpoints (`node get`, the plan read) still return the stored
+  value, so it can differ from what the board shows: for a work item with
+  primary issues the board's figure is `task_counts` done ÷ (primary_total −
+  closed). Judge drift against that ratio, not the stored number; the server
+  does not derive it. L1/L2 rows are rolled up from their work items and are
+  read-only on the board. Anything outside 0-100 is rejected with 400 rather
+  than clamped.
 - Codes are outline numbers — L1 `04`, L2 `04.01`, L3 `04.01.03`. A node
   created before that rule may still wear `L3-01-08`; the reconcile pass
   rewrites it to the outline number the gantt already showed.
