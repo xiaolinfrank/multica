@@ -130,6 +130,9 @@ export function CockpitTable({
   // is dense and a stray click used to be the whole confirmation.
   const [removing, setRemoving] = useState<{ id: string; label: string } | null>(null);
   const [removeError, setRemoveError] = useState("");
+  // A refused instalment write used to roll the value back in silence: the
+  // server's own message is what tells the reader why.
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const tableRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -137,6 +140,7 @@ export function CockpitTable({
   const createPayment = useCreateCockpitPayment(wsId);
   const patchPayment = useUpdateCockpitPayment(wsId);
   const removePayment = useDeleteCockpitPayment(wsId);
+  const reportPaymentError = (error: unknown) => setPaymentError(error instanceof Error ? error.message : String(error));
   useCockpitScrollMemory(scrollRef, JSON.stringify([cockpitScopeViewKey(wsId, cockpitScope(navigation.searchParams)), "finance"]), board.nodes.length > 0, JSON.stringify([query, [...rootIds].sort()]));
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
   const scopedTree = useMemo(() => {
@@ -197,6 +201,12 @@ export function CockpitTable({
   const totalActual = financeRows.reduce((sum, row) => sum + row.amount, 0);
   return (
     <div ref={tableRef} className="cockpit-ledger flex min-h-0 min-w-0 flex-1 flex-col">
+      {paymentError && (
+        <div role="alert" className="flex items-center gap-2 border-b border-border px-4 py-2 text-caption text-destructive">
+          <span className="min-w-0 flex-1">{paymentError}</span>
+          <button type="button" className="underline" onClick={() => setPaymentError(null)}>{t(($) => $.plan_tree.dismiss)}</button>
+        </div>
+      )}
       <CockpitViewHeading title={t(($) => $.plan_views.finance)} icon={Wallet} description={t(($) => $.finance.actual_basis)}>
         <span className="text-caption text-muted-foreground" role="status">{query.trim() ? t(($) => $.table.search_matches, { count: financeRows.length }) : t(($) => $.finance.line_count, { n: financeRows.length })}</span>
       </CockpitViewHeading>
@@ -284,7 +294,7 @@ export function CockpitTable({
                     {payment ? (
                       <EditableText
                         value={payment.label}
-                        onCommit={(label) => patchPayment.mutate({ id: payment.id, patch: { label } })}
+                        onCommit={(label) => patchPayment.mutate({ id: payment.id, patch: { label } }, { onError: reportPaymentError, onSuccess: () => setPaymentError(null) })}
                         label={t(($) => $.payment.label)}
                         placeholder={t(($) => $.payment.label)}
                         disabled={!moneyEditable}
@@ -307,7 +317,7 @@ export function CockpitTable({
                     {payment ? (
                       <EditableDate
                         value={payment.pay_date}
-                        onCommit={(pay_date) => patchPayment.mutate({ id: payment.id, patch: { pay_date } })}
+                        onCommit={(pay_date) => patchPayment.mutate({ id: payment.id, patch: { pay_date } }, { onError: reportPaymentError, onSuccess: () => setPaymentError(null) })}
                         label={t(($) => $.payment.date)}
                         placeholder={emptyLabel}
                         disabled={!moneyEditable}
@@ -331,7 +341,7 @@ export function CockpitTable({
                     {payment ? (
                       <EditableNumber
                         value={payment.amount}
-                        onCommit={(amount) => patchPayment.mutate({ id: payment.id, patch: { amount: amount ?? 0 } })}
+                        onCommit={(amount) => patchPayment.mutate({ id: payment.id, patch: { amount: amount ?? 0 } }, { onError: reportPaymentError, onSuccess: () => setPaymentError(null) })}
                         label={t(($) => $.payment.amount)}
                         placeholder="0"
                         disabled={!moneyEditable}
@@ -401,7 +411,7 @@ export function CockpitTable({
                           onClick={() => createPayment.mutate({
                             nodeId: node.id,
                             body: { label: t(($) => $.payment.new_label, { index: ownPayments.length + 1 }), amount: 0, position: nextPosition },
-                          })}
+                          }, { onError: reportPaymentError, onSuccess: () => setPaymentError(null) })}
                           className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40">
                           <Plus className="size-3" aria-hidden />
                         </button>

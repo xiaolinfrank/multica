@@ -197,6 +197,18 @@ describe("CockpitTable work items without instalments", () => {
     await waitFor(() => expect(apiMock.updateCockpitPayment).toHaveBeenCalledWith("p1", { amount: 45 }));
   });
 
+  it("shows the server's own message when an instalment write is refused", async () => {
+    const board = ledgerBoard([{ id: "p1", node_id: "work", label: "First", pay_date: "2026-02-01", amount: 30, position: 0 }]);
+    apiMock.updateCockpitPayment.mockRejectedValueOnce(new Error("金额必须大于 0"));
+    show({ board });
+    fireEvent.click(screen.getByRole("button", { name: enCockpit.payment.amount }));
+    const field = screen.getByRole("spinbutton", { name: enCockpit.payment.amount });
+    fireEvent.change(field, { target: { value: "-1" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    // The value rolls back; without this line the refusal was invisible.
+    expect(await screen.findByRole("alert")).toHaveTextContent("金额必须大于 0");
+  });
+
   it("deletes an instalment only after the dialog names it", async () => {
     const board = ledgerBoard([{ id: "p1", node_id: "work", label: "First", pay_date: "2026-02-01", amount: 30, position: 0 }]);
     show({ board });
