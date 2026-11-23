@@ -501,7 +501,7 @@ func newCockpitIssueCommand() *cobra.Command {
 			}
 			return cli.PrintJSON(os.Stdout, result)
 		}}
-	cmd.Flags().String("work-item", "", "Work item UUID (the third plan level); refiles the issue's module and project")
+	cmd.Flags().String("work-item", "", "Work item UUID (the third plan level); refiles within the same project only (cross-project or from no project: PATCH /api/issues/{id} with work_item_id)")
 	cmd.Flags().String("node-id", "", "Alias for --work-item, kept for existing scripts")
 	cmd.Flags().Bool("clear", false, "Clear the issue's work item filing")
 	cmd.Flags().Int64("revision", 0, "Required filing revision for a change; 0 only when the issue has no work item yet")

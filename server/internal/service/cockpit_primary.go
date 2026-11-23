@@ -274,11 +274,14 @@ func (s *IssueService) SetCockpitIssuePrimaryNode(ctx context.Context, p Cockpit
 		if err != nil {
 			return db.CockpitIssuePrimary{}, err
 		}
-		// Cross-project is the issue update's job: that path maps the status
-		// into the destination workflow and hands the issue off when the
-		// entered step has a handler. Doing the move here would skip both —
-		// this endpoint keeps one release cycle for same-project moves only.
-		if issue.ProjectID.Valid && project != issue.ProjectID {
+		// Any change of project is the issue update's job: that path maps the
+		// status into the destination workflow and hands the issue off when
+		// the entered step has a handler. Doing the move here would skip both
+		// — this endpoint keeps one release cycle for same-project moves
+		// only. "Any change" includes an unfiled issue gaining a project: the
+		// issue update reads that as a project move and runs the handoff
+		// check, so this path must not skip it either.
+		if project != issue.ProjectID {
 			return db.CockpitIssuePrimary{}, ErrCockpitCrossProjectPrimary
 		}
 		var refiled []db.RefileIssueSubtreeRow

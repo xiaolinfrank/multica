@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"strings"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -235,6 +236,37 @@ func TestCockpitActionHTTPHumanAndWorkspaceBoundaries(t *testing.T) {
 	req := testutil.WithURLParams(cockpitRequest("POST", "/actions", ws, map[string]any{"proposal_key": uuid.NewString(), "title": "No management authority"}), "meetingId", meeting.ID, "versionId", version.ID)
 	req.Header.Set("X-User-ID", other)
 	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitMeetingAction), req).Want(403)
+}
+
+func TestCockpitPrimaryHTTPRefusesAProjectChangeAndPointsAtTheIssueUpdate(t *testing.T) {
+	ws, _, _, node := cockpitActionHTTPFixture(t)
+	var task service.CockpitIssueSummary
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitNodeTask), testutil.WithURLParams(cockpitRequest("POST", "/tasks", ws, map[string]any{"creation_key": uuid.NewString(), "title": "Filed task"}), "id", node.Code)).Want(200).JSON(&task)
+	var primary service.CockpitPrimaryView
+	getPrimary := testutil.WithURLParams(cockpitRequest("GET", "/primary", ws, nil), "issueId", task.Identifier)
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitIssuePrimaryNode), getPrimary).Want(200).JSON(&primary)
+
+	// A work item under another project: the legacy endpoint must refuse the
+	// move and name the path that runs the workflow checks.
+	otherProject := dbfx.Project(t, "Other project", testutil.Cols{"workspace_id": ws})
+	otherModule := dbfx.Module(t, otherProject, "Other module", testutil.Cols{"workspace_id": ws})
+	otherRoot := createNode(t, ws, map[string]any{"code": "other-root", "project_id": otherProject})
+	otherGroup := createNode(t, ws, map[string]any{"code": "other-module", "parent_id": otherRoot.ID, "module_id": otherModule})
+	otherLeaf := createNode(t, ws, map[string]any{"code": "other-leaf", "name": "Elsewhere", "parent_id": otherGroup.ID})
+	move := testutil.WithURLParams(cockpitRequest("PUT", "/primary", ws, map[string]any{"expected_revision": primary.Revision, "node_id": otherLeaf.ID}), "issueId", task.Identifier)
+	res := testutil.Call(t, cockpitHandler(testHandler.SetCockpitIssuePrimaryNode), move).Want(400)
+	var body struct {
+		Error string `json:"error"`
+	}
+	res.JSON(&body)
+	if !strings.Contains(body.Error, "issue update") {
+		t.Fatalf("refusal does not name the issue update: %q", body.Error)
+	}
+	// Nothing moved.
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitIssuePrimaryNode), getPrimary).Want(200).JSON(&primary)
+	if primary.NodeID == nil || *primary.NodeID != node.ID {
+		t.Fatalf("a refused move changed the filing: %+v", primary)
+	}
 }
 
 func TestCockpitPrimaryHTTPCreationReplayAndExplicitOwnership(t *testing.T) {

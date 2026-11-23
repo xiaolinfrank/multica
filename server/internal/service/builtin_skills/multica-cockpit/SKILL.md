@@ -92,7 +92,10 @@ The board is the programme's memory of dates, owners and progress; keeping it cu
 
 ```bash
 multica cockpit issue primary MUL-123                                   # current work item + revision
-multica cockpit issue primary MUL-123 --work-item <uuid> --revision 0   # refile (moves module/project too)
+multica cockpit issue primary MUL-123 --work-item <uuid> --revision 0   # refile within the SAME project only
+# Cross-project, or filing an issue that has no project yet: the endpoint above refuses (400).
+# Use the issue update instead, which runs the workflow checks and hands off:
+#   PATCH /api/issues/{id}  {"work_item_id": "<uuid>"}
 multica cockpit issue primary MUL-123 --clear --revision 1              # clear the filing
 multica cockpit node create-task <work-item> --creation-key <uuid> --title "..."   # new issue filed there
 multica cockpit node link 03.02.11 BIO-314 BIO-320                      # related only, never files

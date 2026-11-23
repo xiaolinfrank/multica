@@ -357,6 +357,20 @@ func TestCockpitPlanningRefileAndReceiptDeletionGuard(t *testing.T) {
 	if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: created.Issue.ID, NodeID: crossNode, ActorID: f.owner, ExpectedRevision: before.Revision}); !errors.Is(err, ErrCockpitCrossProjectPrimary) {
 		t.Fatalf("cross-project attach = %v", err)
 	}
+	// An unfiled task gaining a project through this endpoint is the same
+	// move: the issue update runs the workflow checks for it, so the legacy
+	// path refuses it too rather than writing project and module blind.
+	unfiledID := parseTestUUID(t, f.Issue(t, "Unfiled refile", testutil.Cols{"assignee_type": "member", "assignee_id": f.owner}))
+	unfiledRow, err := f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: unfiledID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unfiledRow.ProjectID.Valid || unfiledRow.ModuleID.Valid || unfiledRow.WorkItemID.Valid {
+		t.Fatalf("fixture: the task was expected to be unfiled, project=%v module=%v work_item=%v", unfiledRow.ProjectID, unfiledRow.ModuleID, unfiledRow.WorkItemID)
+	}
+	if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: unfiledID, NodeID: otherNode, ActorID: f.owner, ExpectedRevision: unfiledRow.Revision}); !errors.Is(err, ErrCockpitCrossProjectPrimary) {
+		t.Fatalf("unfiled attach into a project = %v", err)
+	}
 
 	if err := f.q.DeleteIssue(ctx, db.DeleteIssueParams{WorkspaceID: f.ws, ID: created.Issue.ID}); !IsCockpitPrimaryIntegrityError(err) {
 		t.Fatalf("unguarded direct deletion = %v", err)
