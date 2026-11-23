@@ -3,7 +3,7 @@ import type { Issue, UpdateIssueRequest } from "@multica/core/types";
 /** The issue fields the gate reads. */
 export type ModuleGateIssue = Pick<
   Issue,
-  "id" | "title" | "parent_issue_id" | "project_id" | "module_id"
+  "id" | "title" | "parent_issue_id" | "project_id" | "module_id" | "work_item_id"
 >;
 
 /** Payload for the `issue-module-detach-confirm` modal, or null when the write
@@ -32,6 +32,10 @@ export type ModuleDetachIntent = {
  * module" is the same test as "differs from the parent's module", and no
  * parent lookup is needed. A project move counts too: it re-files the issue,
  * and the module goes with the project.
+ *
+ * A work-item move counts on its own (`child_work_item_mismatch`): a sibling
+ * work item under the same module leaves both project and module untouched,
+ * and the ownership row is now where that move is made.
  */
 export function moduleDetachIntent(
   issue: ModuleGateIssue,
@@ -44,6 +48,9 @@ export function moduleDetachIntent(
   const movesProject =
     updates.project_id !== undefined &&
     (updates.project_id ?? null) !== (issue.project_id ?? null);
-  if (!movesModule && !movesProject) return null;
+  const movesWorkItem =
+    updates.work_item_id !== undefined &&
+    (updates.work_item_id ?? null) !== (issue.work_item_id ?? null);
+  if (!movesModule && !movesProject && !movesWorkItem) return null;
   return { issueId: issue.id, issueTitle: issue.title, updates };
 }

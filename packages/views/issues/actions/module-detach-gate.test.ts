@@ -9,9 +9,10 @@ const child = {
   parent_issue_id: "parent-1",
   project_id: "project-1",
   module_id: "module-1",
+  work_item_id: "work-1",
 } satisfies Pick<
   Issue,
-  "id" | "title" | "parent_issue_id" | "project_id" | "module_id"
+  "id" | "title" | "parent_issue_id" | "project_id" | "module_id" | "work_item_id"
 >;
 
 const root = { ...child, parent_issue_id: null };
@@ -35,9 +36,21 @@ describe("moduleDetachIntent", () => {
     ).not.toBeNull();
   });
 
+  it("confirms a work-item move even inside the same module", () => {
+    // A sibling work item leaves project and module untouched, so this is
+    // the one move only the work-item half of the gate can catch.
+    expect(moduleDetachIntent(child, { work_item_id: "work-2" })).toEqual({
+      issueId: "issue-1",
+      issueTitle: "Collect samples",
+      updates: { work_item_id: "work-2" },
+    });
+    expect(moduleDetachIntent(child, { work_item_id: null })).not.toBeNull();
+  });
+
   it("stays out of the way when the filing does not change", () => {
     expect(moduleDetachIntent(child, { module_id: "module-1" })).toBeNull();
     expect(moduleDetachIntent(child, { project_id: "project-1" })).toBeNull();
+    expect(moduleDetachIntent(child, { work_item_id: "work-1" })).toBeNull();
     expect(moduleDetachIntent(child, { title: "Renamed" })).toBeNull();
     expect(moduleDetachIntent(child, {})).toBeNull();
   });
@@ -45,6 +58,7 @@ describe("moduleDetachIntent", () => {
   it("has nothing to say about an issue with no parent", () => {
     expect(moduleDetachIntent(root, { module_id: "module-2" })).toBeNull();
     expect(moduleDetachIntent(root, { project_id: "project-2" })).toBeNull();
+    expect(moduleDetachIntent(root, { work_item_id: "work-2" })).toBeNull();
   });
 
   // The write carries both halves, so the dialog applies exactly what the user
