@@ -70,8 +70,11 @@ function ModuleWorkItems({
       expanded: new Set(data.nodes.map((node) => node.id)),
     });
     // A module has TWO ids: the module record's, and the plan row's. The
-    // parent chain names the row, so the filter runs on the row's id.
-    const moduleRow = rows.find((row) => row.kind === "module");
+    // parent chain names the row, so the filter runs on the row's id — and a
+    // read that carries sibling modules must not grab the wrong one.
+    const moduleRow =
+      rows.find((row) => row.kind === "module" && row.node.module_id === moduleId) ??
+      rows.find((row) => row.kind === "module");
     const moduleRowId = moduleRow?.node.id ?? null;
     return {
       workItems: rows.filter((row) => row.kind === "work_item" && planModuleIdOf(row.node, byId) === moduleRowId),
