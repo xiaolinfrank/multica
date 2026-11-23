@@ -1183,10 +1183,7 @@ export function CockpitGantt({
                         const filing = filingOf(planRow)!;
                         useModalStore.getState().open("create-issue", {
                           project_id: filing.project_id, module_id: filing.module_id,
-                          ...(planRow.kind === "work_item" ? { cockpit_node: {
-                            node_id: node.id, code: node.code, label: `${node.code} ${node.name}`.trim(),
-                            project_id: filing.project_id, module_id: filing.module_id,
-                          } } : {}),
+                          ...(planRow.kind === "work_item" ? { work_item_id: node.id } : {}),
                         });
                       } : undefined}
                       onMove={(parentId) => moveWorkItem.mutate({ id: node.id, parent_id: parentId }, {

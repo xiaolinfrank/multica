@@ -174,16 +174,11 @@ export function PlanTree({
   const openCreateIssue = (row: PlanRow) => {
     const scope = createScopeOf(row);
     if (!scope) return;
+    // One seed shape everywhere: the three flat ids, never a nested blob.
     useModalStore.getState().open("create-issue", {
       project_id: scope.project_id,
       module_id: scope.module_id,
-      ...(row.kind === "work_item" ? { cockpit_node: {
-        node_id: row.node.id,
-        code: row.node.code,
-        label: `${row.node.code} ${row.node.name}`.trim(),
-        project_id: scope.project_id,
-        module_id: scope.module_id,
-      } } : {}),
+      ...(row.kind === "work_item" ? { work_item_id: row.node.id } : {}),
     });
   };
 
@@ -357,7 +352,12 @@ export function PlanTree({
                   } catch (e) { report(e); }
                 }}
                 onCancelRename={() => setRenaming(null)}
-                trailing={table ? undefined : (
+                // Progress and task counts are `shrink-0`, so in the narrow
+                // plan column (256px) they are what squeezes a work item's
+                // name down to a character. A tree that shows no issue rows
+                // (`showIssueRows={false}` — the project page's navigator) is
+                // a name list, not a scoreboard: the row is a place to click.
+                trailing={table || !showIssueRows ? undefined : (
                   <>
                     {progress !== null && (
                       <span className="shrink-0 text-micro text-muted-foreground">{t(($) => $.plan_tree.progress, { n: progress })}</span>

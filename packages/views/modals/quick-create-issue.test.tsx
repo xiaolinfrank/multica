@@ -63,6 +63,8 @@ const sourceContextPanelData = {
 const emptyIssueDraft = () => ({
   shared: {
     projectId: undefined as string | undefined,
+    moduleId: undefined as string | undefined,
+    workItemId: undefined as string | undefined,
     priority: "none" as "none" | "low" | "medium" | "high" | "urgent",
     dueDate: null as string | null,
     attachments: [] as Array<{ id: string }>,
@@ -309,6 +311,7 @@ vi.mock("../issues/components", () => ({
 // The picker's tree is covered in issue-scope-picker.test.tsx; here it stands
 // in for choosing and clearing a filing.
 vi.mock("../issues/components/pickers/issue-scope-picker", () => ({
+  EMPTY_ISSUE_SCOPE: { project_id: null, module_id: null, work_item_id: null },
   IssueScopePicker: ({ value, onUpdate }: any) => (
     <div>
       <span data-testid="issue-scope">
@@ -1005,17 +1008,56 @@ describe("AgentCreatePanel", () => {
   // next open re-seeding the same dead value and trigger the server's
   // `project not found` rejection. The draft is now the only persisted copy —
   // the last-create memory is gone (MUL-5862).
-  it("clears a stale drafted project once the projects list resolves without it", async () => {
+  it("clears the whole stale filing once the drafted project is gone", async () => {
     mockIssueDraftStore.draft.shared.projectId = "deleted-proj";
+    mockIssueDraftStore.draft.shared.moduleId = "mod-1";
+    mockIssueDraftStore.draft.shared.workItemId = "node-1";
     mockProjectsQuery.data = [];
     mockProjectsQuery.isSuccess = true;
 
     renderPanel({ onClose: vi.fn(), isExpanded: false, setIsExpanded: vi.fn() });
 
+    // The module and work item hang off the dead project, so all three go —
+    // and the draft records that, or the next open re-seeds the dead ids.
     await waitFor(() => {
-      expect(mockSetShared).toHaveBeenCalledWith({ projectId: undefined });
+      expect(mockSetShared).toHaveBeenCalledWith({
+        projectId: undefined,
+        moduleId: undefined,
+        workItemId: undefined,
+      });
     });
     expect(screen.getByTestId("issue-scope")).toHaveTextContent("none");
+  });
+
+  it("shows a seeded work item and carries it to the manual form", async () => {
+    const user = userEvent.setup();
+    const onSwitchMode = vi.fn();
+    mockProjectsQuery.data = [{ id: "proj-1", title: "Web", icon: null }];
+    mockProjectsQuery.isSuccess = true;
+
+    renderPanel({
+      onClose: vi.fn(),
+      onSwitchMode,
+      isExpanded: false,
+      setIsExpanded: vi.fn(),
+      data: { project_id: "proj-1", module_id: "mod-1", work_item_id: "node-1" },
+    });
+
+    // The project page hand-off names all three levels in one flat shape, and
+    // the pill names the deepest one.
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent("node-1");
+
+    await user.type(
+      screen.getByPlaceholderText(
+        'Tell the agent what to do, e.g. "let Bohan fix the inbox loading slowness in the Web project"',
+      ),
+      "Ship it",
+    );
+    await user.click(screen.getByRole("button", { name: /Switch to Manual/i }));
+
+    expect(onSwitchMode).toHaveBeenCalledWith(
+      expect.objectContaining({ module_id: "mod-1", work_item_id: "node-1" }),
+    );
   });
 
   // Clearing is the picker's own "no ownership" row now that project, module

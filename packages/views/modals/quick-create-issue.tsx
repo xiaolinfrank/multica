@@ -35,7 +35,6 @@ import { agentTaskSnapshotKeys } from "@multica/core/agents";
 import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { AppLink, resolveClickIntent } from "../navigation";
 import { agentListOptions, squadListOptions } from "@multica/core/workspace/queries";
-import { projectListOptions } from "@multica/core/projects/queries";
 import {
   useQuickCreateStore,
   type QuickCreateActorType,
@@ -66,6 +65,7 @@ import { ActorAvatar } from "../common/actor-avatar";
 import { PillButton } from "../common/pill-button";
 import { DueDatePicker, PriorityIcon, PriorityPicker } from "../issues/components";
 import { IssueScopePicker, type IssueScopeValue } from "../issues/components/pickers/issue-scope-picker";
+import { useDropMissingScope } from "../issues/components/pickers/use-scope-existence";
 import { canAssignAgent } from "../issues/components/pickers/assignee-picker";
 import { isAgentRuntimeBound } from "@multica/core/agents";
 import {
@@ -148,12 +148,6 @@ export function AgentCreatePanel({
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const { data: runtimes = [] } = useQuery(runtimeListOptions(wsId));
   const { data: squads = [] } = useQuery(squadListOptions(wsId));
-  // Pull `isSuccess` so the stale-id sweep below can distinguish "still
-  // loading" from "loaded as empty". Reading length alone treats both as
-  // empty and incorrectly clears a valid persisted preference on every open.
-  const { data: projects = [], isSuccess: projectsLoaded } = useQuery(
-    projectListOptions(wsId),
-  );
 
   const memberRole = useMemo(
     () => members.find((m) => m.user_id === userId)?.role,
@@ -290,8 +284,8 @@ export function AgentCreatePanel({
   // switch (see `carry`); the pill says so while one is set.
   const [scope, setScope] = useState<IssueScopeValue>(() => ({
     project_id: (data?.project_id as string | undefined) ?? draft.shared.projectId ?? null,
-    module_id: (data?.module_id as string | undefined) ?? null,
-    work_item_id: (data?.work_item_id as string | undefined) ?? null,
+    module_id: (data?.module_id as string | undefined) ?? draft.shared.moduleId ?? null,
+    work_item_id: (data?.work_item_id as string | undefined) ?? draft.shared.workItemId ?? null,
   }));
   const projectId = scope.project_id;
   const [priority, setPriority] = useState<IssuePriority>(
@@ -305,7 +299,11 @@ export function AgentCreatePanel({
   // the agent panel reads, and the draft is its persisted copy.
   const commitScope = (next: IssueScopeValue) => {
     setScope(next);
-    setShared({ projectId: next.project_id ?? undefined });
+    setShared({
+      projectId: next.project_id ?? undefined,
+      moduleId: next.module_id ?? undefined,
+      workItemId: next.work_item_id ?? undefined,
+    });
   };
 
   // Parent-issue context — seeded by `openCreateSubIssue` when the modal is
@@ -318,22 +316,11 @@ export function AgentCreatePanel({
   const parentIssueIdentifier =
     (data?.parent_issue_identifier as string | undefined) ?? undefined;
 
-  // Stale-id sweep. Once the project list query has actually resolved
-  // (`isSuccess` — distinct from "data is the empty default during loading"),
-  // a `projectId` that isn't in the list means the project was deleted in
-  // another session. Clear local state AND the unfinished draft — the draft
-  // is the only persisted copy left, and leaving it would make the next open
-  // re-seed and submit the same dead value.
-  useEffect(() => {
-    if (!projectsLoaded || projectId === null) return;
-    if (projects.some((p) => p.id === projectId)) return;
-    // The module and work item hang off the dead project, so the whole filing
-    // goes with it.
-    setScope({ project_id: null, module_id: null, work_item_id: null });
-    if (draft.shared.projectId === projectId) {
-      setShared({ projectId: undefined });
-    }
-  }, [projectsLoaded, projects, projectId, draft.shared.projectId, setShared]);
+  // A restored filing can outlive the rows it names. The sweep drops the
+  // dead level (project → all three, module → itself and its work item, work
+  // item → itself) and writes the draft with it, so the next open does not
+  // re-seed a dead id.
+  useDropMissingScope(scope, commitScope);
 
   // Mark the persisted draft's active mode so a later reopen and any reader of
   // the unified draft know which form is being edited.

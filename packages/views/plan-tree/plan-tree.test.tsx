@@ -361,13 +361,7 @@ describe("PlanTree", () => {
     expect(open).toHaveBeenCalledWith("create-issue", {
       project_id: "proj-1",
       module_id: "mod-1",
-      cockpit_node: {
-        node_id: "w1",
-        code: "01.01.01",
-        label: "01.01.01 工作项一",
-        project_id: "proj-1",
-        module_id: "mod-1",
-      },
+      work_item_id: "w1",
     });
     open.mockRestore();
   });
