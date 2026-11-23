@@ -147,10 +147,11 @@ export function IssueScopePicker({
     // The module record's id and the plan row's id are not the same id: the
     // parent chain names the row, so the row is what children are matched on.
     // A read can carry more than one module row, so pick the one this level
-    // opened on — by its module binding, never by position.
+    // opened on — by its module binding, never by position. A read that does
+    // not contain that row lists nothing: falling back to the first module row
+    // would show another module's work items under this one's name.
     const moduleRowId =
       rows.find((row) => row.kind === "module" && row.node.module_id === expandedModule)?.node.id ??
-      rows.find((row) => row.kind === "module")?.node.id ??
       null;
     return rows.filter((row) => row.kind === "work_item" && planModuleIdOf(row.node, byId) === moduleRowId)
       .map((row) => ({

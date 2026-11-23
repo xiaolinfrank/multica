@@ -233,6 +233,35 @@ describe("IssueScopePicker", () => {
     ]);
   });
 
+  it("lists no work items when the read has no row for the opened module", async () => {
+    // A plan read can carry another module's rows. Matching by position would
+    // offer that module's work items under this module's name.
+    setApiInstance({
+      listProjects: async () => ({ projects: [project], total: 1 }),
+      listModules: async () => ({ modules, total: modules.length }),
+      getCockpitPlan: async () => {
+        const other = planData();
+        return {
+          ...other,
+          nodes: other.nodes.map((node) =>
+            node.id === MODULE_ID ? { ...node, module_id: "another-module" } : node,
+          ),
+        };
+      },
+    } as unknown as ApiClient);
+
+    show(vi.fn());
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Toggle project Programme" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Toggle module 01.02 Docking" }));
+
+    // The read answered — and answered with another module's rows, so this
+    // module's list is empty rather than borrowed.
+    expect(await screen.findByText("No work items")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "01.02.01 Interface draft" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "01.02.02 Cohort handover" })).toBeNull();
+  });
+
   it("says the plan could not be read, not that the board was never reconciled", async () => {
     setApiInstance({
       listProjects: async () => ({ projects: [project], total: 1 }),
