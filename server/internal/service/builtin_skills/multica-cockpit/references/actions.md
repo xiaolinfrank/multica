@@ -116,7 +116,7 @@ All routes use the current `X-Workspace-ID` and `/api/cockpit` prefix.
 | POST `/nodes/{id}/tasks` | `creation_key,title,description,priority,assignee_type,assignee_id,due_date`; lightweight issue receipt |
 | GET `/issues/{id}/primary-node` | current work item, filing revision and scope |
 | GET `/issues/{id}/actions` | `cursor,page_size`; read-only accepted sources with meeting/version identities, title, total and next cursor |
-| PUT `/issues/{id}/primary-node` | `node_id` (work item UUID or null), `expected_revision`; human only |
+| PUT `/issues/{id}/primary-node` | `node_id` (work item UUID or null), `expected_revision`; human only; **same project only** — a cross-project refile is refused (400 `ErrCockpitCrossProjectPrimary`), file it through `PATCH /api/issues/{id}` with `work_item_id` instead, which runs the workflow checks |
 | GET `/meetings/{id}/workflow/actions` | `version_id,status,q,cursor,page_size`; scoped action page |
 | GET `/meetings/{id}/workflow/actions/{actionId}` | current single action, including capabilities and issue facts |
 | POST `/meetings/{id}/workflow/versions/{versionId}/actions` | `proposal_key,title,description,source_quote`; single action |

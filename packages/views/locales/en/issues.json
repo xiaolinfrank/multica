@@ -49,7 +49,6 @@
     "retained_meeting": "This issue is retained by a meeting workflow or confirmed action and cannot be deleted.",
     "meeting_execution": "Prepare and start this work from the meeting workflow.",
     "triage": "Accept or resolve the triage proposal before changing its parent or starting work.",
-    "scope_required": "Choose a project and module before assigning a primary work item.",
     "human_required": "A workspace member must make this change.",
     "reviewer": "Transfer formal review responsibility from its workbench.",
     "formal_scope": "A formal review keeps the scope of its fixed record.",

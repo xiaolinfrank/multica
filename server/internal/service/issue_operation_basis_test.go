@@ -60,6 +60,17 @@ func TestIssueOperationBasisFormalAndOrdinaryBoundaries(t *testing.T) {
 	if len(formal.Targets) == 0 || formal.Targets[0].Kind != "artifact_version" || formal.Targets[0].VersionID != util.UUIDToString(v.ID) {
 		t.Fatalf("formal target is not fixed: %+v", formal.Targets)
 	}
+	// An unfiled task (no project, no module, no work item) may be given a
+	// primary: the cockpit dialog files it through the issue update, which is
+	// a scope change, and the old primary_scope_required gate is gone.
+	unfiled := f.Issue(t, "Unfiled task", testutil.Cols{})
+	p2, err := f.issues.ListIssueOperationBasis(ctx, IssueOperationBasisQuery{WorkspaceID: f.ws, ActorID: f.owner, Human: true, IssueIDs: []pgtype.UUID{parseTestUUID(t, unfiled)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p2.Items[0].Primary.State != "allowed" {
+		t.Fatalf("an unfiled task must be fileable: %+v", p2.Items[0].Primary)
+	}
 	if p.Items[3].Delete.State != "blocked" || p.Items[3].Scope.ReasonCodes[0] != "retained_artifact_scope" || p.Items[3].Primary.State != "allowed" {
 		t.Fatalf("source retained scope confused with primary mutation: %+v", p.Items[3])
 	}

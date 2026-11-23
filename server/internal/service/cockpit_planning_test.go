@@ -299,15 +299,20 @@ func TestCockpitPlanningRefileAndReceiptDeletionGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherProject := f.Project(t, "Refile project")
-	otherModule := f.Module(t, otherProject, "Refile module")
+	// The legacy endpoint moves within one project only now: a cross-project
+	// refile belongs to the issue update, which runs the workflow checks this
+	// path has never had. The refile below therefore stays in the task's own
+	// project, asserting the same filing write as before.
+	// Same project, another module: a node row may not bind the project twice,
+	// so the branch node stays unbound and the module row carries the binding.
+	otherModule := f.Module(t, f.project.String(), "Refile module")
 	otherRoot := f.Insert(t, "cockpit_node", testutil.Cols{
-		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": "RP", "name": "Refile project",
-		"position": 9, "project_id": otherProject,
+		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": "RP", "name": "Refile branch",
+		"position": 9,
 	})
 	otherModuleNode := f.Insert(t, "cockpit_node", testutil.Cols{
 		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "parent_id": otherRoot, "code": "RP.01", "name": "Refile module",
-		"position": 0, "project_id": otherProject, "module_id": otherModule,
+		"position": 0, "project_id": f.project, "module_id": otherModule,
 	})
 	otherNode := parseTestUUID(t, f.Insert(t, "cockpit_node", testutil.Cols{
 		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "parent_id": otherModuleNode, "code": "RP.01.01", "name": "Refile work item",
@@ -325,8 +330,32 @@ func TestCockpitPlanningRefileAndReceiptDeletionGuard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.WorkItemID != otherNode || after.ProjectID != parseTestUUID(t, otherProject) || after.ModuleID != parseTestUUID(t, otherModule) {
+	if after.WorkItemID != otherNode || after.ProjectID != f.project || after.ModuleID != parseTestUUID(t, otherModule) {
 		t.Fatalf("after refile: work_item=%v project=%v module=%v", after.WorkItemID, after.ProjectID, after.ModuleID)
+	}
+	// Cross-project through the legacy endpoint is a refusal, naming the path
+	// that runs the checks.
+	crossProject := f.Project(t, "Cross project")
+	crossModule := f.Module(t, crossProject, "Cross module")
+	_ = crossModule
+	crossRoot := f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": "CP", "name": "Cross project",
+		"position": 19, "project_id": crossProject,
+	})
+	crossModuleNode := f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "parent_id": crossRoot, "code": "CP.01", "name": "Cross module",
+		"position": 0, "project_id": crossProject, "module_id": crossModule,
+	})
+	crossNode := parseTestUUID(t, f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "parent_id": crossModuleNode, "code": "CP.01.01", "name": "Cross work item",
+		"position": 0,
+	}))
+	before, err = f.q.GetIssueInWorkspace(ctx, db.GetIssueInWorkspaceParams{WorkspaceID: f.ws, ID: created.Issue.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: created.Issue.ID, NodeID: crossNode, ActorID: f.owner, ExpectedRevision: before.Revision}); !errors.Is(err, ErrCockpitCrossProjectPrimary) {
+		t.Fatalf("cross-project attach = %v", err)
 	}
 
 	if err := f.q.DeleteIssue(ctx, db.DeleteIssueParams{WorkspaceID: f.ws, ID: created.Issue.ID}); !IsCockpitPrimaryIntegrityError(err) {

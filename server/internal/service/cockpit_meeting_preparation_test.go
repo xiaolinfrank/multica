@@ -347,8 +347,16 @@ func TestCockpitPreparationDerivedScopeCanBeExplicitlyReauthorized(t *testing.T)
 	if _, err = f.Pool.Exec(ctx, "UPDATE cockpit_node SET project_id=$2,module_id=$3 WHERE workspace_id=$1 AND id=$4", f.ws, nextProject, nextModule, root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, NodeID: parseTestUUID(t, node), ActorID: f.owner, ExpectedRevision: unlinked.Revision}); err != nil {
-		t.Fatalf("attach after rebinding: %v", err)
+	// Rebinding moved the node's module binding to another project, so the
+	// legacy endpoint refuses the re-attach (cross-project is the issue
+	// update's job now). Write the filing directly — the row-level move this
+	// test exercises — then confirm the node's own binding in the same write.
+	if _, err = f.issues.SetCockpitIssuePrimaryNode(ctx, CockpitPrimaryNodeCommand{WorkspaceID: f.ws, IssueID: issue, NodeID: parseTestUUID(t, node), ActorID: f.owner, ExpectedRevision: unlinked.Revision}); !errors.Is(err, ErrCockpitCrossProjectPrimary) {
+		t.Fatalf("cross-project re-attach via legacy endpoint = %v", err)
+	}
+	if _, err = f.Pool.Exec(ctx, `UPDATE issue SET work_item_id=$3, project_id=$4, module_id=$5 WHERE workspace_id=$1 AND id=$2`,
+		f.ws, issue, parseTestUUID(t, node), parseTestUUID(t, nextProject), parseTestUUID(t, nextModule)); err != nil {
+		t.Fatal(err)
 	}
 	p := CockpitPreparationQuery{CockpitLifecycleRead: lifecycleRead(f), OperationID: parseTestUUID(t, application.Current.ID), EffectID: parseTestUUID(t, effects[0].ID)}
 	old := CockpitPreparationEffectApplyInput{CommandKey: effects[0].CommandKey, AuthorizationKey: effects[0].AuthorizationKey, AuthorizationRevision: effects[0].AuthorizationRevision}

@@ -27,6 +27,11 @@ var (
 	ErrCockpitWorkflowForbidden        = errors.New("meeting workflow permission denied")
 	ErrCockpitWorkflowNotFound         = errors.New("meeting workflow not found")
 	ErrCockpitWorkflowExecutionBlocked = errors.New("meeting workflow issue is not available for agent execution")
+	// ErrCockpitCrossProjectPrimary: the legacy primary endpoint refuses a
+	// cross-project refile. Filing across projects is a scope change on the
+	// issue write path, which carries the workflow handoff checks this
+	// endpoint has never had; same-project moves stay (S6 batch 3B).
+	ErrCockpitCrossProjectPrimary = errors.New("moving an issue across projects goes through the issue update, which runs the workflow checks")
 )
 
 type CockpitWorkPackageCommand struct {

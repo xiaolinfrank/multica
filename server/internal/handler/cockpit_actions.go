@@ -24,7 +24,7 @@ func writeCockpitActionError(w http.ResponseWriter, r *http.Request, err error) 
 	}
 	status := http.StatusInternalServerError
 	switch {
-	case errors.Is(err, service.ErrCockpitWorkflowInput), errors.Is(err, service.ErrProjectNotFound), errors.Is(err, service.ErrModuleNotFound), errors.Is(err, service.ErrModuleNotInProject):
+	case errors.Is(err, service.ErrCockpitWorkflowInput), errors.Is(err, service.ErrProjectNotFound), errors.Is(err, service.ErrModuleNotFound), errors.Is(err, service.ErrModuleNotInProject), errors.Is(err, service.ErrCockpitCrossProjectPrimary):
 		status = http.StatusBadRequest
 	case errors.Is(err, service.ErrCockpitWorkflowConflict), errors.Is(err, service.ErrCockpitWorkflowExecutionBlocked), errors.Is(err, service.ErrCockpitPlanAlreadyReconciled):
 		status = http.StatusConflict

@@ -74,9 +74,10 @@ func projectIssueOperationBasis(f issueOperationFacts, human bool) IssueOperatio
 		out.Parent = operationField("blocked", "issue_in_triage")
 		out.Execution = operationField("blocked", "issue_in_triage")
 	}
-	if (f.ProjectID == nil || f.ModuleID == nil) && !f.HasPrimary {
-		out.Primary = operationField("blocked", "primary_scope_required")
-	}
+	// No primary_scope_required any more: filing an unfiled issue under a
+	// work item is a scope change (the cockpit dialog now writes through the
+	// issue update), and a scope change may file an unfiled issue. The other
+	// primary guards stand.
 	if !human {
 		out.Primary = operationField("blocked", "human_required")
 	}

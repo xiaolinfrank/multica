@@ -270,9 +270,16 @@ func (s *IssueService) SetCockpitIssuePrimaryNode(ctx context.Context, p Cockpit
 	}
 	var receipt db.CockpitIssuePrimary
 	if p.NodeID.Valid {
-		node, _, _, err := requireExecutionLeaf(ctx, q, p.WorkspaceID, p.NodeID)
+		node, project, _, err := requireExecutionLeaf(ctx, q, p.WorkspaceID, p.NodeID)
 		if err != nil {
 			return db.CockpitIssuePrimary{}, err
+		}
+		// Cross-project is the issue update's job: that path maps the status
+		// into the destination workflow and hands the issue off when the
+		// entered step has a handler. Doing the move here would skip both —
+		// this endpoint keeps one release cycle for same-project moves only.
+		if issue.ProjectID.Valid && project != issue.ProjectID {
+			return db.CockpitIssuePrimary{}, ErrCockpitCrossProjectPrimary
 		}
 		var refiled []db.RefileIssueSubtreeRow
 		receipt, _, refiled, err = attachPlanningPrimary(ctx, q, issue, node, p.ActorID, nil)

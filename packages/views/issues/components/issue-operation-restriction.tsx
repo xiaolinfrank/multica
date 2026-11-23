@@ -29,7 +29,6 @@ function useReasonLabel() {
       case "retained_meeting_action": return t(($) => $.operation_basis.retained_meeting);
       case "meeting_execution_gate": return t(($) => $.operation_basis.meeting_execution);
       case "issue_in_triage": return t(($) => $.operation_basis.triage);
-      case "primary_scope_required": return t(($) => $.operation_basis.scope_required);
       case "human_required": return t(($) => $.operation_basis.human_required);
       case "formal_reviewer_binding": return t(($) => $.operation_basis.reviewer);
       case "formal_review_scope": return t(($) => $.operation_basis.formal_scope);
