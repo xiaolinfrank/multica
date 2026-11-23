@@ -953,9 +953,9 @@ export function ManualCreatePanel({
 
   // Switch to agent mode WITHOUT destroying the manual draft. The manual slot
   // (title, description, …) is left untouched so a later agent→manual flip
-  // restores it verbatim. Project / priority / due date already live in the
-  // shared slot, so they carry across for free. Only two things are handed to
-  // the agent panel:
+  // restores it verbatim. Priority and due date live in the shared slot, and
+  // the filing is handed over explicitly (see the carry below). Only two
+  // things are seeded rather than carried:
   //   1. A one-time assist-init of the agent prompt / actor: when the agent
   //      draft is still empty, seed the prompt from title + description and the
   //      actor from the manual assignee (if agent-like). An existing agent
@@ -966,10 +966,9 @@ export function ManualCreatePanel({
     // Serializing mid-upload packs a description that has already lost the
     // pending image into the agent prompt, so gate the switch too.
     if (gate.isBlocked()) return;
-    // Commit the shared fields to the draft so the agent panel reads them from
-    // there. Local state can hold a value seeded from `data` (e.g. an opener's
-    // project) that was never written through a picker, so a plain flip would
-    // otherwise drop it.
+    // Keep the draft's own copy current: local state can hold a value seeded
+    // from `data` (an opener's project) that was never written through a
+    // picker, and the next open restores from the draft.
     setShared({ projectId, priority, dueDate });
     const existingPrompt = draft.agent.prompt;
     if (!existingPrompt.trim()) {
@@ -997,12 +996,14 @@ export function ManualCreatePanel({
     const carry: Record<string, unknown> = {};
     if (parentIssueId) carry.parent_issue_id = parentIssueId;
     if (carryParentIdentifier) carry.parent_issue_identifier = carryParentIdentifier;
-    // The filing rides along so a flip back to manual restores it rather than
-    // silently dropping the row this create belongs to. Flat ids, because the
-    // agent panel keeps no dedicated work-item field: it reads the project
-    // from the draft and passes module/work item on to the manual form.
-    if (scope.module_id) carry.module_id = scope.module_id;
-    if (scope.work_item_id) carry.work_item_id = scope.work_item_id;
+    // The filing rides along in full, nulls included. The receiving panel
+    // seeds from a named filing — one level named means all three come from
+    // the carry — so omitting the project here would hand it a module without
+    // a project, and the agent create (which takes only a project) would file
+    // the issue outside one.
+    carry.project_id = scope.project_id;
+    carry.module_id = scope.module_id;
+    carry.work_item_id = scope.work_item_id;
     onSwitchMode?.(Object.keys(carry).length > 0 ? carry : null);
   };
 

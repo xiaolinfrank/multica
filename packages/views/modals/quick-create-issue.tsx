@@ -103,11 +103,11 @@ type ActorSelection =
 // animation flash — Base UI replays Popup enter/exit when DialogContent is
 // remounted, even inside a still-open Dialog Root.
 //
-// `onSwitchMode` is wired by the shell — the panel calls it with an optional
-// carry payload (currently `project_id`). The shared draft store carries the
-// description + agent across the agent→manual flip; project_id rides through
-// the same carry channel manual→agent uses, so the manual panel reads it
-// from `data?.project_id` without a parallel store.
+// `onSwitchMode` is wired by the shell — the panel calls it with the filing
+// to open the other panel on. The shared draft store carries the description
+// and the agent across the flip; the filing (project, module, work item)
+// rides the carry channel in full, because a named level means the receiving
+// panel takes all three from here rather than from the draft.
 export function AgentCreatePanel({
   onClose,
   onSwitchMode,
@@ -597,8 +597,8 @@ export function AgentCreatePanel({
 
   // Switch to the manual form WITHOUT destroying the agent draft. The agent
   // slot (prompt + actor) is left untouched so a later manual→agent flip
-  // restores it verbatim. Project / priority / due date already live in the
-  // shared slot and carry across for free. Two one-time assist-inits run only
+  // restores it verbatim. Priority and due date live in the shared slot; the
+  // filing is carried explicitly (see below). Two one-time assist-inits run only
   // when the manual slot is still empty: seed the description from the prompt
   // and the assignee from the picked actor. The parent-issue context is not
   // persisted (a per-invocation intent) so it rides the carry channel.
@@ -606,9 +606,9 @@ export function AgentCreatePanel({
     // The prompt is copied into the manual description on assist-init; mid-upload
     // that body has already lost the pending image (see switchToAgent).
     if (gate.isBlocked()) return;
-    // Commit the shared fields to the draft so the manual panel reads them from
-    // there — local state can hold a value seeded from `data` that was never
-    // written through a picker.
+    // Keep the draft's own copy current: local state can hold a value seeded
+    // from `data` that was never written through a picker, and the next open
+    // restores from the draft.
     setShared({ projectId: projectId ?? undefined, priority, dueDate });
     if (!draft.manual.description.trim()) {
       const md = editorRef.current?.getMarkdown() ?? "";
@@ -620,8 +620,12 @@ export function AgentCreatePanel({
     setLastMode("manual");
     setActiveMode("manual");
     const carry: Record<string, unknown> = {};
-    if (scope.module_id) carry.module_id = scope.module_id;
-    if (scope.work_item_id) carry.work_item_id = scope.work_item_id;
+    // Full filing, nulls included: the receiving panel treats one named level
+    // as naming all three. A module without its project would make the manual
+    // form read the workspace default workflow and skip the handoff check.
+    carry.project_id = scope.project_id;
+    carry.module_id = scope.module_id;
+    carry.work_item_id = scope.work_item_id;
     if (parentIssueId) carry.parent_issue_id = parentIssueId;
     if (parentIssueIdentifier) carry.parent_issue_identifier = parentIssueIdentifier;
     onSwitchMode?.(Object.keys(carry).length > 0 ? carry : null);

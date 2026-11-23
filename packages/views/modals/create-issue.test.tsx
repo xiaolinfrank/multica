@@ -1473,11 +1473,47 @@ describe("CreateIssueModal", () => {
     await user.type(screen.getByPlaceholderText("Issue title"), "Refactor auth");
     await user.click(screen.getByRole("button", { name: /Switch to Agent/i }));
 
-    // The agent endpoint takes only the project, so the two deeper levels ride
-    // the carry and come back when the user switches back to manual.
-    expect(onSwitchMode).toHaveBeenCalledWith(
-      expect.objectContaining({ module_id: "mod-a", work_item_id: "node-a" }),
+    // All three levels ride the carry, the project included: the receiving
+    // panel treats a named level as naming the whole filing, so a carry
+    // without `project_id` would hand the agent a module and no project — and
+    // the agent create takes only a project.
+    expect(onSwitchMode).toHaveBeenCalledWith({
+      project_id: "proj-a",
+      module_id: "mod-a",
+      work_item_id: "node-a",
+    });
+  });
+
+  it("carries the project alone when that is the whole filing, ignoring a stale draft", async () => {
+    const user = userEvent.setup();
+    const onSwitchMode = vi.fn();
+    // The draft remembers a module and a work item from an earlier visit. This
+    // create is opened on the project alone, so neither may ride along.
+    mockDraftStore.draft.shared = {
+      ...mockDraftStore.draft.shared,
+      projectId: "proj-a",
+      moduleId: "stale-module",
+      workItemId: "stale-work-item",
+    };
+
+    renderModal(
+      <ManualCreatePanel
+        onClose={vi.fn()}
+        onSwitchMode={onSwitchMode}
+        data={{ project_id: "proj-a" }}
+        isExpanded={false}
+        setIsExpanded={vi.fn()}
+      />,
     );
+
+    await user.type(screen.getByPlaceholderText("Issue title"), "Refactor auth");
+    await user.click(screen.getByRole("button", { name: /Switch to Agent/i }));
+
+    expect(onSwitchMode).toHaveBeenCalledWith({
+      project_id: "proj-a",
+      module_id: null,
+      work_item_id: null,
+    });
   });
 
   it("keeps a field-only edit in the next batch issue when the dialog closes", async () => {
@@ -1986,8 +2022,14 @@ describe("CreateIssueModal", () => {
       actorType: "squad",
       actorId: "squad-1",
     });
-    // Actor rides the store, not the carry; no parent here → carry is null.
-    expect(onSwitchMode.mock.calls[0]?.[0]).toBeNull();
+    // Actor rides the store, not the carry. The carry still names the filing
+    // — an empty one here — so the agent panel opens on "no ownership"
+    // instead of picking up whatever the draft last remembered.
+    expect(onSwitchMode.mock.calls[0]?.[0]).toEqual({
+      project_id: null,
+      module_id: null,
+      work_item_id: null,
+    });
   });
 
   // Reporter scenario: backend rejects same-titled create with a 409 +
@@ -2208,10 +2250,15 @@ describe("CreateIssueModal", () => {
 
     expect(onSwitchMode).toHaveBeenCalledTimes(1);
     // The parent context is not persisted (a per-invocation intent), so it
-    // still rides the carry channel. The prompt rides the store now.
+    // still rides the carry channel. The filing rides it too, nulls and all —
+    // a named level means the receiving panel takes the whole filing from
+    // here rather than from the draft. The prompt rides the store now.
     expect(onSwitchMode.mock.calls[0]?.[0]).toEqual({
       parent_issue_id: "parent-uuid-1",
       parent_issue_identifier: "MUL-2534",
+      project_id: null,
+      module_id: null,
+      work_item_id: null,
     });
     expect(mockSetAgent).toHaveBeenCalledWith({ prompt: "Refactor auth" });
   });

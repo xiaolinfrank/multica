@@ -75,8 +75,17 @@ vi.mock("./quick-create-issue", () => ({
   }) => (
     <div>
       agent panel · {String(data?.anchor_comment_id ?? "ordinary")} · {data?.source_context_expanded ? "expanded" : "collapsed"}
+      <span data-testid="agent-filing">{String(data?.project_id ?? "-")}</span>
       <button type="button" onClick={() => onSwitchMode?.({ parent_issue_id: data?.parent_issue_id })}>
         switch manual
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onSwitchMode?.({ project_id: "proj-1", module_id: "mod-1", work_item_id: "node-1" })
+        }
+      >
+        switch manual with filing
       </button>
       <button
         type="button"
@@ -98,8 +107,17 @@ vi.mock("./create-issue", () => ({
   }) => (
     <div>
       manual panel · {String(data?.anchor_comment_id ?? "ordinary")} · {data?.source_context_expanded ? "expanded" : "collapsed"}
+      <span data-testid="manual-filing">{String(data?.project_id ?? "-")}</span>
       <button type="button" onClick={() => onSwitchMode?.({ parent_issue_id: data?.parent_issue_id })}>
         switch agent
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          onSwitchMode?.({ project_id: "proj-1", module_id: "mod-1", work_item_id: "node-1" })
+        }
+      >
+        switch agent with filing
       </button>
       <button
         type="button"
@@ -139,6 +157,17 @@ describe("CreateIssueDialog sizing", () => {
     expect(mockBeginIsolatedDraft).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "switch manual" }));
     expect(screen.getByText(/manual panel · ordinary/)).toBeInTheDocument();
+  });
+
+  it("hands the whole carry to the other panel, project included", () => {
+    // The shell is the only thing between the two panels' seeds: whatever one
+    // switches with is what the other opens on. Dropping a field here would
+    // undo the panels' own carry, silently.
+    render(<CreateIssueDialog onClose={vi.fn()} initialMode="manual" data={{}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "switch agent with filing" }));
+
+    expect(screen.getByTestId("agent-filing")).toHaveTextContent("proj-1");
   });
 
   it("isolates source-context drafts and preserves source identity across mode switches", () => {

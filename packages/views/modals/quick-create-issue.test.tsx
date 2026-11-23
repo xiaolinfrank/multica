@@ -1091,9 +1091,65 @@ describe("AgentCreatePanel", () => {
     );
     await user.click(screen.getByRole("button", { name: /Switch to Manual/i }));
 
-    expect(onSwitchMode).toHaveBeenCalledWith(
-      expect.objectContaining({ module_id: "mod-1", work_item_id: "node-1" }),
+    // The whole filing rides back, project included. The manual panel treats a
+    // named level as naming all three, so omitting the project would leave it
+    // filing under a module with no project — which reads the workspace
+    // workflow and skips the handoff check.
+    expect(onSwitchMode).toHaveBeenCalledWith({
+      project_id: "proj-1",
+      module_id: "mod-1",
+      work_item_id: "node-1",
+    });
+  });
+
+  it("creates in the project the switch carried", async () => {
+    // The agent endpoint takes only a project, so a filing that arrives by
+    // carry must keep it: dropping it files the issue outside any project.
+    const user = userEvent.setup();
+    mockProjectsQuery.data = [{ id: "proj-1", title: "Web", icon: null }];
+
+    renderPanel({
+      onClose: vi.fn(),
+      isExpanded: false,
+      setIsExpanded: vi.fn(),
+      data: { project_id: "proj-1", module_id: "mod-1", work_item_id: "node-1" },
+    });
+
+    await user.type(
+      screen.getByPlaceholderText(
+        'Tell the agent what to do, e.g. "let Bohan fix the inbox loading slowness in the Web project"',
+      ),
+      "Ship it",
     );
+    await user.click(screen.getByRole("button", { name: /^Create$/i }));
+
+    await waitFor(() =>
+      expect(mockQuickCreateIssue).toHaveBeenCalledWith(
+        expect.objectContaining({ project_id: "proj-1" }),
+      ),
+    );
+  });
+
+  it("does not pick up the draft's module when the caller names only the project", async () => {
+    // An earlier visit left a module and a work item in the draft. This open
+    // names the project alone, so the pill must show exactly that.
+    mockProjectsQuery.data = [{ id: "proj-1", title: "Web", icon: null }];
+    mockIssueDraftStore.draft.shared = {
+      ...mockIssueDraftStore.draft.shared,
+      projectId: "proj-1",
+      moduleId: "stale-module",
+      workItemId: "stale-work-item",
+    };
+
+    renderPanel({
+      onClose: vi.fn(),
+      isExpanded: false,
+      setIsExpanded: vi.fn(),
+      data: { project_id: "proj-1" },
+    });
+
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent("proj-1");
+    expect(screen.getByTestId("issue-scope")).not.toHaveTextContent("stale");
   });
 
   // Clearing is the picker's own "no ownership" row now that project, module
