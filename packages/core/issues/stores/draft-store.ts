@@ -33,6 +33,11 @@ import { normalizeStoredUploads, type DraftUpload } from "../../drafts/draft-upl
 
 export interface IssueCreateShared {
   projectId?: string;
+  /** The rest of the filing, restored with the project so a closed dialog
+   *  reopens where the issue was going to be filed. A stored level that no
+   *  longer exists is dropped on open, one level at a time. */
+  moduleId?: string;
+  workItemId?: string;
   priority: IssuePriority;
   dueDate: string | null;
   /** Uploads for the dialog (placeholders + completed), referenced by the
@@ -73,6 +78,8 @@ export interface IssueCreateDraft {
 
 const emptyShared = (): IssueCreateShared => ({
   projectId: undefined,
+  moduleId: undefined,
+  workItemId: undefined,
   priority: "none",
   dueDate: null,
   attachments: [],

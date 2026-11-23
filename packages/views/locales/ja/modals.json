@@ -270,7 +270,8 @@
       "error_daemon_version": "このエージェントのデーモン CLI（{{current}}）が必要なバージョン {{min}} を下回っています。エージェントで作成を使用するには、デーモンをアップグレードしてください。",
       "error_unknown": "送信できませんでした。再試行してください。",
       "sub_issue_of": "{{identifier}} のサブタスク"
-    }
+    },
+    "scope_follows_parent": "サブタスクは親タスクの所属に従います。変更するには親タスクを外してください。"
   },
   "mark_duplicate": {
     "title": "重複としてマーク",

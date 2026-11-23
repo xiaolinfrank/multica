@@ -57,6 +57,7 @@ import { useShortcut } from "@multica/core/shortcuts";
 import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { StatusIcon, StatusPicker, PriorityIcon, PriorityPicker, StagePicker, AssigneePicker, StartDatePicker, DueDatePicker, LabelPicker } from "../issues/components";
 import { IssueScopePicker, type IssueScopeValue } from "../issues/components/pickers/issue-scope-picker";
+import { useDropMissingScope } from "../issues/components/pickers/use-scope-existence";
 import { maxSiblingStage } from "../issues/components/pickers/stage-picker";
 import { cockpitKeys, cockpitReadKeys } from "@multica/core/cockpit";
 import { useIssueTriggerPreview } from "../issues/hooks/use-issue-trigger-preview";
@@ -316,26 +317,27 @@ export function ManualCreatePanel({
   const [propertyErrorId, setPropertyErrorId] = useState<string | null>(null);
   const [unavailablePropertyRemoved, setUnavailablePropertyRemoved] = useState(false);
   // Where the new issue files: one value for all three levels, because a work
-  // item names its module, which names its project. Every opener seeds it —
-  // a module from the plan tree, a work item from a row's "+", nothing from
-  // the neutral entries (which then fall back to the draft's project).
+  // item names its module, which names its project. Every entry — the plan
+  // tree, the gantt, the project page, a mode switch — hands over the same
+  // three flat ids, and the persisted draft keeps them for the next open.
   const [scope, setScope] = useState<IssueScopeValue>(() => {
-    // The plan tree's work item, whole: the opener had already resolved its
-    // module and project to decide where the dialog opens.
-    const node = data?.cockpit_node as
-      | { node_id: string; project_id: string; module_id: string }
-      | undefined;
-    if (node) {
-      return { project_id: node.project_id, module_id: node.module_id, work_item_id: node.node_id };
-    }
-    const projectId = data && "project_id" in data
-      ? (data.project_id as string | null) ?? null
-      : draft.shared.projectId ?? null;
-    const moduleId = data && "module_id" in data ? (data.module_id as string | null) ?? null : null;
-    // A work item carried over from the agent panel (a mode flip) arrives as
-    // a bare id; the picker names it from the node read.
-    const workItemId = data && "work_item_id" in data ? (data.work_item_id as string | null) ?? null : null;
-    return { project_id: projectId, module_id: moduleId, work_item_id: workItemId };
+    const named = (field: "project_id" | "module_id" | "work_item_id") =>
+      Boolean(data && field in data);
+    const value = (field: "project_id" | "module_id" | "work_item_id") =>
+      (data?.[field] as string | null | undefined) ?? null;
+    // A caller that names a level names the filing: the draft may not fill in
+    // a deeper level the caller left out (that would file under a stale row).
+    const projectNamed = named("project_id");
+    const moduleNamed = named("module_id");
+    return {
+      project_id: projectNamed ? value("project_id") : draft.shared.projectId ?? null,
+      module_id: moduleNamed ? value("module_id") : projectNamed ? null : draft.shared.moduleId ?? null,
+      work_item_id: named("work_item_id")
+        ? value("work_item_id")
+        : moduleNamed || projectNamed
+          ? null
+          : draft.shared.workItemId ?? null,
+    };
   });
   const [parentIssueId, setParentIssueId] = useState<string | undefined>(
     (data?.parent_issue_id as string) || undefined,
@@ -462,13 +464,18 @@ export function ManualCreatePanel({
     setAssigneeType("agent");
     setAssigneeId(match.id);
   }, [workspaceAgents, defaultAssigneeAgentName, assigneeType, assigneeId]);
-  /** The project stays mirrored into the shared draft — that is what the
-   *  agent panel reads as its project. Module and work item are per-project
-   *  state the picker owns. */
+  /** The filing lives in the shared draft so closing and reopening restores
+   *  all three levels, and so the agent panel reads the same project. */
   const updateScope = (next: IssueScopeValue) => {
     setScope(next);
-    setShared({ projectId: next.project_id ?? undefined });
+    setShared({
+      projectId: next.project_id ?? undefined,
+      moduleId: next.module_id ?? undefined,
+      workItemId: next.work_item_id ?? undefined,
+    });
   };
+  // A restored draft may name rows that are gone; drop them before submit.
+  useDropMissingScope(scope, updateScope);
   const projectId = scope.project_id ?? undefined;
   const updateParent = (id?: string) => {
     setParentIssueId(id);
@@ -1248,14 +1255,25 @@ export function ManualCreatePanel({
                   entry and never hidden: the work item has no other way in.
                   Picking a work item fills the module and project above it.
                   A sub-issue is filed where its parent is, so the menu stays
-                  shut while a parent is set. */}
-              <IssueScopePicker
-                value={scope}
-                onUpdate={updateScope}
-                readOnly={!!parentIssueId}
-                triggerRender={<PillButton />}
-                align="start"
-              />
+                  shut while a parent is set — and says why, because a pill
+                  that refuses to open without a word reads as broken. The
+                  wrapper is the focus target: the trigger itself is disabled
+                  and would never take focus. */}
+              <TooltipHint label={parentIssueId ? t(($) => $.create_issue.scope_follows_parent) : null}>
+                <span
+                  tabIndex={parentIssueId ? 0 : undefined}
+                  aria-label={parentIssueId ? t(($) => $.create_issue.scope_follows_parent) : undefined}
+                  className="inline-flex min-w-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <IssueScopePicker
+                    value={scope}
+                    onUpdate={updateScope}
+                    readOnly={!!parentIssueId}
+                    triggerRender={<PillButton />}
+                    align="start"
+                  />
+                </span>
+              </TooltipHint>
 
               {/* Stage — only relevant when creating a sub-issue under a parent */}
               {parentIssueId && (

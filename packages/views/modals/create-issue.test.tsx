@@ -127,6 +127,8 @@ type DraftUploadEntry = {
 const emptyIssueDraft = () => ({
   shared: {
     projectId: undefined as string | undefined,
+    moduleId: undefined as string | undefined,
+    workItemId: undefined as string | undefined,
     priority: "none" as "none" | "low" | "medium" | "high" | "urgent",
     dueDate: null as string | null,
     attachments: [] as DraftUploadEntry[],
@@ -236,7 +238,22 @@ vi.mock("./use-issue-limit-upgrade-prompt", () => ({
 vi.mock("@multica/core/issues/queries", () => ({
   issueDetailOptions: (wsId: string, id: string) => ({
     queryKey: ["issues", wsId, "detail", id],
-    queryFn: () => Promise.resolve(null),
+    // One fixture resolves: the sub-issue inheritance test needs a parent that
+    // is actually filed somewhere. Everything else still answers null.
+    queryFn: () =>
+      Promise.resolve(
+        id === "parent-with-work-item"
+          ? {
+              id,
+              identifier: "MUL-1",
+              title: "Parent",
+              status: "todo",
+              project_id: "proj-p",
+              module_id: "mod-p",
+              work_item_id: "node-p",
+            }
+          : null,
+      ),
   }),
   childIssuesOptions: (wsId: string, id: string) => ({
     queryKey: ["issues", wsId, "children", id],
@@ -872,7 +889,7 @@ describe("CreateIssueModal", () => {
           title: WORK_ITEM.code,
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
-          cockpit_node: WORK_ITEM,
+          work_item_id: WORK_ITEM.node_id,
         }}
       />,
     );
@@ -890,7 +907,7 @@ describe("CreateIssueModal", () => {
           title: WORK_ITEM.code,
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
-          cockpit_node: WORK_ITEM,
+          work_item_id: WORK_ITEM.node_id,
         }}
       />,
     );
@@ -920,7 +937,7 @@ describe("CreateIssueModal", () => {
           title: WORK_ITEM.code,
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
-          cockpit_node: WORK_ITEM,
+          work_item_id: WORK_ITEM.node_id,
         }}
       />,
     );
@@ -943,7 +960,7 @@ describe("CreateIssueModal", () => {
         data={{ ...sourceContextPanelData(), ...{
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
-          cockpit_node: WORK_ITEM,
+          work_item_id: WORK_ITEM.node_id,
         } }}
         onClose={vi.fn()}
         onSwitchMode={vi.fn()}
@@ -973,7 +990,7 @@ describe("CreateIssueModal", () => {
         data={{
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
-          cockpit_node: WORK_ITEM,
+          work_item_id: WORK_ITEM.node_id,
           on_created: onCreated,
         }}
       />,
@@ -1012,7 +1029,7 @@ describe("CreateIssueModal", () => {
         data={{
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
-          cockpit_node: WORK_ITEM,
+          work_item_id: WORK_ITEM.node_id,
           on_created: onCreated,
         }}
       />,
@@ -1050,7 +1067,7 @@ describe("CreateIssueModal", () => {
         data={{
           project_id: WORK_ITEM.project_id,
           module_id: WORK_ITEM.module_id,
-          cockpit_node: WORK_ITEM,
+          work_item_id: WORK_ITEM.node_id,
         }}
       />,
     );
@@ -1394,6 +1411,62 @@ describe("CreateIssueModal", () => {
     expect(mockCreateIssue).toHaveBeenNthCalledWith(3, expect.objectContaining({
       status: "todo", parent_issue_id: undefined, stage: undefined,
     }));
+  });
+
+  it("says why a sub-issue's ownership cannot be changed, on hover and focus", () => {
+    renderModal(<CreateIssueModal onClose={vi.fn()} data={{ parent_issue_id: "parent-1" }} />);
+
+    // The picker itself is disabled and never takes focus, so the wrapper is
+    // the focus target that carries the reason.
+    const hint = screen.getByLabelText(enModals.create_issue.scope_follows_parent);
+    expect(hint).toHaveAttribute("tabindex", "0");
+    hint.focus();
+    expect(hint).toHaveFocus();
+  });
+
+  it("inherits the parent's work item, shows it, and files the child under it", async () => {
+    const user = userEvent.setup();
+
+    renderModal(<CreateIssueModal onClose={vi.fn()} data={{ parent_issue_id: "parent-with-work-item" }} />);
+
+    await waitFor(() => expect(screen.getByTestId("issue-scope")).toHaveTextContent("node-p"));
+    fireEvent.change(screen.getByPlaceholderText("Issue title"), { target: { value: "Child work" } });
+    await user.click(screen.getByRole("button", { name: "Create Issue" }));
+
+    await waitFor(() =>
+      expect(mockCreateIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project_id: "proj-p",
+          module_id: "mod-p",
+          work_item_id: "node-p",
+          parent_issue_id: "parent-with-work-item",
+        }),
+      ),
+    );
+  });
+
+  it("carries the whole filing to the agent panel", async () => {
+    const user = userEvent.setup();
+    const onSwitchMode = vi.fn();
+
+    renderModal(
+      <ManualCreatePanel
+        onClose={vi.fn()}
+        onSwitchMode={onSwitchMode}
+        data={{ project_id: "proj-a", module_id: "mod-a", work_item_id: "node-a" }}
+        isExpanded={false}
+        setIsExpanded={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByPlaceholderText("Issue title"), "Refactor auth");
+    await user.click(screen.getByRole("button", { name: /Switch to Agent/i }));
+
+    // The agent endpoint takes only the project, so the two deeper levels ride
+    // the carry and come back when the user switches back to manual.
+    expect(onSwitchMode).toHaveBeenCalledWith(
+      expect.objectContaining({ module_id: "mod-a", work_item_id: "node-a" }),
+    );
   });
 
   it("keeps a field-only edit in the next batch issue when the dialog closes", async () => {
@@ -2045,19 +2118,25 @@ describe("CreateIssueModal", () => {
     expect(mockSetAgent).toHaveBeenCalledWith({ prompt: "Refactor auth" });
   });
 
-  it("restores an unfinished project selection after manual create remounts", async () => {
+  it("restores the whole filing — project, module and work item — after a remount", async () => {
     const user = userEvent.setup();
 
     const firstOpen = renderModal(<CreateIssueModal onClose={vi.fn()} />);
     expect(screen.getByTestId("issue-scope")).toHaveTextContent("none");
 
-    await user.click(screen.getByRole("button", { name: "Pick project" }));
-    expect(mockSetShared).toHaveBeenCalledWith({ projectId: "proj-1" });
+    await user.click(screen.getByRole("button", { name: "Change work item" }));
+    expect(mockSetShared).toHaveBeenCalledWith({
+      projectId: "proj-b",
+      moduleId: "mod-b",
+      workItemId: "node-b",
+    });
 
     firstOpen.unmount();
     renderModal(<CreateIssueModal onClose={vi.fn()} />);
 
-    expect(screen.getByTestId("issue-scope")).toHaveTextContent("proj-1");
+    // The work item is the deepest level, so naming it proves the other two
+    // came back with it.
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent("node-b");
   });
 
   // Manual → agent must forward parent_issue_id when the modal was opened

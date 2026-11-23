@@ -272,7 +272,8 @@
       "error_daemon_version": "This agent's daemon CLI ({{current}}) is below the required {{min}}. Upgrade the daemon to use Create with agent.",
       "error_unknown": "Failed to submit. Try again.",
       "sub_issue_of": "Sub-issue of {{identifier}}"
-    }
+    },
+    "scope_follows_parent": "A sub-issue takes its parent's ownership. Remove the parent to change it."
   },
   "mark_duplicate": {
     "title": "Mark as duplicate",
