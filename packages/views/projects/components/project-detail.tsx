@@ -299,10 +299,14 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   const narrow = useNarrowLayout();
   const [planColumnOpen, setPlanColumnOpen] = useState(true);
   const showPlanColumn = planColumnOpen && !narrow;
+  // Below the breakpoint the column has no room, so the same tree opens over
+  // the page instead of collapsing into a button that does nothing.
+  const [planSheetOpen, setPlanSheetOpen] = useState(false);
+  const planShown = narrow ? planSheetOpen : showPlanColumn;
 
   // Seeded create: the tree's selection decides where the new issue files.
-  // A module rides `module_id`; a work item rides the same `cockpit_node`
-  // field every other entry uses, so the dialog has one way to receive it.
+  // One shape for all three levels — the flat ids — so the agent panel reads
+  // the work item exactly as the manual panel does.
   const createDefaults = useMemo(() => {
     if (planReady && selectedNode && selectedKind === "work_item") {
       const module = selectedNode.parent_id ? planById.get(selectedNode.parent_id) : undefined;
@@ -310,13 +314,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
         return {
           project_id: module.project_id,
           module_id: module.module_id,
-          cockpit_node: {
-            node_id: selectedNode.id,
-            code: selectedNode.code,
-            label: `${selectedNode.code} ${selectedNode.name}`.trim(),
-            project_id: module.project_id,
-            module_id: module.module_id,
-          },
+          work_item_id: selectedNode.id,
         };
       }
       return undefined;
@@ -748,6 +746,63 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     </div>
   );
 
+  // One body, rendered in the inline column or in the narrow-screen sheet.
+  // Selecting a row closes the sheet: the row exists to narrow the surface
+  // underneath it, so leaving the panel over that surface would hide the
+  // result.
+  const pickFromPlan = (id: string | null) => {
+    if (narrow) setPlanSheetOpen(false);
+    selectNode(id);
+  };
+  const planTreeBody = (
+    <>
+      {planFallbackReason && (
+        <p role="status" className="border-b border-border px-3 py-1.5 text-caption text-muted-foreground">
+          {planFallbackReason}
+        </p>
+      )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {planReady ? (
+          <PlanTree
+            wsId={wsId}
+            scope={planScope}
+            query=""
+            readOnly={false}
+            selectedId={selectedNodeId}
+            onSelect={pickFromPlan}
+            showIssueRows={false}
+          />
+        ) : (
+          <div role="tree" aria-label={t(($) => $.detail.plan_title)}>
+            {stripModules.map((module) => (
+              <button
+                key={module.id}
+                type="button"
+                role="treeitem"
+                aria-selected={moduleParam === module.id}
+                onClick={() => { setPlanSheetOpen(false); selectLegacyModule(module.id); }}
+                className="flex w-full min-w-0 items-center gap-1.5 border-b border-border/60 px-2 py-1 text-left text-caption hover:bg-accent aria-selected:bg-accent"
+              >
+                <Blocks className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{module.title}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* The unfiled bucket closes the tree in both modes: it is a
+            filter, not a plan row, so no node id names it. */}
+        <button
+          type="button"
+          aria-pressed={showingUnfiled}
+          onClick={() => pickFromPlan(NO_MODULE_FILTER)}
+          className="flex w-full min-w-0 items-center gap-1.5 border-b border-border/60 px-2 py-1 text-left text-caption text-muted-foreground hover:bg-accent aria-pressed:bg-accent aria-pressed:text-foreground"
+        >
+          {t(($) => $.detail.no_module_row)}
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <>
     <div className="flex min-h-0 flex-1">
@@ -764,51 +819,26 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
               {t(($) => $.detail.all_issues)}
             </button>
           </div>
-          {planFallbackReason && (
-            <p role="status" className="border-b border-border px-3 py-1.5 text-caption text-muted-foreground">
-              {planFallbackReason}
-            </p>
-          )}
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {planReady ? (
-              <PlanTree
-                wsId={wsId}
-                scope={planScope}
-                query=""
-                readOnly={false}
-                selectedId={selectedNodeId}
-                onSelect={selectNode}
-                showIssueRows={false}
-              />
-            ) : (
-              <div role="tree" aria-label={t(($) => $.detail.plan_title)}>
-                {stripModules.map((module) => (
-                  <button
-                    key={module.id}
-                    type="button"
-                    role="treeitem"
-                    aria-selected={moduleParam === module.id}
-                    onClick={() => selectLegacyModule(module.id)}
-                    className="flex w-full min-w-0 items-center gap-1.5 border-b border-border/60 px-2 py-1 text-left text-caption hover:bg-accent aria-selected:bg-accent"
-                  >
-                    <Blocks className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{module.title}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {/* The unfiled bucket closes the tree in both modes: it is a
-                filter, not a plan row, so no node id names it. */}
-            <button
-              type="button"
-              aria-pressed={showingUnfiled}
-              onClick={() => selectNode(NO_MODULE_FILTER)}
-              className="flex w-full min-w-0 items-center gap-1.5 border-b border-border/60 px-2 py-1 text-left text-caption text-muted-foreground hover:bg-accent aria-pressed:bg-accent aria-pressed:text-foreground"
-            >
-              {t(($) => $.detail.no_module_row)}
-            </button>
-          </div>
+          {planTreeBody}
         </aside>
+      )}
+      {narrow && (
+        <Sheet open={planSheetOpen} onOpenChange={setPlanSheetOpen}>
+          <SheetContent side="left" className="flex w-72 flex-col p-0">
+            <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-caption font-medium">{t(($) => $.detail.plan_title)}</span>
+              <button
+                type="button"
+                onClick={() => pickFromPlan(null)}
+                aria-pressed={!nodeParam && !moduleParam}
+                className="shrink-0 rounded px-1 text-caption text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:text-foreground"
+              >
+                {t(($) => $.detail.all_issues)}
+              </button>
+            </div>
+            {planTreeBody}
+          </SheetContent>
+        </Sheet>
       )}
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 min-w-0 flex-1" defaultLayout={defaultLayout} onLayoutChanged={onLayoutChanged}>
       <ResizablePanel id="content" minSize="50%">
@@ -918,12 +948,14 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                           <TooltipTrigger
                             render={
                               <Button
-                                variant={showPlanColumn ? "secondary" : "ghost"}
+                                variant={planShown ? "secondary" : "ghost"}
                                 size="icon-sm"
-                                className={showPlanColumn ? "" : "text-muted-foreground"}
+                                className={planShown ? "" : "text-muted-foreground"}
                                 aria-label={t(($) => $.detail.plan_toggle)}
-                                aria-pressed={showPlanColumn}
-                                onClick={() => setPlanColumnOpen((open) => !open)}
+                                aria-pressed={planShown}
+                                onClick={() =>
+                                  narrow ? setPlanSheetOpen((open) => !open) : setPlanColumnOpen((open) => !open)
+                                }
                               >
                                 <PanelLeft />
                               </Button>

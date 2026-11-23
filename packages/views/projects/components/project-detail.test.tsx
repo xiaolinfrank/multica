@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   operationBlocked: false,
   modules: { current: [] as Array<Record<string, unknown>> },
   plan: { current: null as Record<string, unknown> | null },
+  planError: false,
   issueSurface: { current: null as Record<string, unknown> | null },
   copyText: vi.fn(),
   deleteProject: vi.fn(),
@@ -54,11 +55,15 @@ vi.mock("@tanstack/react-query", async (original) => ({
       case "modules":
         return { data: mocks.modules.current, isLoading: false, isSuccess: true };
       case "cockpit":
-        // The left column's plan read (S6). A null fixture means the board is
-        // unreconciled or unreadable — the page then lists modules only.
+        // The left column's plan read (S6). The client throws on an
+        // unconfirmed answer, so "no plan" is an error, never a successful
+        // empty read — the fixture follows the same rule.
+        if (mocks.planError) {
+          return { data: undefined, isLoading: false, isError: true, isSuccess: false };
+        }
         return mocks.plan.current
-          ? { data: mocks.plan.current, isLoading: false, isSuccess: true }
-          : { data: undefined, isLoading: false, isSuccess: true };
+          ? { data: mocks.plan.current, isLoading: false, isSuccess: true, isError: false }
+          : { data: undefined, isLoading: false, isError: true, isSuccess: false };
       default:
         return { data: undefined, isLoading: false };
     }
@@ -195,7 +200,8 @@ vi.mock("@multica/ui/components/ui/tooltip", () => ({
 }));
 
 vi.mock("@multica/ui/components/ui/sheet", () => ({
-  Sheet: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Sheet: ({ open, children }: { open?: boolean; children: React.ReactNode }) =>
+    open ? <>{children}</> : null,
   SheetContent: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
@@ -382,6 +388,7 @@ beforeEach(() => {
   mocks.role = "admin";
   mocks.operationBlocked = false;
   mocks.plan.current = null;
+  mocks.planError = false;
   mocks.copyText.mockReset().mockResolvedValue(true);
   mocks.deleteProject.mockReset();
   mocks.updateProject.mockReset();
@@ -787,14 +794,11 @@ describe("ProjectDetail plan column", () => {
   it("narrows by work item and seeds the create with it", () => {
     renderProjectDetail("node=plan-item");
     expect(mocks.issueSurface.current?.moduleFilter).toEqual({ work_item_ids: ["plan-item"] });
+    // One flat seed shape: the agent panel reads the same work item id.
     expect(mocks.issueSurface.current?.createDefaults).toMatchObject({
+      project_id: "project-1",
       module_id: "module-1",
-      cockpit_node: {
-        node_id: "plan-item",
-        code: "00.01.01",
-        label: "00.01.01 Grammar pass",
-        module_id: "module-1",
-      },
+      work_item_id: "plan-item",
     });
   });
 
@@ -923,6 +927,70 @@ describe("ProjectDetail before reconciliation", () => {
 
     await user.click(within(screen.getByRole("complementary", { name: "Plan" })).getByText("Parser rewrite"));
     expect(mocks.push).toHaveBeenCalledWith("/test-workspace/projects/project-1?module=module-1");
+  });
+
+  it("opens the tree over the page on a narrow screen, and closes it on a pick", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const user = userEvent.setup();
+      mocks.plan.current = structuredClone(PLAN);
+      renderProjectDetail();
+
+      // No inline column — and no dead button either: the toggle opens a sheet.
+      expect(screen.queryByRole("complementary", { name: "Plan" })).toBeNull();
+      expect(screen.queryByText("Grammar pass")).toBeNull();
+      const toggle = screen.getByRole("button", { name: "Show or hide the plan" });
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      await user.click(await screen.findByRole("button", { name: "Open 00.01" }));
+      expect(mocks.push).toHaveBeenCalledWith("/test-workspace/projects/project-1?node=plan-module");
+
+      // The pick narrows the surface underneath, so the sheet steps aside.
+      expect(screen.queryByText("Grammar pass")).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("keeps the navigator a name list: no counts, no issue rows to expand", () => {
+    mocks.plan.current = {
+      ...structuredClone(PLAN),
+      task_counts: [{ node_id: "plan-item", primary_total: 3, reference_total: 1, active: 2, done: 1, closed: 0 }],
+    };
+    renderProjectDetail();
+
+    const workItemRow = screen
+      .getByRole("complementary", { name: "Plan" })
+      .querySelector<HTMLElement>('[role="row"][data-node-id="plan-item"]')!;
+    // A work item in this column is a place to click, not a scoreboard: the
+    // counts that squeezed its name out of the 256px column are gone.
+    expect(workItemRow).not.toHaveAttribute("aria-expanded");
+    expect(workItemRow.textContent).toContain("Grammar pass");
+    expect(workItemRow.textContent).not.toMatch(/issue|%/);
+  });
+
+  it("falls back to the module list and says the plan cannot be read", () => {
+    mocks.planError = true;
+    mocks.modules.current = [
+      { id: "module-1", workspace_id: "workspace-1", project_id: PROJECT.id, title: "Parser rewrite", description: null, position: 0, created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z", issue_count: 0, done_count: 0 },
+    ];
+    renderProjectDetail();
+
+    expect(screen.getByRole("status")).toHaveTextContent(/could not be read/);
+    expect(screen.getByText("Parser rewrite")).toBeInTheDocument();
+    expect(mocks.issueSurface.current?.defaultTableGrouping).toBe("module");
   });
 
   it("hides the column where it would squeeze the surface", () => {
