@@ -1,14 +1,18 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
 import {
-  cockpitNodeTasksOptions, cockpitPrimaryNodeOptions, useCreateCockpitNodeTask, useSetCockpitPrimaryNode,
+  cockpitNodeTasksOptions, cockpitNodeDetailOptions, useCreateCockpitNodeTask,
   clearCockpitActionCommand, rememberCockpitActionCommand, useCockpitActionCommandStore, CockpitUnconfirmedWriteError,
   cockpitTaskViewKey, EMPTY_COCKPIT_TASK_VIEW, useCockpitTaskViewStore, useAppendCockpitNodeIssue, useDeleteCockpitNodeIssue,
-  cockpitObjectPath, cockpitScope, useCockpitAssigneeAvailability,
+  cockpitObjectPath, cockpitScope, useCockpitAssigneeAvailability, EMPTY_COCKPIT_SCOPE,
 } from "@multica/core/cockpit";
+import { childIssuesOptions, issueDetailOptions, useUpdateIssue } from "@multica/core/issues";
+import { moduleListOptions } from "@multica/core/modules/queries";
+import { projectListOptions } from "@multica/core/projects/queries";
+import { useIssueScopeMove } from "../../issues/components/use-issue-scope-move";
 import type { CockpitNode, CockpitTaskCreate, Issue } from "@multica/core/types";
 import { issueOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
 import { IssueOperationRestriction } from "../../issues/components/issue-operation-restriction";
@@ -73,43 +77,105 @@ function NodeTaskCreate({ wsId, node, userId, disabled }: { wsId: string; node: 
 
 function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, reference = false }: { wsId: string; node: CockpitNode; projectId: string | null; moduleId: string | null; disabled: boolean; reference?: boolean }) {
   const { t } = useT("cockpit");
+  const paths = useWorkspacePaths();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Issue | null>(null);
-  const [observed, setObserved] = useState<{ issueId: string; revision: number } | null>(null);
   const [error, setError] = useState("");
-  const primary = useQuery(cockpitPrimaryNodeOptions(wsId, open && !reference ? selected?.id ?? "" : ""));
+  const update = useUpdateIssue();
   const policy = useIssueOperationBasis(wsId, open && !reference && selected ? [selected.id] : []);
   const observation = { basis: selected ? policy.byIssue.get(selected.id) : undefined, pending: policy.isPending, error: policy.isError, retry: () => { void policy.refetch(); } };
-  const primaryAllowed = reference || issueOperationAllowed(observation.basis, "primary");
-  const assign = useSetCockpitPrimaryNode(wsId);
+  // Filing an issue under a work item is a scope change now, so the scope
+  // gate is what applies — not the old primary gate, which no longer exists.
+  const scopeAllowed = reference || issueOperationAllowed(observation.basis, "scope");
   const link = useAppendCockpitNodeIssue(wsId);
-  const working = assign.isPending || link.isPending;
-  useEffect(() => {
-    if (!reference && selected && primary.data?.issue_id === selected.id && !observed) setObserved({ issueId: selected.id, revision: primary.data.revision });
-  }, [reference, selected, primary.data, observed]);
-  const stale = Boolean(!reference && observed && primary.data && primary.data.revision !== observed.revision);
-  const valid = selected && (reference || (primary.data?.issue_id === selected.id && primary.data.project_id === projectId && primary.data.module_id === moduleId));
-  const moving = primary.data?.node_id && primary.data.node_id !== node.id;
-  return <Dialog open={open} onOpenChange={(next) => { if (!working) { setOpen(next); if (next) { setSelected(null); setObserved(null); setError(""); } } }}>
+  const working = update.isPending || link.isPending;
+
+  // Labels for the before/after line. The project and module lists are the
+  // cached ones the rest of the cockpit reads; the work item that is being
+  // left needs its own read.
+  const projects = useQuery(projectListOptions(wsId));
+  const modules = useQuery(moduleListOptions(wsId));
+  const previousWorkItem = useQuery({
+    ...cockpitNodeDetailOptions(wsId, selected?.work_item_id ?? "", EMPTY_COCKPIT_SCOPE),
+    enabled: Boolean(selected?.work_item_id),
+  });
+  const children = useQuery({
+    ...childIssuesOptions(wsId, selected?.id ?? ""),
+    enabled: Boolean(selected) && !reference,
+  });
+  const parentIssue = useQuery({
+    ...issueDetailOptions(wsId, selected?.parent_issue_id ?? ""),
+    enabled: Boolean(selected?.parent_issue_id),
+  });
+
+  const label = (projectId_: string | null, moduleId_: string | null, workItem: string | null) => {
+    if (!projectId_ && !moduleId_ && !workItem) return t(($) => $.task_flow.unfiled);
+    const project = projectId_ ? projects.data?.find((entry) => entry.id === projectId_)?.title ?? projectId_ : null;
+    const module = moduleId_ ? modules.data?.find((entry) => entry.id === moduleId_)?.title ?? moduleId_ : null;
+    return [project, module, workItem].filter(Boolean).join(" / ");
+  };
+  const previousLabel = label(
+    selected?.project_id ?? null,
+    selected?.module_id ?? null,
+    selected?.work_item_id ? previousWorkItem.data?.node?.name ?? selected.work_item_id : null,
+  );
+  const nextLabel = label(projectId, moduleId, `${node.code} ${node.name}`.trim());
+
+  const { move, dialog } = useIssueScopeMove({
+    wsId,
+    issue: selected ?? { id: "", identifier: "", status: "", project_id: null },
+    onUpdate: (patch) => {
+      if (!selected) return;
+      setError("");
+      update.mutate({ id: selected.id, ...patch } as Parameters<typeof update.mutate>[0], {
+        onSuccess: () => setOpen(false),
+        onError: (cause: unknown) => setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed)),
+      });
+    },
+  });
+
+  const childCount = children.data?.length ?? 0;
+  const alreadyHere = Boolean(selected && selected.work_item_id === node.id);
+  const isSubIssue = Boolean(selected?.parent_issue_id);
+  const blocked = disabled || working || (selected !== null && !reference && (isSubIssue || !scopeAllowed));
+  // The handoff confirmation is its own modal, so it renders beside this one
+  // rather than inside it — nesting it would leave it in the background layer
+  // the open dialog marks inert.
+  return <>{dialog}<Dialog open={open} onOpenChange={(next) => { if (!working) { setOpen(next); if (next) { setSelected(null); setError(""); } } }}>
     <DialogTrigger render={<Button type="button" size="sm" variant="outline" disabled={disabled} />}>{reference ? t(($) => $.task_flow.link_reference) : t(($) => $.task_flow.assign_existing)}</DialogTrigger>
     <DialogContent className="sm:max-w-lg" showCloseButton={!working}><DialogHeader><DialogTitle>{reference ? t(($) => $.task_flow.link_reference) : t(($) => $.task_flow.assign_existing)}</DialogTitle>
-      <DialogDescription>{reference ? t(($) => $.task_flow.reference_write_hint) : t(($) => $.task_flow.assign_hint, { name: node.name })}</DialogDescription></DialogHeader>
-      <CockpitIssueChoice wsId={wsId} selected={selected} onSelect={(issue) => { setSelected(issue); setObserved(null); setError(""); }} disabled={working} />
-      {selected && !reference && primary.isPending && <Spinner />}
-      {selected && !reference && (primary.isError || (!primary.isPending && !primary.data)) && <CockpitFlowError onRetry={() => void primary.refetch()} />}
-      {selected && !reference && <IssueOperationRestriction observation={observation} operation="primary" />}
-      {selected && primary.data && !valid && <p role="alert" className="text-caption text-destructive">{t(($) => $.task_flow.scope_mismatch)}</p>}
-      {moving && <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.move_primary, { from: primary.data?.node_name || primary.data?.node_code || primary.data?.node_id, to: node.name })}</p>}
-      {stale && <p role="alert" className="text-caption text-destructive">{t(($) => $.task_flow.primary_changed)}</p>}
+      <DialogDescription>{reference ? t(($) => $.task_flow.reference_write_hint) : t(($) => $.task_flow.assign_hint, { name: `${node.code} ${node.name}`.trim() })}</DialogDescription></DialogHeader>
+      <CockpitIssueChoice wsId={wsId} selected={selected} onSelect={(issue) => { setSelected(issue); setError(""); }} disabled={working} />
+
+      {/* What the move does, in the user's words: the filing it has now and
+          the one it is about to have. */}
+      {selected && !reference && <div className="space-y-1 rounded-md bg-muted p-3 text-caption">
+        <p>{t(($) => $.task_flow.assign_from_to, { name: selected.identifier, from: previousLabel, to: nextLabel })}</p>
+        {childCount > 0 && <p>{t(($) => $.task_flow.assign_children_move, { n: childCount })}</p>}
+        {/* The issue-update path does not keep the old work item as a related
+            link (the legacy endpoint did), so the line says what happens
+            instead of promising a reference. */}
+        {selected.work_item_id && selected.work_item_id !== node.id && <p>{t(($) => $.task_flow.assign_old_unlinked)}</p>}
+      </div>}
+
+      {selected && !reference && isSubIssue && <div role="alert" className="space-y-1 rounded-md bg-muted p-3 text-caption">
+        <p>{t(($) => $.task_flow.assign_sub_issue)}</p>
+        {parentIssue.data && <AppLink href={paths.issueDetail(parentIssue.data.id)} newTabTitle={parentIssue.data.title} className="inline-flex rounded-sm font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">
+          {t(($) => $.task_flow.assign_open_parent, { name: parentIssue.data.identifier })}
+        </AppLink>}
+      </div>}
+      {selected && !reference && !isSubIssue && <IssueOperationRestriction observation={observation} operation="scope" />}
+      {selected && alreadyHere && <p role="status" className="text-caption text-muted-foreground">{t(($) => $.task_flow.already_here)}</p>}
       {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
       <DialogFooter><DialogClose render={<Button type="button" variant="outline" disabled={working} />}>{t(($) => $.binding.cancel)}</DialogClose>
-        <Button type="button" disabled={disabled || working || stale || !primaryAllowed || (!reference && (!observed || primary.isFetching)) || !valid || (!reference && primary.data?.node_id === node.id)} aria-busy={working}
-          onClick={() => { if (!selected || !primaryAllowed || working || disabled || stale) return;
-            const work = reference ? link.mutateAsync({ nodeId: node.id, issueId: selected.id }) : primary.data && observed ? assign.mutateAsync({ issueId: selected.id, nodeId: node.id, revision: observed.revision }) : Promise.reject(new CockpitUnconfirmedWriteError());
-            void work.then(() => setOpen(false)).catch((cause) => setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed))); }}>
-          {working && <Spinner />}{reference ? t(($) => $.task_flow.link_reference) : t(($) => $.task_flow.confirm_primary)}</Button></DialogFooter>
+        <Button type="button" disabled={blocked || alreadyHere || (!reference && !selected)} aria-busy={working}
+          onClick={() => { if (!selected || blocked || alreadyHere) return;
+            if (reference) { void link.mutateAsync({ nodeId: node.id, issueId: selected.id }).then(() => setOpen(false)).catch((cause) => setError(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed))); return; }
+            move({ project_id: projectId, module_id: moduleId, work_item_id: node.id }); }}>
+          {working && <Spinner />}{reference ? t(($) => $.task_flow.link_reference) : t(($) => $.task_flow.confirm_move)}
+        </Button></DialogFooter>
     </DialogContent>
-  </Dialog>;
+  </Dialog></>;
 }
 
 export function CockpitNodeTasks({ wsId, node, userId, readOnly, referenceOnly = false }: { wsId: string; node: CockpitNode; userId: string; readOnly?: boolean; referenceOnly?: boolean }) {
