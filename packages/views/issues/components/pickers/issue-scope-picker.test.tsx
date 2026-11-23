@@ -173,6 +173,28 @@ describe("IssueScopePicker", () => {
     expect(await screen.findByText("01.02 Docking")).toBeTruthy();
   });
 
+  it("keeps the work item as its own segment, with the full path as the tooltip", async () => {
+    // jsdom has no layout, so this pins the structure the layout depends on:
+    // the project and module are what shorten, the work item is not — one
+    // truncated string would always cut the work item off first.
+    show(
+      vi.fn(),
+      { project_id: PROJECT_ID, module_id: MODULE_ID, work_item_id: WORK_ITEM_ID },
+      { workItemLabel: "01.02.01 Interface draft" },
+    );
+
+    const workItem = screen.getByText("01.02.01 Interface draft");
+    expect(await screen.findByText("Programme")).toHaveClass("min-w-0", "truncate");
+    expect(workItem).toHaveClass("shrink-0");
+    expect(workItem).toHaveClass("truncate");
+    expect(screen.getByText("Programme")).toHaveClass("min-w-0", "truncate");
+    expect(screen.getByText("01.02 Docking")).toHaveClass("min-w-0", "truncate");
+    expect(workItem.closest("[title]")).toHaveAttribute(
+      "title",
+      "Programme / 01.02 Docking / 01.02.01 Interface draft",
+    );
+  });
+
   it("reads a module's work items at the module's scope, with its project", async () => {
     const scopes: Array<Record<string, unknown>> = [];
     setApiInstance({

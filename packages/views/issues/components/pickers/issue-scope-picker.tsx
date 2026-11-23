@@ -208,8 +208,20 @@ export function IssueScopePicker({
   };
 
   const hasValue = Boolean(value.project_id || value.module_id || value.work_item_id);
+  const workItemText = selectedWorkItem
+    ? `${selectedWorkItem.code} ${selectedWorkItem.name}`.trim()
+    : "…";
+  // The full address survives as the tooltip: the segments below are allowed
+  // to shorten, but nothing about the filing is lost to a reader.
+  const fullPath = [
+    selectedProject?.title ?? (effectiveProjectId ? "…" : ""),
+    value.module_id ? selectedModule?.title ?? "…" : "",
+    value.work_item_id ? workItemText : "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
   const label = (
-    <span className="flex min-w-0 items-center gap-1">
+    <span className="flex min-w-0 items-center gap-1" title={hasValue ? fullPath : undefined}>
       {value.work_item_id ? (
         <ListTree className="size-3.5 shrink-0 text-muted-foreground" />
       ) : value.module_id ? (
@@ -228,11 +240,28 @@ export function IssueScopePicker({
                 ? selectedWorkItem ? `${selectedWorkItem.code} ${selectedWorkItem.name}`.trim() : "…"
                 : <span className="text-muted-foreground">{t(($) => $.table.no_work_item)}</span>
             ) : (
-              <>
-                {selectedProject?.title ?? (effectiveProjectId ? "…" : "")}
-                {value.module_id && ` / ${selectedModule?.title ?? "…"}`}
-                {value.work_item_id && ` / ${selectedWorkItem ? `${selectedWorkItem.code} ${selectedWorkItem.name}`.trim() : "…"}`}
-              </>
+              // Three segments, not one string. A single truncate cuts the
+              // tail off, and the tail is the work item — the level this row
+              // exists to name. Project and module give way first; the work
+              // item holds its width and ellipsizes only when it alone would
+              // not fit.
+              <span className="flex min-w-0 items-center">
+                <span className="min-w-0 truncate">
+                  {selectedProject?.title ?? (effectiveProjectId ? "…" : "")}
+                </span>
+                {value.module_id && (
+                  <>
+                    {" / "}
+                    <span className="min-w-0 truncate">{selectedModule?.title ?? "…"}</span>
+                  </>
+                )}
+                {value.work_item_id && (
+                  <>
+                    {" / "}
+                    <span className="max-w-full shrink-0 truncate">{workItemText}</span>
+                  </>
+                )}
+              </span>
             )}
           </>
         ) : (
