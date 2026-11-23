@@ -221,6 +221,17 @@ export function IssueScopePicker({
   ]
     .filter(Boolean)
     .join(" / ");
+  // The visual path is three segments; its name is the path as one sentence.
+  // Read from the segments instead, and the separator's spaces are trimmed at
+  // each element boundary, leaving "Programme/01.02 Docking/01.02.01 Draft".
+  const accessibleName =
+    display === "leaf"
+      ? value.work_item_id
+        ? workItemText
+        : t(($) => $.table.no_work_item)
+      : hasValue
+        ? fullPath
+        : t(($) => $.pickers.scope.label);
   const label = (
     <span className="flex min-w-0 items-center gap-1" title={hasValue ? fullPath : undefined}>
       {value.work_item_id ? (
@@ -247,18 +258,22 @@ export function IssueScopePicker({
               // item holds its width and ellipsizes only when it alone would
               // not fit.
               <span className="flex min-w-0 items-center">
-                <span className="min-w-0 truncate">
+                <span className="min-w-8 truncate">
                   {selectedProject?.title ?? (effectiveProjectId ? "…" : "")}
                 </span>
                 {value.module_id && (
                   <>
-                    {" / "}
-                    <span className="min-w-0 truncate">{selectedModule?.title ?? "…"}</span>
+                    {/* Its own element, not a bare text node: a text node in a
+                        flex container is an anonymous item whose leading and
+                        trailing spaces are dropped, so the path read
+                        "Alpha/Module". */}
+                    <span className="shrink-0">{" / "}</span>
+                    <span className="min-w-8 truncate">{selectedModule?.title ?? "…"}</span>
                   </>
                 )}
                 {value.work_item_id && (
                   <>
-                    {" / "}
+                    <span className="shrink-0">{" / "}</span>
                     <span className="max-w-full shrink-0 truncate">{workItemText}</span>
                   </>
                 )}
@@ -281,7 +296,7 @@ export function IssueScopePicker({
           // 01.02.01 Draft" is more useful to a screen reader than the field's
           // own name repeated on every row.
           <button type="button" disabled={locked} className={`${PICKER_TRIGGER_CLASS} max-w-full`}
-            aria-label={hasValue ? undefined : t(($) => $.pickers.scope.label)} />
+            aria-label={accessibleName} />
         )}
       >
         {label}

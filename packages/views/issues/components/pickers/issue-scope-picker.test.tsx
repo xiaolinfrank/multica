@@ -184,11 +184,22 @@ describe("IssueScopePicker", () => {
     );
 
     const workItem = screen.getByText("01.02.01 Interface draft");
-    expect(await screen.findByText("Programme")).toHaveClass("min-w-0", "truncate");
+    // Project and module keep a floor wide enough for a character and the
+    // ellipsis; the work item holds its own width and is last to shorten.
+    expect(await screen.findByText("Programme")).toHaveClass("min-w-8", "truncate");
+    expect(screen.getByText("01.02 Docking")).toHaveClass("min-w-8", "truncate");
     expect(workItem).toHaveClass("shrink-0");
     expect(workItem).toHaveClass("truncate");
-    expect(screen.getByText("Programme")).toHaveClass("min-w-0", "truncate");
-    expect(screen.getByText("01.02 Docking")).toHaveClass("min-w-0", "truncate");
+    // The separators are their own elements, so their spaces survive both in
+    // the DOM and in the accessible name.
+    expect(
+      screen.getAllByText((_, node) => node?.textContent === " / "),
+    ).toHaveLength(2);
+    expect(
+      screen.getByRole("button", {
+        name: "Programme / 01.02 Docking / 01.02.01 Interface draft",
+      }),
+    ).toBeInTheDocument();
     expect(workItem.closest("[title]")).toHaveAttribute(
       "title",
       "Programme / 01.02 Docking / 01.02.01 Interface draft",
