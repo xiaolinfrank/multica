@@ -432,6 +432,7 @@ describe("Table grouped by module", () => {
       expect(onCreateIssue).toHaveBeenCalledWith({
         project_id: PROJECT_ID,
         module_id: EMPTY_MOD_ID,
+        work_item_id: null,
       });
     });
 
@@ -449,6 +450,25 @@ describe("Table grouped by module", () => {
       expect(onCreateIssue).toHaveBeenCalledWith({
         project_id: PROJECT_ID,
         module_id: MOD_ID,
+        work_item_id: null,
+      });
+    });
+
+    it("keeps the project when the no-module group's + is clicked", async () => {
+      // "No module" is still inside the project this table is scoped to. The
+      // create takes the whole filing, so it must name the project and clear
+      // the deeper levels rather than passing an explicit null project that
+      // would override the page's own.
+      const onCreateIssue = vi.fn();
+      render(projectQuery, onCreateIssue);
+      await screen.findByText("No module");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add issue to No module" }),
+      );
+      expect(onCreateIssue).toHaveBeenCalledWith({
+        project_id: PROJECT_ID,
+        module_id: null,
+        work_item_id: null,
       });
     });
 
@@ -466,6 +486,7 @@ describe("Table grouped by module", () => {
       expect(onCreateIssue).toHaveBeenCalledWith({
         project_id: PROJECT_ID,
         module_id: EMPTY_MOD_ID,
+        work_item_id: null,
       });
     });
 
@@ -479,6 +500,7 @@ describe("Table grouped by module", () => {
       expect(onCreateIssue).toHaveBeenCalledWith({
         project_id: PROJECT_ID,
         module_id: MOD_ID,
+        work_item_id: null,
       });
     });
   });

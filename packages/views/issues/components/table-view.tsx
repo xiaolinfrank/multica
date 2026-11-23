@@ -2470,15 +2470,23 @@ export function TableView({
       const value = group.value;
       if (value?.kind !== "module") return undefined;
       const moduleId = value.module_id ?? null;
+      // The field the header stands for, and nothing left over: the module
+      // names its project, the "no module" group still belongs to the
+      // project the table is scoped to, and no group carries a work item —
+      // leaving one out would let the page's selected work item ride along
+      // into a module it does not belong to.
       const projectId =
         moduleId === null
-          ? null
+          ? serverQuery.scope.kind === "project"
+            ? serverQuery.scope.project_id
+            : null
           : groupModuleMap.get(moduleId)?.project_id ??
             (serverQuery.scope.kind === "project" ? serverQuery.scope.project_id : null);
       return () =>
         onCreateIssue({
           project_id: projectId,
           module_id: moduleId,
+          work_item_id: null,
         });
     },
     [groupModuleMap, onCreateIssue, serverQuery.scope],

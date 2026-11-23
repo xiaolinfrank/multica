@@ -236,6 +236,7 @@ describe("Board grouped by module", () => {
     expect(onCreateIssue).toHaveBeenCalledWith({
       project_id: PROJECT_ID,
       module_id: EMPTY_MOD_ID,
+      work_item_id: null,
     });
   });
 });

@@ -184,7 +184,9 @@ function moduleColumn(
     // The filing is the whole seed: the title is the sentence the author
     // writes, not the module's number.
     createData: module
-      ? { project_id: module.project_id, module_id: module.id }
+      ? // The whole filing: a work item left out would be inherited from the
+        // page's selection, landing the issue under a foreign work item.
+        { project_id: module.project_id, module_id: module.id, work_item_id: null }
       : undefined,
   };
 }
