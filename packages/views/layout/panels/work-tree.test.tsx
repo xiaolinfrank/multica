@@ -110,7 +110,7 @@ const nodeDetail = {
   has_meeting_workflows: false,
   has_stable_bindings: false,
   node: null as Record<string, unknown> | null,
-  ancestors: [],
+  ancestors: [] as Array<Record<string, unknown>>,
   children_count: 0,
   scope_match: true,
   binding: null as Record<string, unknown> | null,
@@ -272,6 +272,23 @@ describe("a project's tree under the Work panel", () => {
     expect(workItem.closest("a")).toHaveAttribute("href", expect.stringContaining("node=wi-b0"));
     expect(workItem.closest("a")).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("01.02 Docking").closest("a")).not.toHaveAttribute("aria-current");
+    useSidebarTreeStore.setState({ expanded: [] });
+  });
+
+  it("reads a row with no kind field from its parents, like the plan does", async () => {
+    // An older board's detail carries no `kind`; depth is the only level
+    // signal, and it must not fall back to reading the code.
+    const detail = structuredClone(nodeDetail);
+    detail.node = { id: "wi-b0", code: "01.02.01", name: "Interface draft" };
+    detail.ancestors = [{ id: "root", code: "01", name: "Desktop" }, { id: "row-b", code: "01.02", name: "Docking" }];
+    detail.binding = { project_id: "p1", module_id: "mod-record-2", eligible: true, reason: "" };
+    installApi({ getCockpitNodeDetail: vi.fn(async () => detail) });
+    nav.searchParams = new URLSearchParams({ node: "wi-b0" });
+    renderSection();
+
+    await waitFor(() => expect(useSidebarTreeStore.getState().expanded).toContain("project:p1"));
+    const workItem = await screen.findByText("01.02.01 Interface draft");
+    expect(workItem.closest("a")).toHaveAttribute("aria-current", "page");
     useSidebarTreeStore.setState({ expanded: [] });
   });
 

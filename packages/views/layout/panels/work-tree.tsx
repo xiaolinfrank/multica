@@ -122,14 +122,20 @@ export function ProjectsSection({
   });
   const activeNodeRow = activeNode.data?.node ?? null;
   const activeProjectId = activeNode.data?.binding?.project_id ?? null;
-  const activeModuleRowId = activeNodeRow?.kind === "module" ? activeNodeRow.id : null;
-  const activeModuleId =
-    activeNodeRow?.kind === "module"
-      ? activeNodeRow.module_id ?? null
-      : activeNodeRow?.kind === "work_item"
-        ? activeNode.data?.binding?.module_id ?? null
-        : null;
-  const activeWorkItemId = activeNodeRow?.kind === "work_item" ? activeNodeRow.id : null;
+  // Rows on an older board carry no `kind`; the parent chain does, and that is
+  // the same fallback the plan tree reads (`planNodeKind`). Depth 0/1/2 is
+  // project/module/work item — never the code.
+  const activeDepth = activeNode.data?.ancestors?.length ?? 0;
+  const activeKind =
+    activeNodeRow?.kind ??
+    (activeNodeRow ? (activeDepth >= 2 ? "work_item" : activeDepth === 1 ? "module" : "project") : null);
+  const activeModuleRowId = activeKind === "module" ? activeNodeRow?.id ?? null : null;
+  const activeModuleId = activeNodeRow
+    ? activeKind === "work_item"
+      ? activeNode.data?.binding?.module_id ?? null
+      : activeNodeRow.module_id ?? null
+    : null;
+  const activeWorkItemId = activeKind === "work_item" ? activeNodeRow?.id ?? null : null;
   const updatePrefs = useUpdateSidebarProjectPrefs(wsId);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
