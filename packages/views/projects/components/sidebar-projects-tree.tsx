@@ -290,11 +290,13 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
     ...cockpitNodeDetailOptions(wsId ?? "", activeNodeId ?? "", EMPTY_COCKPIT_SCOPE),
     enabled: Boolean(wsId && activeNodeId && activeNodeId !== "none"),
   });
-  const activeNodeModuleId =
-    activeNode.data?.node.kind === "module"
-      ? activeNode.data.node.module_id ?? null
-      : activeNode.data?.binding?.module_id ?? null;
-  const activeNodeIsModule = activeNode.data?.node.kind === "module";
+  // The detail read names the row's kind; a caller that served only a binding
+  // (an older fixture, a narrower server read) still gets the work-item case.
+  const activeNodeRow = activeNode.data?.node ?? null;
+  const activeNodeIsModule = activeNodeRow?.kind === "module";
+  const activeNodeModuleId = activeNodeIsModule
+    ? activeNodeRow?.module_id ?? null
+    : activeNode.data?.binding?.module_id ?? null;
 
   const modulesByProject = useMemo(() => {
     const map = new Map<string, Module[]>();
