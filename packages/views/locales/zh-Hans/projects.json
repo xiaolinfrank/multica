@@ -243,7 +243,6 @@
     "toast_reorder_failed": "调整模块顺序失败",
     "agent_carry_hint": "切换到手动创建时生效；智能体创建不携带模块或工作项",
     "toggle_work_items_aria": "展开或收起工作项",
-    "more_work_items": "更多工作项",
     "view_all_work_items": "在项目页查看全部（{{n}}）"
   },
   "chip": {

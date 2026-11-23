@@ -353,8 +353,8 @@ export function PlanTree({
                 }}
                 onCancelRename={() => setRenaming(null)}
                 // Progress and task counts are `shrink-0`, so in the narrow
-                // plan column (256px) they are what squeezes a work item's
-                // name down to a character. A tree that shows no issue rows
+                // plan column they are what squeezed a work item's name down
+                // to a character. A tree that shows no issue rows
                 // (`showIssueRows={false}` — the project page's navigator) is
                 // a name list, not a scoreboard: the row is a place to click.
                 trailing={table || !showIssueRows ? undefined : (

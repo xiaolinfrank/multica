@@ -243,7 +243,6 @@
     "toast_reorder_failed": "모듈 순서 변경에 실패했습니다",
     "agent_carry_hint": "수동 만들기로 전환할 때 적용됩니다. 에이전트 만들기는 모듈이나 작업 항목을 무시합니다",
     "toggle_work_items_aria": "작업 항목 열기/닫기",
-    "more_work_items": "작업 항목 더보기",
     "view_all_work_items": "프로젝트에서 {{n}}개 모두 보기"
   },
   "chip": {

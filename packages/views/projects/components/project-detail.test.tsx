@@ -205,6 +205,7 @@ vi.mock("@multica/ui/components/ui/sheet", () => ({
   SheetContent: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
+  SheetTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
 }));
 
 vi.mock("@multica/ui/components/ui/alert-dialog", () => ({
