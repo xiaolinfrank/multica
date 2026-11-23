@@ -7,15 +7,17 @@
  * loses the "code name" address, is the failure this file catches.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setApiInstance } from "@multica/core/api";
 import { issueOperationPageFixture } from "../operation-basis-test-fixture";
 import type { ApiClient } from "@multica/core/api/client";
+import { useModalStore } from "@multica/core/modals";
 import { ViewStoreProvider } from "@multica/core/issues/stores/view-store-context";
 import { getIssueSurfaceViewStore } from "@multica/core/issues/stores/surface-view-store";
 import type {
   Issue,
+  IssueBatchReceipt,
   IssueTableGroupsRequest,
   IssueTableQuerySpec,
   IssueTableRowsRequest,
@@ -23,6 +25,7 @@ import type {
 import { renderWithI18n } from "../../test/i18n";
 import { IssueSurfaceSelectionProvider } from "../surface/selection-context";
 import type { IssueSurfaceSelection } from "../surface/selection-context";
+import { IssueSurfaceActionsProvider } from "../surface/actions-context";
 import { TableView } from "./table-view";
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
@@ -165,6 +168,69 @@ const plan = {
   issue_links: [],
 };
 
+/** The plan fixture wrapped as the surface the client validates: scope
+ *  echoed, `complete`, and counts that agree with the arrays. */
+function planPage(scope: { projectId: string | null; moduleId: string | null }) {
+  return {
+    workspace_id: "ws-1",
+    scope: {
+      project_id: scope.projectId,
+      module_id: scope.moduleId,
+      project_title: "Programme",
+      module_title: scope.moduleId ? "Docking" : "",
+    },
+    cockpit: plan.cockpit,
+    actor: { user_id: "user-1", role: "owner", is_human: true },
+    has_meeting_workflows: false,
+    has_stable_bindings: false,
+    complete: true,
+    nodes: plan.nodes,
+    task_counts: plan.task_counts,
+    context_node_ids: plan.context_node_ids,
+    payments: plan.payments,
+    milestones: plan.milestones,
+    node_index: plan.node_index,
+    counts: {
+      nodes: plan.nodes.length,
+      payments: plan.payments.length,
+      milestones: plan.milestones.length,
+      index_nodes: plan.node_index.length,
+    },
+  };
+}
+
+const PROJECT_ROW = {
+  id: PROJECT_ID,
+  workspace_id: "ws-1",
+  title: "Programme",
+  description: null,
+  status: "active",
+  priority: "medium",
+  icon: "📁",
+  color: null,
+  lead_type: null,
+  lead_id: null,
+  start_date: null,
+  due_date: null,
+  collab_path: null,
+  position: 0,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
+
+const MODULE_ROW = {
+  id: "33333333-3333-4333-8333-333333333333",
+  workspace_id: "ws-1",
+  project_id: PROJECT_ID,
+  title: "Docking",
+  description: null,
+  position: 0,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+  issue_count: 1,
+  done_count: 0,
+};
+
 const ROWS_BY_GROUP: Record<string, Issue[]> = {
   "work_item:none": [makeIssue("loose", null)],
   ["work_item:" + WORK_ITEM_ID]: [makeIssue("filed", WORK_ITEM_ID)],
@@ -182,6 +248,15 @@ const selection: IssueSurfaceSelection = {
   select: () => {},
   deselect: () => {},
   clear: () => {},
+};
+
+const noReceipt: IssueBatchReceipt = {
+  workspace_id: "ws-1",
+  requested_ids: [],
+  transaction_mode: "per_item",
+  transaction_outcome: "not_started",
+  results: [],
+  unconfirmed_ids: [],
 };
 
 describe("Table grouped by work item", () => {
@@ -207,9 +282,11 @@ describe("Table grouped by work item", () => {
       listSquads: async () => [],
       getAssigneeFrequency: async () => [],
       listIssueStatuses: async () => ({ statuses: [] }),
-      listProjects: async () => ({ projects: [], total: 0 }),
-      listModules: async () => ({ modules: [], total: 0 }),
-      getCockpitPlan: async () => plan,
+      listProjects: async () => ({ projects: [PROJECT_ROW], total: 1 }),
+      listModules: async () => ({ modules: [MODULE_ROW], total: 1 }),
+      // The plan read is answered with the read's own scope echoed back: the
+      // client refuses a surface whose scope does not match what it asked.
+      getCockpitPlan: async (_ws: string, scope: { projectId: string | null; moduleId: string | null }) => planPage(scope),
       listIssueTableGroups: async (request: IssueTableGroupsRequest) => {
         groupRequests.push(request);
         return {
@@ -224,7 +301,9 @@ describe("Table grouped by work item", () => {
       },
       listIssueTableRows: async (request: IssueTableRowsRequest) => {
         rowRequests.push(request);
-        const rows = ROWS_BY_GROUP[request.group_key ?? ""] ?? [];
+        // Grouped requests name their group; an ungrouped request (the column
+        // tests) gets the unfiled row, which is the one with an empty cell.
+        const rows = ROWS_BY_GROUP[request.group_key ?? ""] ?? (request.group_key == null ? [makeIssue("loose", null)] : []);
         return {
           query_fingerprint: "test",
           group_key: request.group_key ?? null,
@@ -245,7 +324,11 @@ describe("Table grouped by work item", () => {
 
   function render(
     columns: "grouped" | "column" = "grouped",
-    options: { withWorkItemColumn?: boolean } = {},
+    options: {
+      withWorkItemColumn?: boolean;
+      updateIssue?: (id: string, updates: Record<string, unknown>) => void;
+      exportIssues?: () => Promise<Issue[]>;
+    } = {},
   ) {
     const store = getIssueSurfaceViewStore(surfaceKey);
     store.getState().setTableGrouping(columns === "grouped" ? "work_item" : "none");
@@ -254,6 +337,16 @@ describe("Table grouped by work item", () => {
       <QueryClientProvider client={queryClient}>
         <ViewStoreProvider store={store}>
           <IssueSurfaceSelectionProvider selection={selection}>
+            <IssueSurfaceActionsProvider
+              actions={{
+                isPending: false,
+                createIssue: () => {},
+                updateIssue: options.updateIssue ?? (() => {}),
+                moveIssue: () => {},
+                batchUpdate: async () => noReceipt,
+                batchDelete: async () => noReceipt,
+              }}
+            >
             <TableView
               serverQuery={projectQuery}
               childProgressMap={new Map()}
@@ -261,7 +354,7 @@ describe("Table grouped by work item", () => {
               onSearchChange={() => {}}
               onLoadedIssuesChange={() => {}}
               onCreateIssue={() => {}}
-              exportIssues={() => Promise.resolve([])}
+              exportIssues={options.exportIssues ?? (() => Promise.resolve([]))}
               resolveExportLookups={() =>
                 Promise.resolve({
                   projectMap: new Map(),
@@ -269,6 +362,7 @@ describe("Table grouped by work item", () => {
                 })
               }
             />
+            </IssueSurfaceActionsProvider>
           </IssueSurfaceSelectionProvider>
         </ViewStoreProvider>
       </QueryClientProvider>,
@@ -305,5 +399,122 @@ describe("Table grouped by work item", () => {
       expect(screen.getAllByText("01.02.01 Interface draft")).toHaveLength(2);
     });
     expect(screen.queryByText(WORK_ITEM_ID)).toBeNull();
+  });
+
+  it("writes only the work item when the cell picks another one", async () => {
+    const updateIssue = vi.fn();
+    render("column", { updateIssue });
+    const cell = await screen.findByRole("button", { name: "No work item" });
+    fireEvent.click(cell);
+    // The popover reopens on the row's filing (project and module already
+    // expanded — the row has a module), so the work item is one click away.
+    fireEvent.click(await screen.findByRole("button", { name: "01.02.01 Interface draft" }));
+
+    // A work item names its module and project, so the write names the work
+    // item alone — the server derives the rest.
+    // A work item names its module and project, so the write names the work
+    // item alone — the server derives the rest.
+    expect(updateIssue).toHaveBeenCalledTimes(1);
+    expect(updateIssue.mock.calls[0]?.[0]).toBe("loose");
+    expect(updateIssue.mock.calls[0]?.[1]).toEqual({ work_item_id: WORK_ITEM_ID });
+  });
+
+  it("confirms the detach when a sub-issue's cell picks another work item", async () => {
+    const child = { ...makeIssue("child", WORK_ITEM_ID), parent_issue_id: "parent-1" } as Issue;
+    setApiInstance({
+      getIssueOperationBasis: async (wsId: string, ids: string[]) => issueOperationPageFixture(wsId, ids),
+      listProperties: async () => ({ properties: [] }),
+      listMembers: async () => [],
+      listAgents: async () => [],
+      listSquads: async () => [],
+      getAssigneeFrequency: async () => [],
+      listIssueStatuses: async () => ({ statuses: [] }),
+      listProjects: async () => ({ projects: [PROJECT_ROW], total: 1 }),
+      listModules: async () => ({ modules: [MODULE_ROW], total: 1 }),
+      getCockpitPlan: async () => plan,
+      listIssueTableGroups: async () => ({
+        query_fingerprint: "test", total: 1, groups: [], next_cursor: null,
+      }),
+      listIssueTableRows: async () => ({
+        query_fingerprint: "test", group_key: null, parent_id: null, total: 1,
+        rows: [{ issue: child, direct_child_count: 0 }], branch_total: 1, next_cursor: null,
+      }),
+    } as unknown as ApiClient);
+    const updateIssue = vi.fn();
+    useModalStore.getState().close();
+    render("column", { updateIssue });
+    await screen.findByText("Task child");
+
+    const cell = await screen.findByRole("button", { name: "01.02.01 Interface draft" });
+    fireEvent.click(cell);
+    // The row is already filed: the popover reopens with project and module
+    // both expanded, so the sibling work item is one click away.
+    fireEvent.click(await screen.findByRole("button", { name: "01.02.02 Pilot build" }));
+
+    // A sub-issue stays in its parent's work item; the one way through is the
+    // dialog that detaches in the same write — not a silent write the server
+    // refuses.
+    expect(useModalStore.getState().modal).toBe("issue-module-detach-confirm");
+    expect(useModalStore.getState().data).toMatchObject({
+      issueId: "child",
+      updates: { work_item_id: "w2" },
+    });
+    expect(updateIssue).not.toHaveBeenCalled();
+    useModalStore.getState().close();
+  });
+
+  it("exports the work-item column as code and name", async () => {
+    const filed = makeIssue("filed", WORK_ITEM_ID);
+    const loose = makeIssue("loose", null);
+    // The column test reads one row; the export reads every row through its
+    // own callback, so the table shows the unfiled one and the CSV gets both.
+    setApiInstance({
+      getIssueOperationBasis: async (wsId: string, ids: string[]) => issueOperationPageFixture(wsId, ids),
+      listProperties: async () => ({ properties: [] }),
+      listMembers: async () => [],
+      listAgents: async () => [],
+      listSquads: async () => [],
+      getAssigneeFrequency: async () => [],
+      listIssueStatuses: async () => ({ statuses: [] }),
+      listProjects: async () => ({ projects: [PROJECT_ROW], total: 1 }),
+      listModules: async () => ({ modules: [MODULE_ROW], total: 1 }),
+      getCockpitPlan: async (_ws: string, scope: { projectId: string | null; moduleId: string | null }) => planPage(scope),
+      listIssueTableRows: async () => ({
+        query_fingerprint: "test", group_key: null, parent_id: null, total: 1,
+        rows: [{ issue: filed, direct_child_count: 0 }], branch_total: 1, next_cursor: null,
+      }),
+    } as unknown as ApiClient);
+    // The export builds a Blob and hands it to an anchor; capture the Blob
+    // itself and read it back, rather than guessing at the download.
+    let exported: Blob | null = null;
+    const createObjectURL = vi.fn((blob: Blob) => {
+      exported = blob;
+      return "blob:csv";
+    });
+    const revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const originalURL = globalThis.URL;
+    vi.stubGlobal("URL", Object.assign(originalURL, { createObjectURL, revokeObjectURL }));
+    let csv = "";
+    try {
+      render("column", { exportIssues: () => Promise.resolve([filed, loose]) });
+      await screen.findByText("Task filed");
+      // The loose row's empty cell must export empty, never the uuid.
+      expect(loose.work_item_id).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /Export/ }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Export all" }));
+
+      await waitFor(() => expect(click).toHaveBeenCalled());
+      expect(exported).toBeInstanceOf(Blob);
+      csv = await (exported as Blob | null as Blob).text();
+      // Header, then the filed row's "code name" and the unfiled row's empty
+      // cell — the same address the column shows.
+      expect(csv).toContain("01.02.01 Interface draft");
+      expect(csv).not.toContain(WORK_ITEM_ID);
+    } finally {
+      click.mockRestore();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    }
   });
 });
