@@ -1413,15 +1413,26 @@ describe("CreateIssueModal", () => {
     }));
   });
 
-  it("says why a sub-issue's ownership cannot be changed, on hover and focus", () => {
+  it("says why a sub-issue's ownership cannot be changed, on hover and focus", async () => {
+    const user = userEvent.setup();
     renderModal(<CreateIssueModal onClose={vi.fn()} data={{ parent_issue_id: "parent-1" }} />);
 
     // The picker itself is disabled and never takes focus, so the wrapper is
-    // the focus target that carries the reason.
+    // the focus target that carries the reason. The aria-label alone would
+    // still leave a sighted reader with a pill that just does nothing.
     const hint = screen.getByLabelText(enModals.create_issue.scope_follows_parent);
     expect(hint).toHaveAttribute("tabindex", "0");
+
+    // This file stubs the tooltip module to render its content inline, so
+    // what is assertable is that the hint carries the reason at all (a null
+    // label renders the pill alone) — on hover, and again on keyboard focus.
+    await user.hover(hint);
+    expect(hint.parentElement).toHaveTextContent(enModals.create_issue.scope_follows_parent);
+
+    await user.unhover(hint);
     hint.focus();
     expect(hint).toHaveFocus();
+    expect(hint.parentElement).toHaveTextContent(enModals.create_issue.scope_follows_parent);
   });
 
   it("inherits the parent's work item, shows it, and files the child under it", async () => {

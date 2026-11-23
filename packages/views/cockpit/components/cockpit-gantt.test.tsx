@@ -7,6 +7,7 @@ import type { CockpitNode, CockpitPlanMeetingMarkerQuery } from "@multica/core/t
 import enCockpit from "../../locales/en/cockpit.json";
 import enProjects from "../../locales/en/projects.json";
 import { CockpitGantt, type CockpitGanttProps } from "./cockpit-gantt";
+import { useModalStore } from "@multica/core/modals";
 
 const mocks = vi.hoisted(() => ({
   reduced: false,
@@ -184,6 +185,28 @@ describe("CockpitGantt responsive identity", () => {
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: enCockpit.plan_tree.confirm }));
     await waitFor(() => expect(mocks.deleteCockpitNode).toHaveBeenCalledWith("leaf"));
+  });
+
+  it("opens a new issue filed into the work item whose + was clicked", () => {
+    // The gantt hands the create the same three flat ids the plan tree does;
+    // dropping the work item here would file the issue at module level.
+    const { tree } = show({
+      renderAllRows: true,
+      board: {
+        ...board,
+        nodes: nodes.map((n) => (n.id === "branch" ? { ...n, project_id: "proj-1" } : n)),
+      },
+    });
+    const leaf = tree.querySelector<HTMLElement>('[data-cockpit-node="leaf"]')!;
+    fireEvent.click(within(leaf).getByRole("button", { name: enCockpit.plan_tree.add_issue }));
+
+    expect(useModalStore.getState().modal).toBe("create-issue");
+    expect(useModalStore.getState().data).toMatchObject({
+      project_id: "proj-1",
+      module_id: "mod-branch",
+      work_item_id: "leaf",
+    });
+    useModalStore.getState().close();
   });
 
   it("reports a work item's issue ratio instead of a typed progress field", () => {

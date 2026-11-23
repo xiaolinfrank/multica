@@ -1726,6 +1726,71 @@ describe("SwimLaneView", () => {
     });
   });
 
+  it("narrows children fetched on top of the page to the selected work item", async () => {
+    // The project page's tree narrows the surface by work item. The children
+    // the swimlane fetches for its lanes are filtered here, not upstream, so
+    // dropping the filter to [] would widen them back.
+    mockViewState.swimlaneGrouping = "parent";
+
+    const grandparent: Issue = {
+      ...mockIssues[0]!,
+      id: "gp-wi",
+      title: "Grandparent",
+    };
+    const parent: Issue = {
+      ...grandparent,
+      id: "p-wi",
+      title: "Parent",
+      parent_issue_id: "gp-wi",
+    };
+    const inScope: Issue = {
+      ...grandparent,
+      id: "gc-in",
+      title: "Child in the work item",
+      status: "in_progress",
+      parent_issue_id: "p-wi",
+      work_item_id: "w-1",
+    };
+    const outOfScope: Issue = {
+      ...grandparent,
+      id: "gc-out",
+      title: "Child in another work item",
+      status: "in_progress",
+      parent_issue_id: "p-wi",
+      work_item_id: "w-2",
+    };
+
+    mockListChildrenByParents.mockResolvedValueOnce({ issues: [inScope, outOfScope] });
+
+    renderWithI18n(
+      <SwimLaneView
+        issues={[grandparent, parent]}
+        activeFilters={{
+          priorityFilters: [],
+          assigneeFilters: [],
+          includeNoAssignee: false,
+          creatorFilters: [],
+          projectFilters: [],
+          includeNoProject: false,
+          moduleFilters: [],
+          includeNoModule: false,
+          workItemFilters: ["w-1"],
+          labelFilters: [],
+        }}
+        childProgressMap={new Map([["p-wi", { done: 0, total: 2 }]])}
+        onMoveIssue={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockListChildrenByParents).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Child in the work item")).toBeInTheDocument();
+      expect(screen.queryByText("Child in another work item")).toBeNull();
+    });
+  });
+
   it("filters batch-fetched children using API-derived running issue ids", async () => {
     mockViewState.swimlaneGrouping = "parent";
 

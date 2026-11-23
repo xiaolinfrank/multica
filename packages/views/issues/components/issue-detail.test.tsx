@@ -1249,6 +1249,24 @@ describe("IssueDetail (shared)", () => {
     expect(screen.getByRole("button", { name: "Add property" })).toBeInTheDocument();
   });
 
+  it("hands the ownership row the issue's own work item", async () => {
+    // The row shows where the issue is filed now. Dropping the work item on
+    // the way in would leave only its module, with nothing to say the row was
+    // incomplete.
+    mockApiObj.getIssue.mockResolvedValue({
+      ...mockIssue,
+      project_id: "proj-1",
+      module_id: "mod-1",
+      work_item_id: "node-1",
+    });
+
+    renderIssueDetail();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("issue-scope")).toHaveTextContent("node-1"),
+    );
+  });
+
   it("keeps the Properties header free of add and settings buttons", async () => {
     renderIssueDetail();
     const disclosure = await screen.findByRole("button", { name: "Properties" });

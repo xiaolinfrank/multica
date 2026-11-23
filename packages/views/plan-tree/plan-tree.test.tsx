@@ -74,7 +74,7 @@ vi.mock("../navigation", () => ({
 }));
 
 import { PlanTree } from "./plan-tree";
-import { cockpitPlanOptions, useCockpitScopeViewStore } from "@multica/core/cockpit";
+import { cockpitPlanOptions, cockpitScopeViewKey, useCockpitScopeViewStore } from "@multica/core/cockpit";
 import { useModalStore } from "@multica/core/modals";
 
 const reconciled = { ...plan, cockpit: { ...plan.cockpit, plan_reconciled_at: "2026-11-20T00:00:00Z" } };
@@ -133,6 +133,24 @@ describe("PlanTree", () => {
     const workItem = rowsOf("work_item")[0]!;
     expect(workItem).not.toHaveAttribute("aria-expanded");
     expect(within(workItem).queryByRole("button", { name: enCockpit.plan_tree.expand })).toBeNull();
+    expect(apiMock.getCockpitNodeTasks).not.toHaveBeenCalled();
+  });
+
+  it("stays a name list even when the same scope left a work item expanded", async () => {
+    // The fold state is shared per scope: the cockpit can leave a work item
+    // open, and the project page's navigator must still show no issue rows —
+    // and read no issues to get there.
+    apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
+    useCockpitScopeViewStore.getState().updatePlan(
+      cockpitScopeViewKey("ws-1", { projectId: null, moduleId: null }),
+      { treeExpandedWorkItemIds: ["w1"] },
+    );
+    show({ showIssueRows: false });
+    const rows = await screen.findAllByRole("row");
+    expect(rows.map((r) => r.getAttribute("data-kind"))).toEqual([
+      "project", "module", "work_item", "module", "work_item",
+    ]);
+    expect(screen.queryByText("MUL-1")).toBeNull();
     expect(apiMock.getCockpitNodeTasks).not.toHaveBeenCalled();
   });
 
