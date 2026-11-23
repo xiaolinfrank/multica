@@ -1,87 +1,31 @@
 /**
  * @vitest-environment jsdom
  *
- * The sidebar's projects tree: modules open on demand, work items are read per
- * module (never the whole workspace at mount), and the selected work item is
+ * The sidebar's projects tree: modules open on demand, a module's work items
+ * are read from the module-scoped plan (never the whole workspace at mount),
+ * listed in plan order without the module's own row, and the selected row is
  * highlighted and linked by `?node=`.
+ *
+ * Everything the tree reads is mocked at the API layer, so the reads it
+ * actually makes are the reads asserted here — not the query-option shapes
+ * that once let a refused request through unnoticed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { SidebarProvider } from "@multica/ui/components/ui/sidebar";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setApiInstance } from "@multica/core/api";
+import type { ApiClient } from "@multica/core/api/client";
 import { renderWithI18n } from "../../test/i18n";
 import { NavigationProvider, type NavigationAdapter } from "../../navigation";
-
-const mocks = vi.hoisted(() => ({
-  projects: [] as Array<Record<string, unknown>>,
-  modules: [] as Array<Record<string, unknown>>,
-  scopeNodeQueries: [] as Array<Record<string, unknown>>,
-  workItems: [] as Array<Record<string, unknown>>,
-  workItemsError: false,
-  nextCursor: null as string | null,
-  nodeDetail: null as Record<string, unknown> | null,
-}));
-
-vi.mock("@tanstack/react-query", async (original) => ({
-  ...(await original<typeof import("@tanstack/react-query")>()),
-  useQuery: (options: { queryKey?: readonly unknown[]; enabled?: boolean }) => {
-    const key = options.queryKey ?? [];
-    if (key[0] === "scope-nodes") {
-      mocks.scopeNodeQueries.push((key[1] ?? {}) as Record<string, unknown>);
-      return mocks.workItemsError
-        ? { data: undefined, isPending: false, isError: true, isSuccess: false, isFetching: false }
-        : {
-            data: {
-              workspace_id: "ws-1",
-              scope: { project_id: null, module_id: null, q: "", eligible: false },
-              items: mocks.workItems,
-              total: mocks.workItems.length,
-              filtered_total: mocks.workItems.length,
-              next_cursor: mocks.nextCursor,
-            },
-            isPending: false,
-            isError: false,
-            isSuccess: true,
-            isFetching: false,
-          };
-    }
-    if (key[0] === "node-detail") {
-      return {
-        data: mocks.nodeDetail,
-        isPending: false,
-        isError: false,
-        isSuccess: true,
-        isFetching: false,
-      };
-    }
-    if (key[0] === "projects") return { data: mocks.projects, isPending: false, isError: false };
-    if (key[0] === "modules") return { data: mocks.modules, isPending: false, isError: false };
-    return { data: undefined, isPending: false, isError: false };
-  },
-}));
-
-vi.mock("@multica/core/cockpit", () => ({
-  EMPTY_COCKPIT_SCOPE: { projectId: null, moduleId: null },
-  cockpitScopeNodesOptions: (_ws: string, params: Record<string, unknown>) => ({
-    queryKey: ["scope-nodes", params],
-    enabled: true,
-  }),
-  cockpitNodeDetailOptions: () => ({ queryKey: ["node-detail"], enabled: true }),
-}));
+import { SidebarProjectsTree } from "./sidebar-projects-tree";
 
 vi.mock("@multica/core/paths", () => ({
   useCurrentWorkspace: () => ({ id: "ws-1" }),
   useWorkspacePaths: () => ({
     projectDetail: (id: string) => "/ws/projects/" + id,
   }),
-}));
-
-vi.mock("@multica/core/projects/queries", () => ({
-  projectListOptions: () => ({ queryKey: ["projects"], enabled: true }),
-}));
-
-vi.mock("@multica/core/modules/queries", () => ({
-  moduleListOptions: () => ({ queryKey: ["modules"], enabled: true }),
 }));
 
 vi.mock("@multica/core/modals", () => ({
@@ -94,8 +38,6 @@ vi.mock("../../navigation", async (original) => ({
     <a href={href} {...props}>{children}</a>
   ),
 }));
-
-import { SidebarProjectsTree } from "./sidebar-projects-tree";
 
 const PROJECT = {
   id: "project-1",
@@ -131,17 +73,81 @@ const MODULE = {
   done_count: 0,
 };
 
-const WORK_ITEM = {
-  id: "work-item-1",
-  title: "Grammar pass",
-  project_id: PROJECT.id,
-  module_id: MODULE.id,
-  code: "01.01.01",
-  eligible: true,
-  reason: "",
-};
+const MODULE_ROW_ID = "node-module";
+
+/** The plan rows: the ids sort in the OPPOSITE order to the codes, so a list
+ *  ordered by id would read 01.01.02 before 01.01.01. */
+function planNodes(count = 2) {
+  return [
+    {
+      id: MODULE_ROW_ID,
+      code: "01.01",
+      name: "Parser rewrite",
+      kind: "module",
+      parent_id: null,
+      position: 0,
+      project_id: PROJECT.id,
+      module_id: MODULE.id,
+    },
+    ...Array.from({ length: count }, (_, index) => {
+      const number = String(index + 1).padStart(2, "0");
+      return {
+        // Descending ids, ascending codes.
+        id: `zzzz-${100 - index}`,
+        code: `01.01.${number}`,
+        name: `Work ${number}`,
+        kind: "work_item",
+        parent_id: MODULE_ROW_ID,
+        position: index,
+        project_id: PROJECT.id,
+        module_id: null,
+      };
+    }),
+  ];
+}
+
+function planSurface(count = 2) {
+  return {
+    workspace_id: "ws-1",
+    scope: { project_id: PROJECT.id, module_id: MODULE.id, project_title: "Launch Plan", module_title: "Parser rewrite" },
+    cockpit: { id: "cp", workspace_id: "ws-1", goal_date: null, plan_reconciled_at: "2026-11-20T00:00:00Z" },
+    actor: { user_id: "user-1", role: "owner", is_human: true },
+    has_meeting_workflows: false,
+    has_stable_bindings: false,
+    complete: true,
+    nodes: planNodes(count),
+    task_counts: [],
+    context_node_ids: [],
+    payments: [],
+    milestones: [],
+    node_index: [],
+  };
+}
+
+const planCalls: string[] = [];
+
+beforeEach(() => {
+  cleanup();
+  planCalls.length = 0;
+  setApiInstance({
+    listProjects: async () => ({ projects: [PROJECT], total: 1 }),
+    listModules: async () => ({ modules: [MODULE], total: 1 }),
+    getCockpitPlan: async (_wsId: string, _scope: unknown) => {
+      planCalls.push("plan");
+      return planSurface();
+    },
+    getCockpitNodeDetail: async () => null,
+  } as unknown as ApiClient);
+});
+
+afterEach(() => {
+  cleanup();
+});
 
 function show(search = "") {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
   const adapter: NavigationAdapter = {
     push: vi.fn(),
     replace: vi.fn(),
@@ -152,92 +158,119 @@ function show(search = "") {
     getShareableUrl: (path: string) => path,
   };
   renderWithI18n(
-    <SidebarProvider>
-      <NavigationProvider value={adapter}>
-        <SidebarProjectsTree href="/ws/projects">Projects</SidebarProjectsTree>
-      </NavigationProvider>
-    </SidebarProvider>,
+    <QueryClientProvider client={queryClient}>
+      <SidebarProvider>
+        <NavigationProvider value={adapter}>
+          <SidebarProjectsTree href="/ws/projects">Projects</SidebarProjectsTree>
+        </NavigationProvider>
+      </SidebarProvider>
+    </QueryClientProvider>,
   );
-  return adapter;
 }
-
-beforeEach(() => {
-  mocks.projects = [PROJECT];
-  mocks.modules = [MODULE];
-  mocks.scopeNodeQueries = [];
-  mocks.workItems = [WORK_ITEM];
-  mocks.workItemsError = false;
-  mocks.nextCursor = null;
-  mocks.nodeDetail = null;
-});
-
-afterEach(() => {
-  cleanup();
-});
 
 async function expandProject() {
   fireEvent.click(await screen.findByRole("button", { name: "Toggle modules Launch Plan" }));
   return screen.findByText("Parser rewrite");
 }
 
+async function openModule() {
+  await expandProject();
+  fireEvent.click(await screen.findByRole("button", { name: "Toggle work items in Parser rewrite" }));
+}
+
 describe("SidebarProjectsTree", () => {
-  it("does not read work items until a module is opened", async () => {
+  it("reads no work items until a module is opened", async () => {
     show();
     await expandProject();
-    // Expanding the project lists modules only: the tree is drawn on mount.
-    expect(mocks.scopeNodeQueries).toHaveLength(0);
+    expect(planCalls).toHaveLength(0);
   });
 
-  it("lists a module's work items by code and name once it is opened", async () => {
+  it("lists only work items, in plan order — never the module's own row", async () => {
     show();
-    await expandProject();
-    fireEvent.click(await screen.findByRole("button", { name: "Toggle work items in Parser rewrite" }));
-    expect(await screen.findByText("01.01.01 Grammar pass")).toBeInTheDocument();
-    // The selector refuses a module on its own, so the project travels with it.
-    expect(mocks.scopeNodeQueries[0]).toMatchObject({
-      project_id: PROJECT.id,
-      module_id: MODULE.id,
-      page_size: 20,
-    });
+    await openModule();
+
+    expect(await screen.findByText("01.01.01 Work 01")).toBeInTheDocument();
+    expect(await screen.findByText("01.01.02 Work 02")).toBeInTheDocument();
+    const codes = screen.getAllByText(/^01\.01\.\d/).map((node) => node.textContent);
+    expect(codes).toEqual(["01.01.01 Work 01", "01.01.02 Work 02"]);
+    // One "Parser rewrite": the module row itself, not a second copy listed
+    // as one of its own children.
+    expect(screen.getAllByText("Parser rewrite")).toHaveLength(1);
   });
 
   it("links a work item to the project page by ?node=", async () => {
     show();
-    await expandProject();
-    fireEvent.click(await screen.findByRole("button", { name: "Toggle work items in Parser rewrite" }));
-    const link = (await screen.findByText("01.01.01 Grammar pass")).closest("a");
-    expect(link).toHaveAttribute("href", "/ws/projects/project-1?node=work-item-1");
+    await openModule();
+    const link = (await screen.findByText("01.01.01 Work 01")).closest("a");
+    expect(link).toHaveAttribute("href", "/ws/projects/project-1?node=zzzz-100");
   });
 
-  it("opens the selected work item's module and highlights the row", async () => {
-    mocks.nodeDetail = {
-      node: { id: "work-item-1", code: "01.01.01", name: "Grammar pass" },
-      binding: { eligible: true, project_id: PROJECT.id, module_id: MODULE.id },
-    };
-    show("node=work-item-1");
-    const row = await screen.findByText("01.01.01 Grammar pass");
-    // The row is the current one: its button carries the active state.
+  it("caps the list at twenty and offers the whole module in the project page", async () => {
+    setApiInstance({
+      listProjects: async () => ({ projects: [PROJECT], total: 1 }),
+      listModules: async () => ({ modules: [MODULE], total: 1 }),
+      getCockpitPlan: async () => planSurface(25),
+      getCockpitNodeDetail: async () => null,
+    } as unknown as ApiClient);
+
+    show();
+    await openModule();
+
+    await screen.findByText("01.01.20 Work 20");
+    // Only the first twenty, though the module has twenty-five.
+    expect(screen.queryByText("01.01.21 Work 21")).toBeNull();
+    expect(screen.getAllByText(/^01\.01\.\d/)).toHaveLength(20);
+    const more = (await screen.findByText("View all 25 in the project")).closest("a");
+    expect(more).toHaveAttribute("href", "/ws/projects/project-1?node=node-module");
+  });
+
+  it("highlights the selected work item and opens its module on arrival", async () => {
+    setApiInstance({
+      listProjects: async () => ({ projects: [PROJECT], total: 1 }),
+      listModules: async () => ({ modules: [MODULE], total: 1 }),
+      getCockpitPlan: async () => planSurface(),
+      getCockpitNodeDetail: async () => ({
+        node: { id: "zzzz-100", code: "01.01.01", name: "Work 01", kind: "work_item", module_id: null },
+        binding: { eligible: true, project_id: PROJECT.id, module_id: MODULE.id },
+      }),
+    } as unknown as ApiClient);
+
+    show("node=zzzz-100");
+    const row = await screen.findByText("01.01.01 Work 01");
     expect(row.closest('[data-active="true"], [data-active]')).not.toBeNull();
-    await waitFor(() => expect(mocks.scopeNodeQueries[0]).toMatchObject({ module_id: MODULE.id }));
   });
 
-  it("shows nothing under a module when the work-item read fails", async () => {
-    mocks.workItemsError = true;
+  it("highlights the module row for a converted `?node=` link too", async () => {
+    setApiInstance({
+      listProjects: async () => ({ projects: [PROJECT], total: 1 }),
+      listModules: async () => ({ modules: [MODULE], total: 1 }),
+      getCockpitPlan: async () => planSurface(),
+      getCockpitNodeDetail: async () => ({
+        node: { id: MODULE_ROW_ID, code: "01.01", name: "Parser rewrite", kind: "module", module_id: MODULE.id },
+        binding: { eligible: true, project_id: PROJECT.id, module_id: MODULE.id },
+      }),
+    } as unknown as ApiClient);
+
+    show("node=node-module");
+    // An old `?module=` link is rewritten to the module's row by the project
+    // page; the highlight must survive that conversion.
+    const row = await screen.findByText("Parser rewrite");
+    expect(row.closest('[data-active="true"], [data-active]')).not.toBeNull();
+  });
+
+  it("stays silent when the plan read fails", async () => {
+    setApiInstance({
+      listProjects: async () => ({ projects: [PROJECT], total: 1 }),
+      listModules: async () => ({ modules: [MODULE], total: 1 }),
+      getCockpitPlan: async () => {
+        throw new Error("403");
+      },
+      getCockpitNodeDetail: async () => null,
+    } as unknown as ApiClient);
+
     show();
-    await expandProject();
-    fireEvent.click(await screen.findByRole("button", { name: "Toggle work items in Parser rewrite" }));
-    await waitFor(() => expect(mocks.scopeNodeQueries).toHaveLength(1));
+    await openModule();
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByText(/Grammar pass/)).toBeNull();
-  });
-
-  it("pages the work items and offers more when a module has more than one page", async () => {
-    mocks.nextCursor = "cursor-2";
-    show();
-    await expandProject();
-    fireEvent.click(await screen.findByRole("button", { name: "Toggle work items in Parser rewrite" }));
-    fireEvent.click(await screen.findByText("More work items"));
-    await waitFor(() => expect(mocks.scopeNodeQueries).toHaveLength(2));
-    expect(mocks.scopeNodeQueries[1]).toMatchObject({ cursor: "cursor-2" });
+    expect(screen.queryByText(/Work 01/)).toBeNull();
   });
 });

@@ -9,9 +9,10 @@ import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useModalStore } from "@multica/core/modals";
 import {
   cockpitNodeDetailOptions,
-  cockpitScopeNodesOptions,
+  cockpitPlanOptions,
   EMPTY_COCKPIT_SCOPE,
 } from "@multica/core/cockpit";
+import { buildPlanRows, planModuleIdOf } from "../../plan-tree/plan-rows";
 import type { Module, Project } from "@multica/core/types";
 import { cn } from "@multica/ui/lib/utils";
 import {
@@ -36,8 +37,14 @@ function isOnProject(pathname: string, projectHref: string) {
 }
 
 /** One module's work items, read when (and only when) that module is open.
- *  Twenty a page from the server selector — the sidebar never reads a whole
- *  workspace plan to draw a navigation list. */
+ *
+ *  The module-scoped plan read, not the id-ordered node selector: it lists
+ *  only work items (a module's own row never appears as one of its children),
+ *  in plan order — the order the tree, the field and the directory read in.
+ *  The scope is one module, so this is never a whole-workspace download.
+ */
+const SIDEBAR_WORK_ITEM_LIMIT = 20;
+
 function ModuleWorkItems({
   wsId,
   projectId,
@@ -46,55 +53,62 @@ function ModuleWorkItems({
   activeNodeId,
 }: {
   wsId: string;
-  /** The module's project: the selector refuses a module on its own. */
   projectId: string;
   moduleId: string;
   projectHref: string;
   activeNodeId: string | null;
 }) {
   const { t } = useT("projects");
-  const [cursors, setCursors] = useState<string[]>([""]);
-  const query = useQuery(
-    cockpitScopeNodesOptions(wsId, {
-      project_id: projectId,
-      module_id: moduleId,
-      eligible: false,
-      page_size: 20,
-      cursor: cursors.at(-1) || undefined,
-    }),
-  );
+  const plan = useQuery(cockpitPlanOptions(wsId, { projectId, moduleId }));
+  const { workItems, moduleRowId } = useMemo(() => {
+    const data = plan.data;
+    if (!data) return { workItems: [], moduleRowId: null as string | null };
+    const byId = new Map(data.nodes.map((node) => [node.id, node]));
+    const rows = buildPlanRows({
+      nodes: data.nodes,
+      counts: data.task_counts,
+      expanded: new Set(data.nodes.map((node) => node.id)),
+    });
+    // A module has TWO ids: the module record's, and the plan row's. The
+    // parent chain names the row, so the filter runs on the row's id.
+    const moduleRow = rows.find((row) => row.kind === "module");
+    const moduleRowId = moduleRow?.node.id ?? null;
+    return {
+      workItems: rows.filter((row) => row.kind === "work_item" && planModuleIdOf(row.node, byId) === moduleRowId),
+      moduleRowId,
+    };
+  }, [plan.data, moduleId]);
   // An unreconciled board has no rows to name, and a refused read is not the
   // reader's problem to fix from a navigation list: both stay silent.
-  if (query.isError || (query.isSuccess && !query.data)) return null;
-  const items = query.data?.items ?? [];
-  if (query.isPending) return null;
-  if (items.length === 0) return null;
+  if (plan.isError || plan.isPending || workItems.length === 0) return null;
   return (
     <>
-      {items.map((item) => (
-        <SidebarMenuItem key={item.id}>
+      {workItems.slice(0, SIDEBAR_WORK_ITEM_LIMIT).map((row) => (
+        <SidebarMenuItem key={row.node.id}>
           <SidebarMenuButton
             size="sm"
-            isActive={activeNodeId === item.id}
-            render={<AppLink href={`${projectHref}?node=${encodeURIComponent(item.id)}`} />}
+            isActive={activeNodeId === row.node.id}
+            render={<AppLink href={`${projectHref}?node=${encodeURIComponent(row.node.id)}`} />}
             className={cn("pl-12", ROW_CLASS_NAME)}
           >
-            <span className="truncate text-caption">{`${item.code} ${item.title}`.trim()}</span>
+            <span className="truncate text-caption">{`${row.code} ${row.name}`.trim()}</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ))}
-      {query.data?.next_cursor ? (
+      {workItems.length > SIDEBAR_WORK_ITEM_LIMIT ? (
         <SidebarMenuItem>
           <SidebarMenuButton
             size="sm"
+            render={
+              <AppLink
+                href={`${projectHref}?node=${encodeURIComponent(moduleRowId ?? "")}`}
+              />
+            }
             className="pl-12"
-            disabled={query.isFetching}
-            onClick={() => {
-              const next = query.data?.next_cursor;
-              if (next) setCursors((old) => [...old, next]);
-            }}
           >
-            <span className="truncate text-caption text-muted-foreground">{t(($) => $.module.more_work_items)}</span>
+            <span className="truncate text-caption text-muted-foreground">
+              {t(($) => $.module.view_all_work_items, { n: workItems.length })}
+            </span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       ) : null}
@@ -109,6 +123,7 @@ function ProjectTreeRow({
   activeModuleId,
   activeNodeId,
   activeNodeModuleId,
+  activeNodeIsModule,
   projectHref,
   wsId,
 }: {
@@ -119,6 +134,9 @@ function ProjectTreeRow({
   activeNodeId: string | null;
   /** The module holding the selected work item, so its list opens on arrival. */
   activeNodeModuleId: string | null;
+  /** The selected row is itself a module: its row highlights even though the
+   *  URL carries `?node=` (converted from `?module=`) and no `?module=`. */
+  activeNodeIsModule: boolean;
   projectHref: string;
   wsId: string | null;
 }) {
@@ -210,7 +228,7 @@ function ProjectTreeRow({
                 </button>
                 <SidebarMenuButton
                   size="sm"
-                  isActive={inProject && activeModuleId === m.id}
+                  isActive={inProject && (activeModuleId === m.id || (activeNodeIsModule && activeNodeModuleId === m.id))}
                   render={
                     <AppLink
                       href={`${projectHref}?module=${encodeURIComponent(m.id)}`}
@@ -269,7 +287,11 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
     ...cockpitNodeDetailOptions(wsId ?? "", activeNodeId ?? "", EMPTY_COCKPIT_SCOPE),
     enabled: Boolean(wsId && activeNodeId && activeNodeId !== "none"),
   });
-  const activeNodeModuleId = activeNode.data?.binding?.module_id ?? null;
+  const activeNodeModuleId =
+    activeNode.data?.node.kind === "module"
+      ? activeNode.data.node.module_id ?? null
+      : activeNode.data?.binding?.module_id ?? null;
+  const activeNodeIsModule = activeNode.data?.node.kind === "module";
 
   const modulesByProject = useMemo(() => {
     const map = new Map<string, Module[]>();
@@ -326,6 +348,7 @@ export function SidebarProjectsTree({ children, href }: { children: ReactNode; h
               activeModuleId={activeModuleId}
               activeNodeId={activeNodeId}
               activeNodeModuleId={activeNodeModuleId}
+              activeNodeIsModule={activeNodeIsModule}
               projectHref={wsPaths.projectDetail(project.id)}
               wsId={wsId}
             />
