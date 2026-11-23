@@ -1147,8 +1147,7 @@
       "more": "More",
       "unavailable_unreconciled": "The plan board has not been reconciled, so work items cannot be picked yet.",
       "unavailable_error": "The plan could not be read, so work items cannot be picked.",
-      "work_items_failed": "Work items could not be loaded.",
-      "unavailable": "Work items cannot be picked right now."
+      "work_items_failed": "Work items could not be loaded."
     }
   },
   "labels_panel": {

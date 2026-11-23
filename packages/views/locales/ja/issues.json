@@ -1102,8 +1102,7 @@
       "more": "さらに表示",
       "unavailable_unreconciled": "計画ボードが未照合のため、作業項目はまだ選択できません。",
       "unavailable_error": "計画を読み取れないため、作業項目を選択できません。",
-      "work_items_failed": "作業項目を読み込めませんでした。",
-      "unavailable": "現在、作業項目を選択できません。"
+      "work_items_failed": "作業項目を読み込めませんでした。"
     }
   },
   "labels_panel": {

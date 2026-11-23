@@ -1102,8 +1102,7 @@
       "more": "더보기",
       "unavailable_unreconciled": "계획 보드가 아직 대조되지 않아 작업 항목을 선택할 수 없습니다.",
       "unavailable_error": "계획을 읽을 수 없어 작업 항목을 선택할 수 없습니다.",
-      "work_items_failed": "작업 항목을 불러오지 못했습니다.",
-      "unavailable": "지금은 작업 항목을 선택할 수 없습니다."
+      "work_items_failed": "작업 항목을 불러오지 못했습니다."
     }
   },
   "labels_panel": {

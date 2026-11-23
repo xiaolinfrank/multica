@@ -1102,8 +1102,7 @@
       "more": "更多",
       "unavailable_unreconciled": "看板尚未对账，暂时不能选择工作项。",
       "unavailable_error": "读不到计划，暂时不能选择工作项。",
-      "work_items_failed": "工作项读取失败。",
-      "unavailable": "暂时无法选择工作项。"
+      "work_items_failed": "工作项读取失败。"
     }
   },
   "labels_panel": {
