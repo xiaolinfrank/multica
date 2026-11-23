@@ -2139,6 +2139,30 @@ describe("CreateIssueModal", () => {
     expect(screen.getByTestId("issue-scope")).toHaveTextContent("node-b");
   });
 
+  it("does not blend the caller's project with the draft's deeper levels", async () => {
+    // The panel opens on a named project, with a draft that remembers a module
+    // and a work item from another visit. Those two must not follow along —
+    // the draft's rows belong to a different place on the board.
+    mockDraftStore.draft.shared = {
+      ...mockDraftStore.draft.shared,
+      projectId: "draft-project",
+      moduleId: "draft-module",
+      workItemId: "draft-work-item",
+    };
+
+    renderModal(
+      <ManualCreatePanel
+        onClose={vi.fn()}
+        onSwitchMode={vi.fn()}
+        data={{ project_id: "proj-1" }}
+        isExpanded={false}
+        setIsExpanded={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("issue-scope")).toHaveTextContent("proj-1"));
+  });
+
   // Manual → agent must forward parent_issue_id when the modal was opened
   // from "Add sub issue". Before this, the agent panel received no parent
   // context and the new issue was filed as a standalone — silently dropping

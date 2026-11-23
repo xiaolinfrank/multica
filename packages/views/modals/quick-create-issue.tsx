@@ -66,6 +66,7 @@ import { PillButton } from "../common/pill-button";
 import { DueDatePicker, PriorityIcon, PriorityPicker } from "../issues/components";
 import { IssueScopePicker, type IssueScopeValue } from "../issues/components/pickers/issue-scope-picker";
 import { useDropMissingScope } from "../issues/components/pickers/use-scope-existence";
+import { seedIssueScope } from "../issues/components/pickers/seed-issue-scope";
 import { canAssignAgent } from "../issues/components/pickers/assignee-picker";
 import { isAgentRuntimeBound } from "@multica/core/agents";
 import {
@@ -282,11 +283,7 @@ export function AgentCreatePanel({
   // One filing for all three levels. The agent quick-create endpoint takes
   // only a project, so a module or work item picked here rides the manual
   // switch (see `carry`); the pill says so while one is set.
-  const [scope, setScope] = useState<IssueScopeValue>(() => ({
-    project_id: (data?.project_id as string | undefined) ?? draft.shared.projectId ?? null,
-    module_id: (data?.module_id as string | undefined) ?? draft.shared.moduleId ?? null,
-    work_item_id: (data?.work_item_id as string | undefined) ?? draft.shared.workItemId ?? null,
-  }));
+  const [scope, setScope] = useState<IssueScopeValue>(() => seedIssueScope(data, draft.shared));
   const projectId = scope.project_id;
   const [priority, setPriority] = useState<IssuePriority>(
     (data?.priority as IssuePriority | undefined) ?? draft.shared.priority,

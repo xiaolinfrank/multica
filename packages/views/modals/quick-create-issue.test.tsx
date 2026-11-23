@@ -325,6 +325,12 @@ vi.mock("../issues/components/pickers/issue-scope-picker", () => ({
       </button>
       <button
         type="button"
+        onClick={() => onUpdate({ project_id: "p1", module_id: "m1", work_item_id: "w1" })}
+      >
+        Pick work item
+      </button>
+      <button
+        type="button"
         onClick={() => onUpdate({ project_id: null, module_id: null, work_item_id: null })}
       >
         Clear scope
@@ -665,6 +671,36 @@ describe("AgentCreatePanel", () => {
     expect(screen.getByTestId("issue-scope")).toHaveTextContent("proj-1");
     expect(screen.getByTestId("priority-picker")).toHaveTextContent("Priority high");
     expect(screen.getByTestId("due-date-picker")).toHaveTextContent("Due date 2026-08-01");
+  });
+
+  it("takes the caller's filing instead of blending it with the draft", () => {
+    // A draft remembers the module and work item of an abandoned visit. The
+    // panel is opened here on the project alone, so those deeper levels must
+    // not ride along: the create would carry a pair the server refuses.
+    mockProjectsQuery.data = [{ id: "proj-1", title: "Web", icon: null }];
+    mockIssueDraftStore.draft.shared = {
+      ...mockIssueDraftStore.draft.shared,
+      projectId: "draft-project",
+      moduleId: "draft-module",
+      workItemId: "draft-work-item",
+    };
+
+    renderPanel({ onClose: vi.fn(), isExpanded: false, setIsExpanded: vi.fn(), data: { project_id: "proj-1" } });
+
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent("proj-1");
+  });
+
+  it("writes all three levels back to the draft when one is picked", async () => {
+    // The agent panel sends only a project to the agent, so the module and
+    // work item survive the switch to manual purely through the draft.
+    const user = userEvent.setup();
+    renderPanel({ onClose: vi.fn(), isExpanded: false, setIsExpanded: vi.fn() });
+
+    await user.click(screen.getByRole("button", { name: "Pick work item" }));
+
+    expect(mockSetShared).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "p1", moduleId: "m1", workItemId: "w1" }),
+    );
   });
 
   it("writes prompt changes back to the draft store and clears them after submit", async () => {
