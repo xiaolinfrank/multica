@@ -105,7 +105,7 @@ async function pickCandidate(issue: Record<string, unknown>, label = "BIO-42 Exi
   setup();
   await screen.findByText("Work item 1");
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Change filing" }));
+  await user.click(screen.getByRole("button", { name: "Add existing task" }));
   await user.type(await screen.findByRole("textbox", { name: "Search existing issues" }), "BIO-42");
   await user.click(await screen.findByRole("button", { name: label }));
   return user;
@@ -123,6 +123,11 @@ describe("assigning an existing task files it here", () => {
     expect(api.setCockpitPrimaryNode).not.toHaveBeenCalled();
   });
 
+  it("says the old work item stops being linked when the task had one", async () => {
+    await pickCandidate(candidate());
+    expect(screen.getByText("The work item it leaves behind is no longer linked to it.")).toBeInTheDocument();
+  });
+
   it("files a task that had no project, module or work item", async () => {
     // The old primary gate refused a task with no project or module; filing
     // it is exactly what this dialog is for.
@@ -132,7 +137,7 @@ describe("assigning an existing task files it here", () => {
     await waitFor(() => expect(api.updateIssue).toHaveBeenCalledWith("issue-42", { work_item_id: "node-1" }));
   });
 
-  it("names the filing it has and the one it will have before writing", async () => {
+  it("names the filing it has and the one it will have, in that order and with codes on both sides", async () => {
     vi.mocked(api.listProjects).mockResolvedValue({
       projects: [
         { id: "project-2", title: "Alpha", workspace_id: "ws-1" },
@@ -152,21 +157,52 @@ describe("assigning an existing task files it here", () => {
       eligibility: { eligible: true, reason: "", project_id: "project-1", module_id: "module-1" },
     }));
 
-    const user = await pickCandidate(candidate());
+    await pickCandidate(candidate());
 
-    expect(screen.getByText(/BIO-42's filing will change/)).toBeInTheDocument();
-    expect(screen.getByText(/Alpha \/ Delivery \/ Old work item/)).toBeInTheDocument();
-    expect(screen.getByText(/Beta \/ Build \/ 01\.01\.01 Large L3/)).toBeInTheDocument();
+    // One sentence, so the halves cannot be read apart: from the filing it
+    // has, to the one it will have — and the old work item carries its code
+    // just as the new one does.
+    expect(screen.getByText("BIO-42's filing will change from “Alpha / Delivery / 01.01.01 Old work item” to “Beta / Build / 01.01.01 Large L3”.")).toBeInTheDocument();
     // Nothing written before the confirmation.
     expect(api.updateIssue).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Change the filing" }));
-    await waitFor(() => expect(api.updateIssue).toHaveBeenCalled());
+  });
+
+  it("does not mention the old work item when the task had none", async () => {
+    // The reverse of the case above, on its own: an unfiled task leaves
+    // nothing behind, so the line about the old link has nothing to say.
+    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [candidate({ work_item_id: null })], total: 1 } as never);
+    const user = await pickCandidate(candidate({ work_item_id: null }));
+    expect(user).toBeDefined();
+    expect(screen.queryByText("The work item it leaves behind is no longer linked to it.")).toBeNull();
+  });
+
+  it("does not describe the change while a sub-issue is blocked", async () => {
+    vi.mocked(api.getIssue).mockResolvedValue({ ...candidate({ id: "parent-1", identifier: "BIO-1", title: "Parent task" }) } as never);
+    await pickCandidate(candidate({ parent_issue_id: "parent-1" }));
+
+    expect(await screen.findByText("A sub-issue follows its parent's filing. Move the parent instead.")).toBeInTheDocument();
+    // "Will change from A to B" would contradict the refusal under it.
+    expect(screen.queryByText(/filing will change from/)).toBeNull();
+  });
+
+  it("disables the confirmation when the scope change is not allowed, whatever the primary says", async () => {
+    vi.mocked(api.getIssueOperationBasis).mockImplementationOnce(async (_ws: string, ids: string[]) => {
+      const page = issueOperationPageFixture("ws-1", ids);
+      page.items[0]!.scope = { state: "blocked", reason_codes: ["retained_artifact_scope"] };
+      // Primary is allowed and must not unlock the move.
+      page.items[0]!.primary = { state: "allowed", reason_codes: [] };
+      return page;
+    });
+    await pickCandidate(candidate());
+
+    expect(await screen.findByText(/retained_artifact_scope|Cannot be moved|retained|artifact/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change the filing" })).toBeDisabled();
   });
 
   it("says how many sub-issues move with it", async () => {
     vi.mocked(api.listChildIssues).mockResolvedValue({ issues: [{ id: "c1" }, { id: "c2" }], total: 2 } as never);
     await pickCandidate(candidate());
-    expect(await screen.findByText("Its 2 sub-issues move with it.")).toBeInTheDocument();
+    expect(await screen.findByText("Its 2 sub-issues and their descendants move with it.")).toBeInTheDocument();
   });
 
   it("confirms the handoff first when the destination project hands off", async () => {

@@ -114,10 +114,17 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
     const module = moduleId_ ? modules.data?.find((entry) => entry.id === moduleId_)?.title ?? moduleId_ : null;
     return [project, module, workItem].filter(Boolean).join(" / ");
   };
+  const previousWorkItemRow = previousWorkItem.data?.node;
   const previousLabel = label(
     selected?.project_id ?? null,
     selected?.module_id ?? null,
-    selected?.work_item_id ? previousWorkItem.data?.node?.name ?? selected.work_item_id : null,
+    // With its code, like the destination: the two halves of the sentence
+    // must read the same way or the move looks bigger than it is.
+    selected?.work_item_id
+      ? previousWorkItemRow
+        ? `${previousWorkItemRow.code} ${previousWorkItemRow.name}`.trim()
+        : selected.work_item_id
+      : null,
   );
   const nextLabel = label(projectId, moduleId, `${node.code} ${node.name}`.trim());
 
@@ -149,7 +156,9 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
 
       {/* What the move does, in the user's words: the filing it has now and
           the one it is about to have. */}
-      {selected && !reference && <div className="space-y-1 rounded-md bg-muted p-3 text-caption">
+      {/* Not shown while a sub-issue is blocked: "will change from A to B"
+          contradicts the refusal right under it. */}
+      {selected && !reference && !isSubIssue && <div className="space-y-1 rounded-md bg-muted p-3 text-caption">
         <p>{t(($) => $.task_flow.assign_from_to, { name: selected.identifier, from: previousLabel, to: nextLabel })}</p>
         {childCount > 0 && <p>{t(($) => $.task_flow.assign_children_move, { n: childCount })}</p>}
         {/* The issue-update path does not keep the old work item as a related
