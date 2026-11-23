@@ -41,7 +41,6 @@ import { useViewStore, useViewStoreApi } from "@multica/core/issues/stores/view-
 import { useViewBaseline } from "../surface/view-baseline-context";
 import { filterIssues, type IssueFilters } from "../utils/filter";
 import { useModalStore } from "@multica/core/modals";
-import { moduleTitleNumberPrefix } from "@multica/core/modules/title-number";
 import { getMoveAnchors, moduleGroupId } from "../utils/drag-utils";
 import { moduleDetachIntent } from "../actions/module-detach-gate";
 import type { SwimlaneGrouping } from "@multica/core/issues/stores/view-store";
@@ -799,7 +798,9 @@ function SwimLaneViewImpl({
     includeNoProject: activeFiltersProp?.includeNoProject ?? false,
     moduleFilters: activeFiltersProp?.moduleFilters ?? [],
     includeNoModule: activeFiltersProp?.includeNoModule ?? false,
-    workItemFilters: [],
+    // Same passthrough as the module filter: a sub-issue follows its parent's
+    // work item, so the surface must not silently widen the scope.
+    workItemFilters: activeFiltersProp?.workItemFilters ?? [],
     projectStatusFilters: activeFiltersProp?.projectStatusFilters ?? [],
     // Needed to evaluate the project-status predicate: an Issue only carries
     // `project_id`. Absent → the predicate is a no-op, never match-none.
@@ -1970,12 +1971,6 @@ function SwimLaneCell({
       status: status,
       ...lane.moveUpdates,
     };
-    // Numbered modules number the work inside them, so a create from a module
-    // lane opens on the module's own number.
-    const numberPrefix = lane.module
-      ? moduleTitleNumberPrefix(lane.module.title)
-      : "";
-    if (numberPrefix) data.title = numberPrefix;
     // Per-page project override takes precedence (e.g. Project Detail
     // pre-fills its own project id regardless of grouping).
     if (projectId) data.project_id = projectId;

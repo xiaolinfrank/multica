@@ -97,7 +97,6 @@ import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { propertyListOptions } from "@multica/core/properties";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
-import { moduleTitleNumberPrefix } from "@multica/core/modules/title-number";
 import { issueTableModuleGroupSpec } from "@multica/core/issues/surface/group-spec";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { buildActorNameResolver, useActorName } from "@multica/core/workspace/hooks";
@@ -2468,18 +2467,12 @@ export function TableView({
       const value = group.value;
       if (value?.kind !== "module") return undefined;
       const moduleId = value.module_id ?? null;
-      // Numbered modules number the work inside them, so the title opens on
-      // the module's own number and the user continues from there.
-      const prefix = moduleId
-        ? moduleTitleNumberPrefix(groupModuleMap.get(moduleId)?.title ?? "")
-        : "";
       return () =>
         onCreateIssue({
           ...(serverQuery.scope.kind === "project"
             ? { project_id: serverQuery.scope.project_id }
             : {}),
           module_id: moduleId,
-          ...(prefix ? { title: prefix } : {}),
         });
     },
     [groupModuleMap, onCreateIssue, serverQuery.scope],

@@ -60,7 +60,6 @@ import type {
   IssueGroupPageState,
 } from "../surface/use-issue-group-branches";
 import { useModalStore } from "@multica/core/modals";
-import { moduleTitleNumberPrefix } from "@multica/core/modules/title-number";
 import { moduleDetachIntent } from "../actions/module-detach-gate";
 import { useDragSettle } from "./use-drag-settle";
 import { useIssuePeekActions } from "../surface/peek-context";
@@ -182,16 +181,10 @@ function moduleColumn(
     moduleId,
     projectId: module?.project_id ?? null,
     totalCount,
+    // The filing is the whole seed: the title is the sentence the author
+    // writes, not the module's number.
     createData: module
-      ? {
-          project_id: module.project_id,
-          module_id: module.id,
-          // Numbered modules number the work inside them, so the create
-          // opens on the module's own number.
-          ...(moduleTitleNumberPrefix(module.title)
-            ? { title: moduleTitleNumberPrefix(module.title) }
-            : {}),
-        }
+      ? { project_id: module.project_id, module_id: module.id }
       : undefined,
   };
 }

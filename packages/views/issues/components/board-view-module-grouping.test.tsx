@@ -195,7 +195,7 @@ describe("Board grouped by module", () => {
               moduleMap={
                 new Map([
                   [WORKED_MOD_ID, makeModule(WORKED_MOD_ID, "Parser rewrite")],
-                  [EMPTY_MOD_ID, makeModule(EMPTY_MOD_ID, "Zero work")],
+                  [EMPTY_MOD_ID, makeModule(EMPTY_MOD_ID, "01.01 Zero work")],
                 ])
               }
               projectId={PROJECT_ID}
@@ -212,7 +212,7 @@ describe("Board grouped by module", () => {
     render();
 
     expect(screen.getByText("Parser rewrite")).toBeTruthy();
-    const empty = screen.getByText("Zero work").parentElement!;
+    const empty = screen.getByText("01.01 Zero work").parentElement!;
     expect(empty.textContent).toContain("0");
   });
 
@@ -222,14 +222,16 @@ describe("Board grouped by module", () => {
     const titles = screen
       .getAllByText(/Parser rewrite|Zero work|No module/)
       .map((node) => node.textContent);
-    expect(titles).toEqual(["Parser rewrite", "Zero work", "No module"]);
+    expect(titles).toEqual(["Parser rewrite", "01.01 Zero work", "No module"]);
   });
 
-  it("files a card created from an empty column under that module", () => {
+  it("files a card created from a numbered module's column there, with no title", () => {
     const onCreateIssue = vi.fn();
     render(onCreateIssue);
 
-    const column = screen.getByText("Zero work").closest("div.flex-col")!;
+    // The module's own number belongs to the plan row, not to the sentence
+    // the author is about to write.
+    const column = screen.getByText("01.01 Zero work").closest("div.flex-col")!;
     fireEvent.click(within(column as HTMLElement).getByRole("button", { name: "Add issue" }));
     expect(onCreateIssue).toHaveBeenCalledWith({
       project_id: PROJECT_ID,
