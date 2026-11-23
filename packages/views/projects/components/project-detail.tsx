@@ -829,7 +829,9 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           <SheetContent side="left" className="flex w-80 flex-col p-0">
             {/* Named for a screen reader: the sheet is otherwise a bare tree. */}
             <SheetTitle className="sr-only">{t(($) => $.detail.plan_title)}</SheetTitle>
-            <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
+            {/* `pr-10` keeps the title row clear of the sheet's own close
+                button, which sits absolutely in the top-right corner. */}
+            <div className="flex items-center gap-1 border-b border-border px-2 py-1.5 pr-10">
               <span className="min-w-0 flex-1 truncate text-caption font-medium">{t(($) => $.detail.plan_title)}</span>
               <button
                 type="button"
