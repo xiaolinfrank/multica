@@ -11,7 +11,6 @@
     "batch_toolbar": "所选任务操作",
     "clear_selection": "清除选择",
     "search_failed": "任务搜索失败，已保留搜索词。",
-    "confirm_clear_primary": "确认解除",
     "selection_changed": "所选任务已变化，请关闭此确认并重新选择要处理的任务。",
     "batch_review": "核对所选任务",
     "batch_result": "操作结果",
@@ -1101,10 +1100,10 @@
       "no_work_items": "没有工作项",
       "loading": "加载中…",
       "more": "更多",
-      "unavailable": "看板尚未对账，暂时不能选择工作项。",
       "unavailable_unreconciled": "看板尚未对账，暂时不能选择工作项。",
       "unavailable_error": "读不到计划，暂时不能选择工作项。",
-      "work_items_failed": "工作项读取失败。"
+      "work_items_failed": "工作项读取失败。",
+      "unavailable": "暂时无法选择工作项。"
     }
   },
   "labels_panel": {

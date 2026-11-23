@@ -242,9 +242,10 @@
     "toast_deleted": "Module deleted",
     "toast_delete_failed": "Failed to delete module",
     "toast_reorder_failed": "Failed to reorder modules",
-    "agent_carry_hint": "Applies when you switch to manual create; agent create ignores the module",
+    "agent_carry_hint": "Applies when you switch to manual create; agent create ignores the module or work item",
     "toggle_work_items_aria": "Toggle work items in",
-    "more_work_items": "More work items"
+    "more_work_items": "More work items",
+    "view_all_work_items": "View all {{n}} in the project"
   },
   "chip": {
     "fallback_label": "Project"

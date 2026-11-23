@@ -972,7 +972,7 @@
     "pending_request": "This request has an unknown result. Its original values and idempotency key are retained for retry.",
     "request_confirmed": "Request confirmed: {{name}}",
     "narrow_nodes": "{{count}} matching work items; showing {{shown}}. Refine your search to choose another.",
-    "primary_changed": "Primary ownership changed. Select the issue again to review the latest scope before confirming.",
+    "primary_changed": "Ownership changed. Select the issue again to review the latest scope before confirming.",
     "create_reference_unavailable": "Only a work item with a filing placement can open a new linked issue."
   },
   "action_flow": {

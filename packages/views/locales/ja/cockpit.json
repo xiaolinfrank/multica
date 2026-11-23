@@ -327,7 +327,7 @@
     "source": "出典: {{source}}",
     "progress_branch_hint": "分岐の進捗は配下タスクの加重集計で、自動的に更新されます。",
     "current_progress_hint": "自由記述の進捗メモです。ガントのバーは上のパーセントを使います。",
-    "progress_issue_hint": "進捗はこの作業項目の課題の完了割合で、課題の進みに合わせて更新されます。"
+    "progress_issue_hint": "進捗はこの作業項目のタスクの完了割合で、タスクの進みに合わせて更新されます。"
   },
   "milestone": {
     "name": "マイルストーン",
@@ -972,7 +972,7 @@
     "pending_request": "結果が不明です。再試行用に元の内容とリクエストキーを保持しています。",
     "request_confirmed": "要求を確認しました：{{name}}",
     "narrow_nodes": "該当 {{count}} 件のうち {{shown}} 件を表示しています。検索を絞り込んで選択してください。",
-    "primary_changed": "主所属が変更されました。タスクを選び直して最新の範囲を確認してください。",
+    "primary_changed": "所属が変更されました。タスクを選び直して最新の範囲を確認してください。",
     "create_reference_unavailable": "归属先のある作業項目だけが新しい関連イシューを開けます。"
   },
   "action_flow": {
@@ -2359,15 +2359,15 @@
     "expand": "展開",
     "open_row": "{{code}} を開く",
     "add_child": "下位を追加",
-    "add_issue": "課題を作成",
+    "add_issue": "タスクを作成",
     "more": "その他の操作",
     "progress": "{{n}}%",
-    "issue_count": "課題 {{n}} 件",
+    "issue_count": "タスク {{n}} 件",
     "column_name": "名称",
     "column_owner": "担当者",
     "column_status": "ステータス",
     "column_dates": "予定期間",
-    "column_issues": "課題",
+    "column_issues": "タスク",
     "issues_overflow": "他 {{n}} 件 · 一覧で開く",
     "new_module": "モジュール名",
     "new_work_item": "作業項目名",
@@ -2378,12 +2378,12 @@
     "renumber_confirm": "この行より下をすべて採番し直しますか？",
     "renumber_done": "{{n}} 行を採番し直しました",
     "delete": "削除",
-    "delete_confirm": "この行を削除しますか？{{n}} 件の課題が帰属を失います。",
+    "delete_confirm": "この行を削除しますか？{{n}} 件のタスクが帰属を失います。",
     "confirm": "確認",
     "cancel": "キャンセル",
     "moved": "移動しました",
     "deleted": "削除しました",
     "status_not_in_workflow": "{{issue}}：ステータスが {{workflow}} にありません（許可：{{statuses}}）",
-    "delete_module_impact": "作業項目 {{work_items}} 件と支払 {{payments}} 件を削除します。課題 {{issues}} 件は帰属を失い、プロジェクトに残ります。"
+    "delete_module_impact": "作業項目 {{work_items}} 件と支払 {{payments}} 件を削除します。タスク {{issues}} 件は帰属を失い、プロジェクトに残ります。"
   }
 }

@@ -241,9 +241,10 @@
     "toast_deleted": "モジュールを削除しました",
     "toast_delete_failed": "モジュールの削除に失敗しました",
     "toast_reorder_failed": "モジュールの順序変更に失敗しました",
-    "agent_carry_hint": "手動作成に切り替えた場合に適用されます。エージェント作成ではモジュールは無視されます",
+    "agent_carry_hint": "手動作成に切り替えた場合に適用されます。エージェント作成ではモジュールや作業項目は無視されます",
     "toggle_work_items_aria": "作業項目を開閉",
-    "more_work_items": "さらに作業項目を表示"
+    "more_work_items": "さらに作業項目を表示",
+    "view_all_work_items": "プロジェクトで {{n}} 件すべて表示"
   },
   "chip": {
     "fallback_label": "プロジェクト"

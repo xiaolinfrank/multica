@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { cockpitIssueNodeReferencesOptions, cockpitObjectPath,
-  cockpitPrimaryNodeOptions, useRemoveCockpitIssueNodeReference, useAppendCockpitNodeIssue } from "@multica/core/cockpit";
+  useRemoveCockpitIssueNodeReference, useAppendCockpitNodeIssue } from "@multica/core/cockpit";
 import { ChevronRight, X } from "@multica/ui/icons";
 import { Button } from "@multica/ui/components/ui/button";
 import { toast } from "sonner";
@@ -22,23 +22,19 @@ function CockpitNodeReferences({ wsId, issueId }: { wsId: string; issueId: strin
   const { t } = useT("cockpit"); const paths = useWorkspacePaths();
   const [open, setOpen] = useState(true); const [cursors, setCursors] = useState<string[]>([""]);
   const query = useQuery({ ...cockpitIssueNodeReferencesOptions(wsId, issueId, { cursor: cursors.at(-1) || undefined }), enabled: open });
-  const primary = useQuery(cockpitPrimaryNodeOptions(wsId, issueId));
-  const primaryNode = primary.data?.issue_id === issueId ? primary.data : null;
   const link = useAppendCockpitNodeIssue(wsId); const unlink = useRemoveCockpitIssueNodeReference(wsId);
   const busy = link.isPending || unlink.isPending;
   const fail = (error: unknown) => toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
   return <div>
     <button type="button" className="mb-2 flex w-full min-w-0 items-center gap-1 rounded-md px-2 py-1 text-caption font-medium hover:bg-accent/70" onClick={() => setOpen(!open)} aria-expanded={open}>
       <span className="truncate">{t(($) => $.issue_detail.title)}</span><ChevronRight className={`size-3 shrink-0 ${open ? "rotate-90" : ""}`} />
-      <span className="ml-auto font-mono tabular-nums text-muted-foreground">{query.data && !primary.isPending && !primary.isError ? query.data.total + (primaryNode?.node_id ? 1 : 0) : "—"}</span>
+      {/* Only related links: the issue's own filing is the ownership row
+          above, so counting it here would show one more than the list. */}
+      <span className="ml-auto font-mono tabular-nums text-muted-foreground">{query.data ? query.data.total : "—"}</span>
     </button>
     {open && <div className="space-y-2 pl-2">
-      {primaryNode?.node_id && <div><p className="text-micro text-muted-foreground">{t(($) => $.meeting_actions.primary_node)}</p>
-        <AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primaryNode.node_id })} newTabTitle={primaryNode.node_name || primaryNode.node_code}
-          className="block break-words py-1 text-caption hover:underline">{primaryNode.node_code} {primaryNode.node_name || t(($) => $.issue_detail.untitled)}</AppLink></div>}
-      {primary.isError && <CockpitFlowError onRetry={() => void primary.refetch()} />}
       {query.isError ? <CockpitFlowError onRetry={() => void query.refetch()} /> : query.isPending ? <p role="status" className="text-caption">{t(($) => $.workflow.loading)}</p> : <>
-        {query.data.items.length === 0 && !primaryNode?.node_id && <p className="text-caption text-muted-foreground">{t(($) => $.issue_detail.none)}</p>}
+        {query.data.items.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.issue_detail.none)}</p>}
         <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">{query.data.items.map((row) => {
           const code = row.code;
           const label = row.available ? `${code} ${row.title || t(($) => $.issue_detail.untitled)}`.trim() : t(($) => $.issue_detail.unavailable);

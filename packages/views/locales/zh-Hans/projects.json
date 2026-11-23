@@ -93,9 +93,9 @@
     "plan_unreconciled": "看板尚未对账，这里只列出模块；对账后会出现工作项。",
     "plan_unavailable": "读不到计划，这里只列出模块。",
     "plan_empty": "这个项目还没有计划行。",
-    "all_issues": "全部 issue",
+    "all_issues": "全部任务",
     "no_module_row": "未分模块",
-    "selected_node_clear": "显示全部 issue"
+    "selected_node_clear": "显示全部任务"
   },
   "collab_path": {
     "label": "人机协作空间路径",
@@ -241,9 +241,10 @@
     "toast_deleted": "模块已删除",
     "toast_delete_failed": "删除模块失败",
     "toast_reorder_failed": "调整模块顺序失败",
-    "agent_carry_hint": "切换到手动创建时生效；智能体创建不携带模块",
+    "agent_carry_hint": "切换到手动创建时生效；智能体创建不携带模块或工作项",
     "toggle_work_items_aria": "展开或收起工作项",
-    "more_work_items": "更多工作项"
+    "more_work_items": "更多工作项",
+    "view_all_work_items": "在项目页查看全部（{{n}}）"
   },
   "chip": {
     "fallback_label": "项目"

@@ -327,7 +327,7 @@
     "source": "출처: {{source}}",
     "progress_branch_hint": "분기 진행률은 하위 작업의 가중 합산이며 자동으로 업데이트됩니다.",
     "current_progress_hint": "자유 서식 진행 메모입니다. 간트 막대는 위의 백분율을 사용합니다.",
-    "progress_issue_hint": "진행률은 이 작업 항목 이슈의 완료 비율이며, 이슈 진행에 따라 갱신됩니다."
+    "progress_issue_hint": "진행률은 이 작업 항목 태스크의 완료 비율이며, 태스크 진행에 따라 갱신됩니다."
   },
   "milestone": {
     "name": "마일스톤",
@@ -972,7 +972,7 @@
     "pending_request": "결과가 확인되지 않았습니다. 재시도를 위해 원래 내용과 요청 키를 유지합니다.",
     "request_confirmed": "요청 확인됨: {{name}}",
     "narrow_nodes": "일치 {{count}}개 중 {{shown}}개를 표시합니다. 검색 범위를 좁혀 선택하세요.",
-    "primary_changed": "주 소속이 변경되었습니다. 태스크를 다시 선택해 최신 범위를 확인하세요.",
+    "primary_changed": "소속이 변경되었습니다. 태스크를 다시 선택해 최신 범위를 확인하세요.",
     "create_reference_unavailable": "소속이 있는 작업 항목만 새 연결 이슈를 열 수 있습니다."
   },
   "action_flow": {
@@ -2359,15 +2359,15 @@
     "expand": "펼치기",
     "open_row": "{{code}} 열기",
     "add_child": "하위 추가",
-    "add_issue": "이슈 생성",
+    "add_issue": "태스크 생성",
     "more": "추가 작업",
     "progress": "{{n}}%",
-    "issue_count": "이슈 {{n}}개",
+    "issue_count": "태스크 {{n}}개",
     "column_name": "이름",
     "column_owner": "담당자",
     "column_status": "상태",
     "column_dates": "계획 기간",
-    "column_issues": "이슈",
+    "column_issues": "태스크",
     "issues_overflow": "{{n}}개 더 · 목록에서 열기",
     "new_module": "모듈 이름",
     "new_work_item": "작업 항목 이름",
@@ -2378,12 +2378,12 @@
     "renumber_confirm": "이 행 아래를 모두 다시 번호 매길까요?",
     "renumber_done": "{{n}}개 행 번호를 다시 매겼습니다",
     "delete": "삭제",
-    "delete_confirm": "이 행을 삭제할까요? 이슈 {{n}}개가 소속을 잃습니다.",
+    "delete_confirm": "이 행을 삭제할까요? 태스크 {{n}}개가 소속을 잃습니다.",
     "confirm": "확인",
     "cancel": "취소",
     "moved": "이동했습니다",
     "deleted": "삭제했습니다",
     "status_not_in_workflow": "{{issue}}: 상태가 {{workflow}}에 없습니다(허용: {{statuses}})",
-    "delete_module_impact": "작업 항목 {{work_items}}개와 지급 {{payments}}건을 삭제합니다. 이슈 {{issues}}개는 소속을 잃고 프로젝트에 남습니다."
+    "delete_module_impact": "작업 항목 {{work_items}}개와 지급 {{payments}}건을 삭제합니다. 태스크 {{issues}}개는 소속을 잃고 프로젝트에 남습니다."
   }
 }

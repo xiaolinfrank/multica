@@ -11,7 +11,6 @@
     "batch_toolbar": "選択したタスクの操作",
     "clear_selection": "選択を解除",
     "search_failed": "タスクの検索に失敗しました。検索語は保持されています。",
-    "confirm_clear_primary": "解除を確認",
     "selection_changed": "選択したタスクが変わりました。この確認を閉じて対象を選び直してください。",
     "batch_review": "選択したタスクを確認",
     "batch_result": "操作結果",
@@ -1101,10 +1100,10 @@
       "no_work_items": "作業項目はありません",
       "loading": "読み込み中…",
       "more": "さらに表示",
-      "unavailable": "計画ボードが未照合のため、作業項目はまだ選択できません。",
       "unavailable_unreconciled": "計画ボードが未照合のため、作業項目はまだ選択できません。",
       "unavailable_error": "計画を読み取れないため、作業項目を選択できません。",
-      "work_items_failed": "作業項目を読み込めませんでした。"
+      "work_items_failed": "作業項目を読み込めませんでした。",
+      "unavailable": "現在、作業項目を選択できません。"
     }
   },
   "labels_panel": {

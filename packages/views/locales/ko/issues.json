@@ -11,7 +11,6 @@
     "batch_toolbar": "선택한 태스크 작업",
     "clear_selection": "선택 해제",
     "search_failed": "태스크 검색에 실패했습니다. 검색어는 유지됩니다.",
-    "confirm_clear_primary": "해제 확인",
     "selection_changed": "선택한 태스크가 변경되었습니다. 이 확인을 닫고 대상을 다시 선택하세요.",
     "batch_review": "선택한 태스크 확인",
     "batch_result": "작업 결과",
@@ -1101,10 +1100,10 @@
       "no_work_items": "작업 항목이 없습니다",
       "loading": "불러오는 중…",
       "more": "더보기",
-      "unavailable": "계획 보드가 아직 대조되지 않아 작업 항목을 선택할 수 없습니다.",
       "unavailable_unreconciled": "계획 보드가 아직 대조되지 않아 작업 항목을 선택할 수 없습니다.",
       "unavailable_error": "계획을 읽을 수 없어 작업 항목을 선택할 수 없습니다.",
-      "work_items_failed": "작업 항목을 불러오지 못했습니다."
+      "work_items_failed": "작업 항목을 불러오지 못했습니다.",
+      "unavailable": "지금은 작업 항목을 선택할 수 없습니다."
     }
   },
   "labels_panel": {

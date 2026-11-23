@@ -10,7 +10,7 @@ import { NavigationProvider } from "../../navigation";
 import type { NavigationAdapter } from "../../navigation/types";
 import { CockpitNodesSection } from "./cockpit-nodes-section";
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
-vi.mock("@multica/core/api", () => ({ api: { getCockpit: vi.fn(), getCockpitIssueNodeReferences: vi.fn(), getCockpitPrimaryNode: vi.fn(), getCockpitNodeIndex: vi.fn(), appendCockpitNodeIssue: vi.fn(), removeCockpitIssueNodeReference: vi.fn() } }));
+vi.mock("@multica/core/api", () => ({ api: { getCockpit: vi.fn(), getCockpitIssueNodeReferences: vi.fn(), getCockpitNodeIndex: vi.fn(), appendCockpitNodeIssue: vi.fn(), removeCockpitIssueNodeReference: vi.fn() } }));
 vi.mock("../../cockpit/components/cockpit-node-choice", () => ({ CockpitNodeChoicePicker: ({ onSelect, disabled, label }: { onSelect: (node: { id: string }) => Promise<unknown>; disabled?: boolean; label: string }) => <button disabled={disabled} onClick={() => void onSelect({ id: "node-3" })}>{label}</button> }));
 const adapter: NavigationAdapter = { push: vi.fn(), replace: vi.fn(), back: vi.fn(), pathname: "/", searchParams: new URLSearchParams(), hash: "", getShareableUrl: (path) => path };
 const ref = (id = "node-2", title = "Execution"): CockpitIssueNodeReference => ({ node_id: id, code: "02", title, available: true, relation: "reference", can_unlink: true });
@@ -23,7 +23,6 @@ beforeEach(() => {
   cleanup(); vi.clearAllMocks();
   page = { workspace_id: "ws-1", issue_id: "issue-1", items: [ref()], total: 1, next_cursor: null };
   vi.mocked(api.getCockpitIssueNodeReferences).mockImplementation(async () => structuredClone(page));
-  vi.mocked(api.getCockpitPrimaryNode).mockResolvedValue({ issue_id: "issue-1", node_id: null, node_code: "", node_name: "", project_id: null, module_id: null, revision: 0 });
   vi.mocked(api.getCockpitNodeIndex).mockResolvedValue({ workspace_id: "ws-1", total: 1, items: [{ id: "node-2", parent_id: null, code: "02", position: 0 }] });
   vi.mocked(api.removeCockpitIssueNodeReference).mockImplementation(async (_ws, issueId, targetId) => {
     page.items = page.items.filter((item) => item.node_id !== targetId); page.total = page.items.length;
@@ -38,12 +37,15 @@ describe("bounded issue work-item references", () => {
     expect(api.getCockpitIssueNodeReferences).toHaveBeenCalledWith("ws-1", "issue-1", { cursor: undefined }, expect.any(AbortSignal));
     expect(api.getCockpit).not.toHaveBeenCalled();
   });
-  it("keeps primary ownership separate from removable references", async () => {
-    vi.mocked(api.getCockpitPrimaryNode).mockResolvedValue({ issue_id: "issue-1", node_id: "primary", node_code: "01", node_name: "Primary execution", project_id: "p", module_id: "m", revision: 2 });
+  it("lists related links only — the filing itself belongs to the ownership row", async () => {
+    page.total = 1;
     renderSection();
-    expect(await screen.findByRole("link", { name: "01 Primary execution" })).toHaveAttribute("href", "/acme/cockpit?node=primary");
-    expect(screen.queryByRole("button", { name: /Unlink.*Primary execution/ })).toBeNull();
     expect(await screen.findByRole("button", { name: "Unlink 02 Execution" })).toBeEnabled();
+    // The section shows one related row and counts one: it neither repeats the
+    // issue's own work item nor adds it to the total.
+    const header = screen.getByRole("button", { name: /Related work items/ });
+    expect(header).toHaveTextContent("Related work items1");
+    expect(screen.queryByText("Primary work item")).toBeNull();
   });
   it("appends one reference without replacing an unseen node collection", async () => {
     renderSection(); await screen.findByRole("link", { name: "02 Execution" });

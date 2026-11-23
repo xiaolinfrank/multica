@@ -327,7 +327,7 @@
     "source": "数据来源：{{source}}",
     "progress_branch_hint": "分支进度由下级任务加权汇总，随数据自动更新。",
     "current_progress_hint": "文字进展说明；甘特图进度条取上方的百分比。",
-    "progress_issue_hint": "进度取这个工作项下 issue 的完成比例，随 issue 进展自动更新。"
+    "progress_issue_hint": "进度取这个工作项下任务的完成比例，随任务进展自动更新。"
   },
   "milestone": {
     "name": "里程碑",
@@ -2359,15 +2359,15 @@
     "expand": "展开",
     "open_row": "打开 {{code}}",
     "add_child": "新增下级",
-    "add_issue": "新建 issue",
+    "add_issue": "新建任务",
     "more": "更多操作",
     "progress": "{{n}}%",
-    "issue_count": "{{n}} 个 issue",
+    "issue_count": "{{n}} 个任务",
     "column_name": "名称",
     "column_owner": "负责人",
     "column_status": "状态",
     "column_dates": "计划起止",
-    "column_issues": "issue",
+    "column_issues": "任务",
     "issues_overflow": "另有 {{n}} 项 · 在列表中打开",
     "new_module": "模块名称",
     "new_work_item": "工作项名称",
@@ -2378,12 +2378,12 @@
     "renumber_confirm": "重新编号此行的全部下级？",
     "renumber_done": "已重排 {{n}} 项",
     "delete": "删除",
-    "delete_confirm": "删除此行？{{n}} 个 issue 将失去归属。",
+    "delete_confirm": "删除此行？{{n}} 个任务将失去归属。",
     "confirm": "确认",
     "cancel": "取消",
     "moved": "已移动",
     "deleted": "已删除",
     "status_not_in_workflow": "{{issue}}：状态不属于 {{workflow}}（允许：{{statuses}}）",
-    "delete_module_impact": "将删除 {{work_items}} 个工作项、{{payments}} 笔付款；{{issues}} 个 issue 将失去归属并保留在项目中。"
+    "delete_module_impact": "将删除 {{work_items}} 个工作项、{{payments}} 笔付款；{{issues}} 个任务将失去归属并保留在项目中。"
   }
 }

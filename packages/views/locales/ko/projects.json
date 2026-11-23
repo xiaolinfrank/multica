@@ -93,9 +93,9 @@
     "plan_unreconciled": "계획 보드가 아직 대조되지 않아 이 트리는 모듈만 표시합니다. 작업 항목은 보드가 대조된 후 표시됩니다.",
     "plan_unavailable": "계획을 읽을 수 없어 이 트리는 모듈만 표시합니다.",
     "plan_empty": "이 프로젝트에는 아직 계획 행이 없습니다.",
-    "all_issues": "모든 이슈",
+    "all_issues": "모든 태스크",
     "no_module_row": "모듈 없음",
-    "selected_node_clear": "모든 이슈 표시"
+    "selected_node_clear": "모든 태스크 표시"
   },
   "collab_path": {
     "label": "협업 공간 경로",
@@ -241,9 +241,10 @@
     "toast_deleted": "모듈이 삭제되었습니다",
     "toast_delete_failed": "모듈 삭제에 실패했습니다",
     "toast_reorder_failed": "모듈 순서 변경에 실패했습니다",
-    "agent_carry_hint": "수동 만들기로 전환할 때 적용됩니다. 에이전트 만들기는 모듈을 무시합니다",
+    "agent_carry_hint": "수동 만들기로 전환할 때 적용됩니다. 에이전트 만들기는 모듈이나 작업 항목을 무시합니다",
     "toggle_work_items_aria": "작업 항목 열기/닫기",
-    "more_work_items": "작업 항목 더보기"
+    "more_work_items": "작업 항목 더보기",
+    "view_all_work_items": "프로젝트에서 {{n}}개 모두 보기"
   },
   "chip": {
     "fallback_label": "프로젝트"
