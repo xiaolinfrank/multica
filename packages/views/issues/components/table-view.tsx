@@ -2475,7 +2475,7 @@ export function TableView({
           module_id: moduleId,
         });
     },
-    [groupModuleMap, onCreateIssue, serverQuery.scope],
+    [onCreateIssue, serverQuery.scope],
   );
 
   const onSort = useCallback(
