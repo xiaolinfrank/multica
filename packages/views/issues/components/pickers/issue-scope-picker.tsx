@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Blocks, ChevronRight, FolderKanban, ListTree } from "@multica/ui/icons";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import {
-  cockpitContextOptions,
-  cockpitScopeNodesOptions,
+  cockpitPlanOptions,
+  cockpitScopeNodesInfiniteOptions,
   cockpitNodeDetailOptions,
   EMPTY_COCKPIT_SCOPE,
 } from "@multica/core/cockpit";
 import type { CockpitNodeChoice } from "@multica/core/types";
+import { buildPlanRows, planModuleIdOf } from "../../../plan-tree/plan-rows";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
@@ -104,7 +105,6 @@ export function IssueScopePicker({
   const [expandedProject, setExpandedProject] = useState<string | null>(value.project_id);
   const [expandedModule, setExpandedModule] = useState<string | null>(value.module_id);
   const [text, setText] = useState("");
-  const [cursors, setCursors] = useState<string[]>([""]);
   const query = text.trim();
 
   // Reopen on the selection: the tree should show where the issue is now.
@@ -119,40 +119,59 @@ export function IssueScopePicker({
     enabled: open && expandedProject !== null && query === "",
   });
 
-  // The plan is the only source of work items. A board that has not been
-  // reconciled has no skeleton rows to file under yet, and a failed read must
-  // say so rather than present an empty list as "there are none".
-  const context = useQuery({
-    ...cockpitContextOptions(wsId, EMPTY_COCKPIT_SCOPE),
-    enabled: open,
+  const searchMode = query !== "";
+
+  // The plan is the only source of a module's work items, and its rows come
+  // in plan order — the same order the tree, the field and the directory read
+  // in. The id-ordered selector would list 01.02.15 before 01.02.01, which is
+  // exactly what a reader filing work does not expect.
+  const plan = useQuery({
+    ...cockpitPlanOptions(wsId, {
+      projectId: expandedProject,
+      moduleId: expandedModule,
+    }),
+    enabled: open && !searchMode && expandedModule !== null,
   });
-  const planUnavailableReason = context.isError
+  const planUnavailableReason = plan.isError
     ? t(($) => $.pickers.scope.unavailable_error)
-    : context.isSuccess && (!context.data.cockpit || !context.data.cockpit.plan_reconciled_at)
+    : plan.isSuccess && !plan.data?.cockpit?.plan_reconciled_at
       ? t(($) => $.pickers.scope.unavailable_unreconciled)
       : null;
 
-  // Work items of the open module (tree) or of the whole workspace (search).
-  const searchMode = query !== "";
-  const workItemParams = searchMode
-    ? { q: query, cursor: cursors.at(-1) || undefined, page_size: PAGE_SIZE }
-    // The selector refuses a module without its project, so the open project
-    // travels with the module even though the server could derive it.
-    : {
-        project_id: expandedProject ?? undefined,
-        module_id: expandedModule ?? undefined,
-        cursor: cursors.at(-1) || undefined,
-        page_size: PAGE_SIZE,
-      };
-  const workItems = useQuery({
-    ...cockpitScopeNodesOptions(wsId, workItemParams),
-    enabled:
-      open &&
-      planUnavailableReason === null &&
-      context.isSuccess &&
-      (searchMode ? true : expandedModule !== null),
+  const planItems = useMemo<CockpitNodeChoice[]>(() => {
+    const data = plan.data;
+    if (!data || !expandedModule) return [];
+    const byId = new Map(data.nodes.map((node) => [node.id, node]));
+    const allExpanded = new Set(data.nodes.map((node) => node.id));
+    const rows = buildPlanRows({ nodes: data.nodes, counts: data.task_counts, expanded: allExpanded });
+    // The module record's id and the plan row's id are not the same id: the
+    // parent chain names the row, so the row is what children are matched on.
+    const moduleRowId = rows.find((row) => row.kind === "module")?.node.id ?? null;
+    return rows.filter((row) => row.kind === "work_item" && planModuleIdOf(row.node, byId) === moduleRowId)
+      .map((row) => ({
+        id: row.node.id,
+        code: row.code,
+        title: row.name,
+        project_id: expandedProject,
+        module_id: expandedModule,
+        // A row the plan lists under an open module is a leaf and fileable;
+        // the plan is the authority on the tree's shape here.
+        eligible: true,
+        reason: "work_item",
+      }));
+  }, [plan.data, expandedProject, expandedModule]);
+
+  // Search is the one list without a plan to order it: the server selector
+  // matches across the whole workspace. It grows a page at a time — "more"
+  // appends rather than replacing what is on screen.
+  const search = useInfiniteQuery({
+    ...cockpitScopeNodesInfiniteOptions(wsId, { q: query, page_size: PAGE_SIZE }),
+    enabled: open && searchMode,
   });
-  const items = workItems.data?.items ?? [];
+  const searchItems = useMemo(
+    () => search.data?.pages.flatMap((page) => page.items) ?? [],
+    [search.data],
+  );
 
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
@@ -176,7 +195,6 @@ export function IssueScopePicker({
   const commit = (next: IssueScopeValue) => {
     onUpdate(next);
     setText("");
-    setCursors([""]);
     setOpen(false);
   };
   const chooseWorkItem = (node: CockpitNodeChoice) => {
@@ -220,7 +238,7 @@ export function IssueScopePicker({
   );
 
   return (
-    <Popover open={open} onOpenChange={(next) => { if (!next) { setText(""); setCursors([""]); } setOpen(next); }}>
+    <Popover open={open} onOpenChange={(next) => { if (!next) setText(""); setOpen(next); }}>
       <PopoverTrigger
         disabled={locked}
         render={triggerRender ?? (
@@ -241,7 +259,7 @@ export function IssueScopePicker({
           spellCheck={false}
           aria-label={t(($) => $.pickers.scope.search)}
           placeholder={t(($) => $.pickers.scope.search)}
-          onChange={(event) => { setText(event.target.value); setCursors([""]); }}
+          onChange={(event) => setText(event.target.value)}
         />
         {restriction ? (
           <div className="text-caption">{restriction}</div>
@@ -260,8 +278,8 @@ export function IssueScopePicker({
         <div className="max-h-80 space-y-0.5 overflow-y-auto overscroll-contain">
           {searchMode ? (
             <WorkItemRows
-              items={items}
-              query={searchItemsState(workItems, planUnavailableReason)}
+              items={searchItems}
+              query={queryState(search, null)}
               onSelect={chooseWorkItem}
               showBreadcrumb
               projectLabel={(id) => projectById.get(id)?.title}
@@ -281,7 +299,6 @@ export function IssueScopePicker({
                         onClick={() => {
                           setExpandedProject(expanded ? null : project.id);
                           setExpandedModule(null);
-                          setCursors([""]);
                         }}
                       >
                         <ChevronRight className={`size-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
@@ -308,10 +325,7 @@ export function IssueScopePicker({
                                   aria-expanded={moduleOpen}
                                   aria-label={`${t(($) => $.pickers.scope.toggle_module)} ${module.title}`}
                                   className="grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground hover:text-foreground"
-                                  onClick={() => {
-                                    setExpandedModule(moduleOpen ? null : module.id);
-                                    setCursors([""]);
-                                  }}
+                                  onClick={() => setExpandedModule(moduleOpen ? null : module.id)}
                                 >
                                   <ChevronRight className={`size-3 transition-transform ${moduleOpen ? "rotate-90" : ""}`} />
                                 </button>
@@ -328,8 +342,9 @@ export function IssueScopePicker({
                               {moduleOpen ? (
                                 <div className="ml-4 space-y-0.5 border-l border-border/60 pl-1">
                                   <WorkItemRows
-                                    items={items}
-                                    query={searchItemsState(workItems, planUnavailableReason)}
+                                    items={planItems}
+                                    query={queryState(plan, planUnavailableReason)}
+                                    unavailableReason={planUnavailableReason}
                                     onSelect={chooseWorkItem}
                                   />
                                 </div>
@@ -351,17 +366,14 @@ export function IssueScopePicker({
             </>
           )}
         </div>
-        {workItems.data?.next_cursor ? (
+        {searchMode && search.hasNextPage ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="w-full"
-            disabled={workItems.isFetching}
-            onClick={() => {
-              const next = workItems.data?.next_cursor;
-              if (next) setCursors((old) => [...old, next]);
-            }}
+            disabled={search.isFetchingNextPage}
+            onClick={() => void search.fetchNextPage()}
           >
             {t(($) => $.pickers.scope.more)}
           </Button>
@@ -376,8 +388,8 @@ export function IssueScopePicker({
  *  and the search level read the same answer. */
 type WorkItemRowsState = "rows" | "pending" | "error" | "unavailable" | "idle";
 
-function searchItemsState(
-  query: { isPending: boolean; isError: boolean; isSuccess: boolean; data?: { items: CockpitNodeChoice[] } },
+function queryState(
+  query: { isPending: boolean; isError: boolean; isSuccess: boolean },
   unavailableReason: string | null,
 ): WorkItemRowsState {
   if (unavailableReason) return "unavailable";
@@ -389,12 +401,17 @@ function searchItemsState(
 function WorkItemRows({
   items,
   query,
+  unavailableReason,
   onSelect,
   showBreadcrumb = false,
   projectLabel,
 }: {
   items: readonly CockpitNodeChoice[];
   query: WorkItemRowsState;
+  /** Why the list cannot answer — "the plan could not be read" and "the board
+   *  has not been reconciled" are different problems with different fixes,
+   *  so the list repeats the reason it was given instead of one generic line. */
+  unavailableReason?: string | null;
   onSelect: (node: CockpitNodeChoice) => void;
   showBreadcrumb?: boolean;
   projectLabel?: (projectId: string) => string | undefined;
@@ -404,7 +421,7 @@ function WorkItemRows({
     return <p role="status" className="px-2 py-1 text-caption text-muted-foreground">{t(($) => $.pickers.scope.loading)}</p>;
   }
   if (query === "unavailable") {
-    return <p className="px-2 py-1 text-caption text-muted-foreground">{t(($) => $.pickers.scope.unavailable)}</p>;
+    return <p className="px-2 py-1 text-caption text-muted-foreground">{unavailableReason}</p>;
   }
   if (query === "error") {
     return <p role="alert" className="px-2 py-1 text-caption text-destructive">{t(($) => $.pickers.scope.work_items_failed)}</p>;

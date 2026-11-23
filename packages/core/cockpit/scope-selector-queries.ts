@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { api } from "../api";
 import type { CockpitMemberSelectorQuery, CockpitNodeSelectorQuery, CockpitAssigneeSelectorQuery, CockpitAssigneeType } from "../types";
 import { cockpitKeys } from "./queries";
@@ -14,6 +14,27 @@ export function cockpitScopeNodesOptions(wsId: string, params: CockpitNodeSelect
   return queryOptions({ queryKey: [...cockpitScopeSelectorKeys.nodes(wsId), query],
     queryFn: async ({ signal }) => requireCockpitReadResult(await api.searchCockpitScopeNodes(wsId, query, signal)), enabled: Boolean(wsId) });
 }
+/**
+ * The node selector as a growing list. "More" appends to what the user is
+ * looking at; the cursor-keyed {@link cockpitScopeNodesOptions} read replaces
+ * the page instead, which is right for a one-shot lookup and wrong behind a
+ * button that says "more".
+ */
+export function cockpitScopeNodesInfiniteOptions(wsId: string, params: CockpitNodeSelectorQuery = {}) {
+  const { cursor, ...rest } = params;
+  const query = { page_size: 20, eligible: true, ...rest, q: params.q?.trim() || undefined };
+  return infiniteQueryOptions({
+    // The cursor is the page param, never part of the key: one key grows.
+    queryKey: [...cockpitScopeSelectorKeys.nodes(wsId), "pages", query],
+    queryFn: ({ pageParam, signal }) =>
+      api.searchCockpitScopeNodes(wsId, { ...query, cursor: pageParam as string | undefined }, signal)
+        .then(requireCockpitReadResult),
+    initialPageParam: cursor ?? (undefined as string | undefined),
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
+    enabled: Boolean(wsId),
+  });
+}
+
 export function cockpitScopeMembersOptions(wsId: string, params: CockpitMemberSelectorQuery = {}) {
   const query = { page_size: 20, ...params, q: params.q?.trim() || undefined, ids: params.ids?.length ? [...params.ids].sort() : undefined };
   return queryOptions({ queryKey: [...cockpitScopeSelectorKeys.members(wsId), query],

@@ -58,6 +58,19 @@ export function planDepthOf(node: CockpitNode, byId: ReadonlyMap<string, Cockpit
   return depth;
 }
 
+/** The module a row sits under, via the plan's parent chain. Never a code
+ *  prefix: merged or renumbered rows would lie about depth. */
+export function planModuleIdOf(node: CockpitNode, byId: ReadonlyMap<string, CockpitNode>): string | null {
+  let current: CockpitNode | undefined = node;
+  const seen = new Set<string>();
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    if (planNodeKind(current, byId) === "module") return current.id;
+    current = current.parent_id ? byId.get(current.parent_id) : undefined;
+  }
+  return null;
+}
+
 export interface BuildPlanRowsInput {
   nodes: readonly CockpitNode[];
   counts: readonly CockpitPlanTaskCount[];

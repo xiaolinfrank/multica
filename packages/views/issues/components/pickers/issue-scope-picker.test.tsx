@@ -73,6 +73,38 @@ const workItem = {
   reason: "",
 };
 
+// The plan read is what lists a module's work items now. Two rows, with the
+// ids deliberately in the opposite order to their codes: a list ordered by id
+// would read 01.02.02 first.
+const SECOND_WORK_ITEM_ID = "00000000-0000-4000-8000-000000000001";
+
+function planData(reconciledPlan = true) {
+  return {
+    workspace_id: "ws-1",
+    scope: { project_id: PROJECT_ID, module_id: MODULE_ID, project_title: "Programme", module_title: "01.02 Docking" },
+    cockpit: {
+      id: "cp",
+      workspace_id: "ws-1",
+      goal_date: null,
+      plan_reconciled_at: reconciledPlan ? "2026-11-20T00:00:00Z" : null,
+    },
+    actor: { user_id: "user-1", role: "owner", is_human: true },
+    has_meeting_workflows: false,
+    has_stable_bindings: false,
+    complete: true,
+    nodes: [
+      { id: MODULE_ID, code: "01.02", name: "01.02 Docking", kind: "module", parent_id: null, position: 0, project_id: PROJECT_ID, module_id: MODULE_ID },
+      { id: WORK_ITEM_ID, code: "01.02.01", name: "Interface draft", kind: "work_item", parent_id: MODULE_ID, position: 0, project_id: PROJECT_ID, module_id: null },
+      { id: SECOND_WORK_ITEM_ID, code: "01.02.02", name: "Cohort handover", kind: "work_item", parent_id: MODULE_ID, position: 1, project_id: PROJECT_ID, module_id: null },
+    ],
+    task_counts: [],
+    context_node_ids: [],
+    payments: [],
+    milestones: [],
+    node_index: [],
+  };
+}
+
 describe("IssueScopePicker", () => {
   let queryClient: QueryClient;
   let reconciled: boolean;
@@ -98,13 +130,16 @@ describe("IssueScopePicker", () => {
         has_meeting_workflows: false,
         has_stable_bindings: false,
       }),
-      searchCockpitScopeNodes: async () => ({
+      getCockpitPlan: async () => planData(reconciled),
+      searchCockpitScopeNodes: async (_wsId: string, query: { cursor?: string; q?: string }) => ({
         workspace_id: "ws-1",
-        scope: { project_id: null, module_id: null, q: "", eligible: true },
-        items: [workItem],
-        total: 1,
-        filtered_total: 1,
-        next_cursor: null,
+        scope: { project_id: null, module_id: null, q: query.q ?? "", eligible: true },
+        items: query.cursor
+          ? [{ ...workItem, id: SECOND_WORK_ITEM_ID, code: "01.02.02", title: "Cohort handover" }]
+          : [workItem],
+        total: 2,
+        filtered_total: 2,
+        next_cursor: query.cursor ? null : "page-2",
       }),
     } as unknown as ApiClient);
   });
@@ -132,57 +167,110 @@ describe("IssueScopePicker", () => {
 
   it("offers projects first and opens a project's modules", async () => {
     show(vi.fn());
-    fireEvent.click(screen.getByRole("button", { name: "Filing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
     expect(await screen.findByText("Programme")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Toggle project Programme" }));
     expect(await screen.findByText("01.02 Docking")).toBeTruthy();
   });
 
-  it("names the module's project with it — the selector refuses a module on its own", async () => {
-    const calls: Array<Record<string, unknown>> = [];
+  it("reads a module's work items at the module's scope, with its project", async () => {
+    const scopes: Array<Record<string, unknown>> = [];
     setApiInstance({
       listProjects: async () => ({ projects: [project], total: 1 }),
       listModules: async () => ({ modules, total: modules.length }),
-      getCockpitContext: async () => ({
+      getCockpitPlan: async (_wsId: string, scope: Record<string, unknown>) => {
+        scopes.push(scope);
+        return planData();
+      },
+      searchCockpitScopeNodes: async () => ({
         workspace_id: "ws-1",
-        scope: { project_id: null, module_id: null, project_title: "", module_title: "" },
-        cockpit: {
-          id: "cp",
-          workspace_id: "ws-1",
-          goal_date: null,
-          plan_reconciled_at: "2026-11-20T00:00:00Z",
-        },
-        actor: { user_id: "user-1", role: "owner", is_human: true },
-        has_meeting_workflows: false,
-        has_stable_bindings: false,
+        scope: { project_id: PROJECT_ID, module_id: MODULE_ID, q: "", eligible: true },
+        items: [workItem],
+        total: 1,
+        filtered_total: 1,
+        next_cursor: null,
       }),
+    } as unknown as ApiClient);
+
+    show(vi.fn());
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Toggle project Programme" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Toggle module 01.02 Docking" }));
+
+    // A module scope needs its project (the server refuses a module alone),
+    // so the plan read carries both.
+    await waitFor(() =>
+      expect(scopes.at(-1)).toMatchObject({ projectId: PROJECT_ID, moduleId: MODULE_ID }),
+    );
+    // Plan order, not id order: 01.02.01 comes before 01.02.02 even though
+    // their ids sort the other way.
+    const rows = await screen.findAllByRole("button", { name: /^01\.02\.0/ });
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "01.02.01 Interface draft",
+      "01.02.02 Cohort handover",
+    ]);
+  });
+
+  it("says the plan could not be read, not that the board was never reconciled", async () => {
+    setApiInstance({
+      listProjects: async () => ({ projects: [project], total: 1 }),
+      listModules: async () => ({ modules, total: modules.length }),
+      getCockpitPlan: async () => {
+        throw new Error("403");
+      },
+    } as unknown as ApiClient);
+
+    show(vi.fn());
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Toggle project Programme" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Toggle module 01.02 Docking" }));
+
+    expect(await screen.findByText("The plan could not be read, so work items cannot be picked.")).toBeInTheDocument();
+    expect(screen.queryByText(/has not been reconciled/)).toBeNull();
+  });
+
+  it("searches across the workspace and grows the list instead of replacing it", async () => {
+    const searches: Array<Record<string, unknown>> = [];
+    setApiInstance({
+      listProjects: async () => ({ projects: [project], total: 1 }),
+      listModules: async () => ({ modules, total: modules.length }),
+      getCockpitPlan: async () => planData(),
       searchCockpitScopeNodes: async (_wsId: string, query: Record<string, unknown>) => {
-        calls.push(query);
+        searches.push(query);
         return {
           workspace_id: "ws-1",
-          scope: { project_id: PROJECT_ID, module_id: MODULE_ID, q: "", eligible: true },
-          items: [workItem],
-          total: 1,
-          filtered_total: 1,
-          next_cursor: null,
+          scope: { project_id: null, module_id: null, q: String(query.q ?? ""), eligible: true },
+          items: query.cursor
+            ? [{ ...workItem, id: SECOND_WORK_ITEM_ID, code: "01.02.02", title: "Cohort handover" }]
+            : [workItem],
+          total: 2,
+          filtered_total: 2,
+          next_cursor: query.cursor ? null : "page-2",
         };
       },
     } as unknown as ApiClient);
 
     show(vi.fn());
-    fireEvent.click(screen.getByRole("button", { name: "Filing" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Toggle project Programme" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Toggle module 01.02 Docking" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search work items…" }), {
+      target: { value: "01.02" },
+    });
 
-    await waitFor(() =>
-      expect(calls.at(-1)).toMatchObject({ project_id: PROJECT_ID, module_id: MODULE_ID }),
-    );
+    expect(await screen.findByRole("button", { name: /01\.02\.01 Interface draft/ })).toBeInTheDocument();
+    expect(searches.at(-1)).toMatchObject({ q: "01.02" });
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+    // "More" appends: the first page stays on screen and the second lands
+    // under it.
+    expect(await screen.findByRole("button", { name: /01\.02\.02 Cohort handover/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /01\.02\.01 Interface draft/ })).toBeInTheDocument();
   });
 
   it("files under a work item by its code and name, carrying its module and project", async () => {
     const onUpdate = vi.fn();
     show(onUpdate);
-    fireEvent.click(screen.getByRole("button", { name: "Filing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
     fireEvent.click(await screen.findByRole("button", { name: "Toggle project Programme" }));
     fireEvent.click(await screen.findByRole("button", { name: "Toggle module 01.02 Docking" }));
     const row = await screen.findByRole("button", { name: /01\.02\.01 Interface draft/ });
@@ -220,14 +308,14 @@ describe("IssueScopePicker", () => {
     const onUpdate = vi.fn();
     show(onUpdate, { project_id: PROJECT_ID, module_id: MODULE_ID, work_item_id: WORK_ITEM_ID }, { workItemLabel: "01.02.01 Interface draft" });
     fireEvent.click(await screen.findByRole("button", { name: /Programme \/ 01.02 Docking \/ 01.02.01 Interface draft/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "No filing" }));
+    fireEvent.click(await screen.findByRole("button", { name: "No ownership" }));
     expect(onUpdate).toHaveBeenCalledWith({ project_id: null, module_id: null, work_item_id: null });
   });
 
   it("still offers projects and modules on an unreconciled board, and says why work items are missing", async () => {
     reconciled = false;
     show(vi.fn());
-    fireEvent.click(screen.getByRole("button", { name: "Filing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
     fireEvent.click(await screen.findByRole("button", { name: "Toggle project Programme" }));
     expect(await screen.findByText("01.02 Docking")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Toggle module 01.02 Docking" }));
@@ -246,7 +334,7 @@ describe("IssueScopePicker", () => {
     );
     const trigger = await screen.findByRole("button", { name: /Programme \/ 01.02 Docking \/ 01.02.01 Interface draft/ });
     expect(trigger).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "No filing" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "No ownership" })).toBeNull();
     expect(onUpdate).not.toHaveBeenCalled();
   });
 });
