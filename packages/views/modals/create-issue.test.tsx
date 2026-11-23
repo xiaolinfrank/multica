@@ -1484,6 +1484,35 @@ describe("CreateIssueModal", () => {
     });
   });
 
+  it("opens on nothing when the agent panel handed over an empty filing, ignoring a stale draft", async () => {
+    // The reverse direction of the case below: the agent panel named no
+    // level, so its carry is all nulls. The draft remembers a module and a
+    // work item from an earlier visit; the manual form must open on "no
+    // ownership", not on them.
+    const user = userEvent.setup();
+    mockDraftStore.draft.shared = {
+      ...mockDraftStore.draft.shared,
+      projectId: "proj-a",
+      moduleId: "stale-module",
+      workItemId: "stale-work-item",
+    };
+
+    renderModal(
+      <ManualCreatePanel
+        onClose={vi.fn()}
+        onSwitchMode={vi.fn()}
+        data={{ project_id: null, module_id: null, work_item_id: null }}
+        isExpanded={false}
+        setIsExpanded={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByPlaceholderText("Issue title"), "Refactor auth");
+    // What the form would file: nothing from the stale draft — all three
+    // levels read as empty, not the draft's leftover module.
+    expect(screen.getByTestId("issue-scope")).toHaveTextContent(/^none$/);
+  });
+
   it("carries the project alone when that is the whole filing, ignoring a stale draft", async () => {
     const user = userEvent.setup();
     const onSwitchMode = vi.fn();

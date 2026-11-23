@@ -1102,6 +1102,44 @@ describe("AgentCreatePanel", () => {
     });
   });
 
+  it("carries an empty filing as all nulls, so the manual form opens on nothing", async () => {
+    // Nothing picked here, but the draft remembers a module from an earlier
+    // visit. Omitting the nulls would make the manual form read them.
+    const user = userEvent.setup();
+    const onSwitchMode = vi.fn();
+    mockProjectsQuery.data = [{ id: "proj-1", title: "Web", icon: null }];
+    mockIssueDraftStore.draft.shared = {
+      ...mockIssueDraftStore.draft.shared,
+      projectId: "proj-1",
+      moduleId: "stale-module",
+      workItemId: "stale-work-item",
+    };
+
+    // Opened on "no ownership" explicitly (a hand-over from an empty manual
+    // form), so the draft's leftovers are not the filing.
+    renderPanel({
+      onClose: vi.fn(),
+      onSwitchMode,
+      isExpanded: false,
+      setIsExpanded: vi.fn(),
+      data: { project_id: null, module_id: null, work_item_id: null },
+    });
+
+    await user.type(
+      screen.getByPlaceholderText(
+        'Tell the agent what to do, e.g. "let Bohan fix the inbox loading slowness in the Web project"',
+      ),
+      "Ship it",
+    );
+    await user.click(screen.getByRole("button", { name: /Switch to Manual/i }));
+
+    expect(onSwitchMode).toHaveBeenCalledWith({
+      project_id: null,
+      module_id: null,
+      work_item_id: null,
+    });
+  });
+
   it("creates in the project the switch carried", async () => {
     // The agent endpoint takes only a project, so a filing that arrives by
     // carry must keep it: dropping it files the issue outside any project.
