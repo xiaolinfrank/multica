@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { CockpitNodeSchema } from "@multica/core/api/schemas";
-import { buildPlanRows, planModules } from "./plan-rows";
+import { buildPlanRows, planModuleGroups, planModules } from "./plan-rows";
 import { cockpitIssueProgress } from "@multica/core/cockpit";
 
 const n = (o: Record<string, unknown>) => CockpitNodeSchema.parse(o);
@@ -69,5 +69,38 @@ describe("buildPlanRows", () => {
     // than rendering an empty grid after a scope switch.
     const stale = buildPlanRows({ nodes, counts, expanded: allOpen, rootIds: new Set(["gone"]) });
     expect(stale).toHaveLength(6);
+  });
+});
+
+describe("planModuleGroups", () => {
+  it("lists modules in plan order, each with its work items in plan order", () => {
+    // The read arrives in neither order: modules reversed, work items
+    // reversed, ids that sort against the codes. The plan's position and
+    // code decide, so the tree and the ownership picker read the same way.
+    const shuffled = [nodes[4]!, nodes[0]!, nodes[5]!, nodes[2]!, nodes[1]!, nodes[3]!];
+    const groups = planModuleGroups({ nodes: shuffled, counts });
+
+    expect(groups.map((g) => [g.moduleRow.node.id, g.workItems.map((w) => w.node.id)])).toEqual([
+      ["m1", ["w1", "w2"]],
+      ["m2", ["w3"]],
+    ]);
+    expect(groups.map((g) => g.moduleRow.code)).toEqual(["01.01", "01.02"]);
+  });
+
+  it("files a work item under its parent module by the parent chain, not by a code prefix", () => {
+    // A work item whose code does not share its module's prefix still belongs
+    // to the module its parent chain names.
+    const odd = [
+      n({ id: "mx", code: "02", name: "模块X", kind: "module", position: 0 }),
+      n({ id: "wx", code: "07.07", name: "工作项X", kind: "work_item", parent_id: "mx", position: 0 }),
+    ];
+    const groups = planModuleGroups({ nodes: odd, counts: [] });
+    expect(groups.map((g) => [g.moduleRow.node.id, g.workItems.map((w) => w.node.id)])).toEqual([["mx", ["wx"]]]);
+  });
+
+  it("gives a module with no work items an empty list, and never borrows another module's", () => {
+    const sparse = [nodes[0]!, nodes[1]!, nodes[2]!, nodes[4]!];
+    const groups = planModuleGroups({ nodes: sparse, counts });
+    expect(groups.map((g) => [g.moduleRow.node.id, g.workItems.length])).toEqual([["m1", 1], ["m2", 0]]);
   });
 });

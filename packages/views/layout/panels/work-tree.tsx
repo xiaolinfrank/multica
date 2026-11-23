@@ -111,17 +111,26 @@ export function ProjectsSection({
   const collapsed = useSidebarTreeStore((s) => s.projectsCollapsed);
   const setCollapsed = useSidebarTreeStore((s) => s.setProjectsCollapsed);
   const { projectSettings, projectOrder } = useSidebarProjectPrefs(wsId);
-  // Where the page's `?node=` points, when it points at this project. One
-  // single-node read names the row's kind and the module it sits under, which
-  // is what the tree needs to open and light up the right row.
+  // Where the page's `?node=` points — read only on a project page. The
+  // cockpit's own address uses `?node=` too (`cockpitObjectPath`), and its
+  // rows must not open or light up a sidebar whose links all lead to the
+  // project page. Same test as the project row's own `active`, so the two
+  // can never disagree about which project is open.
   const { searchParams } = useNavigation();
-  const activeNodeId = searchParams?.get("node") ?? null;
+  const nodeParam = searchParams?.get("node") ?? null;
+  const onProjectPage = projects.some((project) => isPathWithin(pathname, p.projectDetail(project.id)));
+  const activeNodeId = plainRowsLit && onProjectPage ? nodeParam : null;
   const activeNode = useQuery({
     ...cockpitNodeDetailOptions(wsId, activeNodeId ?? "", EMPTY_COCKPIT_SCOPE),
     enabled: Boolean(activeNodeId && activeNodeId !== "none"),
   });
   const activeNodeRow = activeNode.data?.node ?? null;
-  const activeProjectId = activeNode.data?.binding?.project_id ?? null;
+  // Which project the selection lives in: the node read says, and for `none`
+  // — which names no node — the open project page does.
+  const activeProjectId =
+    activeNodeId === "none"
+      ? projects.find((project) => isPathWithin(pathname, p.projectDetail(project.id)))?.id ?? null
+      : activeNode.data?.binding?.project_id ?? null;
   // Rows on an older board carry no `kind`; the parent chain does, and that is
   // the same fallback the plan tree reads (`planNodeKind`). Depth 0/1/2 is
   // project/module/work item — never the code.
@@ -185,6 +194,7 @@ export function ProjectsSection({
                 project={project}
                 active={plainRowsLit && isPathWithin(pathname, p.projectDetail(project.id))}
                 showCount={projectSettings.showCount}
+                activeNodeId={activeNodeId}
                 activeProjectId={activeProjectId}
                 activeModuleRowId={activeModuleRowId}
                 activeModuleId={activeModuleId}
@@ -231,6 +241,7 @@ function ProjectTreeItem({
   project,
   active,
   showCount,
+  activeNodeId,
   activeProjectId,
   activeModuleRowId,
   activeModuleId,
@@ -240,6 +251,8 @@ function ProjectTreeItem({
   project: Project;
   active: boolean;
   showCount: boolean;
+  /** The `?node=` on a project page for this project, or null. */
+  activeNodeId: string | null;
   activeProjectId: string | null;
   activeModuleRowId: string | null;
   /** The module record the selected row sits under, so its list opens. */
@@ -327,7 +340,7 @@ function ProjectTreeItem({
           wsId={wsId}
           projectId={project.id}
           listId={listId}
-          activeNodeId={activeProjectId === project.id ? null : null}
+          activeNodeId={activeProjectId === project.id ? activeNodeId : null}
           activeModuleRowId={activeModuleRowId}
           activeModuleId={activeModuleId}
           activeWorkItemId={activeWorkItemId}

@@ -143,7 +143,10 @@ function installApi(overrides: Partial<Record<string, unknown>> = {}) {
   } as unknown as ApiClient);
 }
 
-function renderSection() {
+/** `path` is the project page for Desktop unless given otherwise — the
+ *  cockpit's own address uses `?node=` too, and the tree must only answer
+ *  it on a project page. */
+function renderSection(path = "/acme/projects/p1") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(
     issueViewPreferenceOptions("ws-1", SIDEBAR_PROJECTS_SCOPE).queryKey,
@@ -157,7 +160,7 @@ function renderSection() {
     <QueryClientProvider client={qc}>
       <ProjectsSection
         wsId="ws-1"
-        pathname="/acme/issues"
+        pathname={path}
         projects={PROJECTS}
         totalProjects={4}
         plainRowsLit
@@ -262,7 +265,8 @@ describe("a project's tree under the Work panel", () => {
     const detail = structuredClone(nodeDetail);
     detail.node = { id: "wi-b0", code: "01.02.01", name: "Interface draft", kind: "work_item" };
     detail.binding = { project_id: "p1", module_id: "mod-record-2", eligible: true, reason: "" };
-    installApi({ getCockpitNodeDetail: vi.fn(async () => detail) });
+    const nodeDetailRead = vi.fn(async () => detail);
+    installApi({ getCockpitNodeDetail: nodeDetailRead });
     nav.searchParams = new URLSearchParams({ node: "wi-b0" });
     renderSection();
 
@@ -271,8 +275,37 @@ describe("a project's tree under the Work panel", () => {
     const workItem = await screen.findByText("01.02.01 Interface draft");
     expect(workItem.closest("a")).toHaveAttribute("href", expect.stringContaining("node=wi-b0"));
     expect(workItem.closest("a")).toHaveAttribute("aria-current", "page");
-    expect(screen.getByText("01.02 Docking").closest("a")).not.toHaveAttribute("aria-current");
+    // The module row links to its own row, not to the bare project page.
+    const moduleRow = screen.getByText("01.02 Docking").closest("a")!;
+    expect(moduleRow).toHaveAttribute("href", expect.stringContaining("node=row-b"));
+    expect(moduleRow).not.toHaveAttribute("aria-current");
     useSidebarTreeStore.setState({ expanded: [] });
+  });
+
+  it("ignores ?node= on a page that is not the project's own", async () => {
+    // The cockpit's address carries `?node=` for its own rows. Opening one
+    // there must not open this project or light up a row — every row links
+    // to the project page, so the highlight would lead somewhere else.
+    const nodeDetailRead = vi.fn(async () => nodeDetail);
+    installApi({ getCockpitNodeDetail: nodeDetailRead });
+    nav.searchParams = new URLSearchParams({ node: "wi-b0" });
+    renderSection("/acme/cockpit");
+
+    await screen.findByText("Desktop");
+    expect(useSidebarTreeStore.getState().expanded).toEqual([]);
+    expect(screen.queryByText("01.02.01 Interface draft")).toBeNull();
+    expect(nodeDetailRead).not.toHaveBeenCalled();
+  });
+
+  it("lights up the unfiled row for ?node=none", async () => {
+    nav.searchParams = new URLSearchParams({ node: "none" });
+    renderSection();
+    // Arrival with a selection opens the project on its own.
+    await waitFor(() => expect(useSidebarTreeStore.getState().expanded).toContain("project:p1"));
+
+    const unfiled = await screen.findByText("No module");
+    expect(unfiled.closest("a")).toHaveAttribute("href", expect.stringContaining("node=none"));
+    expect(unfiled.closest("a")).toHaveAttribute("aria-current", "page");
   });
 
   it("reads a row with no kind field from its parents, like the plan does", async () => {
@@ -303,6 +336,18 @@ describe("a project's tree under the Work panel", () => {
     await waitFor(() => expect(useSidebarTreeStore.getState().expanded).toContain("project:p1"));
     expect((await screen.findByText("01.01 Parser")).closest("a")).toHaveAttribute("aria-current", "page");
     useSidebarTreeStore.setState({ expanded: [] });
+  });
+
+  it("falls back to the module records when the read says it is incomplete", async () => {
+    // A read with `complete: false` is a partial plan; its module order and
+    // work items cannot be trusted, so the tree shows the module records.
+    installApi({ getCockpitPlan: vi.fn(async () => ({ ...planData(), complete: false })) });
+    renderSection();
+    expandDesktop();
+
+    expect(await screen.findByText("Docking")).toBeInTheDocument();
+    expect(screen.queryByText("No module")).toBeNull();
+    expect(screen.queryByText(/^01\.0/)).toBeNull();
   });
 
   it("falls back to the module records when the board has not been reconciled", async () => {
