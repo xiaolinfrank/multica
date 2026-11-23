@@ -806,8 +806,10 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   return (
     <>
     <div className="flex min-h-0 flex-1">
+      {/* 288px, not 256: a row is "code + name" and a work item's name has to
+          read about eight characters wide at the default width. */}
       {showPlanColumn && (
-        <aside aria-label={t(($) => $.detail.plan_title)} className="flex w-64 shrink-0 flex-col border-r border-border">
+        <aside aria-label={t(($) => $.detail.plan_title)} className="flex w-72 shrink-0 flex-col border-r border-border">
           <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
             <span className="min-w-0 flex-1 truncate text-caption font-medium">{t(($) => $.detail.plan_title)}</span>
             <button
@@ -824,7 +826,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       )}
       {narrow && (
         <Sheet open={planSheetOpen} onOpenChange={setPlanSheetOpen}>
-          <SheetContent side="left" className="flex w-72 flex-col p-0">
+          <SheetContent side="left" className="flex w-80 flex-col p-0">
             <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
               <span className="min-w-0 flex-1 truncate text-caption font-medium">{t(($) => $.detail.plan_title)}</span>
               <button
