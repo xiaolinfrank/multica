@@ -25,6 +25,7 @@ import type {
   WorkspaceWorkingAgent,
 } from "@multica/core/types";
 import { useIssueSurfaceController } from "./use-issue-surface-controller";
+import { applyIssueFilters } from "../utils/filter";
 import { IssueTableExportIntegrityError } from "../components/table-view-model";
 import { statusTableMethodsFromLegacy } from "./status-table-test-api";
 
@@ -259,6 +260,44 @@ describe("useIssueSurfaceController", () => {
         group: { kind: "status" },
       }),
     );
+  });
+
+  // The project page's tree narrows the surface client-side in board and
+  // list modes: the filter has to reach the predicate, not just the server
+  // request the table makes. Reverting workItemFilters to [] widens it back.
+  it("narrows the board/list window to the selected work item", async () => {
+    fixtureRows = [
+      makeIssue({ id: "w1", status: "todo", work_item_id: "w-1" }),
+      makeIssue({ id: "w2", status: "todo", work_item_id: "w-2" }),
+    ];
+
+    listIssues.mockResolvedValue({ issues: fixtureRows, total: fixtureRows.length });
+    const { result } = renderHook(
+      () =>
+        useIssueSurfaceController({
+          scope: { type: "project", projectId: "p1" },
+          // List mode takes the client predicate (board narrows server-side).
+          modes: ["list"],
+          moduleFilter: { work_item_ids: ["w-1"] },
+        }),
+      { wrapper: makeWrapper(qc, "project:p1") },
+    );
+
+    // The view is what applies the client predicate, so assert the state it
+    // is handed AND the result that predicate produces from it.
+    await waitFor(() =>
+      expect(result.current.activeFilters.workItemFilters).toEqual(["w-1"]),
+    );
+    const { workItemFilters, ...rest } = result.current.activeFilters;
+    const filtered = applyIssueFilters(fixtureRows, {
+      // The activeFilters view model omits the two switches the predicate
+      // requires; the surface never sets them here.
+      statusFilters: [],
+      workingOnly: false,
+      ...rest,
+      workItemFilters,
+    });
+    expect(filtered.map((issue) => issue.id)).toEqual(["w1"]);
   });
 
   // The project-status filter is server-side only for the list
