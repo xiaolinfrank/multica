@@ -435,6 +435,23 @@ describe("Table grouped by module", () => {
       });
     });
 
+    it("carries the module's own project when the query spans the whole workspace", async () => {
+      // A workspace table groups by module too. The "+" has to file under the
+      // clicked module's project — not under the project the create draft
+      // happened to remember, which would land the new issue somewhere else
+      // with the module silently dropped.
+      const onCreateIssue = vi.fn();
+      render(serverQuery, onCreateIssue);
+      await screen.findByText("Parser rewrite");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add issue to Parser rewrite" }),
+      );
+      expect(onCreateIssue).toHaveBeenCalledWith({
+        project_id: PROJECT_ID,
+        module_id: MOD_ID,
+      });
+    });
+
     it("leaves the title empty for a numbered module too", async () => {
       moduleCatalog = [
         makeModule(MOD_ID, "Parser rewrite", 0),

@@ -2461,21 +2461,27 @@ export function TableView({
 
   // Module grouping is the only table grouping whose header stands for a place
   // an issue is filed, so it is the only one that offers to create there. The
-  // module carries its own project, which the create dialog resolves from it.
+  // header's module record names its project too: the create takes both, so it
+  // files where the "+" was clicked instead of taking the project the draft
+  // happened to remember. The draft may not supply it — a named level now
+  // names the whole filing.
   const createInGroup = useCallback(
     (group: Extract<IssueTableDisplayRow, { kind: "group" }>) => {
       const value = group.value;
       if (value?.kind !== "module") return undefined;
       const moduleId = value.module_id ?? null;
+      const projectId =
+        moduleId === null
+          ? null
+          : groupModuleMap.get(moduleId)?.project_id ??
+            (serverQuery.scope.kind === "project" ? serverQuery.scope.project_id : null);
       return () =>
         onCreateIssue({
-          ...(serverQuery.scope.kind === "project"
-            ? { project_id: serverQuery.scope.project_id }
-            : {}),
+          project_id: projectId,
           module_id: moduleId,
         });
     },
-    [onCreateIssue, serverQuery.scope],
+    [groupModuleMap, onCreateIssue, serverQuery.scope],
   );
 
   const onSort = useCallback(
