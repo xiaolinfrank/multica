@@ -184,17 +184,19 @@ describe("IssueScopePicker", () => {
     );
 
     const workItem = screen.getByText("01.02.01 Interface draft");
-    // Project and module keep a floor wide enough for a character and the
-    // ellipsis; the work item holds its own width and is last to shorten.
-    expect(await screen.findByText("Programme")).toHaveClass("min-w-8", "truncate");
-    expect(screen.getByText("01.02 Docking")).toHaveClass("min-w-8", "truncate");
-    expect(workItem).toHaveClass("shrink-0");
-    expect(workItem).toHaveClass("truncate");
-    // The separators are their own elements, so their spaces survive both in
-    // the DOM and in the accessible name.
-    expect(
-      screen.getAllByText((_, node) => node?.textContent === " / "),
-    ).toHaveLength(2);
+    // Shrink order, as measured in a browser: project and module give way
+    // first, down to `min-w-8` (a character and an ellipsis); the work item
+    // shrinks last and is the one that ellipsizes. A `shrink-0` work item
+    // overflows the row and the outer clip cuts it with no ellipsis.
+    expect(await screen.findByText("Programme")).toHaveClass("min-w-8", "shrink-[1000]", "truncate");
+    expect(screen.getByText("01.02 Docking")).toHaveClass("min-w-8", "shrink-[1000]", "truncate");
+    expect(workItem).toHaveClass("min-w-0", "truncate");
+    expect(workItem).not.toHaveClass("shrink-0");
+    // The separators are their own elements and keep their whitespace: a flex
+    // item trims leading/trailing spaces, so the spaces need `pre`.
+    for (const separator of screen.getAllByText((_, node) => node?.textContent === " / ")) {
+      expect(separator).toHaveClass("shrink-0", "whitespace-pre");
+    }
     expect(
       screen.getByRole("button", {
         name: "Programme / 01.02 Docking / 01.02.01 Interface draft",

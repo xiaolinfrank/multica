@@ -40,6 +40,13 @@ const PAGE_SIZE = 20;
 
 /** One persisted selection resolved independently of any list page — the
  *  trigger must name a work item the tree has not paged to. */
+/** The path's separator. Its own element with `whitespace-pre`: wrapping the
+ *  text in a span alone does not keep the spaces — a flex item still trims
+ *  its leading and trailing whitespace, and the path reads "Alpha/Module". */
+function Separator() {
+  return <span className="shrink-0 whitespace-pre">{" / "}</span>;
+}
+
 function useSelectedWorkItem(workItemId: string | null) {
   const wsId = useWorkspaceId();
   const query = useQuery({
@@ -251,27 +258,26 @@ export function IssueScopePicker({
             ) : (
               // Three segments, not one string. A single truncate cuts the
               // tail off, and the tail is the work item — the level this row
-              // exists to name. Project and module give way first; the work
-              // item holds its width and ellipsizes only when it alone would
-              // not fit.
+              // exists to name. Measured in a browser: the work item must be
+              // the segment that shrinks last and ellipsizes; if it holds its
+              // width (`shrink-0`), the row overflows and the outer
+              // `overflow-hidden` clips the end with no ellipsis at all.
               <span className="flex min-w-0 items-center">
-                <span className="min-w-8 truncate">
+                {/* Project and module give way first, down to `min-w-8` (a
+                    character and an ellipsis), then the work item shrinks. */}
+                <span className="min-w-8 shrink-[1000] truncate">
                   {selectedProject?.title ?? (effectiveProjectId ? "…" : "")}
                 </span>
                 {value.module_id && (
                   <>
-                    {/* Its own element, not a bare text node: a text node in a
-                        flex container is an anonymous item whose leading and
-                        trailing spaces are dropped, so the path read
-                        "Alpha/Module". */}
-                    <span className="shrink-0">{" / "}</span>
-                    <span className="min-w-8 truncate">{selectedModule?.title ?? "…"}</span>
+                    <Separator />
+                    <span className="min-w-8 truncate shrink-[1000]">{selectedModule?.title ?? "…"}</span>
                   </>
                 )}
                 {value.work_item_id && (
                   <>
-                    <span className="shrink-0">{" / "}</span>
-                    <span className="max-w-full shrink-0 truncate">{workItemText}</span>
+                    <Separator />
+                    <span className="min-w-0 truncate">{workItemText}</span>
                   </>
                 )}
               </span>
