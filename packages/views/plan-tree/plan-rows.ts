@@ -71,6 +71,43 @@ export function planModuleIdOf(node: CockpitNode, byId: ReadonlyMap<string, Cock
   return null;
 }
 
+/** A module row and the work items filed under it, in plan order. */
+export interface PlanModuleGroup {
+  moduleRow: PlanRow;
+  workItems: PlanRow[];
+}
+
+/**
+ * A plan read flattened into its modules, each carrying its work items.
+ *
+ * Both readers of "this module's work items" — the ownership picker and the
+ * work panel's tree — ask this, so a module's children are found one way: by
+ * the parent chain (`planModuleIdOf`), never by a code prefix, and never by
+ * taking the first module row in the read. A read without the asked-for
+ * module yields no group, which both then render as an empty list.
+ */
+export function planModuleGroups(data: {
+  nodes: readonly CockpitNode[];
+  counts: readonly CockpitPlanTaskCount[];
+}): PlanModuleGroup[] {
+  const byId = new Map(data.nodes.map((node) => [node.id, node]));
+  const rows = buildPlanRows({
+    nodes: data.nodes,
+    counts: data.counts,
+    expanded: new Set(data.nodes.map((node) => node.id)),
+  });
+  const groups = new Map<string, PlanModuleGroup>();
+  for (const row of rows) {
+    if (row.kind === "module") groups.set(row.node.id, { moduleRow: row, workItems: [] });
+  }
+  for (const row of rows) {
+    if (row.kind !== "work_item") continue;
+    const moduleRowId = planModuleIdOf(row.node, byId);
+    if (moduleRowId) groups.get(moduleRowId)?.workItems.push(row);
+  }
+  return [...groups.values()];
+}
+
 export interface BuildPlanRowsInput {
   nodes: readonly CockpitNode[];
   counts: readonly CockpitPlanTaskCount[];

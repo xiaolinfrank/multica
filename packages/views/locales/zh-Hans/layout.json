@@ -149,7 +149,9 @@
       "view_rename": "重命名",
       "view_duplicate": "创建副本",
       "view_delete": "删除视图",
-      "bayclaw": "工作台"
+      "bayclaw": "工作台",
+      "project_plan": "展开或收起 {{name}} 的模块与工作项",
+      "module_plan": "展开或收起模块 {{name}} 的工作项"
     },
     "team": {
       "new_agent": "新建智能体",

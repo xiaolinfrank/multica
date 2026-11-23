@@ -149,7 +149,9 @@
       "view_rename": "이름 변경",
       "view_duplicate": "복제",
       "view_delete": "뷰 삭제",
-      "bayclaw": "워크벤치"
+      "bayclaw": "워크벤치",
+      "project_plan": "{{name}}의 모듈과 작업 항목 표시/숨기기",
+      "module_plan": "모듈 {{name}}의 작업 항목 표시/숨기기"
     },
     "team": {
       "new_agent": "새 에이전트",

@@ -149,7 +149,9 @@
       "view_rename": "名前を変更",
       "view_duplicate": "複製",
       "view_delete": "ビューを削除",
-      "bayclaw": "ワークベンチ"
+      "bayclaw": "ワークベンチ",
+      "project_plan": "{{name}} のモジュールと作業項目を表示／非表示",
+      "module_plan": "モジュール {{name}} の作業項目を表示／非表示"
     },
     "team": {
       "new_agent": "新規エージェント",

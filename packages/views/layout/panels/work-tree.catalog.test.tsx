@@ -64,12 +64,10 @@ function renderSection() {
       <NavigationProvider value={adapter}>
         <ProjectsSection
           wsId="ws-1"
-          userId="u1"
           pathname="/acme/issues"
           projects={[PROJECT]}
           totalProjects={1}
           plainRowsLit
-          activeIssueId={null}
         />
       </NavigationProvider>
     </QueryClientProvider>,
@@ -83,23 +81,40 @@ beforeEach(() => {
     listIssues,
     listIssueStatuses,
     getIssueViewPreference: vi.fn(() => new Promise(() => {})),
+    // The plan read the tree makes now: reconciled, one module, no work items.
+    getCockpitPlan: vi.fn(async () => ({
+      workspace_id: "ws-1",
+      scope: { project_id: "p1", module_id: null, project_title: "Desktop", module_title: "" },
+      cockpit: { id: "cp", workspace_id: "ws-1", title: "Desktop", goal_date: null, plan_reconciled_at: "2026-11-20T00:00:00Z" },
+      actor: { user_id: "u1", role: "owner", is_human: true },
+      has_meeting_workflows: false,
+      has_stable_bindings: false,
+      complete: true,
+      nodes: [
+        { id: "row-a", code: "01", name: "Parser", kind: "module", parent_id: null, position: 0, module_id: "mod-1", project_id: "p1" },
+      ],
+      task_counts: [], context_node_ids: [], payments: [], milestones: [], node_index: [],
+    })),
+    getCockpitNodeDetail: vi.fn(async () => null),
   } as unknown as ApiClient);
   useSidebarKeptStore.setState({ held: {} });
   useSidebarTreeStore.setState({ projectsCollapsed: false, expanded: [projectSidebarSource("p1")] });
 });
 
 describe("ProjectsSection project row", () => {
-  it("offers a retry when the status catalog fails, then lists its issues", async () => {
-    listIssueStatuses.mockRejectedValueOnce(new Error("offline"));
+  // The project row no longer lists issues — modules and work items took
+  // over (S6 batch 3), so the status-catalog retry the old list offered has
+  // no reader here anymore. What stays observable is the row itself: it
+  // renders, and expanding it reads the plan, not the issue list.
+  it("expands a project into its plan without the status catalog", async () => {
     renderSection();
 
-    const retry = await screen.findByRole("button", { name: "Retry" });
-    expect(screen.getByText("Couldn't load issues")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Show or hide Desktop's modules and work items" });
+    // The store is seeded with this project expanded; one click collapses it.
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+
+    await screen.findByText("No module");
     expect(listIssues).not.toHaveBeenCalled();
-
-    fireEvent.click(retry);
-
-    await screen.findByText("No issues");
-    expect(listIssues).toHaveBeenCalledWith(expect.objectContaining({ project_id: "p1" }));
   });
 });

@@ -13,7 +13,7 @@ import {
   EMPTY_COCKPIT_SCOPE,
 } from "@multica/core/cockpit";
 import type { CockpitNodeChoice } from "@multica/core/types";
-import { buildPlanRows, planModuleIdOf } from "../../../plan-tree/plan-rows";
+import { planModuleGroups } from "../../../plan-tree/plan-rows";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
@@ -141,19 +141,16 @@ export function IssueScopePicker({
   const planItems = useMemo<CockpitNodeChoice[]>(() => {
     const data = plan.data;
     if (!data || !expandedModule) return [];
-    const byId = new Map(data.nodes.map((node) => [node.id, node]));
-    const allExpanded = new Set(data.nodes.map((node) => node.id));
-    const rows = buildPlanRows({ nodes: data.nodes, counts: data.task_counts, expanded: allExpanded });
     // The module record's id and the plan row's id are not the same id: the
     // parent chain names the row, so the row is what children are matched on.
     // A read can carry more than one module row, so pick the one this level
     // opened on — by its module binding, never by position. A read that does
     // not contain that row lists nothing: falling back to the first module row
     // would show another module's work items under this one's name.
-    const moduleRowId =
-      rows.find((row) => row.kind === "module" && row.node.module_id === expandedModule)?.node.id ??
-      null;
-    return rows.filter((row) => row.kind === "work_item" && planModuleIdOf(row.node, byId) === moduleRowId)
+    const group = planModuleGroups({ nodes: data.nodes, counts: data.task_counts }).find(
+      ({ moduleRow }) => moduleRow.node.module_id === expandedModule,
+    );
+    return (group?.workItems ?? [])
       .map((row) => ({
         id: row.node.id,
         code: row.code,

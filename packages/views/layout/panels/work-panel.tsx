@@ -177,12 +177,10 @@ export function WorkPanel() {
           {wsId && (
             <ProjectsSection
               wsId={wsId}
-              userId={userId}
               pathname={pathname}
               projects={shownProjects}
               totalProjects={projects.length}
               plainRowsLit={plainRowsLit}
-              activeIssueId={plainRowsLit ? currentIssueId : null}
             />
           )}
         </PanelBody>

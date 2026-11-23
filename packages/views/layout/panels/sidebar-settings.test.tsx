@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IssueViewPreference } from "@multica/core/api/schemas";
 import { issueViewPreferenceOptions } from "@multica/core/issue-views/preferences";
@@ -82,56 +81,43 @@ const chip = (name: string) => screen.getByRole("button", { name });
 const lastSaved = () => server.putIssueViewPreference.mock.lastCall![0].prefs;
 
 describe("ProjectsSectionSettings", () => {
-  it("covers both the project list and every project's issues", () => {
+  // The "Issues in projects" group is gone with the issue lists themselves
+  // (S6 batch 3): a project's tree is modules and work items, which have no
+  // statuses or assignee to configure. What stays is the project list's own
+  // group, so its three tests below replace the five that covered both.
+  it("covers the project list only — the issue-list group is gone", () => {
     openSettings();
 
     expect(screen.getByRole("heading", { name: "Projects" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Issues in projects" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Issues in projects" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Assignee" })).toBeNull();
   });
 
-  it("saves issue statuses toggled from their chips for every device", async () => {
+  it("toggles a project status for every device", async () => {
     openSettings();
 
-    expect(chip("Todo")).toHaveAttribute("aria-pressed", "true");
-    expect(chip("Done")).toHaveAttribute("aria-pressed", "false");
-
-    fireEvent.click(chip("Todo"));
-    await waitFor(() => expect(chip("Todo")).toHaveAttribute("aria-pressed", "false"));
-    expect(lastSaved().issues.hiddenStatuses).toEqual(expect.arrayContaining(["todo", "done"]));
+    expect(chip("Completed")).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(chip("Completed"));
+    await waitFor(() => expect(chip("Completed")).toHaveAttribute("aria-pressed", "true"));
+    expect(lastSaved().projects.statuses).toContain("completed");
   });
 
-  it("saves me and my agents and keeps it once the saved document is read back", async () => {
-    const user = userEvent.setup();
-    openSettings();
-
-    const assignee = screen.getByRole("combobox", { name: "Assignee" });
-    expect(assignee).toHaveTextContent("Anyone");
-    await user.click(assignee);
-    await user.click(await screen.findByRole("option", { name: "Me and my agents" }));
-
-    await waitFor(() => expect(server.putIssueViewPreference).toHaveBeenCalled());
-    expect(lastSaved().issues.assignee).toBe("me_and_my_agents");
-    await waitFor(() => expect(server.doc.prefs.issues).toMatchObject({ assignee: "me_and_my_agents" }));
-    await act(() => qc.refetchQueries());
-    expect(server.getIssueViewPreference).toHaveBeenCalled();
-    expect(assignee).toHaveTextContent("Me and my agents");
-  });
-
-  it("toggles a project status and resets everything at once", async () => {
+  it("resets the project list at once", async () => {
     openSettings();
 
     expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
     fireEvent.click(chip("Completed"));
     await waitFor(() => expect(chip("Completed")).toHaveAttribute("aria-pressed", "true"));
-    fireEvent.click(chip("Todo"));
-    await waitFor(() => expect(chip("Todo")).toHaveAttribute("aria-pressed", "false"));
-    await waitFor(() => expect(server.putIssueViewPreference).toHaveBeenCalledTimes(2));
-    expect(lastSaved().projects.statuses).toContain("completed");
 
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Reset" })).toBeNull());
-    // Writes go out one at a time; the reset is the last to be sent.
+    // The reset is the last write to go out.
     await waitFor(() => expect(lastSaved().projects).toEqual(DEFAULT_SIDEBAR_PROJECT_SETTINGS));
+    // The update spreads the saved document, so the stored issue-list
+    // fields ride along untouched: the panel no longer offers them, but an
+    // older client that still reads them keeps a valid payload. The reset
+    // itself writes the default project list.
+    expect(lastSaved().projects).toEqual(DEFAULT_SIDEBAR_PROJECT_SETTINGS);
     expect(lastSaved().issues).toEqual(DEFAULT_SIDEBAR_ISSUE_SETTINGS);
   });
 });

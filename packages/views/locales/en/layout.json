@@ -150,7 +150,9 @@
       "view_rename": "Rename",
       "view_duplicate": "Duplicate",
       "view_delete": "Delete view",
-      "bayclaw": "BayClaw"
+      "bayclaw": "BayClaw",
+      "project_plan": "Show or hide {{name}}'s modules and work items",
+      "module_plan": "Show or hide module {{name}}'s work items"
     },
     "team": {
       "new_agent": "New agent",
