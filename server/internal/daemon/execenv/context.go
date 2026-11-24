@@ -253,6 +253,10 @@ type projectResourceFile struct {
 	ModuleID          string                  `json:"module_id,omitempty"`
 	ModuleDirectory   *string                 `json:"module_directory,omitempty"`
 	ModuleTitle       string                  `json:"module_title,omitempty"`
+	WorkItemID        string                  `json:"work_item_id,omitempty"`
+	WorkItemTitle     string                  `json:"work_item_title,omitempty"`
+	WorkItemDirectory *string                 `json:"work_item_directory,omitempty"`
+	IssueDirectory    *string                 `json:"issue_directory,omitempty"`
 	ModuleDescription string                  `json:"module_description,omitempty"`
 	Resources         []ProjectResourceForEnv `json:"resources"`
 }
@@ -306,6 +310,10 @@ func writeProjectResources(workDir string, ctx TaskContextForEnv, manifest *side
 		ModuleID:           ctx.ModuleID,
 		ModuleTitle:        ctx.ModuleTitle,
 		ModuleDirectory:    ctx.ModuleDirectory,
+		WorkItemID:         ctx.WorkItemID,
+		WorkItemTitle:      ctx.WorkItemTitle,
+		WorkItemDirectory:  ctx.WorkItemDirectory,
+		IssueDirectory:     ctx.IssueDirectory,
 		ModuleDescription:  ctx.ModuleDescription,
 		Resources:          resources,
 	}

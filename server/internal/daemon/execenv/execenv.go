@@ -170,6 +170,10 @@ type TaskContextForEnv struct {
 	ModuleID          string // issue's module, when present; issue claims only
 	ModuleDirectory   *string
 	ModuleTitle       string
+	WorkItemID        string
+	WorkItemTitle     string
+	WorkItemDirectory *string
+	IssueDirectory    *string
 	ModuleDescription string
 	ProjectResources  []ProjectResourceForEnv // resources attached to the project
 	ChatSessionID     string                  // non-empty for chat tasks

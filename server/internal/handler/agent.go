@@ -476,14 +476,23 @@ type AgentTaskResponse struct {
 	// Module* mirror the project fields for the issue's module, the fork's
 	// project subdivision. Issue claims only: chat, autopilot and quick-create
 	// carry a project reference but never a module.
-	ModuleID          string                `json:"module_id,omitempty"`
-	ModuleDirectory   *string               `json:"module_directory,omitempty"`
-	ModuleTitle       string                `json:"module_title,omitempty"`
-	ModuleDescription string                `json:"module_description,omitempty"`
-	ProjectResources  []ProjectResourceData `json:"project_resources,omitempty"` // resources attached to the project
-	CreatedAt         string                `json:"created_at"`
-	PriorSessionID    string                `json:"prior_session_id,omitempty"` // session ID from a previous task on same issue
-	PriorWorkDir      string                `json:"prior_work_dir,omitempty"`   // work_dir from a previous task on same issue
+	ModuleID          string  `json:"module_id,omitempty"`
+	ModuleDirectory   *string `json:"module_directory,omitempty"`
+	ModuleTitle       string  `json:"module_title,omitempty"`
+	ModuleDescription string  `json:"module_description,omitempty"`
+	// WorkItem* name the third plan level the issue is filed under. The
+	// directory is the folder's name, not a path: the brief composes the path.
+	WorkItemID        string  `json:"work_item_id,omitempty"`
+	WorkItemTitle     string  `json:"work_item_title,omitempty"`
+	WorkItemDirectory *string `json:"work_item_directory,omitempty"`
+	// IssueDirectory is the task's own delivery folder name, allocated at
+	// claim time. With it the brief states one fixed path; without it the
+	// brief says why it cannot.
+	IssueDirectory   *string               `json:"issue_directory,omitempty"`
+	ProjectResources []ProjectResourceData `json:"project_resources,omitempty"` // resources attached to the project
+	CreatedAt        string                `json:"created_at"`
+	PriorSessionID   string                `json:"prior_session_id,omitempty"` // session ID from a previous task on same issue
+	PriorWorkDir     string                `json:"prior_work_dir,omitempty"`   // work_dir from a previous task on same issue
 	// ModelOverride snapshots the agent's persistent OpenClaw model override at
 	// claim time. Later config edits affect subsequent claims, not this payload.
 	// Mirrors internal/daemon/types.go with the same JSON name; empty for other

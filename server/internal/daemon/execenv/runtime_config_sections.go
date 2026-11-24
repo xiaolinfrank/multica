@@ -511,6 +511,9 @@ func writeModuleContext(b *strings.Builder, ctx TaskContextForEnv) {
 	if ctx.ModuleTitle != "" {
 		fmt.Fprintf(b, "Within that project, this task belongs to the module **%s**.\n\n", ctx.ModuleTitle)
 	}
+	if ctx.WorkItemTitle != "" {
+		fmt.Fprintf(b, "Within that module, it is filed under the work item **%s**.\n\n", ctx.WorkItemTitle)
+	}
 	if desc := strings.TrimSpace(ctx.ModuleDescription); desc != "" {
 		b.WriteString("Module description — durable context for work in this module:\n\n")
 		b.WriteString(desc)
@@ -544,6 +547,47 @@ func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextF
 	module := ""
 	if ctx.ModuleDirectory != nil {
 		module = *ctx.ModuleDirectory
+	}
+	workItem := ""
+	if ctx.WorkItemDirectory != nil {
+		workItem = *ctx.WorkItemDirectory
+	}
+	// An issue's delivery folder is fixed by the platform: identifier plus
+	// title, inside its work item (or module, or project). When every binding
+	// the path needs is valid the brief states that one path and forbids
+	// inventing another; when one is not, it says which and stops — a guessed
+	// folder is a deliverable nobody finds again.
+	if kind == kindIssue && ctx.IssueDirectory != nil && strings.TrimSpace(*ctx.IssueDirectory) != "" {
+		blocked := ""
+		switch {
+		case ctx.ModuleID != "" && !localpaths.ValidFolder(module):
+			blocked = "the module's folder binding is unresolved or unsafe"
+		case ctx.WorkItemID != "" && !localpaths.ValidFolder(workItem):
+			blocked = "the work item's folder binding is unresolved or unsafe"
+		case !localpaths.ValidFolder(*ctx.IssueDirectory):
+			blocked = "this task's folder name is not a safe relative folder"
+		}
+		if blocked != "" {
+			fmt.Fprintf(b, "This task's delivery folder cannot be resolved: %s. Ask the owner to fix the binding; do not guess a folder or write a substitute path. Until then keep finished files in the working directory and say where they are.\n\n", blocked)
+			return
+		}
+		segments := []string{project}
+		if ctx.ModuleID != "" {
+			segments = append(segments, module)
+		}
+		if ctx.WorkItemID != "" {
+			segments = append(segments, workItem)
+		}
+		segments = append(segments, *ctx.IssueDirectory)
+		fmt.Fprintf(b, "This task's delivery folder is fixed: `%s`.\n\n", filepath.Join(segments...))
+		b.WriteString("The platform assigns that folder name from the task's identifier and title, so write deliverables directly into it and never invent a folder name of your own. Create the folder if it is missing, after checking containment and ownership.\n\n")
+		b.WriteString("The collaboration copy is additional archival storage. Deliver through the mechanism permitted by `## Output`; issue files still need `--attachment <path>`. Preparing or archiving a file does not authorize an upload.\n\n")
+		switch kind {
+		case kindIssue:
+			b.WriteString("Name the path you wrote in your issue comment, as plain text, so a person can open it.\n\n")
+		}
+		b.WriteString("Before creating a missing folder, verify the configured project directory is on this host's writable internal disk, with safe containment and ownership. A missing path does not identify the storage failure or authorize a replacement root. If the binding is unconfigured, inaccessible, or permission is denied, report the observed problem where this surface permits it, keep the result in the task workdir, and do not claim durable delivery. Never guess another path, change a binding, or substitute a nearby directory.\n\n")
+		return
 	}
 	if ctx.ModuleID != "" && localpaths.ValidFolder(module) {
 		fmt.Fprintf(b, "Use the bound module folder `%s/` inside the project directory. The binding remains stable when the display title changes. Create it if missing, after checking containment and ownership.\n\n", module)

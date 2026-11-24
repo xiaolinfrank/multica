@@ -535,3 +535,60 @@ func TestProjectResourcesFileSkippedWithoutContext(t *testing.T) {
 		t.Fatalf("resources.json written for a task with no project context (stat err = %v)", err)
 	}
 }
+
+// S7: an issue task's delivery folder is one fixed path the platform assigns.
+func stringPtr(s string) *string { return &s }
+
+func TestCollaborationSpaceStatesTheFixedIssueDeliveryFolder(t *testing.T) {
+	issue, module, workItem := "TES-7注册路径设计", "01.01确权线", "01.01.01接口设计"
+	ctx := TaskContextForEnv{
+		IssueID: "i1", ProjectID: "p1", ProjectCollabPath: "/Volumes/Space/Project",
+		ModuleID: "m1", ModuleDirectory: &module,
+		WorkItemID: "w1", WorkItemTitle: "接口设计", WorkItemDirectory: &workItem,
+		IssueDirectory: &issue,
+	}
+	out := buildMetaSkillContent("claude", ctx)
+	want := "/Volumes/Space/Project/01.01确权线/01.01.01接口设计/TES-7注册路径设计"
+	if !strings.Contains(out, "`"+want+"`") {
+		t.Fatalf("brief does not state the fixed delivery folder %q:\n%s", want, out)
+	}
+	for _, forbidden := range []string{"Use the bound module folder", "Use a task or deliverable subdirectory"} {
+		if strings.Contains(out, forbidden) {
+			t.Fatalf("brief still offers the agent a folder choice (%q):\n%s", forbidden, out)
+		}
+	}
+	if !strings.Contains(out, "work item **接口设计**") {
+		t.Fatalf("Project Context does not name the work item:\n%s", out)
+	}
+}
+
+func TestCollaborationSpaceNamesTheBlockedBinding(t *testing.T) {
+	issue, badWorkItem := "TES-8交付", "../escape"
+	ctx := TaskContextForEnv{
+		IssueID: "i1", ProjectID: "p1", ProjectCollabPath: "/Volumes/Space/Project",
+		ModuleID: "m1", ModuleDirectory: stringPtr("01.01确权线"),
+		WorkItemID: "w1", WorkItemDirectory: &badWorkItem,
+		IssueDirectory: &issue,
+	}
+	out := buildMetaSkillContent("claude", ctx)
+	if !strings.Contains(out, "cannot be resolved: the work item's folder binding is unresolved or unsafe") {
+		t.Fatalf("brief does not name the blocked binding:\n%s", out)
+	}
+	if strings.Contains(out, "delivery folder is fixed") {
+		t.Fatalf("brief offers a path despite the unsafe binding:\n%s", out)
+	}
+}
+
+func TestCollaborationSpaceKeepsTheTaskSubdirectoryRuleForNonIssueTasks(t *testing.T) {
+	ctx := TaskContextForEnv{
+		ProjectID: "p1", ProjectCollabPath: "/Volumes/Space/Project",
+		ModuleID: "m1", ModuleDirectory: stringPtr("01.01确权线"),
+	}
+	out := buildMetaSkillContent("claude", ctx)
+	if !strings.Contains(out, "Use the bound module folder") {
+		t.Fatalf("a chat task lost its task-subdirectory rule:\n%s", out)
+	}
+	if strings.Contains(out, "delivery folder is fixed") {
+		t.Fatalf("a chat task was told its folder is fixed:\n%s", out)
+	}
+}

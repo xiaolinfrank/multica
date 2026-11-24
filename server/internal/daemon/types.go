@@ -124,7 +124,11 @@ type Task struct {
 	ProjectCollabPath             string                 `json:"project_collab_path,omitempty"` // shared-storage directory for this project's deliverables
 	ModuleID                      string                 `json:"module_id,omitempty"`           // issue's module, when present
 	ModuleDirectory               *string                `json:"module_directory,omitempty"`
-	ModuleTitle                   string                 `json:"module_title,omitempty"`                     // for surfacing in agent context
+	ModuleTitle                   string                 `json:"module_title,omitempty"` // for surfacing in agent context
+	WorkItemID                    string                 `json:"work_item_id,omitempty"` // third plan level the issue is filed under
+	WorkItemTitle                 string                 `json:"work_item_title,omitempty"`
+	WorkItemDirectory             *string                `json:"work_item_directory,omitempty"`
+	IssueDirectory                *string                `json:"issue_directory,omitempty"`                  // fixed delivery folder name, allocated at claim
 	ModuleDescription             string                 `json:"module_description,omitempty"`               // durable module-level context injected into the brief
 	ProjectResources              []ProjectResourceData  `json:"project_resources,omitempty"`                // project-scoped resources to expose to the agent
 	IsLeaderTask                  bool                   `json:"is_leader_task,omitempty"`                   // true when executing in the squad-leader coordinator role

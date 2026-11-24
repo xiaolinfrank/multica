@@ -1127,6 +1127,49 @@ func (h *Handler) resolveClaimModuleContext(ctx context.Context, moduleID, proje
 	}, nil
 }
 
+// claimWorkItemContext carries the third plan level's folder name.
+type claimWorkItemContext struct {
+	ID            string
+	Title         string
+	DirectoryName string
+}
+
+func (c claimWorkItemContext) applyTo(resp *AgentTaskResponse) {
+	resp.WorkItemID = c.ID
+	resp.WorkItemTitle = c.Title
+	if c.ID != "" {
+		resp.WorkItemDirectory = &c.DirectoryName
+	}
+}
+
+// resolveClaimWorkItemContext loads the work item an issue is filed under. A
+// work item that belongs to another module is ignored, like a module that
+// belongs to another project.
+func (h *Handler) resolveClaimWorkItemContext(ctx context.Context, workItemID, moduleID, workspaceID pgtype.UUID) (claimWorkItemContext, error) {
+	if !workItemID.Valid {
+		return claimWorkItemContext{}, nil
+	}
+	node, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: workItemID, WorkspaceID: workspaceID})
+	switch {
+	case err == nil:
+	case errors.Is(err, pgx.ErrNoRows):
+		return claimWorkItemContext{}, nil
+	default:
+		return claimWorkItemContext{}, fmt.Errorf("get work item: %w", err)
+	}
+	if moduleID.Valid {
+		parent, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: node.ParentID, WorkspaceID: workspaceID})
+		if err == nil && parent.ModuleID.Valid && parent.ModuleID != moduleID {
+			return claimWorkItemContext{}, nil
+		}
+	}
+	return claimWorkItemContext{
+		ID:            uuidToString(node.ID),
+		Title:         node.Name,
+		DirectoryName: node.DirectoryName.String,
+	}, nil
+}
+
 // projectResourcesForClaim maps resource rows onto the claim wire shape and
 // lifts github_repo resources into the repo list so `multica repo checkout` and
 // the meta-skill render them as the task's repos.
