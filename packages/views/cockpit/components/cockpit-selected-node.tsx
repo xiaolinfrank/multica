@@ -44,13 +44,18 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
   const renameRow = usePlanRowRename(wsId);
   const [conflict, setConflict] = useState<RunningTasksConflict | null>(null);
   const fail = (cause: unknown) => {
-    if (isCockpitRunningTasksError(cause)) {
-      setConflict({ tasks: cause.runningTasks, retry: (mode) => { setConflict(null); patch({ name: pendingName, directory_sync: mode }); } });
-      return;
-    }
     toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
   };
-  const [pendingName, setPendingName] = useState("");
+  // A running-task refusal is a choice, not a failure: hold the write's own
+  // arguments (not a state value that may still be empty) so the retry sends
+  // the name the server refused and the chosen sync mode.
+  const conflictOrFail = (cause: unknown, retry: (mode: "force" | "defer") => void) => {
+    if (isCockpitRunningTasksError(cause)) {
+      setConflict({ tasks: cause.runningTasks, retry: (mode) => { setConflict(null); retry(mode); } });
+      return;
+    }
+    fail(cause);
+  };
   const readonly = !detail?.actor.is_human || detail.scope_match === false || query.isError;
   if (!detail) return <aside className="flex min-w-0 w-[54rem] max-w-full shrink-0 flex-col overflow-y-auto border-l border-border bg-card p-4 @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0">
     <Button type="button" variant="ghost" size="icon-sm" className="mb-3 ml-auto" aria-label={t(($) => $.panel.close)} onClick={close}><X /></Button>
@@ -74,13 +79,23 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
     // the node's own name would succeed and change nothing, and it would skip
     // the folder sync only the module/project write performs.
     if (next.name !== undefined && kind !== "work_item") {
-      setPendingName(next.name);
-      void renameRow(planRow, next.name, next.directory_sync).catch(fail);
+      const name = next.name;
+      const attempt = (mode?: "sync" | "defer" | "force") => renameRow(planRow, name, mode);
+      void attempt(next.directory_sync).catch((cause) => conflictOrFail(cause, (mode) => { void attempt(mode).catch(fail); }));
       const { name: _name, ...rest } = next;
       if (Object.keys(rest).length > 0) updateNode.mutate({ id: nodeId, patch: rest }, { onError: fail });
       return;
     }
-    if (next.name !== undefined) setPendingName(next.name);
+    if (next.name !== undefined) {
+      // The work item's row owns its name; a refused rename retries with the
+      // same name and the chosen mode.
+      const attempt = (mode?: "sync" | "defer" | "force") => updateNode.mutateAsync({
+        id: nodeId,
+        patch: { ...next, ...(mode ? { directory_sync: mode } : {}) },
+      });
+      void attempt(next.directory_sync).catch((cause) => conflictOrFail(cause, (mode) => { void attempt(mode).catch(fail); }));
+      return;
+    }
     updateNode.mutate({ id: nodeId, patch: next }, { onError: fail });
   };
   return <><CockpitNodePanel node={node} section={section} onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view, planView }, scope))}
@@ -96,7 +111,7 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
     directory={kind === "project" ? undefined : <CockpitDirectorySection wsId={wsId} nodeId={nodeId} projectId={detail.binding.project_id} readOnly={readonly} />}
     deleteAllowed={deleteAllowed} deleteRestriction={<ContainerOperationRestriction basis={operation.isError ? undefined : operation.data} operation="delete" pending={operation.isPending} error={operation.isError} retry={() => void operation.refetch()} />}
     deleteConfirmationDescription={detail.children_count > 0 ? t(($) => $.confirmation.delete_branch_description, { label: node.name || node.code }) : t(($) => $.confirmation.delete_description, { label: node.name || node.code })}
-    onClose={close} />;
-  <RunningTasksDialog conflict={conflict} onDismiss={() => setConflict(null)} />;
+    onClose={close} />
+  <RunningTasksDialog conflict={conflict} onDismiss={() => setConflict(null)} />
   </>;
 }

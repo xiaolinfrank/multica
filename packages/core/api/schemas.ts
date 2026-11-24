@@ -2084,6 +2084,7 @@ export const CockpitNodeSchema = z.object({
   // The node's collaboration directory name (code + title). Empty until the
   // folder is provisioned in S7; older backends omit it.
   directory_name: z.string().nullable().default(null),
+  directory_sync: NodeDirectorySyncResultSchema.optional().catch(undefined),
   name: z.string().default(""),
   position: z.number().default(0),
   color: z.string().default(""),
@@ -5321,6 +5322,15 @@ export const CockpitWorkItemMoveResponseSchema = CockpitNodeSchema.extend({
 export const CockpitRenumberResultSchema = z.object({
   id: z.string(),
   changed: z.number().default(0),
+  directory_results: z.array(z.object({
+    node_id: z.string().default(""),
+    code: z.string().default(""),
+    from_directory: z.string().optional().catch(undefined),
+    to_directory: z.string().optional().catch(undefined),
+    status: z.string().default(""),
+    reason: z.string().optional().catch(undefined),
+    error: z.string().optional().catch(undefined),
+  }).loose()).nullable().optional().catch(undefined),
 }).loose();
 
 /** POST /api/cockpit/plan/reconcile. Lists stay opaque: the report is reviewed

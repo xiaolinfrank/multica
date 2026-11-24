@@ -7,6 +7,7 @@ import type { CockpitWorkItemCreate, CockpitNodeCreate } from "../types/cockpit"
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { cockpitReadKeys } from "./read-queries";
+import { directoryKeys } from "../directory/queries";
 import { issueKeys } from "../issues/queries";
 import { CockpitUnconfirmedWriteError } from "./errors";
 import { cockpitWriteError } from "./write-errors";
@@ -17,6 +18,7 @@ import type {
   CockpitMeetingPatch, CockpitMeetingCreate,
   CockpitMeetingProvision,
   CockpitMilestonePatch,
+  CockpitNode,
   CockpitNodePatch,
   CockpitPatch,
   CockpitPaymentPatch,
@@ -221,18 +223,42 @@ export function useCreateCockpitNode(wsId: string) {
 }
 
 export function useUpdateCockpitNode(wsId: string) {
-  return useCockpitRowMutation(
-    wsId,
-    // `directory_sync` rides in the patch: the server decides what the folder
-    // does, and a 409 is thrown as a typed running-tasks refusal by the caller
-    // path that goes through cockpitWriteError.
-    ({ id, patch }: { id: string; patch: CockpitNodePatch }) => api.updateCockpitNode(id, patch),
-    ({ id, patch }, board) => ({
-      ...board,
-      nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)),
-    }),
-    (node) => (board) => upsertCockpitNode(board, node),
-  );
+  const queryClient = useQueryClient();
+  return useMutation<CockpitNode, Error, { id: string; patch: CockpitNodePatch }, { previous: CockpitBoard | undefined }>({
+    mutationFn: async ({ id, patch }: { id: string; patch: CockpitNodePatch }) => {
+      try {
+        return await api.updateCockpitNode(id, patch);
+      } catch (error) {
+        // A structural write refused while an agent works in the folder has to
+        // reach the same dialog as a rename from the tree.
+        throw cockpitWriteError(error);
+      }
+    },
+    onMutate: async ({ id, patch }) => {
+      await queryClient.cancelQueries({ queryKey: cockpitKeys.board(wsId) });
+      const previous = queryClient.getQueryData<CockpitBoard>(cockpitKeys.board(wsId));
+      // `directory_sync` is a request control, not row data; writing it over
+      // the node would replace the server's last sync result with the mode.
+      const { directory_sync: _directorySync, ...rowPatch } = patch;
+      patchCockpitBoard(queryClient, wsId, (board) => ({
+        ...board,
+        nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...rowPatch } : n)),
+      }));
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(cockpitKeys.board(wsId), context.previous);
+      }
+    },
+    onSuccess: (node) => {
+      patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      void queryClient.invalidateQueries({ queryKey: directoryKeys.plan(wsId) });
+    },
+  });
 }
 
 /** Binding can fail on ancestry or uniqueness constraints; show only the server's accepted mapping. */
@@ -690,7 +716,10 @@ export function useRenameCockpitWorkItem(wsId: string) {
     onSuccess: (node) => {
       patchCockpitBoard(queryClient, wsId, (board) => upsertCockpitNode(board, node));
     },
-    onSettled: () => { void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) }); },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
+      void queryClient.invalidateQueries({ queryKey: directoryKeys.plan(wsId) });
+    },
   });
 }
 
@@ -721,6 +750,7 @@ export function useMoveCockpitWorkItem(wsId: string) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
       void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+      void queryClient.invalidateQueries({ queryKey: directoryKeys.plan(wsId) });
     },
   });
 }
@@ -759,6 +789,7 @@ export function useRenumberCockpitChildren(wsId: string) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: cockpitReadKeys.all(wsId) });
       void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
+      void queryClient.invalidateQueries({ queryKey: directoryKeys.plan(wsId) });
     },
   });
 }

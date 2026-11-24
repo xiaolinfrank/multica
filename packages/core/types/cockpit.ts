@@ -70,6 +70,8 @@ export interface CockpitNode {
    * reconcile and by work-item writes. Empty until S7 provisions the folder.
    */
   directory_name?: string | null;
+  /** Present when the write that produced this row also touched its folder. */
+  directory_sync?: import("./directory").NodeDirectorySyncResult;
   name: string;
   position: number;
   /** Branch colour; empty means "inherit from the nearest ancestor that sets one". */
@@ -926,9 +928,21 @@ export type CockpitNodeMoved = CockpitNode & {
 };
 
 /** POST /api/cockpit/nodes/{id}/renumber. */
+export interface CockpitRenumberDirectoryResult {
+  node_id: string;
+  code: string;
+  from_directory?: string;
+  to_directory?: string;
+  status: string;
+  reason?: string;
+  error?: string;
+}
+
 export interface CockpitRenumberResult {
   id: string;
   changed: number;
+  /** What each affected folder did. Absent in defer mode. */
+  directory_results?: CockpitRenumberDirectoryResult[] | null;
 }
 
 /** POST /api/cockpit/plan/reconcile. A preview never writes; apply writes once. */
