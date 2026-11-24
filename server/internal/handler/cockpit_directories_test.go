@@ -11,6 +11,8 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/collabfs"
 	"github.com/multica-ai/multica/server/internal/testutil"
+	"github.com/multica-ai/multica/server/internal/util"
+	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // S7's folder plumbing, exercised end to end against a real filesystem. The
@@ -444,4 +446,87 @@ func TestIssueDetailCarriesTheDeliveryPath(t *testing.T) {
 	if detail.DirectoryName == nil || *detail.DirectoryName != "TES-7注册路径设计" || detail.DeliveryPath == nil || *detail.DeliveryPath != want {
 		t.Fatalf("detail = %+v, want delivery path %q", detail, want)
 	}
+}
+
+// Allocation is one conditional write: a claim and a person opening the folder
+// at the same moment must land on the same name.
+func TestAllocateIssueDirectoryNameIsOnceOnly(t *testing.T) {
+	ws := cockpitFixture(t, "S7 allocate once")
+	project := dbfx.Project(t, "交付项目", testutil.Cols{"workspace_id": ws, "collab_path": t.TempDir()})
+	issueID := dbfx.Issue(t, "注册路径设计", testutil.Cols{"workspace_id": ws, "project_id": project})
+	issue, err := testHandler.Queries.GetIssueInWorkspace(context.Background(), db.GetIssueInWorkspaceParams{
+		ID: util.MustParseUUID(issueID), WorkspaceID: util.MustParseUUID(ws),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := testHandler.allocateIssueDirectoryName(context.Background(), testHandler.Queries, issue, "TES")
+	if err != nil || !strings.Contains(first, "TES-") || !strings.Contains(first, "注册路径设计") {
+		t.Fatalf("first allocation = %q %v", first, err)
+	}
+	second, err := testHandler.allocateIssueDirectoryName(context.Background(), testHandler.Queries, issue, "TES")
+	if err != nil || second != first {
+		t.Fatalf("second allocation = %q, want the first %q (%v)", second, first, err)
+	}
+	// A stale row (read before the first allocation) still reads the winner back.
+	stale := issue
+	again, err := testHandler.allocateIssueDirectoryName(context.Background(), testHandler.Queries, stale, "TES")
+	if err != nil || again != first {
+		t.Fatalf("stale allocation = %q, want %q (%v)", again, first, err)
+	}
+}
+
+// Renumbering is refused while an agent is working in one of the folders it
+// would rename, like any other structural rename.
+func TestCockpitRenumberRefusesWhileAnAgentWorks(t *testing.T) {
+	ws := cockpitFixture(t, "S7 renumber conflict")
+	collab := t.TempDir()
+	project := dbfx.Project(t, "交付项目", testutil.Cols{"workspace_id": ws, "collab_path": collab})
+	dbfx.Insert(t, "cockpit", testutil.Cols{"workspace_id": ws, "title": "交付计划"})
+	if _, err := testPool.Exec(context.Background(), `UPDATE cockpit SET plan_reconciled_at=now() WHERE workspace_id=$1`, ws); err != nil {
+		t.Fatal(err)
+	}
+	var mod struct {
+		Module ModuleResponse `json:"module"`
+	}
+	testutil.Call(t, cockpitHandler(testHandler.CreateModule), cockpitRequest(http.MethodPost, "/api/modules", ws, map[string]any{
+		"project_id": project, "title": "确权线",
+	})).Want(http.StatusCreated).JSON(&mod)
+	var first CockpitNodeResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitWorkItem), cockpitRequest(http.MethodPost, "/api/cockpit/work-items", ws, map[string]any{
+		"module_id": mod.Module.ID, "name": "接口设计",
+	})).Want(http.StatusCreated).JSON(&first)
+	// A second item, then put it in front: the codes have to move, which is
+	// the pass the running task refuses.
+	var second CockpitNodeResponse
+	testutil.Call(t, cockpitHandler(testHandler.CreateCockpitWorkItem), cockpitRequest(http.MethodPost, "/api/cockpit/work-items", ws, map[string]any{
+		"module_id": mod.Module.ID, "name": "注册路径",
+	})).Want(http.StatusCreated).JSON(&second)
+	patchNode(t, ws, second.ID, map[string]any{"position": -1.0}, http.StatusOK)
+	l2 := dbfx.Count(t, "SELECT count(*) FROM cockpit_node WHERE module_id=$1 AND workspace_id=$2", mod.Module.ID, ws)
+	if l2 != 1 {
+		t.Fatalf("module rows = %d", l2)
+	}
+	var l2ID string
+	if err := testPool.QueryRow(context.Background(), `SELECT id::text FROM cockpit_node WHERE module_id=$1 AND workspace_id=$2`, mod.Module.ID, ws).Scan(&l2ID); err != nil {
+		t.Fatal(err)
+	}
+	issueID := dbfx.Issue(t, "已排入的任务", testutil.Cols{"workspace_id": ws, "project_id": project, "module_id": mod.Module.ID, "work_item_id": first.ID})
+	agent := dbfx.Agent(t, "Renumber agent", "", testutil.Cols{"workspace_id": ws})
+	dbfx.Insert(t, "agent_task_queue", testutil.Cols{"agent_id": agent, "issue_id": issueID, "status": "running", "runtime_id": testRuntimeID})
+
+	var conflict struct {
+		Code         string           `json:"code"`
+		RunningTasks []RunningTaskRef `json:"running_tasks"`
+	}
+	testutil.Call(t, cockpitHandler(testHandler.RenumberCockpitChildren), testutil.WithURLParams(
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes/x/renumber", ws, map[string]any{}), "id", l2ID)).
+		Want(http.StatusConflict).JSON(&conflict)
+	if conflict.Code != "running_agent_tasks" || len(conflict.RunningTasks) != 1 {
+		t.Fatalf("conflict = %+v", conflict)
+	}
+	// Forcing goes through and the folders follow.
+	testutil.Call(t, cockpitHandler(testHandler.RenumberCockpitChildren), testutil.WithURLParams(
+		cockpitRequest(http.MethodPost, "/api/cockpit/nodes/x/renumber", ws, map[string]any{"directory_sync": "force"}), "id", l2ID)).
+		Want(http.StatusOK)
 }

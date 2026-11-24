@@ -352,8 +352,19 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 	}
 	if syncMode == DirectorySyncSync && len(beforeDirs) > 0 {
 		var moduleIDs, workItemIDs []pgtype.UUID
-		for _, pd := range beforeDirs {
-			if pd.expected == pd.directoryName {
+		for id, pd := range beforeDirs {
+			// The expected name is the one the NEW code calls for: comparing
+			// against the old-code name would say "nothing changes" for every
+			// row, and the pass would rename folders without asking.
+			change := changedCode(id, changes)
+			expected := pd.expected
+			switch {
+			case change != "" && pd.kind == "module" && pd.module != nil:
+				expected = collabfs.SanitizeFolderName(change+pd.module.Title, 0)
+			case change != "" && pd.kind == "work_item":
+				expected = collabfs.SanitizeFolderName(change+pd.node.Name, 0)
+			}
+			if expected == pd.directoryName {
 				continue
 			}
 			if pd.kind == "module" && pd.module != nil {
@@ -446,6 +457,17 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 	}
 	h.publishCockpit(r, cc, "node", "renumbered", map[string]any{"id": uuidToString(node.ID), "changed": len(changes)})
 	writeJSON(w, http.StatusOK, map[string]any{"id": uuidToString(node.ID), "changed": len(changes), "directory_results": results})
+}
+
+// changedCode answers the new code for one node id, or "" when it keeps its
+// code.
+func changedCode(id string, changes []cockpitCodeChange) string {
+	for _, change := range changes {
+		if uuidToString(change.id) == id {
+			return change.to
+		}
+	}
+	return ""
 }
 
 // collectReprefixed records a change for every descendant whose code starts

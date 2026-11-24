@@ -796,8 +796,9 @@ func (h *Handler) FillCockpitPlanDirectories(w http.ResponseWriter, r *http.Requ
 			if projectFilter.Valid && pd.project.ID != projectFilter {
 				continue
 			}
-			if wantKind == "module" && projectFilter.Valid {
-				// One pass per project is enough for the shared-root warning.
+			if wantKind == "module" {
+				// One pass per project is enough for the shared-root warning:
+				// every row in the project points at the same root.
 				for _, entry := range h.sharedCollabProjects(ctx, h.Queries, pd.project.ID, pd.project.CollabPath.String) {
 					key := entry.WorkspaceID + "/" + entry.ProjectID
 					if !seenShared[key] {
