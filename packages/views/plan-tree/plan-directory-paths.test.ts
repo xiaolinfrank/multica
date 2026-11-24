@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { CockpitNode } from "@multica/core/types";
 import { planDirectoryPaths } from "./plan-directory-paths";

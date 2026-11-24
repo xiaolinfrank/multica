@@ -677,9 +677,9 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               {t(($) => $.toolbar.include_closed)}
             </label>
           )}
-          {board && tab === "gantt" && planView === "gantt" && Boolean(board.cockpit.plan_reconciled_at) && (
-            <FillDirectoriesButton wsId={wsId}
-              disabled={context.data?.actor.is_human !== true || planQuery.isError} />
+          {board && tab === "gantt" && (planView === "gantt" || planView === "table") &&
+            Boolean(board.cockpit.plan_reconciled_at) && context.data?.actor.is_human === true && (
+            <FillDirectoriesButton wsId={wsId} disabled={planQuery.isError} />
           )}
           {board && tab !== "changes" && <CockpitCsvExport wsId={wsId} scope={scope} initialMode={planView === "finance" ? "finance" : "tasks"} />}
           {versionActions}
