@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -11,13 +11,21 @@ const directory = vi.hoisted(() => ({
   status: null as PlanDirectoryStatus | null,
   mutate: vi.fn(),
   pending: false,
+  conflict: null as null | { task_id: string; issue_id: string; issue_identifier: string; status: string }[],
 }));
 const pathActions = vi.hoisted(() => ({ open: vi.fn(), copy: vi.fn() }));
 
 vi.mock("@multica/core/directory", async (original) => ({
   ...(await original<typeof import("@multica/core/directory")>()),
   planDirectoriesOptions: () => ({ queryKey: ["test", "directories"], queryFn: async () => (directory.status ? [directory.status] : []) }),
-  useSyncNodeDirectory: () => ({ mutate: directory.mutate, isPending: directory.pending }),
+  useSyncNodeDirectory: () => ({
+    mutate: (vars: unknown, options?: { onSuccess?: (value: unknown) => void; onError?: (error: unknown) => void }) => {
+      directory.mutate(vars, options);
+      if (directory.conflict) options?.onError?.({ runningTasks: directory.conflict });
+      else options?.onSuccess?.({ directory_sync: { status: "ok" } });
+    },
+    isPending: directory.pending,
+  }),
 }));
 vi.mock("@multica/core/paths", async (original) => ({
   ...(await original<typeof import("@multica/core/paths")>()),
@@ -50,6 +58,11 @@ function renderSection(overrides: Partial<PlanDirectoryStatus> = {}) {
   );
 }
 
+beforeEach(() => {
+  directory.mutate.mockReset();
+  directory.conflict = null;
+});
+
 describe("CockpitDirectorySection", () => {
   it("shows a ready folder, its path, and copies it", async () => {
     renderSection();
@@ -79,6 +92,28 @@ describe("CockpitDirectorySection", () => {
     expect(await screen.findByText("The project has no collaboration space path")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Go to settings" })).toHaveAttribute("href", "/ws/projects/p1");
     expect(screen.queryByRole("button", { name: /Retry|Sync/ })).toBeNull();
+  });
+
+  it("closes the conflict dialog on \"sync later\" without sending the same request again", async () => {
+    directory.conflict = [{ task_id: "t1", issue_id: "i1", issue_identifier: "TES-1", status: "running" }];
+    renderSection({ status: "name_mismatch" });
+    fireEvent.click(await screen.findByRole("button", { name: /Sync/ }));
+    await screen.findByText("An agent is working in this folder");
+    fireEvent.click(screen.getByRole("button", { name: "Sync later" }));
+    await waitFor(() => expect(screen.queryByText("An agent is working in this folder")).toBeNull());
+    expect(directory.mutate).toHaveBeenCalledTimes(1);
+    expect(directory.mutate).toHaveBeenCalledWith({ nodeId: "n1", force: false }, expect.anything());
+  });
+
+  it("forces the sync when the reader chooses \"sync now\"", async () => {
+    directory.conflict = [{ task_id: "t1", issue_id: "i1", issue_identifier: "TES-1", status: "running" }];
+    renderSection({ status: "name_mismatch" });
+    fireEvent.click(await screen.findByRole("button", { name: /Sync/ }));
+    await screen.findByText("An agent is working in this folder");
+    directory.conflict = null;
+    fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
+    await waitFor(() => expect(directory.mutate).toHaveBeenCalledTimes(2));
+    expect(directory.mutate.mock.calls[1]![0]).toEqual({ nodeId: "n1", force: true });
   });
 
   it("names the other workspaces that share the root", async () => {

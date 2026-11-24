@@ -47,7 +47,16 @@ export function CockpitDirectorySection({ wsId, nodeId, projectId, readOnly }: {
         // A running-task refusal is a choice, not a failure.
         const tasks = (error as { runningTasks?: RunningTasksConflict["tasks"] }).runningTasks;
         if (Array.isArray(tasks)) {
-          setConflict({ tasks, retry: (mode) => runSync(mode === "force") });
+          setConflict({
+            tasks,
+            retry: (mode) => {
+              // "Later" means the row keeps today's folder; there is nothing
+              // to sync now, and re-sending `force: false` would only hit the
+              // same 409 again.
+              if (mode === "defer") { setConflict(null); return; }
+              runSync(true);
+            },
+          });
           return;
         }
         toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
