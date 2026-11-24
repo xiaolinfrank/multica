@@ -15,6 +15,7 @@ import {
 } from "@multica/ui/components/ui/dialog";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { FolderOpen, RefreshCw } from "@multica/ui/icons";
+import { toast } from "sonner";
 import { useT } from "../../i18n";
 
 /**
@@ -49,8 +50,34 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
 
   const pending = (result?.items ?? []).filter((item) => item.action !== "none");
   const shared = result?.shared_collab_projects ?? [];
-  const failed = (result?.items ?? []).filter((item) => item.status === "failed" || item.status === "skipped");
+  const failed = (result?.items ?? []).filter((item) => item.status === "failed");
+  const skipped = (result?.items ?? []).filter((item) => item.status === "skipped");
   const showResults = Boolean(result?.applied);
+
+  // Retry one failed row in place. Asking the server about that one folder is
+  // a real repair, so its own result replaces the row's state; a refusal keeps
+  // the row and says why.
+  const retryItem = (item: DirectoryFillItem) => {
+    sync.mutate({ nodeId: item.node_id, force }, {
+      onSuccess: (answer) => {
+        setResult((current) => current ? {
+          ...current,
+          items: current.items.map((row) => row.node_id === item.node_id ? {
+            ...row,
+            status: answer.directory_sync.status,
+            directory_name: answer.directory_sync.directory_name ?? row.directory_name,
+            full_path: answer.directory?.full_path ?? row.full_path,
+            reason: answer.directory_sync.reason,
+            error: answer.directory_sync.error,
+          } : row),
+        } : current);
+        if (answer.directory_sync.status === "failed") {
+          toast.error(t(($) => $.directories.sync_failed, { reason: answer.directory_sync.error || answer.directory_sync.reason || "" }));
+        }
+      },
+      onError: (error) => toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed)),
+    });
+  };
 
   return (
     <>
@@ -79,7 +106,7 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
             </p>
           )}
 
-          {pending.length > 0 && (
+          {!showResults && pending.length > 0 && (
             <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto text-caption" aria-label={t(($) => $.directories.fill_results)}>
               {pending.map((item) => (
                 <li key={item.node_id} className="flex items-center gap-2 rounded-sm bg-muted/50 px-2 py-1">
@@ -96,12 +123,12 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
           {showResults && (
             <div className="flex flex-col gap-2">
               <p className="text-caption text-muted-foreground">{t(($) => $.directories.fill_results)}</p>
-              <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto text-caption">
+              <ul className="max-h-64 flex-col gap-1 overflow-y-auto text-caption" aria-label={t(($) => $.directories.fill_results)}>
                 {(result?.items ?? []).filter((item) => item.action !== "none").map((item) => (
                   <li key={item.node_id} className="flex items-center gap-2 rounded-sm bg-muted/50 px-2 py-1">
                     <span className="font-mono text-micro text-muted-foreground">{item.code}</span>
                     <span className="min-w-0 flex-1 truncate">{item.full_path || item.name}</span>
-                    <FillStatus item={item} onRetry={() => sync.mutate({ nodeId: item.node_id, force: true })} retrying={sync.isPending} />
+                    <FillStatus item={item} onRetry={() => retryItem(item)} retrying={sync.isPending} />
                   </li>
                 ))}
               </ul>
@@ -117,10 +144,12 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
           )}
 
           <DialogFooter>
-            <label className="mr-auto flex items-center gap-2 text-caption">
-              <Checkbox checked={force} onCheckedChange={(value) => setForce(value === true)} />
-              {t(($) => $.directories.fill_force)}
-            </label>
+            {!showResults && (
+              <label className="mr-auto flex items-center gap-2 text-caption">
+                <Checkbox checked={force} onCheckedChange={(value) => setForce(value === true)} />
+                {t(($) => $.directories.fill_force)}
+              </label>
+            )}
             {!showResults ? (
               <>
                 <Button type="button" variant="outline" disabled={fill.isPending || pending.length === 0} onClick={() => run(false)}>
@@ -132,11 +161,14 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
                 </Button>
               </>
             ) : (
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t(($) => $.directories.cancel)}</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t(($) => $.directories.close)}</Button>
             )}
           </DialogFooter>
           {failed.length > 0 && (
             <p className="text-caption text-destructive">{t(($) => $.directories.sync_failed, { reason: failed[0]!.error || failed[0]!.reason || "" })}</p>
+          )}
+          {skipped.length > 0 && (
+            <p className="text-caption text-muted-foreground">{t(($) => $.directories.fill_skipped_hint, { n: skipped.length })}</p>
           )}
         </DialogContent>
       </Dialog>

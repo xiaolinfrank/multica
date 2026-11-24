@@ -2268,7 +2268,7 @@ export class ApiClient {
       signal,
       body: JSON.stringify(body),
     });
-    return parseWithFallback(raw, DirectoryFillResultSchema, { applied: false, items: [], counts: {}, shared_collab_projects: [] }, {
+    return parseWithFallback(raw, DirectoryFillResultSchema, { applied: false, items: [], counts: {}, shared_collab_projects: [], running_tasks: [] }, {
       endpoint: "POST /api/cockpit/plan/directories/fill",
     });
   }

@@ -71,6 +71,8 @@ export interface DirectoryFillResult {
   items: DirectoryFillItem[];
   counts: Record<string, number>;
   shared_collab_projects: SharedCollabProject[];
+  /** Who is working in the folders a preview would touch. */
+  running_tasks: RunningAgentTask[];
 }
 
 /** The issue's delivery folder as the detail row reads it. */

@@ -67,6 +67,7 @@ export const DirectoryFillResultSchema = z.object({
   items: z.array(DirectoryFillItemSchema).catch([]).default([]),
   counts: z.record(z.string(), z.number()).catch({}).default({}),
   shared_collab_projects: z.array(SharedCollabProjectSchema).catch([]).default([]),
+  running_tasks: z.array(RunningAgentTaskSchema).catch([]).default([]),
 }).loose();
 
 export const IssueDirectoryStatusSchema = z.object({
