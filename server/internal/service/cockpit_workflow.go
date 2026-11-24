@@ -395,8 +395,13 @@ func createCockpitWorkPackageForIssue(ctx context.Context, q *db.Queries, in Coc
 		if err := validateCockpitWorkflowArchiveScope(ctx, q, node, issue); err != nil {
 			return err
 		}
-		if _, err = q.CreateCockpitNodeIssue(ctx, db.CreateCockpitNodeIssueParams{WorkspaceID: in.WorkspaceID, NodeID: node.ID, IssueID: issue.ID}); err != nil {
-			return err
+		// A task filed AT this work item already carries the filing in
+		// work_item_id; the archive link is the "related" relation and must
+		// not repeat the primary one.
+		if issue.WorkItemID != node.ID {
+			if _, err = q.CreateCockpitNodeIssue(ctx, db.CreateCockpitNodeIssueParams{WorkspaceID: in.WorkspaceID, NodeID: node.ID, IssueID: issue.ID}); err != nil {
+				return err
+			}
 		}
 	}
 	return linkCockpitWorkflowPurpose(ctx, q, in.WorkspaceID, in.MeetingID, issue.ID, "minutes")
@@ -761,6 +766,9 @@ func validateCockpitWorkflowInitRetry(ctx context.Context, q *db.Queries, in Coc
 		if create.AssigneeType != issue.AssigneeType || create.AssigneeID != issue.AssigneeID {
 			return conflict("has a different executor")
 		}
+		if create.WorkItemID != issue.WorkItemID {
+			return conflict("has a different work item")
+		}
 		if create.ModuleID != issue.ModuleID {
 			return conflict("has a different module")
 		}
@@ -804,6 +812,11 @@ func validateCockpitWorkflowInitRetry(ctx context.Context, q *db.Queries, in Coc
 			return conflict("archive scope no longer matches its issue")
 		}
 		return err
+	}
+	// A task filed at this work item IS its archive link: work_item_id is the
+	// primary filing, so no cockpit_node_issue row has to exist.
+	if issue.WorkItemID == node.ID {
+		return nil
 	}
 	links, err := q.ListCockpitNodeIssues(ctx, node.CockpitID)
 	if err != nil {

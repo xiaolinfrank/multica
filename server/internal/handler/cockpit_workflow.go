@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/cockpitnas"
 	"github.com/multica-ai/multica/server/internal/logger"
@@ -429,6 +430,15 @@ func (h *Handler) EnableCockpitMeetingWorkflow(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusBadRequest, "archive node not found on this board")
 			return
 		}
+		// A meeting links to a project, module or work item row, never deeper.
+		if _, err := meetingLinkNodeDepth(r.Context(), h.Queries, cc, node.ID); err != nil {
+			if errors.Is(err, errMeetingLinkDepth) {
+				writeError(w, http.StatusBadRequest, meetingLinkDepthError)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "failed to read the archive node")
+			return
+		}
 		input.NodeID = node.ID
 	}
 	if strings.TrimSpace(req.ExistingIssueID) != "" {
@@ -508,18 +518,23 @@ func (h *Handler) EnableCockpitMeetingWorkflow(w http.ResponseWriter, r *http.Re
 		// when this call did not move the destination elsewhere.
 		var workItemID pgtype.UUID
 		nodeCandidate := pgtype.UUID{}
+		boardDefault := false
 		if req.NodeID != nil {
 			nodeCandidate = input.NodeID
 		} else if req.ProjectID == nil && req.ModuleID == nil {
 			nodeCandidate = cc.cockpit.MeetingNodeID
+			boardDefault = true
 		}
 		if nodeCandidate.Valid {
 			node, parent, isWorkItem, err := meetingWorkItemUnder(r.Context(), h.Queries, cc, nodeCandidate)
-			if err != nil {
+			// The board's stored work item may have been deleted since it was
+			// chosen. A stale reference must not stop the task being prepared:
+			// it is skipped, exactly like a board that never set one.
+			if err != nil && !(boardDefault && errors.Is(err, pgx.ErrNoRows)) {
 				writeError(w, http.StatusInternalServerError, "failed to read the meeting work item")
 				return
 			}
-			if isWorkItem {
+			if err == nil && isWorkItem {
 				if project.Valid && project != parent.ProjectID {
 					writeError(w, http.StatusBadRequest, "the work item does not belong to the selected project")
 					return
