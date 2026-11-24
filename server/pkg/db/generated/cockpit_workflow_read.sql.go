@@ -190,7 +190,7 @@ func (q *Queries) ListCockpitMeetingWorkflowIssueIDs(ctx context.Context, arg Li
 }
 
 const listCockpitWorkflowIssues = `-- name: ListCockpitWorkflowIssues :many
-SELECT id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id, module_id, work_item_id FROM issue
+SELECT id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id, module_id, work_item_id, directory_name FROM issue
 WHERE workspace_id = $1::uuid
   AND id = ANY($2::uuid[])
 `
@@ -242,6 +242,7 @@ func (q *Queries) ListCockpitWorkflowIssues(ctx context.Context, arg ListCockpit
 			&i.DuplicateOfIssueID,
 			&i.ModuleID,
 			&i.WorkItemID,
+			&i.DirectoryName,
 		); err != nil {
 			return nil, err
 		}

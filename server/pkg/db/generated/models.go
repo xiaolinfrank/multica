@@ -1957,6 +1957,7 @@ type Issue struct {
 	DuplicateOfIssueID pgtype.UUID        `json:"duplicate_of_issue_id"`
 	ModuleID           pgtype.UUID        `json:"module_id"`
 	WorkItemID         pgtype.UUID        `json:"work_item_id"`
+	DirectoryName      pgtype.Text        `json:"directory_name"`
 }
 
 type IssueChildEvent struct {
