@@ -46,6 +46,11 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
   const fail = (cause: unknown) => {
     toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
   };
+  const reportDirectorySync = (sync?: { status: string; reason?: string; error?: string } | null) => {
+    if (sync?.status === "failed") {
+      toast.error(t(($) => $.directories.sync_failed, { reason: sync.error || sync.reason || "" }));
+    }
+  };
   // A running-task refusal is a choice, not a failure: hold the write's own
   // arguments (not a state value that may still be empty) so the retry sends
   // the name the server refused and the chosen sync mode.
@@ -81,7 +86,9 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
     if (next.name !== undefined && kind !== "work_item") {
       const name = next.name;
       const attempt = (mode?: "sync" | "defer" | "force") => renameRow(planRow, name, mode);
-      void attempt(next.directory_sync).catch((cause) => conflictOrFail(cause, (mode) => { void attempt(mode).catch(fail); }));
+      void attempt(next.directory_sync).then(reportDirectorySync, (cause) => conflictOrFail(cause, (mode) => {
+        void attempt(mode).then(reportDirectorySync, fail);
+      }));
       const { name: _name, ...rest } = next;
       if (Object.keys(rest).length > 0) updateNode.mutate({ id: nodeId, patch: rest }, { onError: fail });
       return;
@@ -93,7 +100,12 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
         id: nodeId,
         patch: { ...next, ...(mode ? { directory_sync: mode } : {}) },
       });
-      void attempt(next.directory_sync).catch((cause) => conflictOrFail(cause, (mode) => { void attempt(mode).catch(fail); }));
+      void attempt(next.directory_sync).then(
+        (updated) => reportDirectorySync(updated?.directory_sync),
+        (cause) => conflictOrFail(cause, (mode) => {
+          void attempt(mode).then((updated) => reportDirectorySync(updated?.directory_sync), fail);
+        }),
+      );
       return;
     }
     updateNode.mutate({ id: nodeId, patch: next }, { onError: fail });

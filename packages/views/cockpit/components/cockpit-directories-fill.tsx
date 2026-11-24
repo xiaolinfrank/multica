@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 import { useFillPlanDirectories, useSyncNodeDirectory } from "@multica/core/directory";
 import type { DirectoryFillItem, DirectoryFillResult } from "@multica/core/types";
 import { Button } from "@multica/ui/components/ui/button";
@@ -17,6 +18,7 @@ import { Spinner } from "@multica/ui/components/ui/spinner";
 import { FolderOpen, RefreshCw } from "@multica/ui/icons";
 import { toast } from "sonner";
 import { useT } from "../../i18n";
+import { RunningTasksDialog, type RunningTasksConflict } from "../../plan-tree/running-tasks-dialog";
 
 /**
  * "Fill folders": one pass over a reconciled plan that creates the folders it is
@@ -36,6 +38,7 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
   const [open, setOpen] = useState(false);
   const [force, setForce] = useState(false);
   const [result, setResult] = useState<DirectoryFillResult | null>(null);
+  const [conflict, setConflict] = useState<RunningTasksConflict | null>(null);
   const fill = useFillPlanDirectories(wsId);
   const sync = useSyncNodeDirectory(wsId);
 
@@ -45,6 +48,7 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
   const openDialog = () => {
     setOpen(true);
     setResult(null);
+    setConflict(null);
     run(false);
   };
 
@@ -54,12 +58,13 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
   const skipped = (result?.items ?? []).filter((item) => item.status === "skipped");
   const showResults = Boolean(result?.applied);
 
-  // Retry one failed row in place. Asking the server about that one folder is
-  // a real repair, so its own result replaces the row's state; a refusal keeps
-  // the row and says why.
-  const retryItem = (item: DirectoryFillItem) => {
-    sync.mutate({ nodeId: item.node_id, force }, {
+  // Retry one failed or skipped row in place. Asking the server about that one
+  // folder is a real repair, so its own result replaces the row's state; a
+  // running-task 409 asks whether to force the rename now or leave it for later.
+  const retryItem = (item: DirectoryFillItem, forceOverride = force) => {
+    sync.mutate({ nodeId: item.node_id, force: forceOverride }, {
       onSuccess: (answer) => {
+        setConflict(null);
         setResult((current) => current ? {
           ...current,
           items: current.items.map((row) => row.node_id === item.node_id ? {
@@ -75,7 +80,19 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
           toast.error(t(($) => $.directories.sync_failed, { reason: answer.directory_sync.error || answer.directory_sync.reason || "" }));
         }
       },
-      onError: (error) => toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed)),
+      onError: (error) => {
+        if (isCockpitRunningTasksError(error)) {
+          setConflict({
+            tasks: error.runningTasks,
+            retry: (mode) => {
+              setConflict(null);
+              if (mode === "force") retryItem(item, true);
+            },
+          });
+          return;
+        }
+        toast.error(error instanceof Error ? error.message : t(($) => $.errors.save_failed));
+      },
     });
   };
 
@@ -172,6 +189,7 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
           )}
         </DialogContent>
       </Dialog>
+      <RunningTasksDialog conflict={conflict} onDismiss={() => setConflict(null)} pending={sync.isPending} />
     </>
   );
 }

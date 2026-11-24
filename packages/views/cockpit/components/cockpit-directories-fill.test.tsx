@@ -11,7 +11,11 @@ const fill = vi.hoisted(() => ({
   preview: null as unknown as DirectoryFillResult,
   applied: null as unknown as DirectoryFillResult,
 }));
-const sync = vi.hoisted(() => ({ calls: [] as unknown[] }));
+const sync = vi.hoisted(() => ({
+  calls: [] as unknown[],
+  conflict: null as null | { task_id: string; issue_id: string; issue_identifier: string; status: string }[],
+  nextStatus: "created",
+}));
 
 vi.mock("@multica/core/directory", async (original) => ({
   ...(await original<typeof import("@multica/core/directory")>()),
@@ -24,9 +28,19 @@ vi.mock("@multica/core/directory", async (original) => ({
     isPending: false,
   }),
   useSyncNodeDirectory: () => ({
-    mutate: (vars: unknown, options?: { onSuccess?: (value: unknown) => void }) => {
+    mutate: (
+      vars: { nodeId: string; force?: boolean },
+      options?: { onSuccess?: (value: unknown) => void; onError?: (error: unknown) => void },
+    ) => {
       sync.calls.push(vars);
-      options?.onSuccess?.({ directory_sync: { status: "created", directory_name: "01.01模块" }, directory: { full_path: "/share/01.01模块" } });
+      if (sync.conflict && !vars.force) {
+        options?.onError?.({ code: "running_agent_tasks", message: "running", runningTasks: sync.conflict });
+        return;
+      }
+      options?.onSuccess?.({
+        directory_sync: { status: sync.nextStatus, directory_name: "01.01模块" },
+        directory: { full_path: "/share/01.01模块" },
+      });
     },
     isPending: false,
   }),
@@ -56,6 +70,8 @@ function renderButton() {
 beforeEach(() => {
   fill.calls = [];
   sync.calls = [];
+  sync.conflict = null;
+  sync.nextStatus = "created";
   fill.preview = result(false, "pending");
   fill.applied = result(true, "failed");
 });
@@ -86,5 +102,33 @@ describe("FillDirectoriesButton", () => {
     expect(sync.calls[0]).toEqual({ nodeId: "n1", force: false });
     await waitFor(() => expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull());
     expect(screen.getByText("Created")).toBeInTheDocument();
+  });
+
+  it("opens the running-tasks confirmation when retrying a skipped row hits 409", async () => {
+    fill.applied = result(true, "skipped");
+    sync.conflict = [{ task_id: "t1", issue_id: "i1", issue_identifier: "TES-1", status: "running" }];
+    sync.nextStatus = "renamed";
+
+    renderButton();
+    fireEvent.click(screen.getByRole("button", { name: /Fill folders/ }));
+    await waitFor(() => expect(fill.calls.length).toBe(1));
+    fireEvent.click(await screen.findByRole("button", { name: /Apply/ }));
+
+    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
+    await screen.findByText("An agent is working in this folder");
+    expect(sync.calls).toEqual([{ nodeId: "n1", force: false }]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync later" }));
+    await waitFor(() => expect(screen.queryByText("An agent is working in this folder")).toBeNull());
+    expect(sync.calls).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: /Retry/ }));
+    await screen.findByText("An agent is working in this folder");
+    fireEvent.click(screen.getByRole("button", { name: "Sync now" }));
+
+    await waitFor(() => expect(sync.calls).toHaveLength(3));
+    expect(sync.calls[2]).toEqual({ nodeId: "n1", force: true });
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull());
+    expect(screen.getByText("Synced")).toBeInTheDocument();
   });
 });

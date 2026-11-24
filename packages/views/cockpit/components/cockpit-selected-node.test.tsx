@@ -15,6 +15,11 @@ const state = vi.hoisted(() => ({
   updateMutateAsync: vi.fn(),
   renameRow: vi.fn(),
   deleteNode: vi.fn(),
+  toastError: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { error: (...args: unknown[]) => state.toastError(...args) },
 }));
 
 vi.mock("@multica/core/issues", async (original) => ({
@@ -90,6 +95,7 @@ beforeEach(() => {
   state.updateMutate.mockReset();
   state.updateMutateAsync.mockReset();
   state.deleteNode.mockReset();
+  state.toastError.mockReset();
 });
 
 describe("CockpitSelectedNode rename", () => {
@@ -118,5 +124,19 @@ describe("CockpitSelectedNode rename", () => {
     await waitFor(() => expect(state.updateMutateAsync).toHaveBeenCalledTimes(2));
     expect(state.updateMutateAsync.mock.calls[0]![0]).toMatchObject({ id: "n1", patch: { name: "新名称" } });
     expect(state.updateMutateAsync.mock.calls[1]![0]).toMatchObject({ id: "n1", patch: { name: "新名称", directory_sync: "defer" } });
+  });
+
+  it("toasts the reason when a panel rename succeeds on the row but fails on disk", async () => {
+    state.ancestors = 2;
+    state.updateMutateAsync.mockResolvedValueOnce({
+      id: "n1",
+      name: "新名称",
+      directory_sync: { status: "failed", reason: "target_exists", error: "a folder with the new name already exists" },
+    });
+    renderPanel();
+    fireEvent.click(await screen.findByRole("button", { name: "rename row" }));
+
+    await waitFor(() => expect(state.toastError).toHaveBeenCalledTimes(1));
+    expect(state.toastError.mock.calls[0]![0]).toContain("a folder with the new name already exists");
   });
 });
