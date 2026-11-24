@@ -38,13 +38,15 @@ export const PlanDirectoryStatusSchema = z.object({
   expected_directory_name: z.string().nullable().catch(null).default(null),
   full_path: z.string().nullable().catch(null).default(null),
   status: z.string().default("invalid"),
-  running_tasks: z.array(RunningAgentTaskSchema).default([]),
-  shared_collab_projects: z.array(SharedCollabProjectSchema).default([]),
+  // Go writes a nil slice as `null`; an empty list must read as empty, not
+  // take the whole status through the fallback.
+  running_tasks: z.array(RunningAgentTaskSchema).catch([]).default([]),
+  shared_collab_projects: z.array(SharedCollabProjectSchema).catch([]).default([]),
   error: z.string().optional().catch(undefined),
 }).loose();
 
 export const PlanDirectoryListSchema = z.object({
-  items: z.array(PlanDirectoryStatusSchema).default([]),
+  items: z.array(PlanDirectoryStatusSchema).catch([]).default([]),
 }).loose();
 
 export const DirectoryFillItemSchema = z.object({
@@ -62,9 +64,9 @@ export const DirectoryFillItemSchema = z.object({
 
 export const DirectoryFillResultSchema = z.object({
   applied: z.boolean().default(false),
-  items: z.array(DirectoryFillItemSchema).default([]),
-  counts: z.record(z.string(), z.number()).default({}),
-  shared_collab_projects: z.array(SharedCollabProjectSchema).default([]),
+  items: z.array(DirectoryFillItemSchema).catch([]).default([]),
+  counts: z.record(z.string(), z.number()).catch({}).default({}),
+  shared_collab_projects: z.array(SharedCollabProjectSchema).catch([]).default([]),
 }).loose();
 
 export const IssueDirectoryStatusSchema = z.object({
@@ -74,8 +76,10 @@ export const IssueDirectoryStatusSchema = z.object({
   directory_name: z.string().nullable().catch(null).default(null),
   full_path: z.string().nullable().catch(null).default(null),
   status: z.string().default("invalid"),
-  running_tasks: z.array(RunningAgentTaskSchema).default([]),
-  shared_collab_projects: z.array(SharedCollabProjectSchema).default([]),
+  // Go writes a nil slice as `null`; an empty list must read as empty, not
+  // take the whole status through the fallback.
+  running_tasks: z.array(RunningAgentTaskSchema).catch([]).default([]),
+  shared_collab_projects: z.array(SharedCollabProjectSchema).catch([]).default([]),
   error: z.string().optional().catch(undefined),
 }).loose();
 

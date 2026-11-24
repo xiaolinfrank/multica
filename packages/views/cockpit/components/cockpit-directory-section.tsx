@@ -5,7 +5,7 @@ import { planDirectoriesOptions, useSyncNodeDirectory } from "@multica/core/dire
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
-import { RefreshCw } from "@multica/ui/icons";
+import { FolderOpen, RefreshCw } from "@multica/ui/icons";
 import { toast } from "sonner";
 import { useState } from "react";
 import { LocalPathLink, useLocalPathActions } from "../../common/local-path-link";
@@ -79,7 +79,7 @@ export function CockpitDirectorySection({ wsId, nodeId, projectId, readOnly }: {
   const noCollab = status.status === "no_collab_path";
 
   return (
-    <div className="flex flex-col gap-2" data-directory-section="">
+    <div className="flex min-w-0 flex-col gap-2" data-directory-section="">
       {status.full_path ? (
         <LocalPathLink path={status.full_path} wrap="break" />
       ) : (
@@ -101,11 +101,20 @@ export function CockpitDirectorySection({ wsId, nodeId, projectId, readOnly }: {
             {t(($) => $.directories.retry)}
           </Button>
         )}
-        {status.full_path && (
-          <Button type="button" size="sm" variant="ghost"
-            onClick={() => { if (status.full_path) void pathActions.copy(status.full_path); }}>
-            {t(($) => $.directories.copy)}
-          </Button>
+        {/* A missing folder has nothing to open; the retry above creates it,
+            and "open" that lands on an absent path only falls back to a copy. */}
+        {status.full_path && status.status !== "missing" && (
+          <>
+            <Button type="button" size="sm" variant="ghost"
+              onClick={() => { if (status.full_path) void pathActions.open(status.full_path); }}>
+              <FolderOpen className="size-3" aria-hidden />
+              {t(($) => $.directories.open)}
+            </Button>
+            <Button type="button" size="sm" variant="ghost"
+              onClick={() => { if (status.full_path) void pathActions.copy(status.full_path); }}>
+              {t(($) => $.directories.copy)}
+            </Button>
+          </>
         )}
         {noCollab && projectId && (
           <AppLink href={paths.projectDetail(projectId)} className="text-primary hover:underline">

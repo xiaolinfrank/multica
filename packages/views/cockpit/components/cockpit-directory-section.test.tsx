@@ -54,6 +54,8 @@ describe("CockpitDirectorySection", () => {
   it("shows a ready folder, its path, and copies it", async () => {
     renderSection();
     expect(await screen.findByText("Folder is ready")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Open folder/ }));
+    expect(pathActions.open).toHaveBeenCalledWith("/Volumes/Space/01.01确权线");
     fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
     expect(pathActions.copy).toHaveBeenCalledWith("/Volumes/Space/01.01确权线");
   });

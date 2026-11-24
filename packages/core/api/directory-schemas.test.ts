@@ -21,6 +21,16 @@ describe("directory response schemas", () => {
     expect(parsed.running_tasks[0]!.issue_identifier).toBe("TES-1");
   });
 
+  it("reads Go's nil slices as empty lists, not as a failed status", () => {
+    // A module with no collaboration root answers `shared_collab_projects: null`
+    // (Go's nil slice). Treating that as invalid would hide a path that is
+    // actually fine.
+    const parsed = PlanDirectoryStatusSchema.parse({ node_id: "n1", kind: "module", status: "no_collab_path", shared_collab_projects: null, running_tasks: null });
+    expect(parsed.status).toBe("no_collab_path");
+    expect(parsed.shared_collab_projects).toEqual([]);
+    expect(PlanDirectoryListSchema.parse({ items: null }).items).toEqual([]);
+  });
+
   it("degrades an unknown kind and a mistyped path instead of failing the panel", () => {
     const parsed = PlanDirectoryStatusSchema.parse({
       node_id: "n1", kind: "mystery", status: "ok",

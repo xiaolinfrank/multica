@@ -86,7 +86,7 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
   }
 
   return (
-    <div className="flex flex-col gap-1.5" data-issue-directory="">
+    <div className="flex min-w-0 flex-col gap-1.5" data-issue-directory="">
       {status.full_path ? (
         <LocalPathLink path={status.full_path} wrap="truncate" />
       ) : (

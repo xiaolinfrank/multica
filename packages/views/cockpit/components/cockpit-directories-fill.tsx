@@ -155,5 +155,15 @@ function FillStatus({ item, onRetry, retrying }: { item: DirectoryFillItem; onRe
       </Button>
     );
   }
-  return <span className="shrink-0 text-micro text-muted-foreground">{item.status}</span>;
+  const label = (() => {
+    switch (item.status) {
+      case "created": return t(($) => $.directories.fill_status_created);
+      case "renamed": return t(($) => $.directories.fill_status_renamed);
+      case "ok": return t(($) => $.directories.fill_status_ok);
+      case "skipped": return t(($) => $.directories.fill_status_skipped);
+      case "failed": return t(($) => $.directories.fill_status_failed);
+      default: return item.status;
+    }
+  })();
+  return <span className="shrink-0 text-micro text-muted-foreground">{label}</span>;
 }
