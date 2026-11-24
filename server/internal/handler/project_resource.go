@@ -1159,8 +1159,16 @@ func (h *Handler) resolveClaimWorkItemContext(ctx context.Context, workItemID, m
 	}
 	if moduleID.Valid {
 		parent, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: node.ParentID, WorkspaceID: workspaceID})
-		if err == nil && parent.ModuleID.Valid && parent.ModuleID != moduleID {
+		switch {
+		case err == nil:
+			if parent.ModuleID.Valid && parent.ModuleID != moduleID {
+				return claimWorkItemContext{}, nil
+			}
+		case errors.Is(err, pgx.ErrNoRows):
+			// The module row is gone; treat the work item as unbound.
 			return claimWorkItemContext{}, nil
+		default:
+			return claimWorkItemContext{}, fmt.Errorf("get work item's module row: %w", err)
 		}
 	}
 	return claimWorkItemContext{
