@@ -44,6 +44,8 @@ function setup(overrides: Partial<IssueDirectoryStatus> = {}, patch: Partial<Iss
     status: "ok", running_tasks: [], shared_collab_projects: [],
     ...overrides,
   };
+  directory.ensure.mockReset();
+  pathActions.open.mockReset();
   const onUpdate = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -64,10 +66,16 @@ describe("IssueDeliveryDirectory", () => {
     expect(pathActions.open).toHaveBeenCalledWith("/Volumes/Space/01.01/TES-7注册路径设计");
   });
 
-  it("allocates and creates the folder on the first open", async () => {
+  it("opens an unallocated folder instead of offering a retry", async () => {
     setup({ status: "unallocated", directory_name: null, full_path: null });
-    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
+    directory.ensure.mockImplementation((_id: string, options?: { onSuccess?: (value: unknown) => void }) => {
+      options?.onSuccess?.({ status: "ok", full_path: "/Volumes/Space/TES-7注册路径设计" });
+    });
+    const open = await screen.findByRole("button", { name: /Open folder/ });
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+    fireEvent.click(open);
     expect(directory.ensure).toHaveBeenCalledWith("i1", expect.anything());
+    await waitFor(() => expect(pathActions.open).toHaveBeenCalledWith("/Volumes/Space/TES-7注册路径设计"));
   });
 
   it("points the issue at a hand-picked folder name without moving files", async () => {
@@ -78,6 +86,18 @@ describe("IssueDeliveryDirectory", () => {
     fireEvent.change(input, { target: { value: "旧文件夹" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ directory_name: "旧文件夹" }));
+  });
+
+  it("keeps the editor open and says why an unsafe name is refused", async () => {
+    const { onUpdate } = setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Change folder name" }));
+    const input = screen.getByRole("textbox", { name: "Change folder name" });
+    fireEvent.change(input, { target: { value: "../a" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("One safe folder name");
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "Change folder name" })).toBeInTheDocument();
   });
 
   it("says what is missing without a project or a collaboration root", async () => {

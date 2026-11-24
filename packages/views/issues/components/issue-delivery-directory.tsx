@@ -36,9 +36,11 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
   const ensure = useEnsureIssueDirectory(wsId);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
 
   const status = query.data;
   const busy = ensure.isPending;
+  const unallocated = status?.status === "unallocated";
 
   if (query.isPending) {
     return <span role="status" className="flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.workflow.loading)}</span>;
@@ -66,6 +68,13 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
   const saveName = () => {
     const next = draft.trim();
     if (!next) return;
+    // The server refuses anything but one safe segment; say so here instead of
+    // closing the editor on a write that is already going to fail.
+    if (!isValidFolderName(next)) {
+      setNameError(t(($) => $.directories.issue_invalid_name));
+      return;
+    }
+    setNameError(null);
     onUpdate({ directory_name: next });
     setEditing(false);
   };
@@ -95,8 +104,8 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
       <div className="flex flex-wrap items-center gap-2 text-caption">
         {status.full_path && <span className="text-muted-foreground">{statusLabel}</span>}
         <Button type="button" size="sm" variant="ghost" disabled={noCollab || busy} aria-busy={busy} onClick={openOrCreate}>
-          {busy ? <Spinner /> : needsCreate ? <RefreshCw className="size-3" aria-hidden /> : <FolderOpen className="size-3" aria-hidden />}
-          {needsCreate ? t(($) => $.directories.retry) : t(($) => $.directories.open)}
+          {busy ? <Spinner /> : needsCreate && !unallocated ? <RefreshCw className="size-3" aria-hidden /> : <FolderOpen className="size-3" aria-hidden />}
+          {needsCreate && !unallocated ? t(($) => $.directories.retry) : t(($) => $.directories.open)}
         </Button>
         {status.full_path && (
           <Button type="button" size="sm" variant="ghost" onClick={() => { if (status.full_path) void pathActions.copy(status.full_path); }}>
@@ -105,7 +114,7 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
         )}
         {!readOnly && !noCollab && !editing && (
           <Button type="button" size="sm" variant="ghost"
-            onClick={() => { setDraft(status.directory_name ?? ""); setEditing(true); }}>
+            onClick={() => { setDraft(status.directory_name ?? ""); setNameError(null); setEditing(true); }}>
             {t(($) => $.directories.issue_edit)}
           </Button>
         )}
@@ -126,6 +135,7 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
             <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>{t(($) => $.directories.cancel)}</Button>
           </div>
           <p className="text-micro text-muted-foreground">{t(($) => $.directories.issue_edit_hint)}</p>
+          {nameError && <p role="alert" className="text-micro text-destructive">{nameError}</p>}
         </div>
       )}
       {status.error && <p className="text-micro text-destructive">{status.error}</p>}
@@ -138,4 +148,18 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
       )}
     </div>
   );
+}
+
+/** One safe folder-name segment, matching the server's `localpaths.ValidFolder`:
+ *  no separators, no colon, no control characters, no "." / "..", and within
+ *  the byte cap the filesystem accepts. */
+export function isValidFolderName(name: string): boolean {
+  if (name === "" || name === "." || name === "..") return false;
+  if (name.trim() !== name) return false;
+  if (new TextEncoder().encode(name).length > 240) return false;
+  for (const char of name) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f || char === "/" || char === "\\" || char === ":") return false;
+  }
+  return true;
 }
