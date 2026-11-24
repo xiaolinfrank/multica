@@ -44,8 +44,8 @@ For paginated issues per work item, the filing read/write and meeting actions, s
 | PATCH | `/api/cockpit/milestones/{milestoneId}` | edit a milestone |
 | DELETE | `/api/cockpit/milestones/{milestoneId}` | delete a milestone |
 | POST | `/api/cockpit/meetings` | add a meeting |
-| GET | `/api/cockpit/meetings/destination` | where a new meeting would be filed; `project_id`/`module_id`/`node_id` override the board's stored choice |
-| GET | `/api/cockpit/meetings/scan` | archive folders no meeting records, with what their names give up |
+| GET | `/api/cockpit/meetings/destination` | where a new meeting would be filed; `project_id`/`module_id`/`node_id` override the board's stored choice. An explicit empty `module_id` or `node_id` clears that level (`?project_id=P&module_id=&node_id=` files at the project), an omitted parameter keeps the stored one, and switching project or module drops the levels below it the request does not name |
+| GET | `/api/cockpit/meetings/scan` | archive folders no meeting records, with what their names give up; takes the same destination parameters and the same empty-means-cleared rule |
 | POST | `/api/cockpit/meetings/import` | turn chosen archive folders into meeting rows |
 | POST | `/api/cockpit/meetings/{meetingId}/provision` | open the meeting's task and create its folder |
 | GET | `/api/cockpit/meetings/{meetingId}/workflow` | read the meeting work package and fixed minutes versions |
