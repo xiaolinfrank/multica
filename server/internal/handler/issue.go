@@ -4234,62 +4234,88 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	requestedProject := prevIssue.ProjectID
-	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
-		if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ProjectID), "project_id"); ok {
+	if rawValue, touched := rawFields["project_id"]; touched {
+		var rawID *string
+		_ = json.Unmarshal(rawValue, &rawID)
+		if rawID == nil || strings.TrimSpace(*rawID) == "" {
+			// An explicit null/empty clears the project; it must count as a
+			// filing change or the folder never follows (or is never refused).
+			requestedProject = pgtype.UUID{}
+		} else if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*rawID), "project_id"); ok {
 			requestedProject = parsed
 		} else {
 			return
 		}
 	}
 	requestedWorkItem := prevIssue.WorkItemID
-	if req.WorkItemID != nil && strings.TrimSpace(*req.WorkItemID) != "" {
-		if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.WorkItemID), "work_item_id"); ok {
+	if rawValue, touched := rawFields["work_item_id"]; touched {
+		var rawID *string
+		_ = json.Unmarshal(rawValue, &rawID)
+		if rawID == nil || strings.TrimSpace(*rawID) == "" {
+			requestedWorkItem = pgtype.UUID{}
+		} else if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*rawID), "work_item_id"); ok {
 			requestedWorkItem = parsed
 		} else {
 			return
 		}
 	}
 	requestedModule := prevIssue.ModuleID
-	if req.ModuleID != nil && strings.TrimSpace(*req.ModuleID) != "" {
-		if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ModuleID), "module_id"); ok {
+	if rawValue, touched := rawFields["module_id"]; touched {
+		var rawID *string
+		_ = json.Unmarshal(rawValue, &rawID)
+		if rawID == nil || strings.TrimSpace(*rawID) == "" {
+			requestedModule = pgtype.UUID{}
+		} else if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*rawID), "module_id"); ok {
 			requestedModule = parsed
 		} else {
 			return
 		}
 	}
+	// A new parent re-files the subtree with the parent's filing, so it is a
+	// potential move even when the three filing fields themselves echo back.
+	parentWillChange := false
+	if rawValue, touched := rawFields["parent_issue_id"]; touched {
+		var rawID *string
+		_ = json.Unmarshal(rawValue, &rawID)
+		if rawID == nil || strings.TrimSpace(*rawID) == "" {
+			parentWillChange = prevIssue.ParentIssueID.Valid
+		} else if parsed, err := util.ParseUUID(strings.TrimSpace(*rawID)); err == nil {
+			parentWillChange = parsed != prevIssue.ParentIssueID
+		}
+	}
 	filingWillChange := filingTouched &&
-		(requestedProject != prevIssue.ProjectID || requestedModule != prevIssue.ModuleID || requestedWorkItem != prevIssue.WorkItemID)
+		(requestedProject != prevIssue.ProjectID || requestedModule != prevIssue.ModuleID ||
+			requestedWorkItem != prevIssue.WorkItemID || parentWillChange)
 	var beforeSubtree []db.ListIssueSubtreeDirectoryRowsRow
 	if filingWillChange {
 		beforeSubtree = h.subtreeDirectoryRows(r.Context(), h.Queries, prevIssue.WorkspaceID, prevIssue.ID)
 	}
 	if filingWillChange && dirMode == DirectorySyncSync && req.DirectoryName == nil {
-		hasFolder := false
+		// Every folder the move carries — the issue's own and its sub-issues' —
+		// must be free of running work, not just the row named in the URL.
+		issueIDs := make([]pgtype.UUID, 0, len(beforeSubtree))
 		for _, row := range beforeSubtree {
 			if row.DirectoryName.String != "" {
-				hasFolder = true
-				break
+				issueIDs = append(issueIDs, row.ID)
 			}
 		}
-		if hasFolder {
-			tasks, err := h.Queries.ListRunningAgentTasksForIssue(r.Context(), db.ListRunningAgentTasksForIssueParams{
-				WorkspaceID: prevIssue.WorkspaceID, IssueID: prevIssue.ID,
+		if len(issueIDs) > 0 {
+			tasks, err := h.Queries.ListRunningAgentTasksForIssues(r.Context(), db.ListRunningAgentTasksForIssuesParams{
+				WorkspaceID: prevIssue.WorkspaceID, IssueIds: issueIDs,
 			})
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to check running tasks")
 				return
 			}
 			if len(tasks) > 0 {
-				rows := make([]RunningTaskRef, 0, len(tasks))
+				rows := make([]runningTask, 0, len(tasks))
 				for _, task := range tasks {
-					rows = append(rows, h.runningTaskRefs(r.Context(), prevIssue.WorkspaceID, []runningTask{
-						{task.TaskID, task.IssueID, task.IssueNumber, task.Status},
-					})...)
+					rows = append(rows, runningTask{task.TaskID, task.IssueID, task.IssueNumber, task.Status})
 				}
 				writeJSON(w, http.StatusConflict, map[string]any{
 					"code":          "running_agent_tasks",
 					"error":         "agent tasks are running in this issue's folder; sync now or defer",
-					"running_tasks": rows,
+					"running_tasks": h.runningTaskRefs(r.Context(), prevIssue.WorkspaceID, rows),
 				})
 				return
 			}
@@ -5703,8 +5729,21 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 				after := h.subtreeDirectoryRows(r.Context(), h.Queries, issue.WorkspaceID, issue.ID)
 				moves := h.planIssueDirectoryMoves(r.Context(), h.Queries, issue.WorkspaceID, batchBefore, after)
 				if len(moves) > 0 {
-					tasks, _ := h.Queries.ListRunningAgentTasksForIssue(r.Context(), db.ListRunningAgentTasksForIssueParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID})
-					if len(tasks) == 0 {
+					issueIDs := make([]pgtype.UUID, 0, len(batchBefore))
+					for _, row := range batchBefore {
+						if row.DirectoryName.String != "" {
+							issueIDs = append(issueIDs, row.ID)
+						}
+					}
+					busy := false
+					if len(issueIDs) > 0 {
+						if tasks, err := h.Queries.ListRunningAgentTasksForIssues(r.Context(), db.ListRunningAgentTasksForIssuesParams{
+							WorkspaceID: issue.WorkspaceID, IssueIds: issueIDs,
+						}); err == nil && len(tasks) > 0 {
+							busy = true
+						}
+					}
+					if !busy {
 						h.moveIssueDirectories(r.Context(), h.Queries, moves)
 					}
 				}
