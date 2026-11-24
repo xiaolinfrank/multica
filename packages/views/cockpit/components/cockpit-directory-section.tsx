@@ -12,6 +12,7 @@ import { LocalPathLink, useLocalPathActions } from "../../common/local-path-link
 import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
 import { RunningTasksDialog, type RunningTasksConflict } from "../../plan-tree/running-tasks-dialog";
+import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 
 /**
  * The node panel's delivery folder: the path, what state it is in, and the one
@@ -45,10 +46,9 @@ export function CockpitDirectorySection({ wsId, nodeId, projectId, readOnly }: {
       },
       onError: (error) => {
         // A running-task refusal is a choice, not a failure.
-        const tasks = (error as { runningTasks?: RunningTasksConflict["tasks"] }).runningTasks;
-        if (Array.isArray(tasks)) {
+        if (isCockpitRunningTasksError(error)) {
           setConflict({
-            tasks,
+            tasks: error.runningTasks,
             retry: (mode) => {
               // "Later" means the row keeps today's folder; there is nothing
               // to sync now, and re-sending `force: false` would only hit the

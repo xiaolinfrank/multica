@@ -109,7 +109,7 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
           {!showResults && pending.length > 0 && (
             <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto text-caption" aria-label={t(($) => $.directories.fill_results)}>
               {pending.map((item) => (
-                <li key={item.node_id} className="flex items-center gap-2 rounded-sm bg-muted/50 px-2 py-1">
+                <li key={item.node_id} className="flex min-w-0 items-center gap-2 rounded-sm bg-muted/50 px-2 py-1">
                   <span className="font-mono text-micro text-muted-foreground">{item.code}</span>
                   <span className="min-w-0 flex-1 truncate">{item.name}</span>
                   <span className="shrink-0 text-micro">
@@ -121,13 +121,13 @@ export function FillDirectoriesButton({ wsId, projectId, disabled }: {
           )}
 
           {showResults && (
-            <div className="flex flex-col gap-2">
+            <div className="flex min-w-0 flex-col gap-2">
               <p className="text-caption text-muted-foreground">{t(($) => $.directories.fill_results)}</p>
-              <ul className="max-h-64 flex-col gap-1 overflow-y-auto text-caption" aria-label={t(($) => $.directories.fill_results)}>
+              <ul className="flex max-h-64 min-w-0 flex-col gap-1 overflow-y-auto text-caption" aria-label={t(($) => $.directories.fill_results)}>
                 {(result?.items ?? []).filter((item) => item.action !== "none").map((item) => (
-                  <li key={item.node_id} className="flex items-center gap-2 rounded-sm bg-muted/50 px-2 py-1">
+                  <li key={item.node_id} className="flex min-w-0 items-center gap-2 rounded-sm bg-muted/50 px-2 py-1">
                     <span className="font-mono text-micro text-muted-foreground">{item.code}</span>
-                    <span className="min-w-0 flex-1 truncate">{item.full_path || item.name}</span>
+                    <span className="w-0 min-w-0 flex-1 truncate">{item.full_path || item.name}</span>
                     <FillStatus item={item} onRetry={() => retryItem(item)} retrying={sync.isPending} />
                   </li>
                 ))}

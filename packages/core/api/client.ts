@@ -1222,7 +1222,11 @@ export class ApiClient {
     if (!res.ok) {
       if (res.status === 401) this.handleUnauthorized(credentialUsed);
       const { message, body } = await this.parseErrorBody(res, `API error: ${res.status} ${res.statusText}`);
-      const logLevel = res.status === 404 ? "warn" : "error";
+      // A 409 is usually an expected, actionable answer (a revision conflict, a
+      // folder blocked by running work, a duplicate apply). Logging it at error
+      // level makes the Next.js dev overlay count a normal refusal as a runtime
+      // failure; the caller turns the body into a dialog.
+      const logLevel = res.status === 404 || res.status === 409 ? "warn" : "error";
       this.logger[logLevel](`← ${res.status} ${path}`, { rid, duration: `${Date.now() - start}ms`, error: message });
       throw new ApiError(message, res.status, res.statusText, body);
     }

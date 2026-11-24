@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { cockpitKeys } from "../cockpit/queries";
+import { cockpitWriteError } from "../cockpit/write-errors";
 import { issueKeys } from "../issues/queries";
 import { directoryKeys } from "./queries";
 
@@ -8,8 +9,15 @@ import { directoryKeys } from "./queries";
 export function useSyncNodeDirectory(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ nodeId, force }: { nodeId: string; force?: boolean }) =>
-      api.syncCockpitNodeDirectory(wsId, nodeId, force ?? false),
+    mutationFn: async ({ nodeId, force }: { nodeId: string; force?: boolean }) => {
+      try {
+        return await api.syncCockpitNodeDirectory(wsId, nodeId, force ?? false);
+      } catch (error) {
+        // Translate the 409 body into the shared running-tasks refusal so the
+        // panel can offer "sync now / later" instead of a bare toast.
+        throw cockpitWriteError(error);
+      }
+    },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: directoryKeys.plan(wsId) });
       void queryClient.invalidateQueries({ queryKey: cockpitKeys.board(wsId) });
