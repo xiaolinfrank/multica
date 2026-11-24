@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ellipsis, Plus } from "@multica/ui/icons";
+import { Copy, Ellipsis, FolderOpen, Plus } from "@multica/ui/icons";
 import type { CockpitNode } from "@multica/core/types";
 import { useT } from "../i18n";
 import type { PlanRow } from "./plan-rows";
@@ -19,6 +19,13 @@ export interface PlanRowActionsProps {
   onMove: (parentId: string) => void;
   onRenumber: () => void;
   onDelete: () => void;
+  /** The row's delivery folder, derived from the plan read — never from the
+   *  disk. Absent when the surface cannot compose one. */
+  directoryPath?: string | null;
+  /** Why there is no folder to open (no collaboration root, no module folder). */
+  directoryDisabledReason?: string;
+  onOpenDirectory?: () => void;
+  onCopyDirectory?: () => void;
 }
 
 /** The row's hover actions — "+" to add a child, "…" for move, renumber and
@@ -26,12 +33,33 @@ export interface PlanRowActionsProps {
  *  cannot drift about what a level can do. */
 export function PlanRowActions({
   row, modules, addChildLabel, onAddChild, addIssueLabel, onAddIssue, onMove, onRenumber, onDelete,
+  directoryPath, directoryDisabledReason, onOpenDirectory, onCopyDirectory,
 }: PlanRowActionsProps) {
   const { t } = useT("cockpit");
   const [menuOpen, setMenuOpen] = useState(false);
+  const hasFolder = Boolean(directoryPath);
+  // Structure rows (the project) own no folder; a module or work item without
+  // one says why, because "open folder" that does nothing looks broken.
+  const showDirectory = Boolean(onOpenDirectory || onCopyDirectory);
   return (
     <>
       <span className="flex shrink-0 items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+        {showDirectory && (
+          <>
+            <button type="button" aria-label={t(($) => $.directories.open)} title={hasFolder ? directoryPath ?? undefined : directoryDisabledReason}
+              disabled={!hasFolder || !onOpenDirectory}
+              onClick={() => onOpenDirectory?.()}
+              className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40">
+              <FolderOpen className="size-3" aria-hidden />
+            </button>
+            <button type="button" aria-label={t(($) => $.directories.copy)} title={hasFolder ? directoryPath ?? undefined : directoryDisabledReason}
+              disabled={!hasFolder || !onCopyDirectory}
+              onClick={() => onCopyDirectory?.()}
+              className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-40">
+              <Copy className="size-3" aria-hidden />
+            </button>
+          </>
+        )}
         {onAddChild && (
           <button type="button" aria-label={addChildLabel ?? t(($) => $.plan_tree.add_child)}
             onClick={onAddChild}

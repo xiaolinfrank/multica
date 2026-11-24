@@ -631,7 +631,8 @@
     "description_nav_label": "タスクの説明",
     "sub_issues_nav_progress": "{{done}}/{{total}} 完了",
     "thread_nav_show_replies_other": "{{count}} 件の返信を表示",
-    "thread_nav_hide_replies": "返信を折りたたむ"
+    "thread_nav_hide_replies": "返信を折りたたむ",
+    "prop_directory": "納品フォルダー"
   },
   "timeline": {
     "loading": "読み込み中...",

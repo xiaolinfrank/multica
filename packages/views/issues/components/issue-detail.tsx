@@ -99,6 +99,7 @@ import { LabelChip } from "../../labels/label-chip";
 import { IssueAgentActivityIndicator } from "./issue-agent-activity-indicator";
 import { SubIssuesAgentWorkingChip } from "./sub-issues-agent-working-chip";
 import { IssueScopeProperty } from "./issue-scope-property";
+import { IssueDeliveryDirectory } from "./issue-delivery-directory";
 import { IssuePropertyPills } from "./issue-property-pills";
 import { IssueOperationRestriction, type IssueOperationObservation } from "./issue-operation-restriction";
 import { LocalDirectoryHint } from "../../projects/components/local-directory-hint";
@@ -2963,6 +2964,9 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
               readOnly={scopeReadOnly}
               restriction={scopeRestriction}
             />
+          </PropRow>
+          <PropRow label={t(($) => $.detail.prop_directory)}>
+            <IssueDeliveryDirectory issue={issue} onUpdate={handleUpdateField} readOnly={scopeReadOnly} />
           </PropRow>
           <IssueWorkflowPropRow projectId={issue.project_id} status={issue.status} label={t(($) => $.workflows.project.label)} />
 

@@ -96,6 +96,7 @@ import { CockpitOverview } from "./cockpit-overview";
 import { CockpitTable } from "./cockpit-table";
 import { PlanTree } from "../../plan-tree/plan-tree";
 import { CockpitCsvExport } from "./cockpit-csv-export";
+import { FillDirectoriesButton } from "./cockpit-directories-fill";
 import { CockpitVersions } from "./cockpit-versions";
 
 type CockpitTab = "overview" | "gantt" | "meetings" | "changes" | "finance";
@@ -675,6 +676,10 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
                 onChange={(event) => useCockpitScopeViewStore.getState().updatePlan(planKey, { includeClosedProjects: event.target.checked })} />
               {t(($) => $.toolbar.include_closed)}
             </label>
+          )}
+          {board && tab === "gantt" && planView === "gantt" && Boolean(board.cockpit.plan_reconciled_at) && (
+            <FillDirectoriesButton wsId={wsId}
+              disabled={context.data?.actor.is_human !== true || planQuery.isError} />
           )}
           {board && tab !== "changes" && <CockpitCsvExport wsId={wsId} scope={scope} initialMode={planView === "finance" ? "finance" : "tasks"} />}
           {versionActions}

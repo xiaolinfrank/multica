@@ -44,6 +44,64 @@ import { useT } from "../i18n";
  * — producing a path that reads correctly character by character but names a
  * different directory.
  */
+/** What a click does to a path, in one place: the component below and the
+ *  plan row's "open folder" action must not drift about the shell fallbacks. */
+export function useLocalPathActions() {
+  const { t } = useT("common");
+  const collabSpaceHost = useConfigStore((state) => state.collabSpaceHost);
+
+  const copyWithHint = async (path: string) => {
+    const ok = await copyText(path);
+    if (!ok) {
+      toast.error(t(($) => $.local_path.toast_copy_failed));
+      return;
+    }
+    const manager = viewerFileManager();
+    toast.success(
+      manager === "finder"
+        ? t(($) => $.local_path.toast_copied_finder)
+        : manager === "explorer"
+          ? t(($) => $.local_path.toast_copied_explorer)
+          : t(($) => $.local_path.toast_copied_generic),
+    );
+  };
+
+  const open = async (path: string) => {
+    const addresses = collabPathAddresses(path, collabSpaceHost);
+    if (!canOpenLocalPath()) {
+      const manager = viewerFileManager();
+      if (manager === "finder" && addresses.smbUrl) {
+        handOffToOS(addresses.smbUrl);
+        void copyText(path);
+        toast.success(t(($) => $.local_path.toast_opening_finder));
+        return;
+      }
+      if (manager === "explorer" && addresses.uncPath) {
+        const ok = await copyText(addresses.uncPath);
+        toast[ok ? "success" : "error"](ok ? t(($) => $.local_path.toast_copied_unc) : t(($) => $.local_path.toast_copy_failed));
+        return;
+      }
+      await copyWithHint(path);
+      return;
+    }
+    const result = await openLocalPath(path);
+    if (result.ok) return;
+    if (result.reason === "not_found") {
+      await copyText(path);
+      toast.error(t(($) => $.local_path.toast_not_found));
+      return;
+    }
+    if (result.reason === "unsupported") {
+      await copyWithHint(path);
+      return;
+    }
+    toast.error(t(($) => $.local_path.toast_failed));
+  };
+
+  const copy = (path: string) => copyWithHint(path);
+  return { open, copy };
+}
+
 export function LocalPathLink({
   path,
   children,
@@ -80,73 +138,8 @@ export function LocalPathLink({
     );
   }, [addresses.smbUrl]);
 
-  const copyWithHint = async () => {
-    const ok = await copyText(path);
-    if (!ok) {
-      toast.error(t(($) => $.local_path.toast_copy_failed));
-      return;
-    }
-    const manager = viewerFileManager();
-    toast.success(
-      manager === "finder"
-        ? t(($) => $.local_path.toast_copied_finder)
-        : manager === "explorer"
-          ? t(($) => $.local_path.toast_copied_explorer)
-          : t(($) => $.local_path.toast_copied_generic),
-    );
-  };
-
-  const openFromBrowser = async () => {
-    const manager = viewerFileManager();
-    if (manager === "finder" && addresses.smbUrl) {
-      handOffToOS(addresses.smbUrl);
-      // Best-effort safety net. Whether the OS actually took the URL is not
-      // observable from here, so the path goes on the clipboard too: if
-      // nothing opens, the reader still has something to paste rather than a
-      // click that did nothing.
-      void copyText(path);
-      toast.success(t(($) => $.local_path.toast_opening_finder));
-      return;
-    }
-    if (manager === "explorer" && addresses.uncPath) {
-      // The UNC form, not the stored path: the stored one names a mount point
-      // on somebody else's Mac and pasting it into Explorer finds nothing.
-      const ok = await copyText(addresses.uncPath);
-      toast[ok ? "success" : "error"](
-        ok
-          ? t(($) => $.local_path.toast_copied_unc)
-          : t(($) => $.local_path.toast_copy_failed),
-      );
-      return;
-    }
-    await copyWithHint();
-  };
-
-  const handleClick = async () => {
-    // Probed at click time rather than read from state: a click is never part
-    // of the first render, so this is the freshest answer and it keeps the
-    // action correct even if the effect above has not run.
-    if (!canOpenLocalPath()) {
-      await openFromBrowser();
-      return;
-    }
-    const result = await openLocalPath(path);
-    if (result.ok) return; // A file-manager window is now on screen.
-    if (result.reason === "not_found") {
-      // The overwhelmingly common cause is an unmounted share, not a typo:
-      // the path is correct on the machine that wrote it and this one has not
-      // connected the volume. Say that, and leave the path on the clipboard so
-      // the reader can act on it after mounting.
-      await copyText(path);
-      toast.error(t(($) => $.local_path.toast_not_found));
-      return;
-    }
-    if (result.reason === "unsupported") {
-      await copyWithHint();
-      return;
-    }
-    toast.error(t(($) => $.local_path.toast_failed));
-  };
+  const actions = useLocalPathActions();
+  const handleClick = () => actions.open(path);
 
   return (
     <button

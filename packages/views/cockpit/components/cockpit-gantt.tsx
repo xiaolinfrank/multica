@@ -19,7 +19,7 @@ import { CockpitViewHeading } from "./cockpit-view-heading";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useNavigation, AppLink } from "../../navigation";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -83,6 +83,11 @@ import { CreateRow, PlanRowActions } from "../../plan-tree/plan-row-actions";
 import { ModuleDeleteDialog } from "../../plan-tree/module-delete-dialog";
 import { planModules, planRowFor, type PlanRow } from "../../plan-tree/plan-rows";
 import { planRowRenameTarget, usePlanRowRename } from "../../plan-tree/use-plan-row-rename";
+import { planDirectoryPaths } from "../../plan-tree/plan-directory-paths";
+import { RunningTasksDialog, type RunningTasksConflict } from "../../plan-tree/running-tasks-dialog";
+import { useLocalPathActions } from "../../common/local-path-link";
+import { projectListOptions } from "@multica/core/projects/queries";
+import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { StatusChip } from "./cockpit-status";
 import { cockpitGanttLayout } from "./cockpit-layout";
@@ -681,6 +686,7 @@ export function CockpitGantt({
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ parentId: string; kind: "module" | "work_item" } | null>(null);
   const [confirming, setConfirming] = useState<{ kind: "delete" | "renumber"; row: PlanRow } | null>(null);
+  const [conflict, setConflict] = useState<RunningTasksConflict | null>(null);
   const [deletingModule, setDeletingModule] = useState<PlanRow | null>(null);
   const renameRow = usePlanRowRename(wsId);
   const createModule = useCreateModule();
@@ -724,6 +730,42 @@ export function CockpitGantt({
   // the module/work-item rows do not exist yet.
   const structureLocked = Boolean(readOnly) || (board.nodes.length > 0 && !board.cockpit.plan_reconciled_at);
   const failAction = (error: unknown) => setActionError(error instanceof Error ? error.message : String(error));
+  // The collaboration root lives on the project; the tree composes paths from
+  // data it already has and never stats the share.
+  const projects = useQuery(projectListOptions(wsId));
+  const collabByProject = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const project of projects.data ?? []) {
+      if (project.collab_path) map.set(project.id, project.collab_path);
+    }
+    return map;
+  }, [projects.data]);
+  const directoryPaths = useMemo(() => planDirectoryPaths(board.nodes, collabByProject), [board.nodes, collabByProject]);
+  const pathActions = useLocalPathActions();
+  // A structural write refused because an agent works in the folder: offer
+  // "now" or "later" and re-run the same write with the choice.
+  const runRenumber = (nodeId: string, directorySync?: "sync" | "defer" | "force") =>
+    renumber.mutateAsync({ nodeId, directorySync }).then(
+      (result) => { setConflict(null); setActionError(null); setActionNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })); },
+      (error) => {
+        if (isCockpitRunningTasksError(error)) {
+          setConflict({ tasks: error.runningTasks, retry: (mode) => void runRenumber(nodeId, mode) });
+          return;
+        }
+        failAction(error);
+      },
+    );
+  const runMove = (nodeId: string, parentId: string, directorySync?: "sync" | "defer" | "force") =>
+    moveWorkItem.mutateAsync({ id: nodeId, parent_id: parentId, directorySync }).then(
+      () => { setConflict(null); setActionNotice(t(($) => $.plan_tree.moved)); },
+      (error) => {
+        if (isCockpitRunningTasksError(error)) {
+          setConflict({ tasks: error.runningTasks, retry: (mode) => void runMove(nodeId, parentId, mode) });
+          return;
+        }
+        failAction(error);
+      },
+    );
   const filingOf = (row: PlanRow): { project_id: string; module_id: string } | null => {
     if (row.kind === "module") {
       return row.node.project_id && row.node.module_id
@@ -762,10 +804,8 @@ export function CockpitGantt({
       deleteWorkItem.mutate(row.node.id, { onSuccess: done, onError: fail });
       return;
     }
-    renumber.mutate(row.node.id, {
-      onSuccess: (result) => { setConfirming(null); setActionError(null); setActionNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })); },
-      onError: fail,
-    });
+    setConfirming(null);
+    void runRenumber(row.node.id);
   };
   // Whose module a row belongs to, and who answers for that module — the
   // owner a direction row inherits and the mainline the goal marker pins to.
@@ -1164,6 +1204,16 @@ export function CockpitGantt({
                           await renameRow(planRow, name);
                           setRenamingId(null);
                         } catch (error) {
+                          if (isCockpitRunningTasksError(error)) {
+                            setConflict({
+                              tasks: error.runningTasks,
+                              retry: (mode) => {
+                                setConflict(null);
+                                void renameRow(planRow, name, mode).then(() => setRenamingId(null)).catch(failAction);
+                              },
+                            });
+                            return;
+                          }
                           setActionError(error instanceof Error ? error.message : String(error));
                         }
                       }}
@@ -1186,10 +1236,17 @@ export function CockpitGantt({
                           ...(planRow.kind === "work_item" ? { work_item_id: node.id } : {}),
                         });
                       } : undefined}
-                      onMove={(parentId) => moveWorkItem.mutate({ id: node.id, parent_id: parentId }, {
-                        onSuccess: () => setActionNotice(t(($) => $.plan_tree.moved)),
-                        onError: failAction,
-                      })}
+                      onMove={(parentId) => void runMove(node.id, parentId)}
+                      directoryPath={planRow.kind === "project" ? null : directoryPaths.get(node.id) ?? null}
+                      directoryDisabledReason={t(($) => $.directories.unavailable)}
+                      onOpenDirectory={planRow.kind === "project" ? undefined : () => {
+                        const path = directoryPaths.get(node.id);
+                        if (path) void pathActions.open(path);
+                      }}
+                      onCopyDirectory={planRow.kind === "project" ? undefined : () => {
+                        const path = directoryPaths.get(node.id);
+                        if (path) void pathActions.copy(path);
+                      }}
                       onRenumber={() => setConfirming({ kind: "renumber", row: planRow })}
                       onDelete={() => {
                         if (planRow.kind === "module") setDeletingModule(planRow);
@@ -1861,6 +1918,7 @@ export function CockpitGantt({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <RunningTasksDialog conflict={conflict} onDismiss={() => setConflict(null)} />
     </div>
   );
 }

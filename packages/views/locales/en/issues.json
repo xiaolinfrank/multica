@@ -639,7 +639,8 @@
     "sub_issues_nav_progress": "{{done}}/{{total}} completed",
     "thread_nav_show_replies_one": "Show {{count}} reply",
     "thread_nav_show_replies_other": "Show {{count}} replies",
-    "thread_nav_hide_replies": "Hide replies"
+    "thread_nav_hide_replies": "Hide replies",
+    "prop_directory": "Delivery folder"
   },
   "timeline": {
     "loading": "Loading...",

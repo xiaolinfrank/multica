@@ -631,7 +631,8 @@
     "description_nav_label": "任务描述",
     "sub_issues_nav_progress": "已完成 {{done}}/{{total}}",
     "thread_nav_show_replies_other": "展开 {{count}} 条回复",
-    "thread_nav_hide_replies": "收起回复"
+    "thread_nav_hide_replies": "收起回复",
+    "prop_directory": "交付目录"
   },
   "timeline": {
     "loading": "加载中…",

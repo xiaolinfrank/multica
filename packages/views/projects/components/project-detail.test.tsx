@@ -72,6 +72,9 @@ vi.mock("@tanstack/react-query", async (original) => ({
 
 vi.mock("@multica/core/projects/queries", () => ({
   projectDetailOptions: () => ({ queryKey: ["project-detail"] }),
+  // The plan tree composes delivery paths from the project's collaboration
+  // root; these cases are about rows, not folders, so the list is empty.
+  projectListOptions: () => ({ queryKey: ["projects-list"], queryFn: async () => [] }),
 }));
 
 vi.mock("@multica/core/modules/queries", () => ({

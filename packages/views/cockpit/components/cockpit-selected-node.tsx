@@ -15,6 +15,12 @@ import { AppLink, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitNodePanel } from "./cockpit-node-panel";
 import { CockpitNodeTasks } from "./cockpit-node-tasks";
+import { CockpitDirectorySection } from "./cockpit-directory-section";
+import { usePlanRowRename } from "../../plan-tree/use-plan-row-rename";
+import { isCockpitRunningTasksError } from "@multica/core/cockpit";
+import { RunningTasksDialog, type RunningTasksConflict } from "../../plan-tree/running-tasks-dialog";
+import { useState } from "react";
+import type { PlanRow } from "../../plan-tree/plan-rows";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitReadFailure } from "./cockpit-read-failure";
 
@@ -35,7 +41,16 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
   const operation = useQuery(containerOperationBasisOptions(wsId, "node", nodeId));
   const deleteAllowed = !operation.isError && containerOperationAllowed(operation.data, "delete");
   const updateNode = useUpdateCockpitNode(wsId); const deleteNode = useDeleteCockpitNode(wsId);
-  const fail = (cause: unknown) => toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
+  const renameRow = usePlanRowRename(wsId);
+  const [conflict, setConflict] = useState<RunningTasksConflict | null>(null);
+  const fail = (cause: unknown) => {
+    if (isCockpitRunningTasksError(cause)) {
+      setConflict({ tasks: cause.runningTasks, retry: (mode) => { setConflict(null); patch({ name: pendingName, directory_sync: mode }); } });
+      return;
+    }
+    toast.error(cause instanceof Error ? cause.message : t(($) => $.errors.save_failed));
+  };
+  const [pendingName, setPendingName] = useState("");
   const readonly = !detail?.actor.is_human || detail.scope_match === false || query.isError;
   if (!detail) return <aside className="flex min-w-0 w-[54rem] max-w-full shrink-0 flex-col overflow-y-auto border-l border-border bg-card p-4 @max-[80rem]/cockpit:w-full @max-[80rem]/cockpit:border-l-0">
     <Button type="button" variant="ghost" size="icon-sm" className="mb-3 ml-auto" aria-label={t(($) => $.panel.close)} onClick={close}><X /></Button>
@@ -49,6 +64,25 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
   const meetingsHref = cockpitNodeMeetingsPath(navigation.pathname, nodeId, scope);
   // The breadcrumb quotes the parent's display code like every other surface.
   const parent = detail.ancestors.find((entry) => entry.id === node.parent_id);
+  const kind = detail.ancestors.length === 0 ? "project" : detail.ancestors.length === 1 ? "module" : "work_item";
+  const planRow: PlanRow = {
+    node, kind, depth: detail.ancestors.length, code: node.code, name: node.name,
+    counts: issueCounts ?? null, hasChildren: detail.children_count > 0,
+  };
+  const patch = (next: Parameters<typeof updateNode.mutate>[0]["patch"]) => {
+    // L1/L2 names are projections of the project/module title (I5): writing
+    // the node's own name would succeed and change nothing, and it would skip
+    // the folder sync only the module/project write performs.
+    if (next.name !== undefined && kind !== "work_item") {
+      setPendingName(next.name);
+      void renameRow(planRow, next.name, next.directory_sync).catch(fail);
+      const { name: _name, ...rest } = next;
+      if (Object.keys(rest).length > 0) updateNode.mutate({ id: nodeId, patch: rest }, { onError: fail });
+      return;
+    }
+    if (next.name !== undefined) setPendingName(next.name);
+    updateNode.mutate({ id: nodeId, patch: next }, { onError: fail });
+  };
   return <><CockpitNodePanel node={node} section={section} onSectionChange={(view) => navigation.push(cockpitObjectPath(navigation.pathname, { kind: "node", id: nodeId, view, planView }, scope))}
     displayCode={node.code} parent={parent} isBranch={detail.children_count > 0} depth={detail.ancestors.length}
     issueCounts={issueCounts ?? null} subtreeProgress={subtreeProgress ?? null} meetingCount={detail.meetings.total} meetingsHref={meetingsHref}
@@ -58,9 +92,11 @@ export function CockpitSelectedNode({ wsId, nodeId, scope, planView, section, is
       : query.isError ? <CockpitReadFailure error={query.error} wsId={wsId} scope={scope} resource={`node:${nodeId}`} onRetry={() => void query.refetch()} /> : undefined}
     statusSuggestions={[node.status].filter(Boolean)}
     ownerSuggestions={[node.owner].filter(Boolean)}
-    readOnly={readonly} onPatch={(patch) => updateNode.mutate({ id: nodeId, patch }, { onError: fail })} onDelete={() => { if (!deleteAllowed) return Promise.reject(new Error(t(($) => $.errors.save_failed))); return deleteNode.mutateAsync(nodeId); }}
+    readOnly={readonly} onPatch={patch} onDelete={() => { if (!deleteAllowed) return Promise.reject(new Error(t(($) => $.errors.save_failed))); return deleteNode.mutateAsync(nodeId); }}
+    directory={kind === "project" ? undefined : <CockpitDirectorySection wsId={wsId} nodeId={nodeId} projectId={detail.binding.project_id} readOnly={readonly} />}
     deleteAllowed={deleteAllowed} deleteRestriction={<ContainerOperationRestriction basis={operation.isError ? undefined : operation.data} operation="delete" pending={operation.isPending} error={operation.isError} retry={() => void operation.refetch()} />}
     deleteConfirmationDescription={detail.children_count > 0 ? t(($) => $.confirmation.delete_branch_description, { label: node.name || node.code }) : t(($) => $.confirmation.delete_description, { label: node.name || node.code })}
     onClose={close} />;
+  <RunningTasksDialog conflict={conflict} onDismiss={() => setConflict(null)} />;
   </>;
 }

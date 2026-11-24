@@ -15,6 +15,8 @@ import {
   type CockpitScope,
 } from "@multica/core/cockpit";
 import { useCreateModule } from "@multica/core/modules";
+import { projectListOptions } from "@multica/core/projects/queries";
+import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 import { useModalStore } from "@multica/core/modals";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import { useLocale, useT } from "../i18n";
@@ -27,6 +29,9 @@ import { planRowRenameTarget, usePlanRowRename } from "./use-plan-row-rename";
 import { PlanRowName } from "./plan-row-name";
 import { CreateRow, PlanRowActions } from "./plan-row-actions";
 import { ModuleDeleteDialog } from "./module-delete-dialog";
+import { planDirectoryPaths } from "./plan-directory-paths";
+import { RunningTasksDialog, type RunningTasksConflict } from "./running-tasks-dialog";
+import { useLocalPathActions } from "../common/local-path-link";
 import { EditableDate, EditableSuggest } from "../cockpit/components/cockpit-fields";
 import { StatusChip } from "../cockpit/components/cockpit-status";
 import { cn } from "@multica/ui/lib/utils";
@@ -83,6 +88,7 @@ export function PlanTree({
   const [deletingModule, setDeletingModule] = useState<PlanRow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<RunningTasksConflict | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const createModule = useCreateModule();
@@ -100,6 +106,19 @@ export function PlanTree({
   const structureLocked = readOnly || unreconciled;
 
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  // The collaboration root lives on the project, the folder name on the row:
+  // the path is composed from data already in hand, and the folder's actual
+  // state is asked for only by the panel.
+  const projects = useQuery(projectListOptions(wsId));
+  const collabByProject = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const project of projects.data ?? []) {
+      if (project.collab_path) map.set(project.id, project.collab_path);
+    }
+    return map;
+  }, [projects.data]);
+  const directoryPaths = useMemo(() => planDirectoryPaths(nodes, collabByProject), [nodes, collabByProject]);
+  const pathActions = useLocalPathActions();
   const countsById = useMemo(() => new Map(counts.map((c) => [c.node_id, c])), [counts]);
 
   // Projects and modules are open unless folded; work items are closed unless
@@ -267,17 +286,27 @@ export function PlanTree({
           <button type="button" className="text-primary" onClick={() => {
             const id = confirmRenumber;
             setConfirmRenumber(null);
-            renumber.mutate(id, {
-              onSuccess: (result) => setNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })),
-              onError: report,
-            });
+            const attempt = (directorySync?: "sync" | "defer" | "force") =>
+              renumber.mutateAsync({ nodeId: id, directorySync }).then(
+                (result) => { setConflict(null); setNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })); },
+                (e) => {
+                  if (isCockpitRunningTasksError(e)) {
+                    setConflict({ tasks: e.runningTasks, retry: (mode) => void attempt(mode) });
+                    return;
+                  }
+                  report(e);
+                },
+              );
+            void attempt();
           }}>{t(($) => $.plan_tree.confirm)}</button>
           <button type="button" className="text-muted-foreground" onClick={() => setConfirmRenumber(null)}>{t(($) => $.plan_tree.cancel)}</button>
         </div>
       )}
       {confirmDelete && (
         <div role="dialog" aria-label={t(($) => $.plan_tree.delete)} className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-caption">
-          <span className="flex-1">{t(($) => $.plan_tree.delete_confirm, { n: confirmCounts })}</span>
+          <span className="flex-1">{t(($) => $.plan_tree.delete_confirm, { n: confirmCounts })}
+            <span className="ml-2 text-muted-foreground">{t(($) => $.directories.delete_keeps_folder)}</span>
+          </span>
           <button type="button" className="text-destructive" onClick={() => {
             const id = confirmDelete;
             setConfirmDelete(null);
@@ -349,7 +378,22 @@ export function PlanTree({
                   try {
                     await renameRow(row, name);
                     setRenaming(null);
-                  } catch (e) { report(e); }
+                  } catch (e) {
+                    // An agent working in the folder is a choice, not a
+                    // failure: sync now, or write the row and let the panel
+                    // move the folder later.
+                    if (isCockpitRunningTasksError(e)) {
+                      setConflict({
+                        tasks: e.runningTasks,
+                        retry: (mode) => {
+                          setConflict(null);
+                          void renameRow(row, name, mode).then(() => setRenaming(null)).catch(report);
+                        },
+                      });
+                      return;
+                    }
+                    report(e);
+                  }
                 }}
                 onCancelRename={() => setRenaming(null)}
                 // Progress and task counts are `shrink-0`, so in the narrow
@@ -407,10 +451,28 @@ export function PlanTree({
                   onAddIssue={row.kind !== "project" && canAddIssue ? () => openCreateIssue(row) : undefined}
                   onMove={(parentId) => {
                     if (row.kind !== "work_item") return;
-                    moveWorkItem.mutate({ id: row.node.id, parent_id: parentId }, {
-                      onSuccess: () => setNotice(t(($) => $.plan_tree.moved)),
-                      onError: report,
-                    });
+                    const attempt = (directorySync?: "sync" | "defer" | "force") =>
+                      moveWorkItem.mutateAsync({ id: row.node.id, parent_id: parentId, directorySync }).then(
+                        () => { setConflict(null); setNotice(t(($) => $.plan_tree.moved)); },
+                        (e) => {
+                          if (isCockpitRunningTasksError(e)) {
+                            setConflict({ tasks: e.runningTasks, retry: (mode) => void attempt(mode) });
+                            return;
+                          }
+                          report(e);
+                        },
+                      );
+                    void attempt();
+                  }}
+                  directoryPath={row.kind === "project" ? null : directoryPaths.get(row.node.id) ?? null}
+                  directoryDisabledReason={t(($) => $.directories.unavailable)}
+                  onOpenDirectory={row.kind === "project" ? undefined : () => {
+                    const path = directoryPaths.get(row.node.id);
+                    if (path) void pathActions.open(path);
+                  }}
+                  onCopyDirectory={row.kind === "project" ? undefined : () => {
+                    const path = directoryPaths.get(row.node.id);
+                    if (path) void pathActions.copy(path);
                   }}
                   onRenumber={() => setConfirmRenumber(row.node.id)}
                   onDelete={() => {
@@ -454,6 +516,7 @@ export function PlanTree({
         payments={data?.payments ?? []} countsById={countsById}
         onOpenChange={(open) => { if (!open) setDeletingModule(null); }}
         onDeleted={() => { setDeletingModule(null); setNotice(t(($) => $.plan_tree.deleted)); }} />
+      <RunningTasksDialog conflict={conflict} onDismiss={() => setConflict(null)} />
     </div>
   );
 }

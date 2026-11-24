@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { useRenameCockpitWorkItem } from "@multica/core/cockpit";
+import { cockpitWriteError, useRenameCockpitWorkItem } from "@multica/core/cockpit";
 import { useUpdateModule } from "@multica/core/modules";
 import { useUpdateProject } from "@multica/core/projects";
 import type { PlanRow } from "./plan-rows";
@@ -27,19 +27,26 @@ export function usePlanRowRename(wsId: string) {
   const updateProject = useUpdateProject();
   const updateModule = useUpdateModule();
   const renameWorkItem = useRenameCockpitWorkItem(wsId);
-  return useCallback(async (row: PlanRow, name: string): Promise<void> => {
+  return useCallback(async (row: PlanRow, name: string, directorySync?: "sync" | "defer" | "force"): Promise<void> => {
     const title = name.trim();
     if (!title) return;
     if (row.kind === "project") {
       if (!row.node.project_id) return;
+      // A project has no folder of its own, so `directorySync` means nothing.
       await updateProject.mutateAsync({ id: row.node.project_id, title });
       return;
     }
     if (row.kind === "module") {
       if (!row.node.module_id) return;
-      await updateModule.mutateAsync({ id: row.node.module_id, title });
+      try {
+        await updateModule.mutateAsync({ id: row.node.module_id, title, ...(directorySync ? { directory_sync: directorySync } : {}) });
+      } catch (error) {
+        // Module writes go through their own client; translate the refusal so
+        // a running-task 409 reaches the same dialog the node writes use.
+        throw cockpitWriteError(error);
+      }
       return;
     }
-    await renameWorkItem.mutateAsync({ id: row.node.id, name: title });
+    await renameWorkItem.mutateAsync({ id: row.node.id, name: title, ...(directorySync ? { directorySync } : {}) });
   }, [renameWorkItem, updateModule, updateProject]);
 }

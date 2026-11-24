@@ -37,6 +37,7 @@ const plan: {
 };
 
 const navMock = vi.hoisted(() => ({ push: vi.fn() }));
+const pathActions = vi.hoisted(() => ({ open: vi.fn(), copy: vi.fn() }));
 const apiMock = vi.hoisted(() => ({
   getCockpitPlan: vi.fn(async () => plan),
   getCockpitNodeTasks: vi.fn(async () => ({ node_id: "w1", items: [
@@ -52,6 +53,8 @@ const apiMock = vi.hoisted(() => ({
   updateCockpitNode: vi.fn(async (id: string, patch: { name?: string }) => ({ id, name: patch.name, code: "01.01.01" })),
   updateModule: vi.fn(async (id: string, data: { title: string }) => ({ id, title: data.title })),
   updateProject: vi.fn(async (id: string, data: { title: string }) => ({ id, title: data.title })),
+  listProjects: vi.fn(async () => ({ projects: [{ id: "proj-1", title: "P", collab_path: "/Volumes/Space/交付项目" }], total: 1 })),
+  listPlanDirectories: vi.fn(async () => []),
   getContainerOperationBasis: vi.fn(async (wsId: string, kind: string, id: string) => ({
     workspace_id: wsId, schema_version: 1, generated_at: "2026-11-21T00:00:00Z", resource_kind: kind,
     resource_id: id, availability: "available", resource_revision: 1,
@@ -71,6 +74,10 @@ vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({
 vi.mock("../navigation", () => ({
   useNavigation: () => ({ push: navMock.push, searchParams: new URLSearchParams() }),
   AppLink: (p: never) => p,
+}));
+vi.mock("../common/local-path-link", async (original) => ({
+  ...(await original<typeof import("../common/local-path-link")>()),
+  useLocalPathActions: () => pathActions,
 }));
 
 import { PlanTree } from "./plan-tree";
@@ -500,5 +507,46 @@ describe("PlanTree", () => {
     const workItem = rowOf("work_item");
     // 2 primary, 0 reference — the same tally the gantt and the finance grid quote.
     expect(within(workItem).getByText("2 primary · 0 reference")).toBeInTheDocument();
+  });
+});
+
+describe("PlanTree delivery folders", () => {
+  const withFolders = {
+    ...reconciled,
+    nodes: reconciled.nodes.map((node) => {
+      if (node.id === "m1") return { ...node, directory_name: "01.01模块一" };
+      if (node.id === "w1") return { ...node, directory_name: "01.01.01工作项一" };
+      return node;
+    }),
+  };
+
+  it("opens the folder a row's plan address and title name", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce(withFolders);
+    show();
+    const row = (await screen.findAllByRole("row")).find((r) => r.getAttribute("data-kind") === "module")!;
+    fireEvent.click(within(row).getByRole("button", { name: enCockpit.directories.open }));
+    expect(pathActions.open).toHaveBeenCalledWith("/Volumes/Space/交付项目/01.01模块一");
+
+    const item = (await screen.findAllByRole("row")).find((r) => r.getAttribute("data-kind") === "work_item")!;
+    fireEvent.click(within(item).getByRole("button", { name: enCockpit.directories.copy }));
+    expect(pathActions.copy).toHaveBeenCalledWith("/Volumes/Space/交付项目/01.01模块一/01.01.01工作项一");
+  });
+
+  it("disables the folder actions and says why when the project has no root", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce(withFolders);
+    apiMock.listProjects.mockResolvedValueOnce({ projects: [{ id: "proj-1", title: "P", collab_path: null }], total: 1 } as never);
+    show();
+    const row = (await screen.findAllByRole("row")).find((r) => r.getAttribute("data-kind") === "module")!;
+    const open = within(row).getByRole("button", { name: enCockpit.directories.open });
+    expect(open).toBeDisabled();
+    expect(open).toHaveAttribute("title", enCockpit.directories.unavailable);
+    expect(pathActions.open).not.toHaveBeenCalled();
+  });
+
+  it("never asks the disk for a folder state while rendering the tree", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce(withFolders);
+    show();
+    await screen.findAllByRole("row");
+    expect(apiMock.listPlanDirectories).not.toHaveBeenCalled();
   });
 });

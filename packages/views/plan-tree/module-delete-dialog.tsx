@@ -76,6 +76,9 @@ export function ModuleDeleteDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{tProjects(($) => $.module.delete_title, { title: row?.name ?? "" })}</AlertDialogTitle>
           <AlertDialogDescription>{tProjects(($) => $.module.delete_description)}</AlertDialogDescription>
+          {/* A folder on a share is not the database's to delete; outside the
+              description so it does not rewrite what is announced as one. */}
+          <p className="text-caption text-muted-foreground">{t(($) => $.directories.delete_keeps_folder)}</p>
         </AlertDialogHeader>
         <p className="text-caption text-muted-foreground">{t(($) => $.plan_tree.delete_module_impact, {
           work_items: impact.workItems, payments: impact.payments, issues: impact.issues,

@@ -57,6 +57,9 @@ export interface CockpitNodePanelProps {
   ownerSuggestions: string[];
   onPatch: (patch: CockpitNodePatch) => void;
   notice?: React.ReactNode;
+  /** The row's delivery folder (S7). Modules and work items own one; the
+   *  project row has none, and its caller omits the slot. */
+  directory?: React.ReactNode;
   taskWorkspace?: React.ReactNode;
   referenceWorkspace?: React.ReactNode;
   section: CockpitNodeView;
@@ -86,6 +89,7 @@ export function CockpitNodePanel({
   ownerSuggestions,
   onPatch,
   notice,
+  directory,
   taskWorkspace,
   referenceWorkspace,
   section,
@@ -282,6 +286,13 @@ export function CockpitNodePanel({
           </CockpitField>
         </div>
 
+        {directory && (
+          <>
+            <Separator className="my-4" />
+            <CockpitField label={t(($) => $.directories.title)}>{directory}</CockpitField>
+          </>
+        )}
+
         <Separator className="my-4" />
         <CockpitField label={t(($) => $.node.linked_issues)}>
           {taskWorkspace ? <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.reference_location)}</p> : referenceWorkspace}
@@ -373,6 +384,10 @@ export function CockpitNodePanel({
                   {isBranch ? t(($) => $.panel.delete_branch) : t(($) => $.panel.delete_node)} · {node.name}
                 </AlertDialogTitle>
                 <AlertDialogDescription>{deleteConfirmationDescription}</AlertDialogDescription>
+                {/* Outside the description on purpose: the destructive
+                    consequences are the description; this is a reassurance
+                    and must not rewrite what a screen reader announces as it. */}
+                <p className="text-caption text-muted-foreground">{t(($) => $.directories.delete_keeps_folder)}</p>
               </AlertDialogHeader>
               {deleteRestriction}
               {deleteFailed && <p role="alert" className="text-caption text-destructive">{t(($) => $.errors.save_failed)}</p>}

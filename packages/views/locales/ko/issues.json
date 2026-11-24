@@ -631,7 +631,8 @@
     "description_nav_label": "태스크 설명",
     "sub_issues_nav_progress": "{{done}}/{{total}} 완료",
     "thread_nav_show_replies_other": "답글 {{count}}개 펼치기",
-    "thread_nav_hide_replies": "답글 접기"
+    "thread_nav_hide_replies": "답글 접기",
+    "prop_directory": "전달 폴더"
   },
   "timeline": {
     "loading": "불러오는 중...",
