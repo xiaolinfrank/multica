@@ -116,6 +116,19 @@ describe("meeting creation command recovery", () => {
     });
   });
 
+  it("asks for the project's own folder when no module is picked", async () => {
+    setup({ defaultProjectId: "project", defaultModuleId: null, defaultNodeId: null });
+    // Empty, not omitted: omitting module_id asks the server for the board's
+    // remembered module, which is another project's (or another module's)
+    // folder and is refused or previewed wrongly.
+    await waitFor(() =>
+      expect(api.getCockpitMeetingDestination).toHaveBeenLastCalledWith(
+        { projectId: "project", moduleId: "", nodeId: "" },
+        "ws-1",
+      ),
+    );
+  });
+
   it("retries a fixed creation command with its original task and folder actions while fresh destination reads fail", async () => {
     const command = prepareCockpitMeetingCreation(key, { meeting: { creation_key: "10000000-0000-4000-8000-000000000001", node_id: null, meet_date: "2026-10-10", start_time: "", end_time: "", kind: "", status: "", track: "", parties: "", organizer: "Owner", attendees: "", location: "", title: "Fixed request" }, provision: { project_id: "project", module_id: "module", node_id: "", create_dir: true, base_dir: "/captured-folder" }, workflow: { reviewer_id: "person", project_id: "project", module_id: "module" }, autoSaveEntries: [] });
     vi.mocked(api.getCockpitContext).mockRejectedValue(new Error("Scope unavailable")); vi.mocked(api.getCockpitMeetingDestination).mockRejectedValue(new Error("Folder unavailable"));

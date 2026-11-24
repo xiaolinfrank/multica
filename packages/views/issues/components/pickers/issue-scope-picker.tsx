@@ -79,7 +79,7 @@ export function IssueScopePicker({
   workItemLabel,
   scopeConstraint,
   allowClear = true,
-  wsId: wsIdProp,
+  wsId,
 }: {
   value: IssueScopeValue;
   onUpdate: (next: IssueScopeValue) => void;
@@ -107,11 +107,11 @@ export function IssueScopePicker({
   /** When false the "no project" choice is hidden — a caller that requires a
    *  filing does not offer a way to clear it. Defaults to true. */
   allowClear?: boolean;
-  /** The workspace to read. Every surface has one already; passing it keeps
-   *  the picker renderable outside a workspace route (a dialog preview). */
-  wsId?: string;
+  /** The workspace to read. Required rather than read from a route hook: the
+   *  picker must render in a dialog or a test without one, and a silently
+   *  empty workspace would query nothing. */
+  wsId: string;
 }) {
-  const wsId = wsIdProp ?? "";
   const { t } = useT("issues");
   const [internalOpen, setInternalOpen] = useState(false);
   const locked = disabled || readOnly;
@@ -195,7 +195,15 @@ export function IssueScopePicker({
   // matches across the whole workspace. It grows a page at a time — "more"
   // appends rather than replacing what is on screen.
   const search = useInfiniteQuery({
-    ...cockpitScopeNodesInfiniteOptions(wsId, { q: query, page_size: PAGE_SIZE }),
+    // A locked picker searches only inside its range: paging the whole
+    // workspace and filtering here would let another project's rows fill the
+    // first page and read as "no work items".
+    ...cockpitScopeNodesInfiniteOptions(wsId, {
+      project_id: constrainedProjectId ?? undefined,
+      module_id: constrainedModuleId ?? undefined,
+      q: query,
+      page_size: PAGE_SIZE,
+    }),
     enabled: open && searchMode,
   });
   const searchItems = useMemo(
@@ -207,9 +215,12 @@ export function IssueScopePicker({
     [search.data, constrainedProjectId, constrainedModuleId],
   );
 
+  // Built from every project, not the filtered list: a value that sits outside
+  // the constraint — a default meeting folder in another project — still has
+  // to read as its own name instead of "…".
   const projectById = useMemo(
-    () => new Map(projects.map((project) => [project.id, project])),
-    [projects],
+    () => new Map(allProjects.map((project) => [project.id, project])),
+    [allProjects],
   );
   const resolvedWorkItem = useSelectedWorkItem(workItemLabel != null ? null : value.work_item_id, wsId);
   const selectedWorkItem = workItemLabel != null

@@ -8,7 +8,6 @@ import {
   cockpitMeetingDestinationOptions,
   cockpitReadKeys,
   useUpdateCockpit,
-  type CockpitScope,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import {
@@ -36,7 +35,6 @@ export function CockpitMeetingDefaultsDialog({
   wsId,
   open,
   onOpenChange,
-  scope,
   defaultProjectId,
   defaultModuleId,
   defaultNodeId,
@@ -44,7 +42,6 @@ export function CockpitMeetingDefaultsDialog({
   wsId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  scope: CockpitScope;
   defaultProjectId: string | null;
   defaultModuleId: string | null;
   defaultNodeId: string | null;
@@ -69,8 +66,10 @@ export function CockpitMeetingDefaultsDialog({
   const destination = useQuery({
     ...cockpitMeetingDestinationOptions(wsId, {
       projectId: value.project_id ?? undefined,
-      moduleId: value.module_id ?? undefined,
-      nodeId: value.work_item_id,
+      // Always sent: "" clears the level, which is what the picker showed.
+      // Omitting it would ask the server for the board's remembered folder.
+      moduleId: value.module_id ?? "",
+      nodeId: value.work_item_id ?? "",
     }),
     enabled: open && Boolean(value.project_id),
   });
@@ -123,11 +122,13 @@ export function CockpitMeetingDefaultsDialog({
         </DialogHeader>
         <div className="flex flex-col gap-2">
           <Label>{t(($) => $.meetings.destination_tree)}</Label>
+          {/* The board's default location is workspace-wide, so the tree is
+              the whole workspace: constraining it to the current view's
+              project would make another project's saved default unreachable. */}
           <IssueScopePicker
             wsId={wsId}
             value={value}
             onUpdate={setValue}
-            scopeConstraint={{ projectId: scope.projectId, moduleId: scope.moduleId }}
             allowClear={false}
             disabled={update.isPending}
           />
@@ -142,7 +143,7 @@ export function CockpitMeetingDefaultsDialog({
           ) : (
             <p role="status" aria-live="polite" className="flex min-w-0 items-start gap-2 text-caption text-muted-foreground">
               {destination.isPending && value.project_id ? <Spinner /> : null}
-              <span className="min-w-0 break-all">{preview}</span>
+              <span className="min-w-0 break-words [overflow-wrap:anywhere]">{preview}</span>
             </p>
           )}
           <AppLink

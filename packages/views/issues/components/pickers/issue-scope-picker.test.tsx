@@ -26,6 +26,7 @@ const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const MODULE_ID = "22222222-2222-4222-8222-222222222222";
 const OTHER_MODULE_ID = "33333333-3333-4333-8333-333333333333";
 const WORK_ITEM_ID = "44444444-4444-4444-8444-444444444444";
+const OUTSIDE_PROJECT_ID = "55555555-5555-4555-8555-555555555555";
 
 const project = {
   id: PROJECT_ID,
@@ -413,6 +414,73 @@ describe("IssueScopePicker", () => {
       module_id: OTHER_MODULE_ID,
       work_item_id: null,
     });
+  });
+
+  it("names a project outside the locked range instead of an ellipsis", async () => {
+    // A saved default can sit in another project than the view the picker was
+    // opened from. The trigger has to name it, not fall back to "…".
+    setApiInstance({
+      listProjects: async () => ({
+        projects: [project, { ...project, id: OUTSIDE_PROJECT_ID, title: "Outside programme" }],
+        total: 2,
+      }),
+      listModules: async () => ({ modules, total: modules.length }),
+      getCockpitPlan: async () => planData(),
+      searchCockpitScopeNodes: async () => ({
+        workspace_id: "ws-1",
+        scope: { project_id: PROJECT_ID, module_id: MODULE_ID, q: "", eligible: true },
+        items: [workItem],
+        total: 1,
+        filtered_total: 1,
+        next_cursor: null,
+      }),
+    } as unknown as ApiClient);
+
+    show(
+      vi.fn(),
+      { project_id: OUTSIDE_PROJECT_ID, module_id: null, work_item_id: null },
+      { scopeConstraint: { projectId: PROJECT_ID } },
+    );
+    expect(
+      await screen.findByRole("button", { name: "Outside programme" }),
+    ).toBeInTheDocument();
+  });
+
+  it("asks the server for the locked range while searching", async () => {
+    const searches: Array<Record<string, unknown>> = [];
+    setApiInstance({
+      listProjects: async () => ({ projects: [project], total: 1 }),
+      listModules: async () => ({ modules, total: modules.length }),
+      getCockpitPlan: async () => planData(),
+      searchCockpitScopeNodes: async (_wsId: string, query: Record<string, unknown>) => {
+        searches.push(query);
+        return {
+          workspace_id: "ws-1",
+          scope: { project_id: PROJECT_ID, module_id: MODULE_ID, q: String(query.q ?? ""), eligible: true },
+          items: [workItem],
+          total: 1,
+          filtered_total: 1,
+          next_cursor: null,
+        };
+      },
+    } as unknown as ApiClient);
+
+    show(vi.fn(), { project_id: null, module_id: null, work_item_id: null },
+      { scopeConstraint: { projectId: PROJECT_ID, moduleId: MODULE_ID } });
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search work items…" }), {
+      target: { value: "draft" },
+    });
+    // Bounded server-side: another project's rows must not fill the first
+    // page and read as "no work items" after client-side filtering.
+    await waitFor(() =>
+      expect(searches.at(-1)).toMatchObject({
+        project_id: PROJECT_ID,
+        module_id: MODULE_ID,
+        q: "draft",
+        page_size: 20,
+      }),
+    );
   });
 
   it("hides the clear row when the caller requires a filing", async () => {

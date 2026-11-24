@@ -950,7 +950,6 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         wsId={wsId}
         open={editingMeetingDefaults}
         onOpenChange={setEditingMeetingDefaults}
-        scope={scope}
         defaultProjectId={cockpit?.meeting_project_id ?? null}
         defaultModuleId={cockpit?.meeting_module_id ?? null}
         defaultNodeId={cockpit?.meeting_node_id ?? null}

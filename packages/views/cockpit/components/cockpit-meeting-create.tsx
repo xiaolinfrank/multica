@@ -203,9 +203,9 @@ export function CockpitMeetingCreate({
   const destination = useQuery({
     ...cockpitMeetingDestinationOptions(wsId, {
       projectId: projectId || undefined,
-      moduleId: moduleId || undefined,
-      // Always sent: "" means "file at the module level", which is a
-      // different answer from "use whatever the board remembers".
+      // Always sent: "" means "file at the project", which is a different
+      // answer from "use whatever the board remembers".
+      moduleId,
       nodeId,
     }),
     enabled: open && Boolean(wsId) && Boolean(projectId),

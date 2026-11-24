@@ -31,7 +31,6 @@ function show(props: Partial<React.ComponentProps<typeof CockpitMeetingDefaultsD
           wsId="ws-1"
           open
           onOpenChange={onOpenChange}
-          scope={{ projectId: null, moduleId: null }}
           defaultProjectId="project"
           defaultModuleId="module"
           defaultNodeId="node-work"
@@ -45,7 +44,13 @@ function show(props: Partial<React.ComponentProps<typeof CockpitMeetingDefaultsD
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(api.listProjects).mockResolvedValue({ projects: [{ id: "project", title: "Programme" }], total: 1 } as unknown as Awaited<ReturnType<typeof api.listProjects>>);
+  vi.mocked(api.listProjects).mockResolvedValue({
+    projects: [
+      { id: "project", title: "Programme" },
+      { id: "other-project", title: "Other Programme" },
+    ],
+    total: 2,
+  } as unknown as Awaited<ReturnType<typeof api.listProjects>>);
   vi.mocked(api.listModules).mockResolvedValue({ modules: [{ id: "module", project_id: "project", title: "Module" }], total: 1 } as unknown as Awaited<ReturnType<typeof api.listModules>>);
   vi.mocked(api.getCockpitMeetingDestination).mockResolvedValue({
     project_id: "project", project_title: "Programme", module_id: "module", module_title: "Module",
@@ -74,6 +79,45 @@ describe("default meeting location", () => {
     await waitFor(() => expect(api.updateCockpit).toHaveBeenCalledExactlyOnceWith({
       meeting_project_id: "", meeting_module_id: "", meeting_node_id: "",
     }));
+  });
+
+  it("offers the whole workspace's projects, not only the current view's", async () => {
+    show();
+    expect(await screen.findByText(/\/Volumes\/team\/Meetings\/Draft/)).toBeInTheDocument();
+    // The default location is the board's, so a project outside the view the
+    // dialog was opened from must still be reachable here.
+    fireEvent.click(screen.getByRole("button", { name: /Programme/ }));
+    expect(await screen.findByRole("button", { name: "Other Programme" })).toBeInTheDocument();
+  });
+
+  it("moves the default to the project level by sending an emptied module and work item", async () => {
+    show();
+    expect(await screen.findByText(/\/Volumes\/team\/Meetings\/Draft/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Programme/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Programme" }));
+    await waitFor(() =>
+      expect(api.getCockpitMeetingDestination).toHaveBeenLastCalledWith(
+        { projectId: "project", moduleId: "", nodeId: "" },
+        "ws-1",
+      ),
+    );
+  });
+
+  it("points a preview at the project when the module is cleared", async () => {
+    // The server answers the cleared levels; the client must not have asked
+    // for the remembered folder by omitting them.
+    vi.mocked(api.getCockpitMeetingDestination).mockResolvedValue({
+      project_id: "project", project_title: "Programme", module_id: "", module_title: "",
+      node_id: "", node_code: "", node_title: "", collab_path: "/Volumes/team",
+      base_dir: "/Volumes/team", derived: true, base_dir_exists: true, creatable: true, error: "",
+    });
+    show({ defaultModuleId: null, defaultNodeId: null });
+    expect(await screen.findByText(/\/Volumes\/team/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(api.getCockpitMeetingDestination).toHaveBeenLastCalledWith(
+      { projectId: "project", moduleId: "", nodeId: "" },
+      "ws-1",
+    );
   });
 
   it("keeps the dialog open and names the reason when saving fails", async () => {
