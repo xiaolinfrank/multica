@@ -408,7 +408,7 @@ export function CockpitOverview({
   const locale = useLocale();
 
   const tree = useMemo(() => buildCockpitTree(board.nodes), [board.nodes]);
-  const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
+  const rollups = useMemo(() => computeCockpitRollups(tree, today, taskCounts), [tree, today, taskCounts]);
   const finance = useMemo(
     () => computeCockpitFinance(board, contextNodeIds, OVERVIEW_FINANCE_YEAR),
     [board, contextNodeIds],
@@ -418,8 +418,8 @@ export function CockpitOverview({
     [board, contextNodeIds],
   );
   const months = useMemo(
-    () => computeCockpitMonths(board, contextNodeIds, OVERVIEW_FINANCE_YEAR),
-    [board, contextNodeIds],
+    () => computeCockpitMonths(board, contextNodeIds, OVERVIEW_FINANCE_YEAR, taskCounts),
+    [board, contextNodeIds, taskCounts],
   );
   const digest = useMemo(() => computeCockpitDigest(board, today, undefined, taskCounts), [board, today, taskCounts]);
   const milestones = useMemo(() => sortCockpitMilestones(board.milestones), [board.milestones]);
@@ -969,7 +969,7 @@ function ModuleBigCard({
   // draws none. The done/total tile next to it keeps the completion count.
   const pct = cockpitSubtreeAverage(entry, taskCounts) ?? 0;
   const color = entry.color || "var(--color-brand)";
-  const highlights = useMemo(() => cockpitModuleHighlights(entry, today), [entry, today]);
+  const highlights = useMemo(() => cockpitModuleHighlights(entry, today, taskCounts), [entry, today, taskCounts]);
   const interaction = onOpenModule
     ? moduleCardInteraction(
         entry.node.code,

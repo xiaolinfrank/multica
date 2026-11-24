@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import type { CockpitBoard, CockpitMilestone, CockpitNode } from "../types";
+import type { CockpitBoard, CockpitMilestone, CockpitNode, CockpitPlanTaskCount } from "../types";
 import {
   axisMonths,
   buildCockpitTree,
@@ -28,6 +28,7 @@ import {
   groupSubtreePayments,
   isCockpitWorkItem,
   isCockpitMilestoneDone,
+  isCockpitNodeDone,
   isCockpitNodeDrifting,
   isCockpitNodeLate,
   isCockpitNodeUnscheduled,
@@ -266,6 +267,114 @@ describe("computeCockpitRollups", () => {
 
 });
 
+describe("computeCockpitRollups with issue counts", () => {
+  it("counts a leftover-100 row as live work, and late once its end has passed", () => {
+    const tree = buildCockpitTree([
+      node({ id: "root", code: "01" }),
+      node({ id: "mod", code: "01.01", parent_id: "root" }),
+      node({
+        id: "w1", code: "01.01.01", parent_id: "mod", status: "进行中", progress: 100, end_date: "2026-01-01",
+      }),
+    ]);
+    const counts = new Map<string, CockpitPlanTaskCount>([
+      ["w1", { node_id: "w1", primary_total: 4, reference_total: 0, active: 3, done: 1, closed: 0 }],
+    ]);
+    const rollups = computeCockpitRollups(tree, "2026-02-01", counts);
+    const row = rollups.get("w1")!;
+    expect(row.doneCount).toBe(0);
+    expect(row.lateCount).toBe(1);
+    expect(row.live.doneRatio).toBe(0);
+  });
+
+  it("falls back to the typed progress when no counts are given", () => {
+    const tree = buildCockpitTree([
+      node({ id: "root", code: "01" }),
+      node({ id: "mod", code: "01.01", parent_id: "root" }),
+      node({ id: "w1", code: "01.01.01", parent_id: "mod", status: "进行中", progress: 100, end_date: "2026-01-01" }),
+    ]);
+    const rollups = computeCockpitRollups(tree, "2026-02-01");
+    expect(rollups.get("w1")!.doneCount).toBe(1);
+    expect(rollups.get("w1")!.lateCount).toBe(0);
+  });
+});
+
+describe("the issue ratio decides done everywhere a work item is tallied", () => {
+  const countsOf = (done: number): ReadonlyMap<string, CockpitPlanTaskCount> =>
+    new Map([["w1", { node_id: "w1", primary_total: 4, reference_total: 0, active: 4 - done, done, closed: 0 }]]);
+  // A row whose typed progress was left at 100 while one of four issues is
+  // done. Every tally below must read it as live work with counts, and as done
+  // without them.
+  const row = { id: "w1", code: "01.01.01", status: "进行中", progress: 100, end_date: "2026-01-10" } as const;
+  const boardOf = () =>
+    board({
+      nodes: [
+        node({ id: "root", code: "01" }),
+        node({ id: "mod", code: "01.01", parent_id: "root", end_date: "2026-01-10" }),
+        node({ ...row, parent_id: "mod" }),
+      ],
+      payments: [],
+      milestones: [],
+    });
+
+  it("months: due, not done", () => {
+    const live = computeCockpitMonths(boardOf(), undefined, undefined, countsOf(1));
+    const month = live.find((cell) => cell.month === "2026-01")!;
+    expect(month.dueCount).toBe(1);
+    expect(month.doneCount).toBe(0);
+    const typed = computeCockpitMonths(boardOf());
+    expect(typed.find((cell) => cell.month === "2026-01")!.doneCount).toBe(1);
+  });
+
+  it("digest: not in the done list, and due in the fortnight ahead", () => {
+    const live = computeCockpitDigest(boardOf(), "2026-01-05", undefined, countsOf(1));
+    expect(live.overall.doneCount).toBe(0);
+    expect(live.next.dueCount).toBe(1);
+    const typed = computeCockpitDigest(boardOf(), "2026-01-05", undefined, countsOf(4));
+    expect(typed.next.dueCount).toBe(0);
+
+    // Finished in the trailing window: the typed 100 would list it as done,
+    // the issues' 1 of 4 must not.
+    const finished = boardOf();
+    finished.nodes = finished.nodes.map((n, i) => (i === 2 ? node({ ...n, end_date: "2026-01-03" }) : n));
+    expect(computeCockpitDigest(finished, "2026-01-05", undefined, countsOf(1)).overall.doneCount).toBe(0);
+    expect(computeCockpitDigest(finished, "2026-01-05", undefined, countsOf(4)).overall.doneCount).toBe(1);
+  });
+
+  it("highlights: not the module's latest result", () => {
+    const withDeliverable = boardOf();
+    withDeliverable.nodes = withDeliverable.nodes.map((n, i) => (i === 2 ? node({ ...n, deliverable: "报告" }) : n));
+    const tree = buildCockpitTree(withDeliverable.nodes);
+    const mod = tree[0]!.children[0]!;
+    const live = cockpitModuleHighlights(mod, "2026-02-01", countsOf(1));
+    expect(live.recent).toBeNull();
+    const typed = cockpitModuleHighlights(mod, "2026-02-01", countsOf(4));
+    expect(typed.recent?.id).toBe("w1");
+  });
+
+  it("aggregate colour: not success while the issues are open", () => {
+    const tree = buildCockpitTree(boardOf().nodes);
+    const mod = tree[0]!.children[0]!;
+    // "进行中" is active, so the row paints brand either way; what must not
+    // happen is success with the issues still open.
+    expect(cockpitAggStatusColor(mod, countsOf(1))).toBe("var(--brand)");
+    // Done work is neither active nor blocked, so all four done paints success.
+    const settled = boardOf();
+    settled.nodes = settled.nodes.map((n, i) => (i === 2 ? node({ ...n, status: "未开始" }) : n));
+    const settledTree = buildCockpitTree(settled.nodes);
+    expect(cockpitAggStatusColor(settledTree[0]!.children[0]!, countsOf(4))).toBe("var(--success)");
+    expect(cockpitAggStatusColor(settledTree[0]!.children[0]!, countsOf(1))).not.toBe("var(--success)");
+  });
+
+  it("core nodes: upcoming, not done", () => {
+    const tree = buildCockpitTree(boardOf().nodes);
+    const mod = tree[0]!.children[0]!;
+    const kindsOf = (counts?: ReadonlyMap<string, CockpitPlanTaskCount>) =>
+      cockpitCoreNodes(mod, "2026-01-01", counts).flatMap((group) => group.nodes.map((n) => [n.id, group.kind] as const));
+    expect(kindsOf(countsOf(1))).toContainEqual(["w1", "upcoming"]);
+    expect(kindsOf(countsOf(4))).toContainEqual(["w1", "done"]);
+  });
+});
+
 describe("isCockpitNodeLate", () => {
   it("ignores nodes that are done or cancelled", () => {
     expect(isCockpitNodeLate(node({ id: "1", code: "A", end_date: "2026-01-01" }), "2026-02-01")).toBe(true);
@@ -282,6 +391,39 @@ describe("isCockpitNodeLate", () => {
 
   it("is never late without a planned end", () => {
     expect(isCockpitNodeLate(node({ id: "1", code: "A" }), "2026-02-01")).toBe(false);
+  });
+});
+
+describe("isCockpitNodeDone with issue counts", () => {
+  const counts = (over: Partial<CockpitPlanTaskCount>): CockpitPlanTaskCount => ({
+    node_id: "w1", primary_total: 4, reference_total: 0, active: 3, done: 1, closed: 0, ...over,
+  });
+
+  it("does not let a leftover 100% override the issues' ratio", () => {
+    // §5.4: a work item with countable issues takes its progress from them.
+    // The hand-typed value is a legacy field — 100 there and 1 of 4 issues
+    // done means the row is NOT done, however long the value sits there.
+    const row = node({ id: "w1", code: "01.01.01", status: "进行中", progress: 100, end_date: "2026-01-01" });
+
+    expect(isCockpitNodeDone(row)).toBe(true);
+    expect(isCockpitNodeDone(row, counts({}))).toBe(false);
+    // Not done, overdue: the same row is late once its issues decide.
+    expect(isCockpitNodeLate(row, "2026-02-01")).toBe(false);
+    expect(isCockpitNodeLate(row, "2026-02-01", counts({}))).toBe(true);
+  });
+
+  it("is done when the issues are all done, whatever the typed value says", () => {
+    const row = node({ id: "w1", code: "01.01.01", status: "进行中", progress: 10 });
+    expect(isCockpitNodeDone(row, counts({ done: 4, active: 0 }))).toBe(true);
+  });
+
+  it("keeps the status authoritative and falls back when nothing is countable", () => {
+    const done = node({ id: "w1", code: "01.01.01", status: "已完成", progress: 10 });
+    expect(isCockpitNodeDone(done, counts({}))).toBe(true);
+    const open = node({ id: "w1", code: "01.01.01", status: "进行中", progress: 100 });
+    // No countable issues: the typed value is all there is.
+    expect(isCockpitNodeDone(open, counts({ primary_total: 0, done: 0, active: 0 }))).toBe(true);
+    expect(isCockpitNodeDone(open, null)).toBe(true);
   });
 });
 

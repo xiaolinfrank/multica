@@ -230,9 +230,23 @@ export function isCockpitNodeActive(node: CockpitNode): boolean {
 }
 const CANCELLED_STATUSES = new Set(["已取消", "取消", "cancelled", "canceled"]);
 
-export function isCockpitNodeDone(node: CockpitNode): boolean {
+/**
+ * A row is done when its status says so, or when its progress reads 100%.
+ *
+ * Which 100% is the question §5.4 answers: a work item with countable issues
+ * takes its progress from them, and the hand-typed `node.progress` is a legacy
+ * field that no longer decides. A row whose typed progress was left at 100
+ * while its issues are 1 of 4 is not done, however long the old value sits
+ * there. Callers that have no task counts keep the typed value.
+ */
+export function isCockpitNodeDone(
+  node: CockpitNode,
+  counts?: CockpitPlanTaskCount | null,
+): boolean {
   const status = node.status.trim().toLowerCase();
   if (DONE_STATUSES.has(node.status.trim()) || DONE_STATUSES.has(status)) return true;
+  const ratio = cockpitIssueProgress(counts);
+  if (ratio != null) return ratio >= 100;
   return node.progress >= 100;
 }
 
@@ -276,9 +290,13 @@ export function isCockpitNodeUnscheduled(node: CockpitNode): boolean {
  * cancelled. `today` is passed in rather than read from the clock so the
  * derivation stays pure and testable.
  */
-export function isCockpitNodeLate(node: CockpitNode, today: string): boolean {
+export function isCockpitNodeLate(
+  node: CockpitNode,
+  today: string,
+  counts?: CockpitPlanTaskCount | null,
+): boolean {
   if (!node.end_date) return false;
-  if (isCockpitNodeDone(node) || isCockpitNodeCancelled(node)) return false;
+  if (isCockpitNodeDone(node, counts) || isCockpitNodeCancelled(node)) return false;
   return node.end_date < today;
 }
 
@@ -348,6 +366,7 @@ export function cockpitWorkProgress(
 export function computeCockpitRollups(
   tree: CockpitTreeNode[],
   today: string,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): Map<string, CockpitRollup> {
   const rollups = new Map<string, CockpitRollup>();
 
@@ -382,9 +401,9 @@ export function computeCockpitRollups(
     if (children.length === 0 && isCockpitWorkItem(node, entry.depth)) {
       if (!isCockpitNodeUnscheduled(node)) {
         own.leafCount = 1;
-        own.doneCount = isCockpitNodeDone(node) ? 1 : 0;
+        own.doneCount = isCockpitNodeDone(node, taskCounts?.get(node.id)) ? 1 : 0;
         own.activeCount = isCockpitNodeActive(node) ? 1 : 0;
-        own.lateCount = isCockpitNodeLate(node, today) ? 1 : 0;
+        own.lateCount = isCockpitNodeLate(node, today, taskCounts?.get(node.id)) ? 1 : 0;
         if (!isCockpitNodeCancelled(node)) {
           own.live.leafCount = 1;
           own.live.doneCount = own.doneCount;
@@ -437,6 +456,7 @@ export interface CockpitModuleHighlights {
 export function cockpitModuleHighlights(
   entry: CockpitTreeNode,
   today: string,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): CockpitModuleHighlights {
   let recent: CockpitNode | null = null;
   let next: CockpitNode | null = null;
@@ -447,7 +467,7 @@ export function cockpitModuleHighlights(
     if (current.children.length === 0) {
       const { node } = current;
       if (!node.end_date || isCockpitNodeCancelled(node)) return;
-      if (isCockpitNodeDone(node)) {
+      if (isCockpitNodeDone(node, taskCounts?.get(node.id))) {
         // A result is something the module can point at, so a finished task
         // with nothing to show for it is not the module's latest result.
         if (!node.deliverable.trim()) return;
@@ -685,6 +705,7 @@ export function computeCockpitMonths(
   board: Pick<CockpitBoard, "nodes" | "payments" | "milestones">,
   contextNodeIds?: ReadonlySet<string>,
   period?: CockpitFinancePeriod,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
 ): CockpitMonthCell[] {
   const payments = board.payments.filter((payment) =>
     cockpitPaymentInPeriod(payment.pay_date, period),
@@ -769,7 +790,7 @@ export function computeCockpitMonths(
     if (!date) continue;
     const cell = touch(monthKey(date));
     cell.dueCount += 1;
-    if (isCockpitNodeDone(leaf)) cell.doneCount += 1;
+    if (isCockpitNodeDone(leaf, taskCounts?.get(leaf.id))) cell.doneCount += 1;
   }
   for (const cell of cells.values()) {
     cell.byModule.sort((a, b) => b.amount - a.amount || a.code.localeCompare(b.code));
@@ -1145,7 +1166,7 @@ export function computeCockpitDigest(
   const done: CockpitNode[] = [];
   const active: CockpitNode[] = [];
   for (const leaf of leaves) {
-    if (isCockpitNodeDone(leaf)) {
+    if (isCockpitNodeDone(leaf, taskCounts?.get(leaf.id))) {
       if (inPast(leaf.end_date)) done.push(leaf);
       continue;
     }
@@ -1195,7 +1216,7 @@ export function computeCockpitDigest(
   const ahead: CockpitDigestItem[] = [];
   let dueCount = 0;
   for (const leaf of leaves) {
-    if (isCockpitNodeDone(leaf) || isCockpitNodeCancelled(leaf)) continue;
+    if (isCockpitNodeDone(leaf, taskCounts?.get(leaf.id)) || isCockpitNodeCancelled(leaf)) continue;
     if (!inAhead(leaf.end_date)) continue;
     dueCount += 1;
     ahead.push(taskItem(leaf, { date: leaf.end_date }));
@@ -1249,7 +1270,7 @@ export function computeCockpitDigest(
   const blocked: CockpitNode[] = [];
   const overdue: CockpitNode[] = [];
   for (const leaf of leaves) {
-    if (isCockpitNodeCancelled(leaf) || isCockpitNodeDone(leaf) || isCockpitNodeWaiting(leaf)) {
+    if (isCockpitNodeCancelled(leaf) || isCockpitNodeDone(leaf, taskCounts?.get(leaf.id)) || isCockpitNodeWaiting(leaf)) {
       continue;
     }
     if (isCockpitNodeBlocked(leaf)) {
@@ -1360,7 +1381,7 @@ export function cockpitEffectiveProgress(
   const ratio = cockpitIssueProgress(counts);
   if (ratio != null) return ratio;
   if (node.progress > 0) return Math.min(node.progress, 100);
-  if (isCockpitNodeDone(node)) return 100;
+  if (isCockpitNodeDone(node, counts)) return 100;
   if (isCockpitNodeActive(node) || isCockpitNodeWaiting(node)) return 50;
   if (isCockpitNodeBlocked(node)) return 25;
   return 0;
@@ -1427,7 +1448,10 @@ export function cockpitSubtreeAverage(
  * on screen for a whole module. Cancelled leaves are excluded: they no longer
  * occupy the plan.
  */
-export function cockpitAggStatusColor(entry: CockpitTreeNode): string {
+export function cockpitAggStatusColor(
+  entry: CockpitTreeNode,
+  taskCounts?: ReadonlyMap<string, CockpitPlanTaskCount>,
+): string {
   let leaves = 0;
   let done = 0;
   let blocked = false;
@@ -1441,7 +1465,7 @@ export function cockpitAggStatusColor(entry: CockpitTreeNode): string {
     leaves += 1;
     if (isCockpitNodeBlocked(node.node)) blocked = true;
     else if (isCockpitNodeActive(node.node) || isCockpitNodeWaiting(node.node)) active = true;
-    if (isCockpitNodeDone(node.node)) done += 1;
+    if (isCockpitNodeDone(node.node, taskCounts?.get(node.node.id))) done += 1;
   };
   walk(entry);
   if (leaves === 0) return "var(--muted-foreground)";
@@ -1505,7 +1529,7 @@ export function cockpitCoreNodes(
     if (isCockpitNodeCancelled(node)) return;
     const date = node.end_date;
     if (!date) return;
-    if (isCockpitNodeDone(node)) {
+    if (isCockpitNodeDone(node, taskCounts?.get(node.id))) {
       push("done", date, node);
       return;
     }

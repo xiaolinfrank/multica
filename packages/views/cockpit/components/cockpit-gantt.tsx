@@ -704,7 +704,7 @@ export function CockpitGantt({
 
   // Row codes are addresses, so they are built once over the whole tree: a
   // filtered or searched view must not renumber the rows under the reader.
-  const rollups = useMemo(() => computeCockpitRollups(tree, today), [tree, today]);
+  const rollups = useMemo(() => computeCockpitRollups(tree, today, taskCounts), [tree, today, taskCounts]);
   const rows = useMemo(
     () => visibleRows(scopedTree, collapsed, query),
     [scopedTree, collapsed, query],
@@ -1606,7 +1606,7 @@ export function CockpitGantt({
                 const meetingDays = meetingMarks.get(node.id) ?? [];
                 const isSelected = selectedId === node.id;
                 const barColor = isBranch
-                  ? cockpitAggStatusColor(entry)
+                  ? cockpitAggStatusColor(entry, taskCounts)
                   : cockpitStatusColor(node.status);
                 // A structure row paints its leaves' average; one nobody has
                 // broken down yet has no figure at all, not a stored one.
