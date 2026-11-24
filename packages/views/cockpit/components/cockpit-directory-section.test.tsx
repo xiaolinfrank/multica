@@ -21,7 +21,7 @@ vi.mock("@multica/core/directory", async (original) => ({
   useSyncNodeDirectory: () => ({
     mutate: (vars: unknown, options?: { onSuccess?: (value: unknown) => void; onError?: (error: unknown) => void }) => {
       directory.mutate(vars, options);
-      if (directory.conflict) options?.onError?.({ runningTasks: directory.conflict });
+      if (directory.conflict) options?.onError?.({ code: "running_agent_tasks", runningTasks: directory.conflict });
       else options?.onSuccess?.({ directory_sync: { status: "ok" } });
     },
     isPending: directory.pending,
