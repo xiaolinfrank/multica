@@ -242,3 +242,41 @@ func TestDeliveryPathComposesTheFixedSegments(t *testing.T) {
 		t.Fatal("accepted an unsafe segment")
 	}
 }
+
+// P2-2: every segment is checked before Join can clean "a/../b" into "b".
+func TestEveryOperationRejectsUnsafeSegments(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range [][]string{{"a", "..", "b"}, {"a/b"}, {".."}, {"."}, {""}} {
+		if err := EnsureDir(root, rel...); !errors.Is(err, ErrDirectoryChanged) {
+			t.Fatalf("EnsureDir(%q) = %v, want ErrDirectoryChanged", rel, err)
+		}
+		if code, err := StatDir(root, rel...); code != StatInvalid || err == nil {
+			t.Fatalf("StatDir(%q) = %s %v, want invalid", rel, code, err)
+		}
+	}
+	if err := RenameOrMove(root, []string{"a"}, root, nil); !errors.Is(err, ErrDirectoryChanged) {
+		t.Fatalf("empty destination = %v", err)
+	}
+	if err := RenameOrMove(root, nil, root, []string{"b"}); !errors.Is(err, ErrDirectoryChanged) {
+		t.Fatalf("empty source = %v", err)
+	}
+	if err := RenameOrMove(root, []string{"a", "..", "b"}, root, []string{"c"}); !errors.Is(err, ErrDirectoryChanged) {
+		t.Fatalf("dot segment = %v", err)
+	}
+}
+
+// P1-1: an adopted name and a disambiguated sibling are not "drifted".
+func TestDirectoryNameMatchesToleratesAdoptedAndDisambiguatedNames(t *testing.T) {
+	if !DirectoryNameMatches("01.01 确权线", "01.01确权线") {
+		t.Fatal("adopted spacing was reported as a mismatch")
+	}
+	if !DirectoryNameMatches("01.01确权线(2)", "01.01确权线") {
+		t.Fatal("a unique-suffixed sibling was reported as a mismatch")
+	}
+	if DirectoryNameMatches("01.02确权线", "01.01确权线") {
+		t.Fatal("a different address matched")
+	}
+	if DirectoryNameMatches("01.01确权线(二)", "01.01确权线") {
+		t.Fatal("a non-numeric suffix matched")
+	}
+}

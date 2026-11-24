@@ -297,6 +297,18 @@ func validSegment(name string) bool {
 	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !strings.ContainsAny(name, `/\`) && !strings.ContainsRune(name, 0)
 }
 
+// validateRel checks every component before it is joined into a path. Join
+// alone would clean "a/../b" into "b", so a caller could slip past the root
+// containment check with a segment the filesystem never sees.
+func validateRel(rel []string) error {
+	for _, name := range rel {
+		if !validSegment(name) {
+			return fmt.Errorf("%w: %q is not a single safe folder name", ErrDirectoryChanged, name)
+		}
+	}
+	return nil
+}
+
 // NormalizeForMatch compares folder names as people read them: whitespace is
 // insignificant, so "04.01 确权线" and "04.01确权线" are the same folder.
 func NormalizeForMatch(s string) string {
@@ -306,6 +318,45 @@ func NormalizeForMatch(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// DirectoryNameMatches reports whether a folder already names the row it was
+// made for. Two names match when they are equal once whitespace is ignored, so
+// a folder adopted from the disk ("04.01 确权线") is not reported as drifted;
+// a disambiguated sibling ("04.01确权线(2)") also matches, because UniqueName
+// created it for this very row and renaming it on every check would collide
+// with the folder that took the plain name.
+func DirectoryNameMatches(actual, expected string) bool {
+	if actual == "" || expected == "" {
+		return false
+	}
+	base := NormalizeForMatch(expected)
+	normalized := NormalizeForMatch(actual)
+	if normalized == base {
+		return true
+	}
+	// UniqueName appends "(2)", "(3)"… when a sibling already owns the plain
+	// name, shortening the base first if the result would exceed the byte cap.
+	open := strings.LastIndex(normalized, "(")
+	if open <= 0 || !strings.HasSuffix(normalized, ")") {
+		return false
+	}
+	stem := normalized[:open]
+	suffix := normalized[open:]
+	if len(suffix) < 3 {
+		return false
+	}
+	for _, r := range suffix[1 : len(suffix)-1] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	if stem == base {
+		return true
+	}
+	// A shortened stem is only the same base when the cut explains the whole
+	// difference; anything else is a different name.
+	return strings.HasPrefix(base, stem) && len(base)-len(stem) <= len(suffix)+4
 }
 
 // SanitizeFolderName turns arbitrary text into one safe path component: NFC
@@ -378,6 +429,9 @@ func TruncateForSuffix(base, suffix string) string {
 // are a success; a symlink, a file in the way, or a path outside the root is
 // refused with a specific error.
 func EnsureDir(root string, rel ...string) error {
+	if err := validateRel(rel); err != nil {
+		return err
+	}
 	r, err := OpenRoot(root)
 	if err != nil {
 		return err
@@ -399,6 +453,9 @@ const (
 
 // StatDir reports whether root/rel... exists as a real directory.
 func StatDir(root string, rel ...string) (StatCode, error) {
+	if err := validateRel(rel); err != nil {
+		return StatInvalid, err
+	}
 	r, err := OpenRoot(root)
 	if err != nil {
 		return StatNoRoot, err
@@ -430,6 +487,17 @@ func StatDir(root string, rel ...string) (StatCode, error) {
 //
 // Missing parents of the destination are created.
 func RenameOrMove(srcRoot string, srcRel []string, dstRoot string, dstRel []string) error {
+	// An empty side would mean the root itself; renaming the collaboration
+	// space is never a row's intent.
+	if len(srcRel) == 0 || len(dstRel) == 0 {
+		return fmt.Errorf("%w: a rename needs a source and a destination folder", ErrDirectoryChanged)
+	}
+	if err := validateRel(srcRel); err != nil {
+		return err
+	}
+	if err := validateRel(dstRel); err != nil {
+		return err
+	}
 	srcPath := filepath.Join(append([]string{srcRoot}, srcRel...)...)
 	dstPath := filepath.Join(append([]string{dstRoot}, dstRel...)...)
 	if filepath.Clean(srcPath) == filepath.Clean(dstPath) {

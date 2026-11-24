@@ -8,10 +8,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-
-	"github.com/jackc/pgx/v5"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/multica-ai/multica/server/internal/collabfs"
@@ -216,9 +215,6 @@ func (h *Handler) loadPlanDirectory(ctx context.Context, q *db.Queries, workspac
 			out.blocked = "the module has no folder name yet"
 		} else if out.directoryName != "" {
 			out.segments = []string{moduleDir, out.directoryName}
-		} else {
-			out.segments = []string{moduleDir}
-			out.segments = nil // nothing to point at until the row has a name
 		}
 	}
 	return out, nil
@@ -281,15 +277,15 @@ func (h *Handler) runningTaskRefs(ctx context.Context, workspaceID pgtype.UUID, 
 
 // sharedCollabProjects lists other projects pointed at the same root.
 func (h *Handler) sharedCollabProjects(ctx context.Context, q *db.Queries, projectID pgtype.UUID, collabPath string) []SharedCollabProject {
+	out := []SharedCollabProject{}
 	normalized := foldCollabPath(collabPath)
 	if normalized == "" {
-		return nil
+		return out
 	}
 	rows, err := q.ListProjectsWithCollabPath(ctx)
 	if err != nil {
-		return nil
+		return out
 	}
-	out := make([]SharedCollabProject, 0, 1)
 	for _, row := range rows {
 		if row.ProjectID == projectID {
 			continue
@@ -360,7 +356,7 @@ func (h *Handler) planDirectoryStatus(ctx context.Context, q *db.Queries, worksp
 		out.ExpectedDirectoryName = &name
 	}
 	if tasks, err := h.runningTasksForNode(ctx, q, workspaceID, pd); err == nil {
-		out.RunningTasks = tasks
+		out.RunningTasks = append(out.RunningTasks, tasks...)
 	}
 	if out.ProjectCollabPath == nil {
 		out.Status = "no_collab_path"
@@ -378,12 +374,16 @@ func (h *Handler) planDirectoryStatus(ctx context.Context, q *db.Queries, worksp
 	if full := pd.fullPath(); full != "" {
 		out.FullPath = &full
 	}
-	if pd.expected != "" && pd.directoryName != pd.expected {
-		out.Status = "name_mismatch"
-		return out
-	}
+	// The disk decides first: a folder that is not there is "missing" (or
+	// "root_unavailable"), whatever its name would have been. Comparing names
+	// before asking the share is what showed "name mismatch" plus a working
+	// "open" button for a folder that does not exist.
 	switch code, err := collabfs.StatDir(strings.TrimSpace(pd.project.CollabPath.String), pd.segments...); code {
 	case collabfs.StatOK:
+		if pd.expected != "" && !collabfs.DirectoryNameMatches(pd.directoryName, pd.expected) {
+			out.Status = "name_mismatch"
+			return out
+		}
 		out.Status = "ok"
 	case collabfs.StatMissing:
 		out.Status = "missing"
@@ -462,6 +462,19 @@ func (h *Handler) applyPlanDirectory(ctx context.Context, q *db.Queries, workspa
 	result := NodeDirectorySync{DirectoryName: pd.directoryName}
 	collabPath := strings.TrimSpace(pd.project.CollabPath.String)
 	if !pd.project.CollabPath.Valid || collabPath == "" {
+		// Nothing on disk to create or move, but the row still names its
+		// folder: a project that has not been given a collaboration space must
+		// not leave a stale name behind after a rename.
+		if pd.expected != "" && pd.directoryName != pd.expected {
+			if err := writePlanDirectoryName(ctx, q, workspaceID, pd, pd.expected); err != nil {
+				result.Status, result.Error = "failed", err.Error()
+				return result
+			}
+			result.Status, result.Reason = "renamed", "no_collab_space"
+			result.DirectoryName = pd.expected
+			result.FromDirectory, result.ToDirectory = pd.directoryName, pd.expected
+			return result
+		}
 		result.Status, result.Reason = "skipped", "no_collab_space"
 		return result
 	}
@@ -474,14 +487,19 @@ func (h *Handler) applyPlanDirectory(ctx context.Context, q *db.Queries, workspa
 		return result
 	}
 	if !force {
-		tasks, err := h.runningTasksForNode(ctx, q, workspaceID, pd)
-		if err != nil {
-			result.Status, result.Error = "failed", err.Error()
-			return result
-		}
-		if len(tasks) > 0 {
-			result.Status, result.Reason = "skipped", "running_agent_tasks"
-			return result
+		// Only a rename disturbs work in the folder. Creating a missing one
+		// (or confirming an existing one) touches nothing an agent has open.
+		needsRename := pd.directoryName != "" && pd.expected != "" && !collabfs.DirectoryNameMatches(pd.directoryName, pd.expected)
+		if needsRename {
+			tasks, err := h.runningTasksForNode(ctx, q, workspaceID, pd)
+			if err != nil {
+				result.Status, result.Error = "failed", err.Error()
+				return result
+			}
+			if len(tasks) > 0 {
+				result.Status, result.Reason = "skipped", "running_agent_tasks"
+				return result
+			}
 		}
 	}
 	parentSegments := []string{}
@@ -511,8 +529,10 @@ func (h *Handler) applyPlanDirectory(ctx context.Context, q *db.Queries, workspa
 	if len(fromSegments) == 0 {
 		fromSegments = append(append([]string{}, parentSegments...), pd.directoryName)
 	}
-	if pd.directoryName == pd.expected {
-		// Already named right: make sure the folder exists.
+	if collabfs.DirectoryNameMatches(pd.directoryName, pd.expected) {
+		// Already named right: make sure the folder exists. An adopted name
+		// ("04.01 确权线") and a disambiguated one ("…(2)") count as right, so
+		// retrying a fill never tries to rename them onto an occupied name.
 		if code, _ := collabfs.StatDir(collabPath, fromSegments...); code == collabfs.StatOK {
 			result.Status = "ok"
 			return result
@@ -661,7 +681,16 @@ func (h *Handler) SyncCockpitNodeDirectory(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "failed to resolve the row")
 		return
 	}
-	if !req.Force {
+	// Only a rename disturbs work in progress. A folder that is missing (or
+	// merely not created yet) can be created without touching what an agent
+	// has open, so it never asks about running tasks.
+	needsRename := false
+	if pd.directoryName != "" && pd.expected != "" && !collabfs.DirectoryNameMatches(pd.directoryName, pd.expected) {
+		if code, _ := collabfs.StatDir(strings.TrimSpace(pd.project.CollabPath.String), pd.segments...); code == collabfs.StatOK {
+			needsRename = true
+		}
+	}
+	if needsRename && !req.Force {
 		tasks, err := h.runningTasksForNode(ctx, h.Queries, cc.workspaceID, pd)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to check running tasks")
@@ -677,29 +706,24 @@ func (h *Handler) SyncCockpitNodeDirectory(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	result := h.applyPlanDirectory(ctx, h.Queries, cc.workspaceID, pd, pd.segments, req.Force)
-	// Re-read so the response carries the state after the write.
+	// Re-read so the response carries the state after the write. The disk's own
+	// classification is kept even when the operation failed: a collision leaves
+	// the folder in place and the panel must still offer "sync" for it.
 	if refreshed, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: node.ID, WorkspaceID: cc.workspaceID}); err == nil {
 		if after, err := h.loadPlanDirectory(ctx, h.Queries, cc.workspaceID, refreshed); err == nil {
 			status := h.planDirectoryStatus(ctx, h.Queries, cc.workspaceID, after)
-			status.Status = directoryStatusAfterSync(result, status)
+			if result.Status == "failed" {
+				if result.Error != "" {
+					status.Error = result.Error
+				} else if result.Reason != "" {
+					status.Error = result.Reason
+				}
+			}
 			writeJSON(w, http.StatusOK, map[string]any{"directory_sync": result, "directory": status})
 			return
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"directory_sync": result})
-}
-
-func directoryStatusAfterSync(result NodeDirectorySync, status PlanDirectoryStatus) string {
-	switch result.Status {
-	case "skipped":
-		if result.Reason == "running_agent_tasks" {
-			return status.Status
-		}
-		return "missing"
-	case "failed":
-		return "invalid"
-	}
-	return status.Status
 }
 
 // DirectoryFillItem is one row the fill pass looked at.
@@ -821,11 +845,13 @@ func (h *Handler) FillCockpitPlanDirectories(w http.ResponseWriter, r *http.Requ
 			switch {
 			case !pd.project.CollabPath.Valid || strings.TrimSpace(pd.project.CollabPath.String) == "":
 				item.Action, item.Status, item.Reason = "none", "no_collab_path", "no_collab_path"
-			case pd.blocked != "":
-				item.Action, item.Status, item.Error = "none", "invalid", pd.blocked
 			case pd.directoryName == "":
+				// A work item whose module has no folder yet is still
+				// creatable: this same pass creates the module folder first
+				// and then places the item inside it. Treating it as invalid
+				// here is what made a two-level fill skip every item.
 				item.Action, item.Status = "create", "pending"
-			case pd.expected != "" && pd.directoryName != pd.expected:
+			case pd.expected != "" && !collabfs.DirectoryNameMatches(pd.directoryName, pd.expected):
 				item.Action, item.Status = "sync", "pending"
 			default:
 				code, _ := collabfs.StatDir(strings.TrimSpace(pd.project.CollabPath.String), pd.segments...)
@@ -850,11 +876,17 @@ func (h *Handler) FillCockpitPlanDirectories(w http.ResponseWriter, r *http.Requ
 				counts[item.Status]++
 				continue
 			}
-			var pd planDirectory
-			for _, candidate := range pending {
-				if uuidToString(candidate.node.ID) == item.NodeID {
-					pd = candidate
-					break
+			// Re-read the row instead of reusing the preview's snapshot: an
+			// earlier module in this pass may have just created or renamed the
+			// folder this item lives in, and the item must land inside that
+			// one — never inside a re-built copy of the old module folder.
+			pd := planDirectory{}
+			if fresh, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{
+				ID: parseUUID(item.NodeID), WorkspaceID: cc.workspaceID,
+			}); err == nil {
+				pd, err = h.loadPlanDirectory(ctx, h.Queries, cc.workspaceID, fresh)
+				if err != nil {
+					pd = planDirectory{}
 				}
 			}
 			if pd.node.ID != (pgtype.UUID{}) {
@@ -868,6 +900,8 @@ func (h *Handler) FillCockpitPlanDirectories(w http.ResponseWriter, r *http.Requ
 						item.FullPath = after.fullPath()
 					}
 				}
+			} else {
+				item.Status, item.Error = "failed", "the row could not be read again"
 			}
 			counts[item.Status]++
 		}
@@ -876,11 +910,31 @@ func (h *Handler) FillCockpitPlanDirectories(w http.ResponseWriter, r *http.Requ
 			counts[item.Action]++
 		}
 	}
+	// A preview also reports who is working in the folders it would touch, so
+	// the reader can choose "force" before anything is written.
+	running := []RunningTaskRef{}
+	if !req.Apply {
+		seenTask := map[string]bool{}
+		for _, pd := range pending {
+			tasks, err := h.runningTasksForNode(ctx, h.Queries, cc.workspaceID, pd)
+			if err != nil {
+				continue
+			}
+			for _, task := range tasks {
+				if seenTask[task.TaskID] {
+					continue
+				}
+				seenTask[task.TaskID] = true
+				running = append(running, task)
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"applied":                req.Apply,
 		"items":                  items,
 		"counts":                 counts,
 		"shared_collab_projects": shared,
+		"running_tasks":          running,
 	})
 }
 
@@ -1005,6 +1059,20 @@ func (h *Handler) renameModuleFolder(ctx context.Context, workspaceID pgtype.UUI
 	}
 	project, err := h.Queries.GetProjectInWorkspace(ctx, db.GetProjectInWorkspaceParams{ID: module.ProjectID, WorkspaceID: workspaceID})
 	if err != nil || !project.CollabPath.Valid || strings.TrimSpace(project.CollabPath.String) == "" {
+		// No share, no folder to move — but the record still follows its title,
+		// so the module and its row never keep a name the user just replaced.
+		if writeErr := h.Queries.SetModuleDirectoryName(ctx, db.SetModuleDirectoryNameParams{WorkspaceID: workspaceID, ID: module.ID, DirectoryName: to}); writeErr != nil {
+			result.Status, result.Error = "failed", writeErr.Error()
+			return result
+		}
+		if hasRow {
+			if writeErr := h.Queries.SetCockpitNodeDirectoryName(ctx, db.SetCockpitNodeDirectoryNameParams{WorkspaceID: workspaceID, ID: row.ID, DirectoryName: to}); writeErr != nil {
+				result.Status, result.Error = "failed", writeErr.Error()
+				return result
+			}
+		}
+		result.Status, result.Reason = "renamed", "no_collab_space"
+		result.DirectoryName = to
 		return result
 	}
 	collabPath := strings.TrimSpace(project.CollabPath.String)

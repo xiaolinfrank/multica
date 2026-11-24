@@ -353,6 +353,11 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 	if syncMode == DirectorySyncSync && len(beforeDirs) > 0 {
 		var moduleIDs, workItemIDs []pgtype.UUID
 		for id, pd := range beforeDirs {
+			if !pd.project.CollabPath.Valid || strings.TrimSpace(pd.project.CollabPath.String) == "" {
+				// No share, nothing to rename; running work elsewhere is not a
+				// reason to refuse the renumber.
+				continue
+			}
 			// The expected name is the one the NEW code calls for: comparing
 			// against the old-code name would say "nothing changes" for every
 			// row, and the pass would rename folders without asking.
@@ -429,6 +434,12 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 	if syncMode != DirectorySyncDefer {
 		afterIndex, err := h.newDirectoryIndex(ctx, h.Queries, cc.workspaceID, cc.cockpit.ID)
 		if err == nil {
+			// `changes` is parent-before-child, so a module's folder has already
+			// been renamed by the time its work items are handled. Re-read each
+			// row's chain instead of reusing the pre-pass snapshot: the work
+			// item's source path must name the module's NEW folder, or the
+			// rename would look like a missing source and the row would keep a
+			// database name with no folder behind it.
 			for _, change := range changes {
 				before, ok := beforeDirs[uuidToString(change.id)]
 				if !ok {
@@ -438,11 +449,11 @@ func (h *Handler) RenumberCockpitChildren(w http.ResponseWriter, r *http.Request
 				if !ok {
 					continue
 				}
-				after, err := afterIndex.directory(ctx, h.Queries, cc.workspaceID, afterNode)
+				after, err := h.loadPlanDirectory(ctx, h.Queries, cc.workspaceID, afterNode)
 				if err != nil {
 					continue
 				}
-				result := h.applyPlanDirectory(ctx, h.Queries, cc.workspaceID, after, before.segments, syncMode == DirectorySyncForce)
+				result := h.applyPlanDirectory(ctx, h.Queries, cc.workspaceID, after, after.segments, syncMode == DirectorySyncForce)
 				results = append(results, map[string]any{
 					"node_id":        uuidToString(change.id),
 					"code":           change.to,
