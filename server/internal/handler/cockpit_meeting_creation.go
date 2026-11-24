@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -58,6 +59,12 @@ func (h *Handler) createCockpitMeetingRecord(ctx context.Context, p db.CreateCoc
 		}
 		if node.CockpitID != p.CockpitID {
 			return out, pgx.ErrNoRows
+		}
+		if _, e := meetingLinkNodeDepth(ctx, q, cockpitContext{workspaceID: p.WorkspaceID, cockpit: board}, nodeID); e != nil {
+			if errors.Is(e, errMeetingLinkDepth) {
+				return out, &cockpitCreationFailure{http.StatusBadRequest, e.Error()}
+			}
+			return out, e
 		}
 	}
 	if adopting {

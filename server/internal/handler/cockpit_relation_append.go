@@ -161,6 +161,9 @@ func appendCockpitMeetingNodeRecord(ctx context.Context, q *db.Queries, cc cockp
 	if node.CockpitID != cc.cockpit.ID {
 		return CockpitMeetingNodeResponse{}, pgx.ErrNoRows
 	}
+	if _, err := meetingLinkNodeDepth(ctx, q, cc, nodeID); err != nil {
+		return CockpitMeetingNodeResponse{}, err
+	}
 	if err := q.AppendCockpitMeetingNode(ctx, db.AppendCockpitMeetingNodeParams{WorkspaceID: cc.workspaceID, MeetingID: meetingID, NodeID: nodeID}); err != nil {
 		return CockpitMeetingNodeResponse{}, err
 	}
@@ -192,6 +195,8 @@ func writeCockpitReferenceError(w http.ResponseWriter, err error) bool {
 		writeError(w, 409, err.Error())
 	} else if errors.Is(err, service.ErrCockpitWorkflowForbidden) {
 		writeError(w, 403, err.Error())
+	} else if errors.Is(err, errMeetingLinkDepth) {
+		writeError(w, 400, err.Error())
 	} else if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, 404, "related item no longer exists")
 	} else {

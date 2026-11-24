@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -1117,14 +1118,15 @@ func TestCockpitMeetingTaskIsFiledUnderTheArchiveNode(t *testing.T) {
 		Want(http.StatusOK).
 		JSON(&board)
 
-	filed := false
+	// The archive row is an L3 work item, so the task's own filing names it:
+	// one owner, not a second "related work item" link repeating the same row.
+	if n := dbfx.Count(t, "SELECT count(*) FROM issue WHERE id = $1 AND work_item_id = $2", opened.Task.IssueID, f.node); n != 1 {
+		t.Errorf("the meeting's task is not filed under %s", f.node)
+	}
 	for _, link := range board.IssueLinks {
 		if link.IssueID == opened.Task.IssueID && link.NodeID == f.node {
-			filed = true
+			t.Errorf("the archive work item is repeated as a related link: %+v", link)
 		}
-	}
-	if !filed {
-		t.Errorf("the meeting's task is not filed under %s: %+v", f.node, board.IssueLinks)
 	}
 }
 
@@ -1638,8 +1640,30 @@ func newMeetingArchiveFixture(t *testing.T, name string, makeArchiveDir bool) me
 	f.project = dbfx.Project(t, "06项目管理与规划", testutil.Cols{
 		"workspace_id": f.wsID, "collab_path": f.root,
 	})
-	f.module = dbfx.Module(t, f.project, "06.06 多方协同与会议", testutil.Cols{"workspace_id": f.wsID})
-	f.node = createNode(t, f.wsID, map[string]any{"code": "06.06.03", "name": "会议纪要与素材"}).ID
+	// The programme's own folder names: the module and work item carry the
+	// stable directory name the share knows, which is what meeting paths are
+	// derived from now that titles are no longer matched against the disk.
+	f.module = dbfx.Module(t, f.project, "06.06 多方协同与会议", testutil.Cols{
+		"workspace_id": f.wsID, "directory_name": "06.06多方协同与会议",
+	})
+	projectRow := createNode(t, f.wsID, map[string]any{
+		"code": "06", "name": "06项目管理与规划", "project_id": f.project,
+	})
+	moduleRow := createNode(t, f.wsID, map[string]any{
+		"code": "06.06", "name": "06.06 多方协同与会议", "parent_id": projectRow.ID, "module_id": f.module,
+	})
+	dbfx.Exec(t, "UPDATE cockpit_node SET directory_name = $2 WHERE id = $1", moduleRow.ID, "06.06多方协同与会议")
+	archiveRow := createNode(t, f.wsID, map[string]any{
+		"code": "06.06.03", "name": "会议纪要与素材", "parent_id": moduleRow.ID,
+	})
+	dbfx.Exec(t, "UPDATE cockpit_node SET directory_name = $2 WHERE id = $1", archiveRow.ID, "06.06.03会议纪要与素材")
+	f.node = archiveRow.ID
+	// The reconciled shape is what makes the archive row an L3 work item: its
+	// parent carries the module binding, and the board's tree rules are on.
+	if _, err := testPool.Exec(context.Background(),
+		`UPDATE cockpit SET plan_reconciled_at=now() WHERE workspace_id=$1`, f.wsID); err != nil {
+		t.Fatalf("setup: reconcile the board: %v", err)
+	}
 
 	// The task is opened through IssueService, which dbfx did not create.
 	dbfx.Cleanup(t, "DELETE FROM issue WHERE workspace_id = $1", f.wsID)

@@ -228,8 +228,13 @@ func TestCockpitMeetingProvisionConcurrentRetriesReuseIssue(t *testing.T) {
 	if n := dbfx.Count(t, "SELECT count(*) FROM issue WHERE workspace_id = $1", f.wsID); n != 1 {
 		t.Fatalf("provision created %d issues, want exactly one", n)
 	}
-	if n := dbfx.Count(t, "SELECT count(*) FROM cockpit_node_issue WHERE issue_id = $1 AND node_id = $2", id, f.node); n != 1 {
-		t.Fatalf("archive link count = %d, want one", n)
+	if n := dbfx.Count(t, "SELECT count(*) FROM issue WHERE id = $1 AND work_item_id = $2", id, f.node); n != 1 {
+		t.Fatalf("minutes task work_item_id does not name the archive work item %s", f.node)
+	}
+	// The filing is the issue's own owning work item; the "related work items"
+	// relation must not repeat it as a second link.
+	if n := dbfx.Count(t, "SELECT count(*) FROM cockpit_node_issue WHERE issue_id = $1 AND node_id = $2", id, f.node); n != 0 {
+		t.Fatalf("archive relation count = %d, want none: work_item_id already files the task", n)
 	}
 	setMeetingRoles(t, f.wsID, meeting.ID, id, map[string]any{"roles": []string{"minutes", "review"}}).Want(http.StatusOK)
 	retried := f.provision(t, meeting.ID, map[string]any{

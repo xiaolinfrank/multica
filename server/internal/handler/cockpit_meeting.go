@@ -16,6 +16,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/collabfs"
+	"github.com/multica-ai/multica/server/internal/localpaths"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/middleware"
 	"github.com/multica-ai/multica/server/internal/service"
@@ -158,6 +160,25 @@ func (h *Handler) resolveMeetingDestination(
 	_, moduleTouched := raw["meeting_module_id"]
 	_, nodeTouched := raw["meeting_node_id"]
 	if projectTouched || moduleTouched || nodeTouched {
+		resolvedProject, resolvedModule, err := h.reconcileMeetingNodeDestination(
+			r.Context(), cc,
+			project.effective(cc.cockpit.MeetingProjectID),
+			module.effective(cc.cockpit.MeetingModuleID),
+			node.effective(cc.cockpit.MeetingNodeID),
+			projectTouched, moduleTouched,
+		)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return project, module, node, false
+		}
+		// A derived pair is stored with the work item, so the board and the
+		// plan tree cannot disagree about where its meetings are filed.
+		if !projectTouched && resolvedProject != project.effective(cc.cockpit.MeetingProjectID) {
+			project = meetingRef{id: resolvedProject}
+		}
+		if !moduleTouched && resolvedModule != module.effective(cc.cockpit.MeetingModuleID) {
+			module = meetingRef{id: resolvedModule}
+		}
 		if err := h.validateMeetingDirectoryReferences(r.Context(), cc, project.effective(cc.cockpit.MeetingProjectID), module.effective(cc.cockpit.MeetingModuleID), node.effective(cc.cockpit.MeetingNodeID)); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return project, module, node, false
@@ -349,8 +370,117 @@ func (h *Handler) validateMeetingDirectoryReferences(ctx context.Context, cc coc
 		if err != nil || node.CockpitID != cc.cockpit.ID {
 			return errors.New("meeting sub-item not found on this board")
 		}
+		if cc.cockpit.PlanReconciledAt.Valid {
+			depth, err := meetingLinkNodeDepth(ctx, h.Queries, cc, nodeID)
+			if err != nil {
+				return err
+			}
+			if depth == 2 {
+				parent, ok, err := meetingNodeParent(ctx, h.Queries, cc, node)
+				if err != nil {
+					return err
+				}
+				if !ok || !parent.ModuleID.Valid || !parent.ProjectID.Valid {
+					return errors.New("the work item does not hang from a module row")
+				}
+				if moduleID.Valid && parent.ModuleID != moduleID {
+					return errors.New("the work item does not belong to the selected module")
+				}
+				if projectID.Valid && parent.ProjectID != projectID {
+					return errors.New("the work item does not belong to the selected project")
+				}
+			}
+		}
 	}
 	return nil
+}
+
+// meetingNodeParent reads a node's parent row on this board.
+func meetingNodeParent(ctx context.Context, q *db.Queries, cc cockpitContext, node db.CockpitNode) (db.CockpitNode, bool, error) {
+	if !node.ParentID.Valid {
+		return db.CockpitNode{}, false, nil
+	}
+	parent, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: node.ParentID, WorkspaceID: cc.workspaceID})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return db.CockpitNode{}, false, nil
+		}
+		return db.CockpitNode{}, false, err
+	}
+	if parent.CockpitID != cc.cockpit.ID {
+		return db.CockpitNode{}, false, nil
+	}
+	return parent, true, nil
+}
+
+// meetingWorkItemUnder reads nodeID as an L3 work item and returns the module
+// row it hangs from. ok is false for a project or module row (and for a row
+// deeper than a work item): those name where the path already is, not a work
+// item a task can call home.
+func meetingWorkItemUnder(ctx context.Context, q *db.Queries, cc cockpitContext, nodeID pgtype.UUID) (db.CockpitNode, db.CockpitNode, bool, error) {
+	if !nodeID.Valid {
+		return db.CockpitNode{}, db.CockpitNode{}, false, nil
+	}
+	depth, err := meetingNodeDepth(ctx, q, cc, nodeID)
+	if err != nil {
+		return db.CockpitNode{}, db.CockpitNode{}, false, err
+	}
+	if depth != 2 {
+		return db.CockpitNode{}, db.CockpitNode{}, false, nil
+	}
+	node, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: nodeID, WorkspaceID: cc.workspaceID})
+	if err != nil {
+		return db.CockpitNode{}, db.CockpitNode{}, false, err
+	}
+	parent, ok, err := meetingNodeParent(ctx, q, cc, node)
+	if err != nil || !ok {
+		return node, db.CockpitNode{}, false, err
+	}
+	if !parent.ModuleID.Valid || !parent.ProjectID.Valid {
+		return node, parent, false, nil
+	}
+	return node, parent, true, nil
+}
+
+// reconcileMeetingNodeDestination keeps an L3 archive target and its project
+// and module together. On a reconciled board the work item's parent module row
+// IS the work item's module, so a request that names only the work item has
+// its project and module derived from it; a request that names a different
+// project or module is refused rather than stored as a contradiction.
+func (h *Handler) reconcileMeetingNodeDestination(
+	ctx context.Context,
+	cc cockpitContext,
+	projectID, moduleID, nodeID pgtype.UUID,
+	projectExplicit, moduleExplicit bool,
+) (pgtype.UUID, pgtype.UUID, error) {
+	if !cc.cockpit.PlanReconciledAt.Valid || !nodeID.Valid {
+		return projectID, moduleID, nil
+	}
+	depth, err := meetingLinkNodeDepth(ctx, h.Queries, cc, nodeID)
+	if err != nil {
+		return pgtype.UUID{}, pgtype.UUID{}, err
+	}
+	if depth != 2 {
+		return projectID, moduleID, nil
+	}
+	node, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: nodeID, WorkspaceID: cc.workspaceID})
+	if err != nil {
+		return pgtype.UUID{}, pgtype.UUID{}, errors.New("meeting sub-item not found on this board")
+	}
+	parent, ok, err := meetingNodeParent(ctx, h.Queries, cc, node)
+	if err != nil {
+		return pgtype.UUID{}, pgtype.UUID{}, err
+	}
+	if !ok || !parent.ModuleID.Valid || !parent.ProjectID.Valid {
+		return pgtype.UUID{}, pgtype.UUID{}, errors.New("the work item does not hang from a module row")
+	}
+	if projectExplicit && projectID != parent.ProjectID {
+		return pgtype.UUID{}, pgtype.UUID{}, errors.New("the work item does not belong to the selected project")
+	}
+	if moduleExplicit && moduleID != parent.ModuleID {
+		return pgtype.UUID{}, pgtype.UUID{}, errors.New("the work item does not belong to the selected module")
+	}
+	return parent.ProjectID, parent.ModuleID, nil
 }
 
 // meetingDirPlan is where this board's meeting folders go, and how far up
@@ -367,15 +497,133 @@ type meetingDirPlan struct {
 	Derived bool
 }
 
+// meetingNodeDepth walks the plan tree up from nodeID and reports its level:
+// 0 for a project row (L1), 1 for a module row (L2), 2 for a work item (L3)
+// and 3 for anything deeper. The walk is bounded at three steps so a cycle in
+// a corrupted parent chain is refused rather than followed.
+func meetingNodeDepth(ctx context.Context, q *db.Queries, cc cockpitContext, nodeID pgtype.UUID) (int, error) {
+	if !nodeID.Valid {
+		return 0, nil
+	}
+	seen := make(map[pgtype.UUID]bool, 4)
+	current := nodeID
+	for depth := 0; depth < 3; depth++ {
+		if seen[current] {
+			return 3, nil
+		}
+		seen[current] = true
+		node, err := q.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: current, WorkspaceID: cc.workspaceID})
+		if err != nil {
+			return 0, err
+		}
+		if node.CockpitID != cc.cockpit.ID {
+			return 0, errors.New("work item not found on this board")
+		}
+		if !node.ParentID.Valid {
+			return depth, nil
+		}
+		current = node.ParentID
+	}
+	return 3, nil
+}
+
+// meetingLinkNodeDepth refuses a fourth level (or deeper): a meeting links to
+// a project, a module, or a work item row, never to anything below one.
+func meetingLinkNodeDepth(ctx context.Context, q *db.Queries, cc cockpitContext, nodeID pgtype.UUID) (int, error) {
+	depth, err := meetingNodeDepth(ctx, q, cc, nodeID)
+	if err != nil {
+		return 0, err
+	}
+	if depth > 2 {
+		return depth, errMeetingLinkDepth
+	}
+	return depth, nil
+}
+
+const meetingLinkDepthError = "meetings can only link to project, module, or work item rows"
+
+var errMeetingLinkDepth = errors.New(meetingLinkDepthError)
+
+// meetingSafeFolderName accepts one folder component a stored directory name
+// proposes. A name that could leave its parent is refused, not rewritten:
+// these names are already recorded, and silently changing one would move a
+// folder people are working in.
+func meetingSafeFolderName(label, name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", nil
+	}
+	if !localpaths.ValidFolder(name) {
+		return "", fmt.Errorf("the %s folder name %q is not a single safe path segment", label, name)
+	}
+	return name, nil
+}
+
+// meetingModuleFolderName is the module's segment of a meeting path. The
+// module's stored directory name is authoritative; the plan row's name is the
+// fallback, and a board that has recorded neither (an old fixture, an
+// un-reconciled programme) gets the name the share would use. The disk is
+// never consulted by title: a renamed module must not silently file new
+// meetings in a near-identical folder.
+func (h *Handler) meetingModuleFolderName(ctx context.Context, cc cockpitContext, moduleID pgtype.UUID) (string, error) {
+	module, err := h.Queries.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{
+		ID: moduleID, WorkspaceID: cc.workspaceID,
+	})
+	if err != nil {
+		return "", errors.New("meeting module not found in this workspace")
+	}
+	if module.DirectoryName.Valid {
+		if name, err := meetingSafeFolderName("module", module.DirectoryName.String); err != nil {
+			return "", err
+		} else if name != "" {
+			return name, nil
+		}
+	}
+	row, rowErr := h.Queries.GetCockpitNodeByModuleID(ctx, db.GetCockpitNodeByModuleIDParams{
+		WorkspaceID: cc.workspaceID, ModuleID: moduleID,
+	})
+	if rowErr == nil {
+		if row.DirectoryName.Valid {
+			if name, err := meetingSafeFolderName("module plan row", row.DirectoryName.String); err != nil {
+				return "", err
+			} else if name != "" {
+				return name, nil
+			}
+		}
+		if name, err := meetingSafeFolderName("module plan row", collabfs.SanitizeFolderName(row.Code+module.Title, 0)); err != nil {
+			return "", err
+		} else if name != "" {
+			return name, nil
+		}
+	} else if !errors.Is(rowErr, pgx.ErrNoRows) {
+		return "", rowErr
+	}
+	name := sanitizeMeetingFolderName(collabFolderName(module.Title))
+	return meetingSafeFolderName("module", name)
+}
+
+// meetingWorkItemFolderName is a work item's segment: its stored directory
+// name, or the platform's proposal for a row that has not been given one.
+func meetingWorkItemFolderName(node db.CockpitNode) (string, error) {
+	if node.DirectoryName.Valid {
+		if name, err := meetingSafeFolderName("work item", node.DirectoryName.String); err != nil {
+			return "", err
+		} else if name != "" {
+			return name, nil
+		}
+	}
+	return meetingSafeFolderName("work item", collabfs.SanitizeFolderName(node.Code+node.Name, 0))
+}
+
 // meetingBaseDir answers "which folder do this board's meeting folders go in".
 //
 // A board that has confirmed a folder uses it, full stop. Otherwise the answer
 // is derived by walking down from the project's collaboration space: the
-// folder that answers to the module, then the folder that answers to the
-// archive sub-item ("06.06.03 会议纪要与素材"). Both are matched by name,
-// because those directories are found by name rather than stored (see
-// migration 928). The derivation is a SUGGESTION: it is returned to the
-// caller to show and confirm, and only a confirmed value is stored.
+// module's stored directory name, then the work item's. Both are read from the
+// database rather than matched against the disk by title, so renaming a module
+// on the platform cannot silently file new meetings in a second folder beside
+// the real one. The derivation is a SUGGESTION: it is returned to the caller
+// to show and confirm, and only a confirmed value is stored.
 func (h *Handler) meetingBaseDir(
 	ctx context.Context,
 	cc cockpitContext,
@@ -407,31 +655,15 @@ func (h *Handler) meetingBaseDir(
 	plan := meetingDirPlan{Root: filepath.Clean(base), Derived: true}
 	plan.Dir = plan.Root
 
-	descend := func(want string) error {
-		name := childDirNamedInRoot(plan.Root, plan.Dir, want)
-		if name == "" {
-			// Nothing answers to it yet — name the folder the way the share
-			// names the others and let the caller see the path before
-			// anything is created.
-			name = sanitizeMeetingFolderName(collabFolderName(want))
-		}
-		if name == "" {
-			return errors.New("the meeting destination has no folder name")
-		}
-		plan.Dir = filepath.Join(plan.Dir, name)
-		return nil
-	}
-
 	if moduleID.Valid {
-		module, err := h.Queries.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{
-			ID: moduleID, WorkspaceID: cc.workspaceID,
-		})
+		name, err := h.meetingModuleFolderName(ctx, cc, moduleID)
 		if err != nil {
-			return meetingDirPlan{}, errors.New("meeting module not found in this workspace")
-		}
-		if err := descend(module.Title); err != nil {
 			return meetingDirPlan{}, err
 		}
+		if name == "" {
+			return meetingDirPlan{}, errors.New("the meeting destination has no folder name")
+		}
+		plan.Dir = filepath.Join(plan.Dir, name)
 	}
 	if nodeID.Valid {
 		node, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{
@@ -440,8 +672,21 @@ func (h *Handler) meetingBaseDir(
 		if err != nil {
 			return meetingDirPlan{}, errors.New("meeting sub-item not found on this board")
 		}
-		if err := descend(strings.TrimSpace(node.Code + " " + node.Name)); err != nil {
+		// A project row or the module row itself adds no segment: it names
+		// where the path already is, not a folder inside it.
+		depth, err := meetingNodeDepth(ctx, h.Queries, cc, nodeID)
+		if err != nil {
 			return meetingDirPlan{}, err
+		}
+		if depth == 2 {
+			name, err := meetingWorkItemFolderName(node)
+			if err != nil {
+				return meetingDirPlan{}, err
+			}
+			if name == "" {
+				return meetingDirPlan{}, errors.New("the meeting destination has no folder name")
+			}
+			plan.Dir = filepath.Join(plan.Dir, name)
 		}
 	}
 	return plan, nil
@@ -513,6 +758,7 @@ func (h *Handler) GetCockpitMeetingDestination(w http.ResponseWriter, r *http.Re
 	ctx := r.Context()
 
 	projectID := cc.cockpit.MeetingProjectID
+	projectExplicit := false
 	if v := strings.TrimSpace(r.URL.Query().Get("project_id")); v != "" {
 		id, err := util.ParseUUID(v)
 		if err != nil {
@@ -520,8 +766,10 @@ func (h *Handler) GetCockpitMeetingDestination(w http.ResponseWriter, r *http.Re
 			return
 		}
 		projectID = id
+		projectExplicit = true
 	}
 	moduleID := cc.cockpit.MeetingModuleID
+	moduleExplicit := false
 	if v := strings.TrimSpace(r.URL.Query().Get("module_id")); v != "" {
 		id, err := util.ParseUUID(v)
 		if err != nil {
@@ -529,6 +777,7 @@ func (h *Handler) GetCockpitMeetingDestination(w http.ResponseWriter, r *http.Re
 			return
 		}
 		moduleID = id
+		moduleExplicit = true
 	}
 	nodeID := cc.cockpit.MeetingNodeID
 	if _, sent := r.URL.Query()["node_id"]; sent {
@@ -542,6 +791,12 @@ func (h *Handler) GetCockpitMeetingDestination(w http.ResponseWriter, r *http.Re
 			}
 			nodeID = id
 		}
+	}
+
+	projectID, moduleID, resolveErr := h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, projectExplicit, moduleExplicit)
+	if resolveErr != nil {
+		writeError(w, http.StatusBadRequest, resolveErr.Error())
+		return
 	}
 
 	resp := CockpitMeetingDestinationResponse{
@@ -695,20 +950,24 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 	}
 
 	projectID := cc.cockpit.MeetingProjectID
+	projectExplicit := false
 	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
 		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ProjectID), "project_id")
 		if !ok {
 			return
 		}
 		projectID = id
+		projectExplicit = true
 	}
 	moduleID := cc.cockpit.MeetingModuleID
+	moduleExplicit := false
 	if req.ModuleID != nil && strings.TrimSpace(*req.ModuleID) != "" {
 		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ModuleID), "module_id")
 		if !ok {
 			return
 		}
 		moduleID = id
+		moduleExplicit = true
 	}
 	nodeID := cc.cockpit.MeetingNodeID
 	if req.NodeID != nil {
@@ -720,6 +979,13 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 			}
 			nodeID = id
 		}
+	}
+
+	var reconcileErr error
+	projectID, moduleID, reconcileErr = h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, projectExplicit, moduleExplicit)
+	if reconcileErr != nil {
+		writeError(w, http.StatusBadRequest, reconcileErr.Error())
+		return
 	}
 
 	if err := h.validateMeetingDirectoryReferences(ctx, cc, projectID, moduleID, nodeID); err != nil {
@@ -1132,6 +1398,17 @@ func (h *Handler) openMeetingTask(
 
 	prefix := h.getIssuePrefix(ctx, cc.workspaceID)
 	fillCreated := h.newStatusCategoryFiller(ctx, cc.workspaceID)
+	// The work item is the task's own filing, not a second relation: a task
+	// opened for a meeting filed at a work item belongs to it the same way a
+	// task created there by hand does. A board whose archive node is not an L3
+	// row keeps the older cockpit_node_issue link instead.
+	workItemID := pgtype.UUID{}
+	if node, parent, ok, err := meetingWorkItemUnder(ctx, h.Queries, cc, placement.nodeID); err == nil && ok {
+		if (!placement.moduleID.Valid || parent.ModuleID == placement.moduleID) &&
+			(!placement.projectID.Valid || parent.ProjectID == placement.projectID) {
+			workItemID = node.ID
+		}
+	}
 	result, err := h.IssueService.Create(ctx, service.IssueCreateParams{
 		WorkspaceID:  cc.workspaceID,
 		MeetingTask:  &service.CockpitMeetingTask{MeetingID: meeting.ID, NodeID: placement.nodeID},
@@ -1145,6 +1422,7 @@ func (h *Handler) openMeetingTask(
 		CreatorID:    cc.member.UserID,
 		ProjectID:    placement.projectID,
 		ModuleID:     placement.moduleID,
+		WorkItemID:   workItemID,
 		StartDate:    meeting.MeetDate,
 		DueDate:      meeting.MeetDate,
 		// A programme runs the same weekly meeting all year; two of them
@@ -1479,6 +1757,10 @@ func (h *Handler) SetCockpitMeetingNodes(w http.ResponseWriter, r *http.Request)
 			writeError(w, http.StatusBadRequest, "a selected work item no longer exists")
 			return
 		}
+		if _, err := meetingLinkNodeDepth(ctx, q, cc, nodeID); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	if req.Replace {
@@ -1763,6 +2045,7 @@ func (h *Handler) ScanCockpitMeetingFolders(w http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 
 	projectID := cc.cockpit.MeetingProjectID
+	projectExplicit := false
 	if v := strings.TrimSpace(r.URL.Query().Get("project_id")); v != "" {
 		id, err := util.ParseUUID(v)
 		if err != nil {
@@ -1770,8 +2053,10 @@ func (h *Handler) ScanCockpitMeetingFolders(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		projectID = id
+		projectExplicit = true
 	}
 	moduleID := cc.cockpit.MeetingModuleID
+	moduleExplicit := false
 	if v := strings.TrimSpace(r.URL.Query().Get("module_id")); v != "" {
 		id, err := util.ParseUUID(v)
 		if err != nil {
@@ -1779,6 +2064,7 @@ func (h *Handler) ScanCockpitMeetingFolders(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		moduleID = id
+		moduleExplicit = true
 	}
 	nodeID := cc.cockpit.MeetingNodeID
 	if _, sent := r.URL.Query()["node_id"]; sent {
@@ -1795,6 +2081,12 @@ func (h *Handler) ScanCockpitMeetingFolders(w http.ResponseWriter, r *http.Reque
 	}
 
 	resp := CockpitMeetingScanResponse{Entries: []CockpitMeetingScanEntry{}}
+	projectID, moduleID, err := h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, projectExplicit, moduleExplicit)
+	if err != nil {
+		resp.Error = err.Error()
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
 	plan, err := h.meetingBaseDir(ctx, cc, projectID, moduleID, nodeID)
 	if err != nil {
 		resp.Error = err.Error()
@@ -1972,20 +2264,24 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 	}
 
 	projectID := cc.cockpit.MeetingProjectID
+	projectExplicit := false
 	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
 		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ProjectID), "project_id")
 		if !ok {
 			return
 		}
 		projectID = id
+		projectExplicit = true
 	}
 	moduleID := cc.cockpit.MeetingModuleID
+	moduleExplicit := false
 	if req.ModuleID != nil && strings.TrimSpace(*req.ModuleID) != "" {
 		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ModuleID), "module_id")
 		if !ok {
 			return
 		}
 		moduleID = id
+		moduleExplicit = true
 	}
 	nodeID := cc.cockpit.MeetingNodeID
 	if req.NodeID != nil {
@@ -1997,6 +2293,13 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 			}
 			nodeID = id
 		}
+	}
+
+	var reconcileErr error
+	projectID, moduleID, reconcileErr = h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, projectExplicit, moduleExplicit)
+	if reconcileErr != nil {
+		writeError(w, http.StatusBadRequest, reconcileErr.Error())
+		return
 	}
 
 	plan, err := h.meetingBaseDir(ctx, cc, projectID, moduleID, nodeID)

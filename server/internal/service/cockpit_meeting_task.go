@@ -65,7 +65,7 @@ func linkCockpitMeetingTask(ctx context.Context, q *db.Queries, issue db.Issue, 
 	}); err != nil {
 		return fmt.Errorf("link provisioned meeting issue: %w", err)
 	}
-	if task.NodeID.Valid {
+	if task.NodeID.Valid && issue.WorkItemID != task.NodeID {
 		if _, err := q.CreateCockpitNodeIssue(ctx, db.CreateCockpitNodeIssueParams{
 			WorkspaceID: issue.WorkspaceID, NodeID: task.NodeID, IssueID: issue.ID,
 		}); err != nil {

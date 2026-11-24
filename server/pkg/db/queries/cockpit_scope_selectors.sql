@@ -5,12 +5,12 @@ WITH RECURSIVE args AS (
  sqlc.arg(query)::text AS query,sqlc.arg(eligible_only)::bool AS eligible_only,
  sqlc.arg(cursor_key)::text AS cursor_key,sqlc.arg(row_limit)::int AS row_limit
 ), tree AS (
- SELECT n.id,n.cockpit_id,n.parent_id,n.project_id AS project,n.module_id AS module,ARRAY[n.id] AS path,
+ SELECT n.id,n.cockpit_id,n.parent_id,n.project_id AS project,n.module_id AS module,ARRAY[n.id] AS path,0 AS depth,
  (n.project_id IS NULL OR EXISTS(SELECT 1 FROM project p WHERE p.id=n.project_id AND p.workspace_id=x.ws))
  AND (n.module_id IS NULL OR EXISTS(SELECT 1 FROM module m WHERE m.id=n.module_id AND m.workspace_id=x.ws AND m.project_id=n.project_id)) AS valid
  FROM cockpit_node n CROSS JOIN args x WHERE n.workspace_id=x.ws AND n.parent_id IS NULL
  UNION ALL
- SELECT n.id,n.cockpit_id,n.parent_id,COALESCE(n.project_id,t.project),COALESCE(n.module_id,t.module),t.path||n.id,
+ SELECT n.id,n.cockpit_id,n.parent_id,COALESCE(n.project_id,t.project),COALESCE(n.module_id,t.module),t.path||n.id,t.depth+1,
  t.valid AND (n.project_id IS NULL OR t.project IS NULL OR n.project_id=t.project)
  AND (n.module_id IS NULL OR (t.module IS NULL AND n.project_id IS NOT NULL))
  AND (n.project_id IS NULL OR EXISTS(SELECT 1 FROM project p WHERE p.id=n.project_id AND p.workspace_id=x.ws))
@@ -27,6 +27,7 @@ WITH RECURSIVE args AS (
  ELSE '' END AS reason
  FROM cockpit_node n CROSS JOIN args x LEFT JOIN tree t ON t.id=n.id
  WHERE n.workspace_id=x.ws
+ AND (t.depth IS NULL OR t.depth<=2)
  AND (x.project IS NULL OR t.valid AND t.project=x.project)
  AND (x.module IS NULL OR t.valid AND t.module=x.module)
 ), candidates AS MATERIALIZED (

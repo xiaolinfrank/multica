@@ -502,9 +502,38 @@ func (h *Handler) EnableCockpitMeetingWorkflow(w http.ResponseWriter, r *http.Re
 			writeError(w, status, msg)
 			return
 		}
+		// A minutes task filed at a work item IS that work item's task: the
+		// issue carries the filing in work_item_id, and the archive node link
+		// is not repeated. The node is the request's, or the board's default
+		// when this call did not move the destination elsewhere.
+		var workItemID pgtype.UUID
+		nodeCandidate := pgtype.UUID{}
+		if req.NodeID != nil {
+			nodeCandidate = input.NodeID
+		} else if req.ProjectID == nil && req.ModuleID == nil {
+			nodeCandidate = cc.cockpit.MeetingNodeID
+		}
+		if nodeCandidate.Valid {
+			node, parent, isWorkItem, err := meetingWorkItemUnder(r.Context(), h.Queries, cc, nodeCandidate)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to read the meeting work item")
+				return
+			}
+			if isWorkItem {
+				if project.Valid && project != parent.ProjectID {
+					writeError(w, http.StatusBadRequest, "the work item does not belong to the selected project")
+					return
+				}
+				if module.Valid && module != parent.ModuleID {
+					writeError(w, http.StatusBadRequest, "the work item does not belong to the selected module")
+					return
+				}
+				project, module, workItemID = parent.ProjectID, parent.ModuleID, node.ID
+			}
+		}
 		input.NewIssue = service.IssueCreateParams{WorkspaceID: cc.workspaceID, Title: meetingTaskTitle("", meeting),
 			Description: pgtype.Text{String: meetingTaskDescription(meeting, meeting.NasDir), Valid: true},
-			Status:      "backlog", Priority: "none", ProjectID: project, ModuleID: module,
+			Status:      "backlog", Priority: "none", ProjectID: project, ModuleID: module, WorkItemID: workItemID,
 			AssigneeType: assigneeType, AssigneeID: assigneeID, CreatorType: "member", CreatorID: cc.member.UserID, AllowDuplicate: true}
 	}
 	h.writeCockpitWorkflowResult(w, r, cc, meeting.ID, "enabled", h.IssueService.EnableCockpitMeetingWorkPackage(r.Context(), input, service.IssueCreateOpts{ActorID: uuidToString(cc.member.UserID)}))
