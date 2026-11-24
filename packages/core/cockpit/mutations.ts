@@ -708,9 +708,9 @@ function renamePlanNode(data: unknown, id: string, name: string): unknown {
 export function useMoveCockpitWorkItem(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, parent_id, position }: { id: string; parent_id: string; position?: number }) => {
+    mutationFn: async ({ id, parent_id, position, directorySync }: { id: string; parent_id: string; position?: number; directorySync?: "sync" | "defer" | "force" }) => {
       try {
-        return await api.moveCockpitWorkItem(id, { parent_id, position });
+        return await api.moveCockpitWorkItem(id, { parent_id, position, ...(directorySync ? { directory_sync: directorySync } : {}) });
       } catch (error) {
         throw cockpitWriteError(error);
       }

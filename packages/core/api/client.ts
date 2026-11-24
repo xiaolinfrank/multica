@@ -2206,7 +2206,7 @@ export class ApiClient {
 
   /** Rename or move a work item through the node's PATCH. The response keeps
    *  the refiled-issue and mapped-status counts the server reports. */
-  async moveCockpitWorkItem(id: string, patch: { parent_id: string | null; position?: number }): Promise<CockpitNodeMoved> {
+  async moveCockpitWorkItem(id: string, patch: { parent_id: string | null; position?: number; directory_sync?: "sync" | "defer" | "force" }): Promise<CockpitNodeMoved> {
     const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
