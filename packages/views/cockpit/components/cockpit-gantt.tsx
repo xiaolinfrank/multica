@@ -88,6 +88,7 @@ import { RunningTasksDialog, type RunningTasksConflict } from "../../plan-tree/r
 import { useLocalPathActions } from "../../common/local-path-link";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { isCockpitRunningTasksError } from "@multica/core/cockpit";
+import { useSyncNodeDirectory } from "@multica/core/directory";
 import { useCockpitScrollMemory } from "./use-cockpit-scroll-memory";
 import { StatusChip } from "./cockpit-status";
 import { cockpitGanttLayout } from "./cockpit-layout";
@@ -683,6 +684,7 @@ export function CockpitGantt({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [directoryFailure, setDirectoryFailure] = useState<{ nodeId: string; reason: string } | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ parentId: string; kind: "module" | "work_item" } | null>(null);
   const [confirming, setConfirming] = useState<{ kind: "delete" | "renumber"; row: PlanRow } | null>(null);
@@ -694,6 +696,7 @@ export function CockpitGantt({
   const moveWorkItem = useMoveCockpitWorkItem(wsId);
   const deleteWorkItem = useDeleteCockpitWorkItem(wsId);
   const renumber = useRenumberCockpitChildren(wsId);
+  const syncDirectory = useSyncNodeDirectory(wsId);
   const createKey = useRef<string | null>(null);
   const [navOpen, setNavOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -744,9 +747,16 @@ export function CockpitGantt({
   const pathActions = useLocalPathActions();
   // A structural write refused because an agent works in the folder: offer
   // "now" or "later" and re-run the same write with the choice.
+  const reportDirectory = (nodeId: string, result?: { status: string; reason?: string; error?: string } | null) => {
+    if (result?.status === "failed") {
+      setDirectoryFailure({ nodeId, reason: result.error || result.reason || "" });
+      return;
+    }
+    setDirectoryFailure((current) => (current?.nodeId === nodeId ? null : current));
+  };
   const runRenumber = (nodeId: string, directorySync?: "sync" | "defer" | "force") =>
     renumber.mutateAsync({ nodeId, directorySync }).then(
-      (result) => { setConflict(null); setActionError(null); setActionNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })); },
+      (result) => { setConflict(null); setActionError(null); setActionNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })); const failed = result?.directory_results?.find((item) => item.status === "failed"); if (failed) reportDirectory(failed.node_id, failed); else setDirectoryFailure(null); },
       (error) => {
         if (isCockpitRunningTasksError(error)) {
           setConflict({ tasks: error.runningTasks, retry: (mode) => void runRenumber(nodeId, mode) });
@@ -757,7 +767,7 @@ export function CockpitGantt({
     );
   const runMove = (nodeId: string, parentId: string, directorySync?: "sync" | "defer" | "force") =>
     moveWorkItem.mutateAsync({ id: nodeId, parent_id: parentId, directorySync }).then(
-      () => { setConflict(null); setActionNotice(t(($) => $.plan_tree.moved)); },
+      (moved) => { setConflict(null); setActionNotice(t(($) => $.plan_tree.moved)); reportDirectory(nodeId, moved?.directory_sync); },
       (error) => {
         if (isCockpitRunningTasksError(error)) {
           setConflict({ tasks: error.runningTasks, retry: (mode) => void runMove(nodeId, parentId, mode) });
@@ -1095,6 +1105,17 @@ export function CockpitGantt({
 
       {actionError && <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive"><span className="min-w-0 flex-1">{actionError}</span><button type="button" className="underline" onClick={() => setActionError(null)}>{t(($) => $.plan_tree.dismiss)}</button></div>}
       {actionNotice && <p role="status" className="border-b px-3 py-2 text-caption text-muted-foreground">{actionNotice}</p>}
+      {directoryFailure && (
+        <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive">
+          <span className="min-w-0 flex-1">{t(($) => $.directories.sync_failed, { reason: directoryFailure.reason })}</span>
+          <button type="button" className="underline" disabled={syncDirectory.isPending}
+            onClick={() => syncDirectory.mutate({ nodeId: directoryFailure.nodeId }, {
+              onSuccess: (answer) => reportDirectory(directoryFailure.nodeId, answer.directory_sync),
+              onError: (error) => setDirectoryFailure({ nodeId: directoryFailure.nodeId, reason: error instanceof Error ? error.message : "" }),
+            })}>{t(($) => $.directories.retry)}</button>
+          <button type="button" className="underline" onClick={() => setDirectoryFailure(null)}>{t(($) => $.plan_tree.dismiss)}</button>
+        </div>
+      )}
       {markerError && <div role="alert" className="flex items-center gap-2 border-b px-3 py-2 text-caption text-destructive"><span>{t(($) => $.meeting_center.marker_failed)}</span><Button type="button" variant="outline" size="sm" onClick={() => markerQueries.forEach((query) => { void query.refetch(); })}>{t(($) => $.binding.retry)}</Button></div>}
       {renderAllRows && <p className="px-3 py-2 text-caption text-muted-foreground">{t(($) => $.meeting_center.export_markers)}</p>}
       <div ref={scrollRef} data-cockpit-scroll className="min-h-0 min-w-0 flex-1 overflow-auto">
@@ -1126,8 +1147,8 @@ export function CockpitGantt({
               const isMainline = depth === 0;
               const isSelected = selectedId === node.id;
               const collaborators = countPeople(node.collaborators);
-              const late = isCockpitNodeLate(node, today);
-              const drifting = !late && isCockpitNodeDrifting(node, today);
+              const late = isCockpitNodeLate(node, today, taskCounts.get(node.id));
+              const drifting = !late && isCockpitNodeDrifting(node, today, taskCounts.get(node.id));
               const budget = isBranch ? (rollup?.budget ?? 0) : (node.budget_amount ?? 0);
               const ownPayments = paymentsByNode.get(node.id) ?? [];
               const goal = isMainline ? goalProgress.get(node.id) : undefined;
@@ -1201,7 +1222,7 @@ export function CockpitGantt({
                         // the same draft rule: a refusal keeps the editor open
                         // with what was typed, ready to retry.
                         try {
-                          await renameRow(planRow, name);
+                          reportDirectory(node.id, await renameRow(planRow, name));
                           setRenamingId(null);
                         } catch (error) {
                           if (isCockpitRunningTasksError(error)) {
@@ -1209,7 +1230,7 @@ export function CockpitGantt({
                               tasks: error.runningTasks,
                               retry: (mode) => {
                                 setConflict(null);
-                                void renameRow(planRow, name, mode).then(() => setRenamingId(null)).catch(failAction);
+                                void renameRow(planRow, name, mode).then((result) => { reportDirectory(node.id, result); setRenamingId(null); }).catch(failAction);
                               },
                             });
                             return;

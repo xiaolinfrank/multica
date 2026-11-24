@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { cockpitWriteError, useRenameCockpitWorkItem } from "@multica/core/cockpit";
 import { useUpdateModule } from "@multica/core/modules";
 import { useUpdateProject } from "@multica/core/projects";
+import type { NodeDirectorySyncResult } from "@multica/core/types";
 import type { PlanRow } from "./plan-rows";
 
 /** The record a row's title lives on: the project, the module, or — only for
@@ -27,7 +28,7 @@ export function usePlanRowRename(wsId: string) {
   const updateProject = useUpdateProject();
   const updateModule = useUpdateModule();
   const renameWorkItem = useRenameCockpitWorkItem(wsId);
-  return useCallback(async (row: PlanRow, name: string, directorySync?: "sync" | "defer" | "force"): Promise<void> => {
+  return useCallback(async (row: PlanRow, name: string, directorySync?: "sync" | "defer" | "force"): Promise<NodeDirectorySyncResult | undefined> => {
     const title = name.trim();
     if (!title) return;
     if (row.kind === "project") {
@@ -39,14 +40,15 @@ export function usePlanRowRename(wsId: string) {
     if (row.kind === "module") {
       if (!row.node.module_id) return;
       try {
-        await updateModule.mutateAsync({ id: row.node.module_id, title, ...(directorySync ? { directory_sync: directorySync } : {}) });
+        const module = await updateModule.mutateAsync({ id: row.node.module_id, title, ...(directorySync ? { directory_sync: directorySync } : {}) });
+        return module.directory_sync;
       } catch (error) {
         // Module writes go through their own client; translate the refusal so
         // a running-task 409 reaches the same dialog the node writes use.
         throw cockpitWriteError(error);
       }
-      return;
     }
-    await renameWorkItem.mutateAsync({ id: row.node.id, name: title, ...(directorySync ? { directorySync } : {}) });
+    const node = await renameWorkItem.mutateAsync({ id: row.node.id, name: title, ...(directorySync ? { directorySync } : {}) });
+    return node.directory_sync;
   }, [renameWorkItem, updateModule, updateProject]);
 }

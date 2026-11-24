@@ -9,6 +9,7 @@ import {
 import { api } from "../api";
 import { invalidateCockpitArtifactSourceAttachments } from "../cockpit/artifact-queries";
 import { issueKeys } from "./queries";
+import { directoryKeys } from "../directory/queries";
 import { invalidateIssueOperationBasis } from "./operation-basis";
 import { issueBatchAppliedIds, issueBatchErrorReceipt } from "./batch-receipt";
 import { projectKeys } from "../projects/queries";
@@ -207,6 +208,7 @@ export function useUpdateIssue() {
         stop_previous_assignee_runs: _stopPreviousAssigneeRuns,
         enter_workflow_step: _enterWorkflowStep,
         duplicate_of_issue_id: _duplicateOfIssueId,
+        directory_sync: _directorySync,
         description: _description,
         description_base: _descriptionBase,
         title_base: _titleBase,
@@ -428,6 +430,16 @@ export function useUpdateIssue() {
       // itself moved.
       if (ctx?.parentId || newParentId) {
         qc.invalidateQueries({ queryKey: issueKeys.childrenByParentsAll(wsId) });
+      }
+      // The delivery folder follows a filing change and a hand-picked name; the
+      // detail's folder row reads its own key, so refresh it after either.
+      if (
+        Object.prototype.hasOwnProperty.call(vars, "directory_name") ||
+        ["project_id", "module_id", "work_item_id", "parent_issue_id"].some((key) =>
+          Object.prototype.hasOwnProperty.call(vars, key),
+        )
+      ) {
+        qc.invalidateQueries({ queryKey: directoryKeys.issue(wsId, vars.id) });
       }
     },
   });

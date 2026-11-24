@@ -16,6 +16,7 @@ import {
 } from "./actions-context";
 import type { IssueCreateDefaults } from "./types";
 import { useT } from "../../i18n";
+import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 
 export type MoveIssueUpdates = Pick<
   UpdateIssueRequest,
@@ -63,14 +64,18 @@ export function useIssueSurfaceActions({
         {
           onSuccess: (issue) => options?.onSuccess?.(issue),
           onError: (err) => {
-            toast.error(
-              errorCode(err) === "revision_conflict"
-                ? tIssues(($) => $.revision.conflict)
-                : err instanceof Error && err.message
-                ? err.message
-                : (options?.errorMessage ??
-                    t(($) => $.detail.toast_move_issue_failed)),
-            );
+            // The caller owns the running-folder choice; a generic toast here
+            // would race the dialog that offers "sync now / later".
+            if (!isCockpitRunningTasksError(err)) {
+              toast.error(
+                errorCode(err) === "revision_conflict"
+                  ? tIssues(($) => $.revision.conflict)
+                  : err instanceof Error && err.message
+                  ? err.message
+                  : (options?.errorMessage ??
+                      t(($) => $.detail.toast_move_issue_failed)),
+              );
+            }
             options?.onError?.(err);
           },
           onSettled: () => options?.onSettled?.(),

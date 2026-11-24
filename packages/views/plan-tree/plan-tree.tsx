@@ -18,6 +18,7 @@ import { useCreateModule } from "@multica/core/modules";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 import { useModalStore } from "@multica/core/modals";
+import { useSyncNodeDirectory } from "@multica/core/directory";
 import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import { useLocale, useT } from "../i18n";
 import { formatDateOnly } from "@multica/core/issues/date";
@@ -89,6 +90,7 @@ export function PlanTree({
   const [notice, setNotice] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [conflict, setConflict] = useState<RunningTasksConflict | null>(null);
+  const [directoryFailure, setDirectoryFailure] = useState<{ nodeId: string; reason: string } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const createModule = useCreateModule();
@@ -97,7 +99,27 @@ export function PlanTree({
   const moveWorkItem = useMoveCockpitWorkItem(wsId);
   const deleteWorkItem = useDeleteCockpitWorkItem(wsId);
   const renumber = useRenumberCockpitChildren(wsId);
+  const syncDirectory = useSyncNodeDirectory(wsId);
   const creationKey = useRef<string | null>(null);
+
+  // A structural write can succeed while its folder operation did not (a
+  // collision on the share, for example). Say so and keep one retry beside the
+  // message instead of leaving the failure in the response.
+  const reportDirectory = (nodeId: string, result?: { status: string; reason?: string; error?: string } | null) => {
+    if (result?.status === "failed") {
+      setDirectoryFailure({ nodeId, reason: result.error || result.reason || "" });
+      return;
+    }
+    setDirectoryFailure((current) => (current?.nodeId === nodeId ? null : current));
+  };
+  const reportDirectoryResults = (result?: { directory_results?: { node_id: string; status: string; reason?: string; error?: string }[] | null } | null) => {
+    const failed = result?.directory_results?.find((item) => item.status === "failed");
+    if (failed) {
+      setDirectoryFailure({ nodeId: failed.node_id, reason: failed.error || failed.reason || "" });
+      return;
+    }
+    setDirectoryFailure(null);
+  };
 
   const nodes = useMemo(() => data?.nodes ?? [], [data]);
   const counts: readonly CockpitPlanTaskCount[] = useMemo(() => data?.task_counts ?? [], [data]);
@@ -280,6 +302,17 @@ export function PlanTree({
       {notice && (
         <p role="status" className="border-b border-border px-3 py-1.5 text-caption text-muted-foreground">{notice}</p>
       )}
+      {directoryFailure && (
+        <div role="alert" className="flex items-start gap-2 border-b border-border px-3 py-1.5 text-caption text-destructive">
+          <span className="min-w-0 flex-1">{t(($) => $.directories.sync_failed, { reason: directoryFailure.reason })}</span>
+          <button type="button" className="underline" disabled={syncDirectory.isPending}
+            onClick={() => syncDirectory.mutate({ nodeId: directoryFailure.nodeId }, {
+              onSuccess: (answer) => reportDirectory(directoryFailure.nodeId, answer.directory_sync),
+              onError: (error) => setDirectoryFailure({ nodeId: directoryFailure.nodeId, reason: error instanceof Error ? error.message : "" }),
+            })}>{t(($) => $.directories.retry)}</button>
+          <button type="button" className="underline" onClick={() => setDirectoryFailure(null)}>{t(($) => $.plan_tree.dismiss)}</button>
+        </div>
+      )}
       {confirmRenumber && (
         <div role="dialog" aria-label={t(($) => $.plan_tree.renumber_confirm)} className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-caption">
           <span className="flex-1">{t(($) => $.plan_tree.renumber_confirm)}</span>
@@ -288,7 +321,7 @@ export function PlanTree({
             setConfirmRenumber(null);
             const attempt = (directorySync?: "sync" | "defer" | "force") =>
               renumber.mutateAsync({ nodeId: id, directorySync }).then(
-                (result) => { setConflict(null); setNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })); },
+                (result) => { setConflict(null); setNotice(t(($) => $.plan_tree.renumber_done, { n: result?.changed ?? 0 })); reportDirectoryResults(result); },
                 (e) => {
                   if (isCockpitRunningTasksError(e)) {
                     setConflict({ tasks: e.runningTasks, retry: (mode) => void attempt(mode) });
@@ -376,7 +409,7 @@ export function PlanTree({
                 onStartRename={() => setRenaming(row.node.id)}
                 onSubmitRename={async (name) => {
                   try {
-                    await renameRow(row, name);
+                    reportDirectory(row.node.id, await renameRow(row, name));
                     setRenaming(null);
                   } catch (e) {
                     // An agent working in the folder is a choice, not a
@@ -387,7 +420,7 @@ export function PlanTree({
                         tasks: e.runningTasks,
                         retry: (mode) => {
                           setConflict(null);
-                          void renameRow(row, name, mode).then(() => setRenaming(null)).catch(report);
+                          void renameRow(row, name, mode).then((result) => { reportDirectory(row.node.id, result); setRenaming(null); }).catch(report);
                         },
                       });
                       return;
@@ -453,7 +486,7 @@ export function PlanTree({
                     if (row.kind !== "work_item") return;
                     const attempt = (directorySync?: "sync" | "defer" | "force") =>
                       moveWorkItem.mutateAsync({ id: row.node.id, parent_id: parentId, directorySync }).then(
-                        () => { setConflict(null); setNotice(t(($) => $.plan_tree.moved)); },
+                        (moved) => { setConflict(null); setNotice(t(($) => $.plan_tree.moved)); reportDirectory(row.node.id, moved?.directory_sync); },
                         (e) => {
                           if (isCockpitRunningTasksError(e)) {
                             setConflict({ tasks: e.runningTasks, retry: (mode) => void attempt(mode) });

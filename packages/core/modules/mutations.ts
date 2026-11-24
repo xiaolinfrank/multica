@@ -4,6 +4,7 @@ import { invalidateIssueOperationBasis } from "../issues/operation-basis";
 import { moduleKeys } from "./queries";
 import { issueKeys } from "../issues/queries";
 import { cockpitKeys } from "../cockpit/queries";
+import { directoryKeys } from "../directory/queries";
 import { useWorkspaceId } from "../hooks";
 import type { Module, CreateModuleRequest, UpdateModuleRequest, ListModulesResponse } from "../types";
 
@@ -58,6 +59,7 @@ export function useUpdateModule() {
       qc.invalidateQueries({ queryKey: moduleKeys.detail(wsId, vars.id) });
       qc.invalidateQueries({ queryKey: moduleKeys.list(wsId) });
       qc.invalidateQueries({ queryKey: cockpitKeys.surfaces(wsId) });
+      qc.invalidateQueries({ queryKey: directoryKeys.plan(wsId) });
     },
   });
 }
