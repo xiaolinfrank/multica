@@ -203,6 +203,12 @@ describe("assigning an existing task files it here", () => {
     expect(screen.getByRole("button", { name: "Change the filing" })).toBeDisabled();
   });
 
+  it("says how many sub-issues move with it", async () => {
+    vi.mocked(api.listChildIssues).mockResolvedValue({ issues: [{ id: "c1" }, { id: "c2" }], total: 2 } as never);
+    await pickCandidate(candidate());
+    expect(await screen.findByText("Its 2 sub-issues and their descendants move with it.")).toBeInTheDocument();
+  });
+
   it("confirms the handoff first when the destination project hands off", async () => {
     vi.mocked(api.listIssueWorkflows).mockResolvedValue({
       workflows: [{
