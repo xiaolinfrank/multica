@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/collabfs"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -134,6 +135,21 @@ func ensureCockpitPlanSkeletonTx(ctx context.Context, q *db.Queries, workspaceID
 		rootCount++
 		rootByProject[project.ID] = node
 	}
+	// Folder names already taken under each project root: a module's L2 row
+	// and its module record are the same folder, so a sibling that already
+	// uses the name pushes the next one to "(2)".
+	takenByRoot := make(map[pgtype.UUID]map[string]bool, len(rootByProject))
+	for _, node := range nodes {
+		if !node.ParentID.Valid || node.ParentID != rootByProject[node.ProjectID].ID {
+			continue
+		}
+		if takenByRoot[node.ParentID] == nil {
+			takenByRoot[node.ParentID] = map[string]bool{}
+		}
+		if node.DirectoryName.Valid {
+			takenByRoot[node.ParentID][strings.ToLower(node.DirectoryName.String)] = true
+		}
+	}
 	for _, module := range modules {
 		root, ok := rootByProject[module.ProjectID]
 		if !ok {
@@ -141,6 +157,20 @@ func ensureCockpitPlanSkeletonTx(ctx context.Context, q *db.Queries, workspaceID
 		}
 		code := nextOutlineCode(root.Code, used, childCount[root.ID])
 		position := childMaxPosition[root.ID] + 1
+		if takenByRoot[root.ID] == nil {
+			takenByRoot[root.ID] = map[string]bool{}
+		}
+		// A module that already names a folder keeps that name: it may be a
+		// folder people are working in. Only a module with no name gets the
+		// address-plus-title one, cleaned to a single path segment.
+		directoryName := strings.TrimSpace(module.DirectoryName.String)
+		if !module.DirectoryName.Valid || directoryName == "" {
+			directoryName = collabfs.UniqueName(
+				collabfs.SanitizeFolderName(code+module.Title, 0),
+				func(candidate string) bool { return takenByRoot[root.ID][strings.ToLower(candidate)] },
+			)
+		}
+		takenByRoot[root.ID][strings.ToLower(directoryName)] = true
 		if _, err := q.CreateCockpitSkeletonNode(ctx, db.CreateCockpitSkeletonNodeParams{
 			WorkspaceID: workspaceID,
 			CockpitID:   board.ID,
@@ -150,10 +180,18 @@ func ensureCockpitPlanSkeletonTx(ctx context.Context, q *db.Queries, workspaceID
 			Code:        code,
 			Name:        module.Title,
 			Position:    position,
-			// S3: a new module's row carries the directory name it will own.
-			DirectoryName: pgtype.Text{String: code + module.Title, Valid: true},
+			// S7: the row's folder name IS the module's; the module row is
+			// updated here too so the two cannot drift while nobody looks.
+			DirectoryName: pgtype.Text{String: directoryName, Valid: true},
 		}); err != nil {
 			return 0, err
+		}
+		if module.DirectoryName.String != directoryName || !module.DirectoryName.Valid {
+			if err := q.SetModuleDirectoryName(ctx, db.SetModuleDirectoryNameParams{
+				WorkspaceID: workspaceID, ID: module.ID, DirectoryName: directoryName,
+			}); err != nil {
+				return 0, err
+			}
 		}
 		created++
 		newCodes = append(newCodes, code)

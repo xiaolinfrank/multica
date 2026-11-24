@@ -2397,7 +2397,7 @@ func (q *Queries) ListCockpitUsedCodes(ctx context.Context, cockpitID pgtype.UUI
 }
 
 const listModulesMissingCockpitNode = `-- name: ListModulesMissingCockpitNode :many
-SELECT m.id, m.title, m.project_id
+SELECT m.id, m.title, m.project_id, m.directory_name
 FROM module m
 WHERE m.workspace_id = $1::uuid
   AND NOT EXISTS (
@@ -2407,9 +2407,10 @@ ORDER BY m.created_at, m.id
 `
 
 type ListModulesMissingCockpitNodeRow struct {
-	ID        pgtype.UUID `json:"id"`
-	Title     string      `json:"title"`
-	ProjectID pgtype.UUID `json:"project_id"`
+	ID            pgtype.UUID `json:"id"`
+	Title         string      `json:"title"`
+	ProjectID     pgtype.UUID `json:"project_id"`
+	DirectoryName pgtype.Text `json:"directory_name"`
 }
 
 func (q *Queries) ListModulesMissingCockpitNode(ctx context.Context, workspaceID pgtype.UUID) ([]ListModulesMissingCockpitNodeRow, error) {
@@ -2421,7 +2422,12 @@ func (q *Queries) ListModulesMissingCockpitNode(ctx context.Context, workspaceID
 	items := []ListModulesMissingCockpitNodeRow{}
 	for rows.Next() {
 		var i ListModulesMissingCockpitNodeRow
-		if err := rows.Scan(&i.ID, &i.Title, &i.ProjectID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.ProjectID,
+			&i.DirectoryName,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

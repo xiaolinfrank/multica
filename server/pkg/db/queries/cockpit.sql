@@ -831,7 +831,7 @@ WHERE p.workspace_id = sqlc.arg('workspace_id')::uuid
 ORDER BY p.created_at, p.id;
 
 -- name: ListModulesMissingCockpitNode :many
-SELECT m.id, m.title, m.project_id
+SELECT m.id, m.title, m.project_id, m.directory_name
 FROM module m
 WHERE m.workspace_id = sqlc.arg('workspace_id')::uuid
   AND NOT EXISTS (

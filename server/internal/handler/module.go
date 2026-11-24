@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/multica-ai/multica/server/internal/collabfs"
 	"github.com/multica-ai/multica/server/internal/localpaths"
 	"github.com/multica-ai/multica/server/internal/service"
 	"io"
@@ -38,6 +39,9 @@ type ModuleResponse struct {
 	UpdatedAt     string  `json:"updated_at"`
 	IssueCount    int64   `json:"issue_count"`
 	DoneCount     int64   `json:"done_count"`
+	// DirectorySync reports what creating the folder did (created / skipped /
+	// failed); absent on reads.
+	DirectorySync *NodeDirectorySync `json:"directory_sync,omitempty"`
 }
 
 func moduleToResponse(m db.Module) ModuleResponse {
@@ -207,21 +211,33 @@ func (h *Handler) CreateModule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "project not found in this workspace")
 		return
 	}
+	// No folder name yet: the plan's skeleton names the L2 row (address plus
+	// title) and this handler copies it back, so the module and its row always
+	// name the same folder. A board that has not been reconciled has no row,
+	// and the title alone is the name.
 	module, err := h.Queries.CreateModule(r.Context(), db.CreateModuleParams{
-		WorkspaceID:   wsUUID,
-		ProjectID:     projectUUID,
-		Title:         title,
-		DirectoryName: ptrToText(func() *string { s := localpaths.Folder(title, localSecret()[:8]); return &s }()),
-		Description:   ptrToText(req.Description),
+		WorkspaceID: wsUUID,
+		ProjectID:   projectUUID,
+		Title:       title,
+		Description: ptrToText(req.Description),
 	})
 	if err != nil {
 		slog.Error("create module failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to create module")
 		return
 	}
-	resp := moduleToResponse(module)
-	h.publish(protocol.EventModuleCreated, workspaceID, "member", userID, map[string]any{"module": resp})
 	h.ensurePlanSkeleton(r.Context(), wsUUID)
+	module, err = h.resolveModuleFolderName(r.Context(), h.Queries, wsUUID, module)
+	if err != nil {
+		slog.Warn("resolve module folder name failed", append(logger.RequestAttrs(r), "error", err)...)
+	}
+	resp := moduleToResponse(module)
+	// The folder is created after the row: a NAS that is down must not lose
+	// the module, and the panel offers a retry.
+	if sync := h.ensureModuleFolder(r.Context(), h.Queries, wsUUID, module); sync != nil {
+		resp.DirectorySync = sync
+	}
+	h.publish(protocol.EventModuleCreated, workspaceID, "member", userID, map[string]any{"module": resp})
 	writeJSON(w, http.StatusCreated, map[string]any{"module": resp})
 }
 
@@ -259,6 +275,11 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 	}
 	var rawFields map[string]json.RawMessage
 	json.Unmarshal(bodyBytes, &rawFields)
+	syncMode, ok := parseDirectorySyncMode(rawFields)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "directory_sync must be sync, defer or force")
+		return
+	}
 
 	params := db.UpdateModuleParams{
 		ID:          module.ID,
@@ -291,6 +312,45 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 			params.Description = pgtype.Text{Valid: false}
 		}
 	}
+	// A rename renames the folder, unless the caller said to defer it. The
+	// expected name is the row's address plus the new title; a board without a
+	// plan row has no address, so the title alone is the name.
+	var renameTo string
+	var moduleRow db.CockpitNode
+	hasRow := false
+	row, rowErr := h.Queries.GetCockpitNodeByModuleID(r.Context(), db.GetCockpitNodeByModuleIDParams{
+		WorkspaceID: wsUUID, ModuleID: module.ID,
+	})
+	if rowErr == nil {
+		moduleRow, hasRow = row, true
+	}
+	if params.Title.Valid && req.DirectoryName == nil {
+		base := module.Title
+		renameTo = collabfs.SanitizeFolderName(params.Title.String, 0)
+		if hasRow {
+			renameTo = collabfs.SanitizeFolderName(moduleRow.Code+params.Title.String, 0)
+		}
+		_ = base
+	}
+	currentFolder := module.DirectoryName.String
+	if hasRow && currentFolder == "" {
+		currentFolder = moduleRow.DirectoryName.String
+	}
+	willRename := renameTo != "" && renameTo != currentFolder
+	if willRename && syncMode == DirectorySyncSync {
+		tasks, err := h.Queries.ListRunningAgentTasksForModules(r.Context(), db.ListRunningAgentTasksForModulesParams{
+			WorkspaceID: wsUUID, ModuleIds: []pgtype.UUID{module.ID},
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to check running tasks")
+			return
+		}
+		if len(tasks) > 0 {
+			h.writeRunningTasksConflict(w, r.Context(), wsUUID, tasks)
+			return
+		}
+	}
+
 	updated, err := h.Queries.UpdateModule(r.Context(), params)
 	if err != nil {
 		slog.Error("update module failed", append(logger.RequestAttrs(r), "error", err)...)
@@ -298,6 +358,14 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := moduleToResponse(updated)
+	if willRename && syncMode != DirectorySyncDefer {
+		result := h.renameModuleFolder(r.Context(), wsUUID, updated, moduleRow, hasRow, currentFolder, renameTo)
+		resp.DirectorySync = &result
+		if result.Status == "renamed" {
+			updated.DirectoryName = pgtype.Text{String: renameTo, Valid: true}
+			resp.DirectoryName = &renameTo
+		}
+	}
 	resp.IssueCount, resp.DoneCount = h.loadModuleIssueStats(r.Context(), wsUUID, updated.ID)
 	h.publish(protocol.EventModuleUpdated, workspaceID, "member", userID, map[string]any{"module": resp})
 	writeJSON(w, http.StatusOK, map[string]any{"module": resp})

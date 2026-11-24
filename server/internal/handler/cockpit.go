@@ -102,8 +102,14 @@ type CockpitNodeResponse struct {
 	Source          string   `json:"source"`
 	UpdatedByType   string   `json:"updated_by_type"`
 	UpdatedByID     *string  `json:"updated_by_id"`
-	CreatedAt       string   `json:"created_at"`
-	UpdatedAt       string   `json:"updated_at"`
+	// DirectoryName is the folder this row owns in the collaboration space
+	// (a module's and a work item's; a project owns none). The tree composes
+	// paths from it without asking the disk.
+	DirectoryName *string `json:"directory_name"`
+	// DirectorySync reports what a rename/move/renumber did to the folder.
+	DirectorySync *NodeDirectorySync `json:"directory_sync,omitempty"`
+	CreatedAt     string             `json:"created_at"`
+	UpdatedAt     string             `json:"updated_at"`
 }
 
 type CockpitPaymentResponse struct {
@@ -340,6 +346,7 @@ func cockpitNodeToResponse(n db.CockpitNode) CockpitNodeResponse {
 		Source:          n.Source,
 		UpdatedByType:   n.UpdatedByType,
 		UpdatedByID:     uuidToPtr(n.UpdatedByID),
+		DirectoryName:   textToPtr(n.DirectoryName),
 		CreatedAt:       timestampToString(n.CreatedAt),
 		UpdatedAt:       timestampToString(n.UpdatedAt),
 	}
@@ -1335,6 +1342,11 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	syncMode, ok := parseDirectorySyncMode(raw)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "directory_sync must be sync, defer or force")
+		return
+	}
 
 	binding, ok := parseCockpitNodeBinding(w, req.ProjectID, req.ModuleID, raw)
 	if !ok {
@@ -1484,6 +1496,30 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 			params.Code = pgtype.Text{String: code, Valid: true}
 		}
 	}
+	// A work item's folder is its address plus its title: renaming the row or
+	// moving it to another module renames the folder. The check runs before
+	// the write, so a refused edit changes nothing.
+	beforePD, _ := h.loadPlanDirectory(r.Context(), qtx, cc.workspaceID, current)
+	willChangeFolder := cc.cockpit.PlanReconciledAt.Valid && beforePD.kind == "work_item" &&
+		((req.Name != nil && strings.TrimSpace(*req.Name) != current.Name) || (parentTouched && params.ParentID != current.ParentID))
+	if willChangeFolder && syncMode == DirectorySyncSync {
+		tasks, err := qtx.ListRunningAgentTasksForWorkItems(r.Context(), db.ListRunningAgentTasksForWorkItemsParams{
+			WorkspaceID: cc.workspaceID, WorkItemIds: []pgtype.UUID{current.ID},
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to check running tasks")
+			return
+		}
+		if len(tasks) > 0 {
+			rows := make([]runningTask, 0, len(tasks))
+			for _, task := range tasks {
+				rows = append(rows, runningTask{task.TaskID, task.IssueID, task.IssueNumber, task.Status})
+			}
+			h.writeRunningTaskConflict(w, r.Context(), cc.workspaceID, rows)
+			return
+		}
+	}
+
 	node, err := qtx.UpdateCockpitNode(r.Context(), params)
 	if err != nil {
 		if writeCockpitPrimaryIntegrityError(w, err) {
@@ -1537,6 +1573,15 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	// many needed their status mapped, so the CLI can say so (S3).
 	resp.RefiledIssues = len(refiled)
 	resp.StatusMapped = statusChanged
+	if willChangeFolder && syncMode != DirectorySyncDefer {
+		if afterPD, err := h.loadPlanDirectory(r.Context(), h.Queries, cc.workspaceID, node); err == nil {
+			result := h.applyPlanDirectory(r.Context(), h.Queries, cc.workspaceID, afterPD, beforePD.segments, syncMode == DirectorySyncForce)
+			resp.DirectorySync = &result
+			if result.Status == "renamed" || result.Status == "created" {
+				resp.DirectoryName = &result.DirectoryName
+			}
+		}
+	}
 	h.publishCockpit(r, cc, "node", "updated", resp)
 	for _, row := range refiled {
 		h.publishRefiledWorkItemIssue(r, cc, row)
