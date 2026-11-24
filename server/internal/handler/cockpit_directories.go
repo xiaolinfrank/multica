@@ -845,6 +845,10 @@ func (h *Handler) FillCockpitPlanDirectories(w http.ResponseWriter, r *http.Requ
 			switch {
 			case !pd.project.CollabPath.Valid || strings.TrimSpace(pd.project.CollabPath.String) == "":
 				item.Action, item.Status, item.Reason = "none", "no_collab_path", "no_collab_path"
+			case pd.blocked != "" && pd.blocked != "the module has no folder name yet":
+				// A genuinely broken binding (unfiled row or a module row with
+				// no module) cannot be repaired by filling folders.
+				item.Action, item.Status, item.Error = "none", "invalid", pd.blocked
 			case pd.directoryName == "":
 				// A work item whose module has no folder yet is still
 				// creatable: this same pass creates the module folder first
@@ -853,6 +857,11 @@ func (h *Handler) FillCockpitPlanDirectories(w http.ResponseWriter, r *http.Requ
 				item.Action, item.Status = "create", "pending"
 			case pd.expected != "" && !collabfs.DirectoryNameMatches(pd.directoryName, pd.expected):
 				item.Action, item.Status = "sync", "pending"
+			case len(pd.segments) == 0:
+				// The work item already carries a matching name while its
+				// module has no folder name yet; never call StatDir with zero
+				// segments, which would stat the collaboration root itself.
+				item.Action, item.Status = "create", "pending"
 			default:
 				code, _ := collabfs.StatDir(strings.TrimSpace(pd.project.CollabPath.String), pd.segments...)
 				if code == collabfs.StatOK {

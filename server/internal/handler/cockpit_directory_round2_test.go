@@ -183,6 +183,56 @@ func TestFillCreatesModuleAndWorkItemInOnePass(t *testing.T) {
 	}
 }
 
+// P0-2 edge: when a module has no folder name yet but its work item still
+// carries a matching folder name, the preview must NOT stat the collaboration
+// root with zero segments and mark the work item "ok".
+func TestFillCreatesWorkItemWhoseModuleLostItsFolderName(t *testing.T) {
+	collab := t.TempDir()
+	ws, project := round2Plan(t, "S7 round2 fill module lost name", collab)
+	module := round2Module(t, ws, project, "确权线")
+	item := round2WorkItem(t, ws, module.ID, "接口设计")
+	l2, _ := round2ModuleL2(t, ws, module.ID)
+	if _, err := testPool.Exec(context.Background(), `UPDATE module SET directory_name=NULL WHERE id=$1`, module.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testPool.Exec(context.Background(), `UPDATE cockpit_node SET directory_name=NULL WHERE id=$1`, l2); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(collab, *module.DirectoryName)); err != nil {
+		t.Fatal(err)
+	}
+
+	var preview struct {
+		Items  []DirectoryFillItem `json:"items"`
+		Counts map[string]int      `json:"counts"`
+	}
+	round2Fill(t, ws, map[string]any{}, &preview)
+	var itemPreview *DirectoryFillItem
+	for i := range preview.Items {
+		if preview.Items[i].NodeID == item.ID {
+			itemPreview = &preview.Items[i]
+			break
+		}
+	}
+	if itemPreview == nil || itemPreview.Action != "create" {
+		t.Fatalf("work item preview = %+v, want action=create", itemPreview)
+	}
+
+	var applied struct {
+		Items  []DirectoryFillItem `json:"items"`
+		Counts map[string]int      `json:"counts"`
+	}
+	round2Fill(t, ws, map[string]any{"apply": true}, &applied)
+	if applied.Counts["failed"] > 0 {
+		t.Fatalf("fill failed: %+v", applied.Items)
+	}
+	moduleDir := mustNodeDir(t, ws, l2)
+	itemDir := round2NodeDir(t, ws, item.ID)
+	if code, _ := collabfs.StatDir(collab, moduleDir, itemDir); code != collabfs.StatOK {
+		t.Fatalf("work item folder missing after fill: %s", code)
+	}
+}
+
 // P0-2 (b): a module rename and a work item rename in the same pass must not
 // rebuild the old module folder or leave the item behind in it.
 func TestFillFollowsRenamedModuleBeforeItsWorkItems(t *testing.T) {
