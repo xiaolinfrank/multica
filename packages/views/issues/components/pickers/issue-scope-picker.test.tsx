@@ -184,12 +184,14 @@ describe("IssueScopePicker", () => {
     );
 
     const workItem = screen.getByText("01.02.01 Interface draft");
-    // Shrink order, as measured in a browser: project and module give way
-    // first, down to `min-w-8` (a character and an ellipsis); the work item
-    // shrinks last and is the one that ellipsizes. A `shrink-0` work item
-    // overflows the row and the outer clip cuts it with no ellipsis.
-    expect(await screen.findByText("Programme")).toHaveClass("min-w-8", "shrink-[1000]", "truncate");
-    expect(screen.getByText("01.02 Docking")).toHaveClass("min-w-8", "shrink-[1000]", "truncate");
+    // Shrink order, as measured in a browser: the project yields hardest
+    // (`shrink-[10000]`), the module next (`shrink-[100]`), both down to
+    // `min-w-8`; the work item shrinks last and is the one that ellipsizes.
+    // Equal weights would let a short module clip while a long project keeps
+    // five pixels it does not need. A `shrink-0` work item overflows the row
+    // and the outer clip cuts it with no ellipsis.
+    expect(await screen.findByText("Programme")).toHaveClass("min-w-8", "shrink-[10000]", "truncate");
+    expect(screen.getByText("01.02 Docking")).toHaveClass("min-w-8", "shrink-[100]", "truncate");
     expect(workItem).toHaveClass("min-w-0", "truncate");
     expect(workItem).not.toHaveClass("shrink-0");
     // The separators are their own elements and keep their whitespace: a flex

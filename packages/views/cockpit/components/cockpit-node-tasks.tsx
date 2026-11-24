@@ -156,9 +156,10 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
 
       {/* What the move does, in the user's words: the filing it has now and
           the one it is about to have. */}
-      {/* Not shown while a sub-issue is blocked: "will change from A to B"
-          contradicts the refusal right under it. */}
-      {selected && !reference && !isSubIssue && <div className="space-y-1 rounded-md bg-muted p-3 text-caption">
+      {/* Not shown when the move cannot happen — a blocked sub-issue, or a
+          blocked scope change: "will change from A to B" contradicts the
+          refusal right under it. */}
+      {selected && !reference && !isSubIssue && scopeAllowed && <div className="space-y-1 rounded-md bg-muted p-3 text-caption">
         <p>{t(($) => $.task_flow.assign_from_to, { name: selected.identifier, from: previousLabel, to: nextLabel })}</p>
         {childCount > 0 && <p>{t(($) => $.task_flow.assign_children_move, { n: childCount })}</p>}
         {/* The issue-update path does not keep the old work item as a related

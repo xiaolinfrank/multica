@@ -38,8 +38,6 @@ export const EMPTY_ISSUE_SCOPE: IssueScopeValue = {
 
 const PAGE_SIZE = 20;
 
-/** One persisted selection resolved independently of any list page — the
- *  trigger must name a work item the tree has not paged to. */
 /** The path's separator. Its own element with `whitespace-pre`: wrapping the
  *  text in a span alone does not keep the spaces — a flex item still trims
  *  its leading and trailing whitespace, and the path reads "Alpha/Module". */
@@ -47,6 +45,8 @@ function Separator() {
   return <span className="shrink-0 whitespace-pre">{" / "}</span>;
 }
 
+/** One persisted selection resolved independently of any list page — the
+ *  trigger must name a work item the tree has not paged to. */
 function useSelectedWorkItem(workItemId: string | null) {
   const wsId = useWorkspaceId();
   const query = useQuery({
@@ -265,13 +265,13 @@ export function IssueScopePicker({
               <span className="flex min-w-0 items-center">
                 {/* Project and module give way first, down to `min-w-8` (a
                     character and an ellipsis), then the work item shrinks. */}
-                <span className="min-w-8 shrink-[1000] truncate">
+                <span className="min-w-8 shrink-[10000] truncate">
                   {selectedProject?.title ?? (effectiveProjectId ? "…" : "")}
                 </span>
                 {value.module_id && (
                   <>
                     <Separator />
-                    <span className="min-w-8 truncate shrink-[1000]">{selectedModule?.title ?? "…"}</span>
+                    <span className="min-w-8 shrink-[100] truncate">{selectedModule?.title ?? "…"}</span>
                   </>
                 )}
                 {value.work_item_id && (

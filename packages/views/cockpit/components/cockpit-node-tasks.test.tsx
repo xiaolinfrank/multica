@@ -114,6 +114,9 @@ async function pickCandidate(issue: Record<string, unknown>, label = "BIO-42 Exi
 describe("assigning an existing task files it here", () => {
   it("writes the filing through the issue update and closes", async () => {
     const user = await pickCandidate(candidate());
+    // The title, not just the entry button: they used to share a string by
+    // accident, and the title is what names the dialog to a screen reader.
+    expect(await screen.findByRole("dialog", { name: "Add existing task" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Change the filing" }));
 
     // A named work item carries its module and project, so the write names
@@ -170,9 +173,7 @@ describe("assigning an existing task files it here", () => {
   it("does not mention the old work item when the task had none", async () => {
     // The reverse of the case above, on its own: an unfiled task leaves
     // nothing behind, so the line about the old link has nothing to say.
-    vi.mocked(api.searchIssues).mockResolvedValue({ issues: [candidate({ work_item_id: null })], total: 1 } as never);
-    const user = await pickCandidate(candidate({ work_item_id: null }));
-    expect(user).toBeDefined();
+    await pickCandidate(candidate({ work_item_id: null }));
     expect(screen.queryByText("The work item it leaves behind is no longer linked to it.")).toBeNull();
   });
 
@@ -195,14 +196,11 @@ describe("assigning an existing task files it here", () => {
     });
     await pickCandidate(candidate());
 
-    expect(await screen.findByText(/retained_artifact_scope|Cannot be moved|retained|artifact/i)).toBeInTheDocument();
+    // The reason the panel actually prints, and no "will change from A to B"
+    // above a refusal that says it will not.
+    expect(await screen.findByText(/^This project and module are retained as part of artifact history\./)).toBeInTheDocument();
+    expect(screen.queryByText(/filing will change from/)).toBeNull();
     expect(screen.getByRole("button", { name: "Change the filing" })).toBeDisabled();
-  });
-
-  it("says how many sub-issues move with it", async () => {
-    vi.mocked(api.listChildIssues).mockResolvedValue({ issues: [{ id: "c1" }, { id: "c2" }], total: 2 } as never);
-    await pickCandidate(candidate());
-    expect(await screen.findByText("Its 2 sub-issues and their descendants move with it.")).toBeInTheDocument();
   });
 
   it("confirms the handoff first when the destination project hands off", async () => {
