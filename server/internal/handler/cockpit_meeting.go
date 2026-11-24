@@ -1853,7 +1853,7 @@ func (h *Handler) ScanCockpitMeetingFolders(w http.ResponseWriter, r *http.Reque
 			writeJSON(w, http.StatusOK, resp)
 			return
 		}
-		path := child.path
+		path := child.Path()
 		guess := parseMeetingFolderName(name)
 		row := CockpitMeetingScanEntry{
 			Name:     name,
@@ -1871,9 +1871,9 @@ func (h *Handler) ScanCockpitMeetingFolders(w http.ResponseWriter, r *http.Reque
 		if row.MeetingID != "" {
 			resp.Matched++
 		}
-		row.ModifiedAt = child.identity.ModTime().UTC().Format(time.RFC3339)
+		row.ModifiedAt = child.Info().ModTime().UTC().Format(time.RFC3339)
 		row.Files, err = child.visibleCount(ctx)
-		_ = child.file.Close()
+		_ = child.Close()
 		if err != nil {
 			resp.Error = err.Error()
 			resp.Entries = []CockpitMeetingScanEntry{}
@@ -2067,7 +2067,7 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "folder is unavailable or contains an unsafe filesystem entry"})
 			continue
 		}
-		_ = child.file.Close()
+		_ = child.Close()
 		if recorded[path] {
 			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, "already in the register"})
 			continue
@@ -2095,13 +2095,13 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 		if !cc.cockpit.ID.Valid {
 			initialized, allowed := h.requireCockpit(w, r)
 			if !allowed {
-				_ = child.file.Close()
+				_ = child.Close()
 				return
 			}
 			cc = initialized
 		}
 		verifyErr := child.verify()
-		_ = child.file.Close()
+		_ = child.Close()
 		if verifyErr != nil {
 			resp.Skipped = append(resp.Skipped, CockpitMeetingImportSkip{item.Name, verifyErr.Error()})
 			continue

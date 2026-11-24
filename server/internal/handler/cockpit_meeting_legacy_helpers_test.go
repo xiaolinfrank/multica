@@ -49,7 +49,7 @@ func createMeetingDir(base, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return child.path, child.verify()
+	return child.Path(), child.verify()
 }
 
 // meetingSubdirs are the drawers every meeting folder is given. Three fixed
@@ -84,7 +84,7 @@ func (d *meetingArchiveDirectory) createSubdirs() error {
 			failed = append(failed, name)
 			continue
 		}
-		_ = child.file.Close()
+		_ = child.Close()
 	}
 	if err := d.verify(); err != nil {
 		return err

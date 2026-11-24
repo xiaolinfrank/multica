@@ -67,10 +67,10 @@ func TestCockpitMeetingFilesRefuseLinksNonDirectoriesAndDisplacedHandles(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Rename(child.path, filepath.Join(root, "displaced")); err != nil {
+	if err := os.Rename(child.Path(), filepath.Join(root, "displaced")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, child.path); err != nil {
+	if err := os.Symlink(outside, child.Path()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := child.child("blocked", true); err == nil {
