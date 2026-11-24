@@ -57,6 +57,17 @@ describe("captured meeting workspace and provisioning evidence", () => {
       await expect(reply(changed).api.provisionCockpitMeeting("meeting", { create_task: false }, "workspace")).rejects.toThrow("cockpit_write_not_confirmed");
     }
   });
+  it("sends an explicitly cleared module instead of asking for the remembered one", async () => {
+    const cleared = reply({ project_id: "project", module_id: "", base_dir: "/share" });
+    await cleared.api.getCockpitMeetingDestination({ projectId: "project", moduleId: "", nodeId: "" }, "original-workspace");
+    expect(String(cleared.fetchMock.mock.calls[0]?.[0])).toContain("module_id=&");
+    const scan = reply({ base_dir: "/share", base_dir_exists: true, entries: [], matched: 0, truncated: false, error: "" });
+    await scan.api.scanCockpitMeetingFolders({ projectId: "project", moduleId: "", nodeId: "" }, "original-workspace");
+    expect(String(scan.fetchMock.mock.calls[0]?.[0])).toContain("module_id=&");
+    // A response that echoes a module nobody asked for is not this destination.
+    await expect(reply({ project_id: "project", module_id: "module", base_dir: "/share" })
+      .api.getCockpitMeetingDestination({ projectId: "project", moduleId: "", nodeId: "" })).rejects.toThrow("cockpit_read_not_confirmed");
+  });
   it("does not turn an invalid destination response into an unconfigured directory", async () => {
     const valid = { project_id: "project", module_id: "module", base_dir: "/share" };
     for (const invalid of [{}, { ...valid, project_id: "other" }, { ...valid, module_id: "other" }]) {

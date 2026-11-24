@@ -2476,14 +2476,15 @@ export class ApiClient {
    * — is on screen rather than a surprise.
    */
   async getCockpitMeetingDestination(
-    params?: { projectId?: string; moduleId?: string; nodeId?: string | null },
+    params?: { projectId?: string; moduleId?: string | null; nodeId?: string | null },
     wsId?: string,
   ): Promise<CockpitMeetingDestination> {
     const query = new URLSearchParams();
     if (params?.projectId) query.set("project_id", params.projectId);
-    if (params?.moduleId) query.set("module_id", params.moduleId);
-    // Sent even when empty: "" means "file at the module level", which is a
-    // different answer from "use whatever the board remembers".
+    // Sent even when empty: "" means "file at this level", which is a
+    // different answer from "use whatever the board remembers". Omitting the
+    // parameter is what asks for the stored choice.
+    if (params?.moduleId !== undefined && params.moduleId !== null) query.set("module_id", params.moduleId);
     if (params?.nodeId !== undefined && params.nodeId !== null) query.set("node_id", params.nodeId);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     const raw = await this.fetch<unknown>(`/api/cockpit/meetings/destination${suffix}`, { headers: wsId ? { "X-Workspace-ID": wsId } : undefined });
@@ -2491,7 +2492,7 @@ export class ApiClient {
       endpoint: "GET /api/cockpit/meetings/destination",
     });
     if (!result || (params?.projectId && result.project_id !== params.projectId)
-      || (params?.moduleId && result.module_id !== params.moduleId)
+      || (params?.moduleId !== undefined && params.moduleId !== null && result.module_id !== params.moduleId)
       || (params?.nodeId !== undefined && params.nodeId !== null && result.node_id !== params.nodeId)) throw new CockpitUnconfirmedReadError();
     return result;
   }
@@ -2526,12 +2527,12 @@ export class ApiClient {
    * records. The folder is the board's own; this never takes a path.
    */
   async scanCockpitMeetingFolders(
-    params?: { projectId?: string; moduleId?: string; nodeId?: string | null },
+    params?: { projectId?: string; moduleId?: string | null; nodeId?: string | null },
     wsId?: string,
   ): Promise<CockpitMeetingScan> {
     const query = new URLSearchParams();
     if (params?.projectId) query.set("project_id", params.projectId);
-    if (params?.moduleId) query.set("module_id", params.moduleId);
+    if (params?.moduleId !== undefined && params.moduleId !== null) query.set("module_id", params.moduleId);
     if (params?.nodeId !== undefined && params.nodeId !== null) query.set("node_id", params.nodeId);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     const raw = await this.fetch<unknown>(`/api/cockpit/meetings/scan${suffix}`, { headers: wsId ? { "X-Workspace-ID": wsId } : undefined });

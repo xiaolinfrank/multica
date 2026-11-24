@@ -150,7 +150,7 @@ export function cockpitDirectoryOptions(wsId: string) {
  */
 export function cockpitMeetingDestinationOptions(
   wsId: string,
-  params: { projectId?: string; moduleId?: string; nodeId?: string | null } = {},
+  params: { projectId?: string; moduleId?: string | null; nodeId?: string | null } = {},
 ) {
   return queryOptions({
     queryKey: cockpitKeys.meetingDestination(
@@ -171,7 +171,7 @@ export function cockpitMeetingDestinationOptions(
  */
 export function cockpitMeetingScanOptions(
   wsId: string,
-  params: { projectId?: string; moduleId?: string; nodeId?: string | null } = {},
+  params: { projectId?: string; moduleId?: string | null; nodeId?: string | null } = {},
   sessionId?: string,
 ) {
   return queryOptions({

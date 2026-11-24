@@ -553,6 +553,25 @@ describe("ApiClient server Table query", () => {
     expect(url).toContain("module_id=m9");
   });
 
+  it("sends an emptied module so the server does not fall back to its remembered choice", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ project_id: "p1", module_id: "", base_dir: "/Volumes/share/p1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = new ApiClient("https://api.example.test");
+    await client.getCockpitMeetingDestination({ projectId: "p1", moduleId: "", nodeId: "" });
+    // Present and empty, not omitted: "file at the project" is a destination.
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.has("module_id")).toBe(true);
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get("module_id")).toBe("");
+    expect(new URL(String(fetchMock.mock.calls[0]?.[0])).searchParams.get("node_id")).toBe("");
+  });
+
   it("returns an empty link set when a meeting's links come back malformed", async () => {
     const fetchMock = vi.fn().mockImplementation(() =>
       Promise.resolve(
