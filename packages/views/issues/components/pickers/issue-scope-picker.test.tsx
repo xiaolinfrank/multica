@@ -151,15 +151,23 @@ describe("IssueScopePicker", () => {
   function show(
     onUpdate: (next: IssueScopeValue) => void,
     value: IssueScopeValue = { project_id: null, module_id: null, work_item_id: null },
-    opts: { readOnly?: boolean; workItemLabel?: string } = {},
+    opts: {
+      readOnly?: boolean;
+      workItemLabel?: string;
+      scopeConstraint?: { projectId?: string | null; moduleId?: string | null };
+      allowClear?: boolean;
+    } = {},
   ) {
     renderWithI18n(
       <QueryClientProvider client={queryClient}>
         <IssueScopePicker
+          wsId="ws-1"
           value={value}
           onUpdate={onUpdate}
           readOnly={opts.readOnly}
           workItemLabel={opts.workItemLabel}
+          scopeConstraint={opts.scopeConstraint}
+          allowClear={opts.allowClear}
         />
       </QueryClientProvider>,
     );
@@ -389,6 +397,28 @@ describe("IssueScopePicker", () => {
     expect(
       await screen.findByText(/has not been reconciled/),
     ).toBeTruthy();
+  });
+
+  it("locks the tree to a scoped module and keeps that module when the project is picked", async () => {
+    const onUpdate = vi.fn();
+    show(onUpdate, { project_id: null, module_id: null, work_item_id: null },
+      { scopeConstraint: { projectId: PROJECT_ID, moduleId: OTHER_MODULE_ID } });
+    fireEvent.click(screen.getByRole("button", { name: "Ownership" }));
+    // Only the scoped module is offered; its sibling is outside the range.
+    expect(await screen.findByText("01.03 Pilot")).toBeTruthy();
+    expect(screen.queryByText("01.02 Docking")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Programme" }));
+    expect(onUpdate).toHaveBeenCalledWith({
+      project_id: PROJECT_ID,
+      module_id: OTHER_MODULE_ID,
+      work_item_id: null,
+    });
+  });
+
+  it("hides the clear row when the caller requires a filing", async () => {
+    show(vi.fn(), { project_id: PROJECT_ID, module_id: null, work_item_id: null }, { allowClear: false });
+    fireEvent.click(await screen.findByRole("button", { name: "Programme" }));
+    expect(screen.queryByRole("button", { name: "No ownership" })).toBeNull();
   });
 
   it("keeps a sub-issue's filing locked", async () => {

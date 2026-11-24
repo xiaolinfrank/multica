@@ -1202,6 +1202,7 @@ function IssueTableBodyCell({
   table,
 }: CellContext<IssueTableDisplayRow, unknown>) {
   const meta = getTableViewMeta(table);
+  const wsId = useWorkspaceId();
   const { t, i18n } = useT("issues");
   // Computed (and the unmount responder registered) before the early return so
   // the hook order is stable across issue/group rows.
@@ -1366,6 +1367,7 @@ function IssueTableBodyCell({
       return (
         <div onClick={stopRowNavigation} onAuxClick={stopRowNavigation}>
           <IssueScopePicker
+            wsId={wsId}
             value={current}
             display="leaf"
             workItemLabel={issue.work_item_id ? meta.workItemLabel(issue.work_item_id) ?? null : null}

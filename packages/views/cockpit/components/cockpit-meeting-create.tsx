@@ -44,8 +44,7 @@ import { CockpitMemberNamePicker } from "./cockpit-member-name-picker";
 import { CockpitAttendeeField } from "./cockpit-attendees";
 import { EditableSuggest, EditableTokens } from "./cockpit-fields";
 import { CockpitPersonLabel, useCockpitPeople, type CockpitMember } from "./cockpit-people";
-import { CockpitScopePicker } from "./cockpit-scope-control";
-import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
+import { IssueScopePicker } from "../../issues/components/pickers/issue-scope-picker";
 import { CockpitFlowError } from "./cockpit-task-flow";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { AppLink, useNavigation } from "../../navigation";
@@ -243,8 +242,6 @@ export function CockpitMeetingCreate({
   const name = cockpitMeetingFolderName({ code, title: subject.trim() });
   const folderName = name;
 
-  const projectTitle = selectedScope.data?.scope.project_title ?? "";
-  const moduleTitle = selectedScope.data?.scope.module_title ?? "";
   const baseDir = destination.data?.base_dir ?? "";
   const destinationError = destination.data?.error ?? "";
   const canFile = Boolean(projectId && moduleId && selectedScope.data) && !selectedScope.isError && !selectedScope.isFetching;
@@ -484,29 +481,31 @@ export function CockpitMeetingCreate({
             <div className="col-span-2 text-micro font-medium tracking-wide text-muted-foreground uppercase">
               {t(($) => $.meetings.destination)}
             </div>
-            <CockpitScopePicker wsId={wsId} kind="project" projectId={null} selectedId={projectId || null} selectedTitle={projectTitle}
-              label={t(($) => $.meetings.destination_project)} disabled={submitting || workflowCreated || Boolean(scope.projectId)}
-              emptyLabel={t(($) => $.binding.choose_project)} emptyAction={<AppLink href={paths.projects()} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.task_recovery.open_projects)}</AppLink>}
-              onSelect={(id) => { setProjectId(id ?? ""); setModuleId(""); setNodeId(""); }} />
-            <CockpitScopePicker wsId={wsId} kind="module" projectId={projectId || null} selectedId={moduleId || null} selectedTitle={moduleTitle}
-              label={t(($) => $.meetings.destination_module)} disabled={submitting || workflowCreated || !projectId || Boolean(scope.moduleId)}
-              emptyLabel={t(($) => $.binding.choose_module)} emptyAction={projectId ? <AppLink href={paths.projectDetail(projectId)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.task_recovery.open_project)}</AppLink> : undefined}
-              onSelect={(id) => { setModuleId(id ?? ""); setNodeId(""); }} />
+            <div className="col-span-2 flex min-w-0 flex-col gap-1">
+              <Label>{t(($) => $.meetings.destination_tree)}</Label>
+              <IssueScopePicker
+                wsId={wsId}
+                value={{ project_id: projectId || null, module_id: moduleId || null, work_item_id: nodeId || null }}
+                onUpdate={(next) => {
+                  setProjectId(next.project_id ?? "");
+                  setModuleId(next.module_id ?? "");
+                  setNodeId(next.work_item_id ?? "");
+                }}
+                disabled={submitting || workflowCreated || Boolean(savedMeetingId)}
+                scopeConstraint={{ projectId: scope.projectId, moduleId: scope.moduleId }}
+                allowClear={!requireNode}
+              />
+              <p className="text-caption text-muted-foreground">{t(($) => $.meetings.destination_tree_hint)}</p>
+            </div>
             {selectedScope.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void selectedScope.refetch()} /></div>}
             {requestedSetup && selectedScope.isPending && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
             {withDir && projectId && destination.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void destination.refetch()} /></div>}
             {withDir && projectId && (destination.isPending || selectedScope.isPending) && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
-            <div className="col-span-2 space-y-1"><Label>{t(($) => $.meetings.destination_node)}</Label>
-              <CockpitNodeChoicePicker wsId={wsId} scope={{ projectId: projectId || null, moduleId: moduleId || null }} eligible={false}
-                value={selectedNode.data ? `${selectedNode.data.node.code} ${selectedNode.data.node.name}` : nodeId || t(($) => $.meetings.destination_node_none)}
-                label={t(($) => $.meetings.destination_node)} allowClear={!requireNode} onClear={() => setNodeId("")}
-                disabled={submitting || workflowCreated || Boolean(savedMeetingId)} onSelect={(node) => { setNodeId(node.id); if (!projectId && node.project_id) setProjectId(node.project_id); if (!moduleId && node.module_id) setModuleId(node.module_id); }} />
-              {nodeId && selectedNode.isError && <CockpitFlowError onRetry={() => void selectedNode.refetch()} />}
-              {requireNode && !nodeId && <p className="text-caption text-muted-foreground">{t(($) => $.meeting_center.anchor_required)}</p>}
-              {nodeId && selectedNode.data && !selectedNode.data.scope_match && <p role="alert" className="text-caption text-destructive">{t(($) => $.shell.scope_outside)}</p>}
-              <AppLink href={cockpitSurfacePath(paths.cockpit(), "plan", scope)} target="_blank" rel="noopener noreferrer" className="text-caption text-primary underline">{t(($) => $.meeting_center.open_plan_setup)}</AppLink>
-              <p className="text-caption text-muted-foreground">{t(($) => $.meetings.destination_node_hint)}</p>
-            </div>
+            {nodeId && selectedNode.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void selectedNode.refetch()} /></div>}
+            {requireNode && !nodeId && <p className="col-span-2 text-caption text-muted-foreground">{t(($) => $.meeting_center.anchor_required)}</p>}
+            {nodeId && selectedNode.data && !selectedNode.data.scope_match && <p role="alert" className="col-span-2 text-caption text-destructive">{t(($) => $.shell.scope_outside)}</p>}
+            <AppLink href={cockpitSurfacePath(paths.cockpit(), "plan", scope)} target="_blank" rel="noopener noreferrer" className="col-span-2 text-caption text-primary underline">{t(($) => $.meeting_center.open_plan_setup)}</AppLink>
+            <p className="col-span-2 text-caption text-muted-foreground">{t(($) => $.meetings.destination_node_hint)}</p>
 
             <div className="col-span-2 flex items-start gap-2">
               <span className="flex min-w-0 flex-col">

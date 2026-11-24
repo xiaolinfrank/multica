@@ -1250,6 +1250,7 @@ export function ManualCreatePanel({
                   className="inline-flex min-w-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <IssueScopePicker
+                    wsId={wsId}
                     value={scope}
                     onUpdate={updateScope}
                     readOnly={!!parentIssueId}

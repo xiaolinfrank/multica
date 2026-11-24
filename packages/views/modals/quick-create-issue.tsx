@@ -834,6 +834,7 @@ export function AgentCreatePanel({
             }
           >
             <IssueScopePicker
+              wsId={wsId}
               value={scope}
               onUpdate={commitScope}
               triggerRender={<PillButton />}

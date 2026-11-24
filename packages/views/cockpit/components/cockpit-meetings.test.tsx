@@ -414,6 +414,7 @@ describe("the meeting register", () => {
     fireEvent.click(await screen.findByLabelText("Open Working group weekly"));
     fireEvent.click(await screen.findByRole("tab", { name: "Preparation" }));
     fireEvent.click(await screen.findByRole("button", { name: "Add work item" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Search by code or name…" }), { target: { value: "Ship" } });
     expect(await screen.findByRole("button", { name: /L3-02-08 Ship/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /02\.0[45] Ship/ })).not.toBeInTheDocument();
   });

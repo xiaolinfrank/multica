@@ -37,6 +37,7 @@ export function IssueScopeProperty({
   return (
     <>
       <IssueScopePicker
+        wsId={wsId}
         value={current}
         onUpdate={move}
         readOnly={readOnly}

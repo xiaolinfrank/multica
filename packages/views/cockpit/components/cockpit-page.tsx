@@ -76,6 +76,7 @@ import {
   Layers,
   Search,
 } from "lucide-react";
+import { MapPin } from "@multica/ui/icons";
 import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitChanges } from "./cockpit-changes";
@@ -83,6 +84,7 @@ import { captureCockpitGantt, downloadCockpitPng, printCockpitGantt } from "./co
 import { CockpitGantt, type CockpitZoom } from "./cockpit-gantt";
 import { useCockpitCommandContext } from "./use-cockpit-command-context";
 import { CockpitMeetingCreate, type CockpitMeetingDraft, type CockpitMeetingCreationResult } from "./cockpit-meeting-create";
+import { CockpitMeetingDefaultsDialog } from "./cockpit-meeting-defaults-dialog";
 import { CockpitMeetingImport } from "./cockpit-meeting-import";
 import { CockpitSelectedMeeting } from "./cockpit-selected-meeting";
 import { CockpitBusinessMeetings } from "./cockpit-business-meetings";
@@ -201,6 +203,7 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
   const selectedId = destination.nodeId;
   const selectedMeetingId = destination.meetingId;
   const [creatingMeeting, setCreatingMeeting] = useState(false);
+  const [editingMeetingDefaults, setEditingMeetingDefaults] = useState(false);
   const meetingCreateKey = cockpitScopeViewKey(wsId, scope);
   const creation = useCockpitMeetingCreateDraftStore((state) => state.draft.byScope[meetingCreateKey]);
   const savedMeetingId = creation?.meetingId ?? null;
@@ -856,7 +859,15 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
               onSelect={openMeeting}
               onCreate={() => setCreatingMeeting(true)}
               onScan={() => setScanningMeetings(true)}
-              toolbarActions={versionActions}
+              toolbarActions={<>
+                {context.data?.actor.is_human === true ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setEditingMeetingDefaults(true)}>
+                    <MapPin className="size-3.5" />
+                    {t(($) => $.meetings.defaults_button)}
+                  </Button>
+                ) : null}
+                {versionActions}
+              </>}
               dispositionAvailable={context.data?.capabilities?.meeting_disposition === true}
               readOnly={context.data?.actor.is_human !== true}
             />
@@ -934,6 +945,15 @@ export function CockpitBoardWorkspace({ initialTab = "overview", today: supplied
         defaultAssigneeId={cockpit?.meeting_assignee_id ?? null}
         onSubmit={submitMeeting}
         onCreated={({ meetingId, directoryOperationId }) => directoryOperationId ? navigation.push(cockpitMeetingDirectoryPath(navigation.pathname, meetingId, directoryOperationId, navigation.searchParams)) : navigation.push(cockpitMeetingContextPath(navigation.pathname, meetingId, scope, navigation.searchParams, "preparation"))}
+      />
+      <CockpitMeetingDefaultsDialog
+        wsId={wsId}
+        open={editingMeetingDefaults}
+        onOpenChange={setEditingMeetingDefaults}
+        scope={scope}
+        defaultProjectId={cockpit?.meeting_project_id ?? null}
+        defaultModuleId={cockpit?.meeting_module_id ?? null}
+        defaultNodeId={cockpit?.meeting_node_id ?? null}
       />
       <CockpitMeetingImport
         open={scanningMeetings}

@@ -52,7 +52,7 @@ import { CockpitPreparationOperation } from "./cockpit-preparation-operation";
 import { CockpitPathField } from "./cockpit-path-field";
 import { LocalPathLink } from "../../common/local-path-link";
 import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
-import { CockpitNodeChoicePicker } from "./cockpit-node-choice";
+import { CockpitPlanNodePicker } from "./cockpit-plan-node-picker";
 import { CockpitMeetingOccurrence } from "./cockpit-meeting-lifecycle";
 import { CockpitMeetingWorkflowPanel } from "./cockpit-meeting-workflow";
 import { CockpitMeetingStageTabs } from "./cockpit-meeting-stage";
@@ -360,8 +360,8 @@ export function CockpitMeetingPanel({
               </ul>
             )}
             {!readOnly && (
-              <CockpitNodeChoicePicker wsId={wsId} eligible={false} scope={scope}
-                onSelect={(node) => onLinkNode(node.id)} label={t(($) => $.meeting.link_node)} />
+              <CockpitPlanNodePicker wsId={wsId} scope={scope}
+                onSelect={onLinkNode} label={t(($) => $.meeting.link_node)} />
             )}
           </section>
 

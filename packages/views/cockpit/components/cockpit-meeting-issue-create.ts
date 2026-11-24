@@ -12,6 +12,7 @@ import type { Issue } from "@multica/core/types";
 export function openCockpitMeetingIssueCreate(input: {
   projectId: string | null;
   moduleId: string | null;
+  workItemId?: string | null;
   assigneeType: string | null;
   assigneeId: string | null;
   onCreated: (issue: Issue) => unknown;
@@ -20,6 +21,7 @@ export function openCockpitMeetingIssueCreate(input: {
     status: "backlog",
     project_id: input.projectId,
     module_id: input.moduleId,
+    work_item_id: input.workItemId ?? null,
     assignee_type: input.assigneeType ?? "member",
     assignee_id: input.assigneeId,
     on_created: input.onCreated,

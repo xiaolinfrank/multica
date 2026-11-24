@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Blocks, ChevronRight, FolderKanban, ListTree } from "@multica/ui/icons";
-import { useWorkspaceId } from "@multica/core/hooks";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import {
@@ -47,8 +46,7 @@ function Separator() {
 
 /** One persisted selection resolved independently of any list page — the
  *  trigger must name a work item the tree has not paged to. */
-function useSelectedWorkItem(workItemId: string | null) {
-  const wsId = useWorkspaceId();
+function useSelectedWorkItem(workItemId: string | null, wsId: string) {
   const query = useQuery({
     ...cockpitNodeDetailOptions(wsId, workItemId ?? "", EMPTY_COCKPIT_SCOPE),
     enabled: Boolean(workItemId),
@@ -79,6 +77,9 @@ export function IssueScopePicker({
   onOpenChange,
   display = "path",
   workItemLabel,
+  scopeConstraint,
+  allowClear = true,
+  wsId: wsIdProp,
 }: {
   value: IssueScopeValue;
   onUpdate: (next: IssueScopeValue) => void;
@@ -100,31 +101,50 @@ export function IssueScopePicker({
    *  A table row has one from its plan read; passing it keeps the trigger
    *  from re-reading the same node once per row. */
   workItemLabel?: string | null;
+  /** Locks the picker to one project (or module) of the tree: a meeting
+   *  opened under a scope may move inside it, never out of it. */
+  scopeConstraint?: { projectId?: string | null; moduleId?: string | null };
+  /** When false the "no project" choice is hidden — a caller that requires a
+   *  filing does not offer a way to clear it. Defaults to true. */
+  allowClear?: boolean;
+  /** The workspace to read. Every surface has one already; passing it keeps
+   *  the picker renderable outside a workspace route (a dialog preview). */
+  wsId?: string;
 }) {
-  const wsId = useWorkspaceId();
+  const wsId = wsIdProp ?? "";
   const { t } = useT("issues");
   const [internalOpen, setInternalOpen] = useState(false);
   const locked = disabled || readOnly;
   const open = locked ? false : controlledOpen ?? internalOpen;
   const setOpen = locked ? () => {} : onOpenChange ?? setInternalOpen;
+  const constrainedProjectId = scopeConstraint?.projectId ?? null;
+  const constrainedModuleId = scopeConstraint?.moduleId ?? null;
 
-  const { data: projects = [] } = useQuery(projectListOptions(wsId));
-  const [expandedProject, setExpandedProject] = useState<string | null>(value.project_id);
-  const [expandedModule, setExpandedModule] = useState<string | null>(value.module_id);
+  const { data: allProjects = [] } = useQuery(projectListOptions(wsId));
+  const projects = useMemo(
+    () => (constrainedProjectId ? allProjects.filter((project) => project.id === constrainedProjectId) : allProjects),
+    [allProjects, constrainedProjectId],
+  );
+  const [expandedProject, setExpandedProject] = useState<string | null>(value.project_id ?? constrainedProjectId);
+  const [expandedModule, setExpandedModule] = useState<string | null>(value.module_id ?? constrainedModuleId);
   const [text, setText] = useState("");
   const query = text.trim();
 
   // Reopen on the selection: the tree should show where the issue is now.
   useEffect(() => {
     if (!open) return;
-    setExpandedProject(value.project_id);
-    setExpandedModule(value.module_id);
-  }, [open, value.project_id, value.module_id]);
+    setExpandedProject(constrainedProjectId ?? value.project_id);
+    setExpandedModule(constrainedModuleId ?? value.module_id);
+  }, [open, value.project_id, value.module_id, constrainedProjectId, constrainedModuleId]);
 
   const { data: modules = [] } = useQuery({
     ...moduleListOptions(wsId, expandedProject ?? undefined),
     enabled: open && expandedProject !== null && query === "",
   });
+  const visibleModules = useMemo(
+    () => (constrainedModuleId ? modules.filter((module) => module.id === constrainedModuleId) : modules),
+    [modules, constrainedModuleId],
+  );
 
   const searchMode = query !== "";
 
@@ -179,15 +199,19 @@ export function IssueScopePicker({
     enabled: open && searchMode,
   });
   const searchItems = useMemo(
-    () => search.data?.pages.flatMap((page) => page.items) ?? [],
-    [search.data],
+    () => (search.data?.pages.flatMap((page) => page.items) ?? []).filter(
+      (item) =>
+        (!constrainedProjectId || item.project_id === constrainedProjectId) &&
+        (!constrainedModuleId || item.module_id === constrainedModuleId),
+    ),
+    [search.data, constrainedProjectId, constrainedModuleId],
   );
 
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
   );
-  const resolvedWorkItem = useSelectedWorkItem(workItemLabel != null ? null : value.work_item_id);
+  const resolvedWorkItem = useSelectedWorkItem(workItemLabel != null ? null : value.work_item_id, wsId);
   const selectedWorkItem = workItemLabel != null
     ? { code: "", name: workItemLabel }
     : resolvedWorkItem;
@@ -199,7 +223,7 @@ export function IssueScopePicker({
     : undefined;
   // A module names its project, and a seeded value may carry only the module
   // (the project page's "+" does). The path still reads in full.
-  const effectiveProjectId = value.project_id ?? selectedModule?.project_id ?? null;
+  const effectiveProjectId = value.project_id ?? selectedModule?.project_id ?? constrainedProjectId ?? null;
   const selectedProject = effectiveProjectId ? projectById.get(effectiveProjectId) : undefined;
 
   const commit = (next: IssueScopeValue) => {
@@ -317,7 +341,7 @@ export function IssueScopePicker({
         {restriction ? (
           <div className="text-caption">{restriction}</div>
         ) : null}
-        {!readOnly ? (
+        {!readOnly && allowClear ? (
           <Button
             type="button"
             variant="ghost"
@@ -359,8 +383,8 @@ export function IssueScopePicker({
                       <button
                         type="button"
                         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-xs px-1 py-1 text-left text-caption hover:bg-accent"
-                        aria-pressed={value.project_id === project.id && value.module_id === null}
-                        onClick={() => commit({ project_id: project.id, module_id: null, work_item_id: null })}
+                        aria-pressed={value.project_id === project.id && value.module_id === constrainedModuleId}
+                        onClick={() => commit({ project_id: project.id, module_id: constrainedModuleId, work_item_id: null })}
                       >
                         <ProjectIcon project={project} size="sm" />
                         <span className="truncate">{project.title}</span>
@@ -368,7 +392,7 @@ export function IssueScopePicker({
                     </div>
                     {expanded ? (
                       <div className="ml-4 space-y-0.5 border-l border-border/60 pl-1">
-                        {modules.map((module) => {
+                        {visibleModules.map((module) => {
                           const moduleOpen = expandedModule === module.id;
                           return (
                             <div key={module.id}>
@@ -405,7 +429,7 @@ export function IssueScopePicker({
                             </div>
                           );
                         })}
-                        {modules.length === 0 ? (
+                        {visibleModules.length === 0 ? (
                           <p className="px-2 py-1 text-caption text-muted-foreground">{t(($) => $.pickers.scope.no_modules)}</p>
                         ) : null}
                       </div>

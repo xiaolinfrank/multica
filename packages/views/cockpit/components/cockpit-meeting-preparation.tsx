@@ -30,6 +30,7 @@ export function CockpitMeetingPreparation({ wsId, currentUserId, meeting, defaul
   const create = () => openCockpitMeetingIssueCreate({
     projectId: defaultPlacement.project_id,
     moduleId: defaultPlacement.module_id,
+    workItemId: defaultPlacement.node_id,
     assigneeType: defaultAssigneeType ?? "member",
     assigneeId: defaultAssigneeId ?? currentUserId,
     onCreated: async (issue: Issue) => {
