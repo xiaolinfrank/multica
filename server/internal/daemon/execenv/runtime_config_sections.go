@@ -552,6 +552,15 @@ func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextF
 	if ctx.WorkItemDirectory != nil {
 		workItem = *ctx.WorkItemDirectory
 	}
+	// An issue task without a delivery folder has no fixed place to write: the
+	// platform allocates one at claim time, so an empty value means the
+	// allocation did not happen or is unreadable. Falling back to the legacy
+	// "make up a task folder" prose would invite exactly the guessed path the
+	// four-segment contract exists to prevent.
+	if kind == kindIssue && (ctx.IssueDirectory == nil || strings.TrimSpace(*ctx.IssueDirectory) == "") {
+		b.WriteString("This task's delivery folder has not been resolved by the platform. Do not create or name a substitute folder under the project or module; keep finished files in the working directory, report where they are, and ask the owner to check the task's folder binding.\n\n")
+		return
+	}
 	// An issue's delivery folder is fixed by the platform: identifier plus
 	// title, inside its work item (or module, or project). When every binding
 	// the path needs is valid the brief states that one path and forbids

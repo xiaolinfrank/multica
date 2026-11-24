@@ -152,7 +152,7 @@ gains a `### Collaboration Space` subsection naming the project directory and,
 when the task has a module, naming the stable bound module folder inside it.
 An issue task also gets the platform-assigned delivery folder as one fixed
 path, and is told not to invent one.
-A changed title never changes that binding. `.multica/project/resources.json` carries
+`.multica/project/resources.json` carries
 `project_collab_path` plus module identity (`module_id`, `module_title`,
 `module_description`), `module_directory`, `work_item_id`, `work_item_title`,
 `work_item_directory` and `issue_directory` for tooling that would rather read JSON than prose — the
@@ -160,11 +160,13 @@ module's directory is `project_collab_path` joined with its stable `module_direc
 
 ### Delivering into it
 
-- Always write finished files in a task or deliverable subdirectory below the
-  bound module folder. A task with no module uses a task/result subdirectory
-  directly below the project root; do not invent a module. Never put files flat
-  in the project or module root. Preserve `directory_name` after title edits;
-  an unresolved or unsafe binding needs owner action, not a title-based guess.
+- An issue task writes into the fixed delivery folder named in
+  `### Collaboration Space`; create it if missing and never invent a different
+  one. A non-issue task (chat, automation, quick create) uses a task or
+  deliverable subdirectory below the bound module folder, or directly below the
+  project root when it has no module; never put files flat in the project or
+  module root. An unresolved or unsafe binding needs owner action, not a
+  title-based guess.
 - The collaboration copy is additional archival storage. Follow `## Output`
   for delivery; issue files still require `--attachment <path>`. Respect user
   authorization, including waiting for confirmation before large uploads when

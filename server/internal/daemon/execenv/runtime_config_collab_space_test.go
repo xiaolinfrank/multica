@@ -68,6 +68,10 @@ func TestCollaborationSpaceNamesProjectPathAndModuleFolder(t *testing.T) {
 
 	ctx := collabModuleContext()
 	ctx.ProjectCollabPath = collabProjectPath
+	// The module-folder rule is the non-issue rule: an issue task always names
+	// its own fixed delivery folder (P2-1), so exercise it on a chat task.
+	ctx.IssueID = ""
+	ctx.ChatSessionID = "chat-1"
 
 	out := buildMetaSkillContent("claude", ctx)
 
@@ -122,6 +126,9 @@ func TestCollaborationSpaceNamesProjectPathAndModuleFolder(t *testing.T) {
 func TestCollaborationSpaceUsesStableBindingAndRejectsTraversal(t *testing.T) {
 	ctx := collabModuleContext()
 	ctx.ProjectCollabPath = collabProjectPath
+	// Module-folder prose is the non-issue rule; an issue task always gets its
+	// own fixed delivery folder.
+	ctx.ChatSessionID = "chat-1"
 	folder := "稳定目录--1234abcd"
 	ctx.ModuleDirectory = &folder
 	out := buildMetaSkillContent("claude", ctx)
@@ -151,6 +158,10 @@ func TestCollaborationSpaceRequiresTaskLayerAndAuthorizedDelivery(t *testing.T) 
 		if hasModule {
 			ctx = collabModuleContext()
 		}
+		// The task-subdirectory rule the assertions below describe is the
+		// non-issue rule now that issue tasks name one fixed folder.
+		ctx.IssueID = ""
+		ctx.ChatSessionID = "chat-1"
 		ctx.ProjectCollabPath = "/Users/test/Library/Application Support/HelixHelm/projects/sample"
 		out := collabSection(t, buildMetaSkillContent("claude", ctx))
 		for _, want := range []string{
@@ -348,7 +359,11 @@ func TestCollaborationSpaceReportingSentencePerTaskKind(t *testing.T) {
 		want string
 	}{
 		"issue": {
-			ctx:  withKind(func(c *TaskContextForEnv) { c.IssueID = "issue-1" }),
+			ctx: withKind(func(c *TaskContextForEnv) {
+				c.IssueID = "issue-1"
+				folder := "FOS-1注册路径设计"
+				c.IssueDirectory = &folder
+			}),
 			want: "Name the path you wrote in your issue comment, as plain text, so a person can open it.",
 		},
 		"chat": {
@@ -583,6 +598,7 @@ func TestCollaborationSpaceKeepsTheTaskSubdirectoryRuleForNonIssueTasks(t *testi
 	ctx := TaskContextForEnv{
 		ProjectID: "p1", ProjectCollabPath: "/Volumes/Space/Project",
 		ModuleID: "m1", ModuleDirectory: stringPtr("01.01确权线"),
+		ChatSessionID: "chat-1",
 	}
 	out := buildMetaSkillContent("claude", ctx)
 	if !strings.Contains(out, "Use the bound module folder") {
@@ -590,5 +606,32 @@ func TestCollaborationSpaceKeepsTheTaskSubdirectoryRuleForNonIssueTasks(t *testi
 	}
 	if strings.Contains(out, "delivery folder is fixed") {
 		t.Fatalf("a chat task was told its folder is fixed:\n%s", out)
+	}
+}
+
+// P2-1: an issue task whose delivery folder was not resolved must not fall back
+// to the legacy "invent your own subdirectory" prose or to a reporting sentence
+// that implies a path exists.
+func TestIssueTaskWithoutDeliveryFolderRefusesToGuess(t *testing.T) {
+	t.Parallel()
+	ctx := TaskContextForEnv{
+		AgentID:           "a-1",
+		AgentName:         "Eve",
+		ProjectID:         "22222222-3333-4444-5555-666666666666",
+		ProjectTitle:      "AI医药联合创新平台",
+		ProjectCollabPath: collabProjectPath,
+		IssueID:           "issue-1",
+	}
+	out := buildMetaSkillContent("claude", ctx)
+	if !strings.Contains(out, "has not been resolved by the platform") {
+		t.Fatalf("brief did not say the delivery folder is unresolved: %s", collabSection(t, out))
+	}
+	for _, forbidden := range []string{
+		"Use a task or deliverable subdirectory below the bound module folder",
+		"Name the path you wrote in your issue comment",
+	} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("unresolved issue brief still carries %q", forbidden)
+		}
 	}
 }
