@@ -55,9 +55,11 @@ empty lanes; other primaries ignore it.
 
 A module stores no collaboration space of its own; only its project carries
 `collab_path` (人机协作空间路径). When this issue has a module, the claim and
-the brief provide the project's path plus stable `module_directory`. Files go
-in a required task/result subdirectory below that bound relative folder, never
-flat in the module or project root; title edits do not rename it — see
+the brief provide the project's path plus `module_directory`. Files go under
+that folder — and under the work item's folder when the issue has one — never
+flat in the module or project root. Renaming a module renames its folder with
+the row (unless `directory_sync:"defer"` is passed); a renumber renames it too.
+Deleting a module never deletes the folder or its files — see
 [projects.md](projects.md#collaboration-space).
 
 ## Work items: the third level under a module
@@ -84,6 +86,14 @@ filing authority: it is nullable, and when set it always agrees with
   as `child_module_mismatch` one level down. Detach the issue from its parent
   in the same write to move it elsewhere.
 - Creating or moving a parent carries its whole subtree, work items included.
+- A work item owns a folder named after its address and title
+  (`work_item_directory`). Creating one creates the folder when the project has
+  a collaboration space; renaming or renumbering it renames the folder, and
+  moving it to another module moves the folder (and every issue folder inside
+  it). A rename or move is refused with 409 `running_agent_tasks` while an
+  agent is working in the folder unless the caller passes
+  `directory_sync:"force"`; `directory_sync:"defer"` writes the row and leaves
+  the folder for the plan's directory panel to sync.
 - Listing filters by `work_item_id` (single), `work_item_ids` (any of) and
   `include_no_work_item=true`, all compiling to one OR predicate on both the
   paginated list and `open_only` paths. Table

@@ -547,7 +547,7 @@ var validIssueFields = []string{
 	"assignee_id", "creator_type", "creator_id", "parent_issue_id",
 	"duplicate_of", "project_id", "module_id", "work_item_id", "position", "stage", "start_date", "due_date", "created_at",
 	"updated_at", "revision", "last_activity_at", "metadata", "properties",
-	"labels",
+	"labels", "directory_name",
 }
 
 // directionalIssueSortColumns are the sort keys for which --direction is
@@ -689,6 +689,8 @@ func init() {
 
 	// issue update
 	issueUpdateCmd.Flags().String("title", "", "New title")
+	issueUpdateCmd.Flags().String("directory-name", "", "Delivery folder name to point the issue at (one safe relative folder; files are not moved)")
+	issueUpdateCmd.Flags().String("directory-sync", "", "What a filing change does with the folder: sync (default), defer or force")
 	issueUpdateCmd.Flags().String("description", "", "New description (decodes \\n, \\r, \\t, \\\\; pipe via --description-stdin to preserve literal backslashes)")
 	issueUpdateCmd.Flags().Bool("description-stdin", false, "Read new description from stdin (preserves multi-line content verbatim)")
 	issueUpdateCmd.Flags().String("description-file", "", "Read new description from a UTF-8 file (preserves multi-line content verbatim; use this on Windows when stdin piping mangles non-ASCII bytes). The path must be inside the current working directory unless --allow-external-file is set.")
@@ -1206,7 +1208,7 @@ func runIssueGet(cmd *cobra.Command, args []string) error {
 		if dueDate != "" && len(dueDate) >= 10 {
 			dueDate = dueDate[:10]
 		}
-		headers := []string{"KEY", "TITLE", "STATUS", "PRIORITY", "ASSIGNEE", "START DATE", "DUE DATE", "DESCRIPTION"}
+		headers := []string{"KEY", "TITLE", "STATUS", "PRIORITY", "ASSIGNEE", "START DATE", "DUE DATE", "DIRECTORY", "DESCRIPTION"}
 		rows := [][]string{{
 			issueDisplayKey(issue),
 			strVal(issue, "title"),
@@ -1215,6 +1217,9 @@ func runIssueGet(cmd *cobra.Command, args []string) error {
 			assignee,
 			startDate,
 			dueDate,
+			// The full delivery path as the server composed it; empty when the
+			// project has no collaboration space or nothing was allocated yet.
+			strVal(issue, "delivery_path"),
 			strVal(issue, "description"),
 		}}
 		cli.PrintTable(os.Stdout, headers, rows)
@@ -1853,6 +1858,16 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("title") {
 		v, _ := cmd.Flags().GetString("title")
 		body["title"] = v
+	}
+	if cmd.Flags().Changed("directory-name") {
+		// Points the issue at a folder people already use; the server does not
+		// move any files for it.
+		v, _ := cmd.Flags().GetString("directory-name")
+		body["directory_name"] = strings.TrimSpace(v)
+	}
+	if cmd.Flags().Changed("directory-sync") {
+		v, _ := cmd.Flags().GetString("directory-sync")
+		body["directory_sync"] = v
 	}
 	if cmd.Flags().Changed("description") || cmd.Flags().Changed("description-stdin") || cmd.Flags().Changed("description-file") {
 		desc, _, err := resolveTextFlag(cmd, "description")

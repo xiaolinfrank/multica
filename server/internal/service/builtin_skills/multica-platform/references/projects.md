@@ -96,16 +96,31 @@ on the executing machine and does not replace this persistent project root.
 Inside it, the layout uses the stable directory bindings:
 
 ```text
-<project collab_path>/                  ← the unique project root
-└── <module directory_name>/             ← stable relative module binding
-    └── <task or deliverable directory>/ ← required task/result layer
+<project collab_path>/                       ← the unique project root
+└── <module directory_name>/                  ← stable relative module binding
+    └── <work_item_directory>/                ← work item binding (optional)
+        └── <issue_directory>/                ← the issue's fixed delivery folder
 ```
+
+A project without modules drops the module level; an issue without a work item
+drops that level too. Sub-issues sit beside their parent, never inside it.
 
 Only the project carries the absolute `collab_path`. A module's nullable
 `directory_name` is one safe relative folder within that project, not another
-absolute root. New modules receive a readable unique binding. Safe unique
-legacy title folders retain their names; ambiguous or unsafe legacy names need
-an explicit binding. A title edit does not change the bound folder or move files.
+absolute root. New modules receive a readable unique binding built from their
+plan address and title (`04.01确权线`); `module.directory_name` and the module's
+plan row always name the same folder. A title edit renames the folder with the
+row (unless the caller defers it), and a renumber renames it too; a folder that
+collides with an existing name keeps its old name and reports the reason.
+A module delete never deletes the folder or its files.
+
+A work item's folder follows the same rule (`02.02.06MVP产品开发与场景验证`), and
+an issue's delivery folder is `<identifier><title up to 40 characters>`
+(`FOS-123注册路径设计`), allocated the first time the issue needs one — at agent
+claim or when a person opens it — never on a list read. A project without
+`collab_path` never allocates one. A person may point an issue at an existing
+folder name (`PATCH`/`PUT /api/issues/{id}` with `directory_name`); that changes
+the pointer only and moves no files.
 
 Use `multica module update <id> --directory-name "<relative-folder>"` to bind
 or explicitly rename a folder reference. This changes metadata only; review and
@@ -135,9 +150,12 @@ stored value, and the key present with `null` or `""` clears it to NULL.
 A task whose project has one is told about it. The brief's `## Project Context`
 gains a `### Collaboration Space` subsection naming the project directory and,
 when the task has a module, naming the stable bound module folder inside it.
+An issue task also gets the platform-assigned delivery folder as one fixed
+path, and is told not to invent one.
 A changed title never changes that binding. `.multica/project/resources.json` carries
 `project_collab_path` plus module identity (`module_id`, `module_title`,
-`module_description`) and `module_directory` for tooling that would rather read JSON than prose — the
+`module_description`), `module_directory`, `work_item_id`, `work_item_title`,
+`work_item_directory` and `issue_directory` for tooling that would rather read JSON than prose — the
 module's directory is `project_collab_path` joined with its stable `module_directory`.
 
 ### Delivering into it

@@ -63,6 +63,8 @@ For paginated issues per work item, the filing read/write and meeting actions, s
 | PUT | `/api/cockpit/meetings/{meetingId}/nodes` | replace a meeting's work-item links |
 | POST | `/api/cockpit/meetings/{meetingId}/nodes` | append `{node_id}`; returns `{workspace_id,meeting_id,link}`, preserves existing position |
 | DELETE | `/api/cockpit/meetings/{meetingId}/nodes/{nodeId}` | unlink one work item |
+| GET | `/api/cockpit/plan/directories` | on-demand folder status for up to 100 nodes (`node_ids`); the plan tree itself never stats the share |
+| POST | `/api/cockpit/plan/directories/fill` | preview (default) or apply (`apply:true`) missing/renamed module and work-item folders; human only |
 | GET | `/api/cockpit/directory` | the contact book: every `party`/`name`/`position` the workspace knows |
 | PUT | `/api/cockpit/directory` | upsert contacts as a batch (`{entries}`); an empty `position` never erases a known one |
 | DELETE | `/api/cockpit/directory` | remove one contact by `{party, name}`; a `seed` (roster) entry answers 400 |

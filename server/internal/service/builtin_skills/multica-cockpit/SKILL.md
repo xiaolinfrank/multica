@@ -134,7 +134,7 @@ Enablement, formal review and publication require authorized humans; submission 
 
 - [Fixed input materials](references/inputs.md) covers uploads, source selection and fixed Issue/Run manifests; capture is not approval, and saving does not start an Agent.
 - Fixed deliverables, handoffs and L3 acceptance use [artifacts and acceptance](references/artifacts.md); Issue completion alone does not approve them.
-- Persistent files follow `collab_path` → stable `directory_name` → required task/result subdirectory (no module: task/result directly below the project). Read [artifact delivery](references/artifacts.md) before delivering files.
+- Persistent files follow `collab_path` → `module_directory` → `work_item_directory` → `issue_directory` (drop a level when the issue has no work item or module). The issue's delivery folder is assigned by the platform and stated in the brief; do not invent one. Read [artifact delivery](references/artifacts.md) before delivering files.
 - Agents may submit minutes for their own issue but cannot approve or publish them.
 - Day-to-day execution lives on issues — use the issue commands and file the issue on its work item. Do not mirror an issue's description into a node's `note`; the filing is the connection, and duplicated text drifts.
 - Do not invent codes to fill gaps. A plan's codes are its own; add a row only when the work is real. Deleted codes cannot be reused (409), except when replaying an allowed import or snapshot.

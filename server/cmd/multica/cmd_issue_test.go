@@ -6048,3 +6048,38 @@ func TestRunIssueCommentDeleteKeepsReplies(t *testing.T) {
 		})
 	}
 }
+
+// `issue get --output table` names the delivery folder, so a person reading a
+// table can open the folder without a second call.
+func TestIssueGetTableShowsTheDeliveryDirectory(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/issues/MUL-46":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "issue-uuid", "identifier": "MUL-46", "title": "Task"})
+		case "/api/issues/issue-uuid":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "issue-uuid", "identifier": "MUL-46", "title": "注册路径设计", "status": "todo", "priority": "none",
+				"directory_name": "MUL-46注册路径设计",
+				"delivery_path":  "/Volumes/Space/交付项目/01.01确权线/MUL-46注册路径设计",
+			})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}, "issues": []any{}, "total": 0})
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("MULTICA_SERVER_URL", srv.URL)
+
+	getCmd := &cobra.Command{Use: "get"}
+	getCmd.Flags().String("output", "table", "")
+	getCmd.Flags().Bool("resolve-properties", false, "")
+	out, err := captureStdout(t, func() error { return runIssueGet(getCmd, []string{"MUL-46"}) })
+	if err != nil {
+		t.Fatalf("issue get: %v", err)
+	}
+	if !strings.Contains(out, "DIRECTORY") {
+		t.Fatalf("table has no DIRECTORY column:\n%s", out)
+	}
+	if !strings.Contains(out, "/Volumes/Space/交付项目/01.01确权线/MUL-46注册路径设计") {
+		t.Fatalf("table does not show the delivery path:\n%s", out)
+	}
+}

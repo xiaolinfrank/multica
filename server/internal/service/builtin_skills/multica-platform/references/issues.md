@@ -160,6 +160,26 @@ work item (`child_work_item_mismatch`). Filtering and grouping mirror the
 module contract — see
 [modules.md](modules.md#work-items-the-third-level-under-a-module).
 
+## Delivery folder
+
+An issue in a project with a `collab_path` gets a delivery folder named
+`<identifier><title up to 40 characters>` (`FOS-123注册路径设计`), allocated on
+first need (agent claim, or a person opening it), never on a list read, at
+`<collab_path>/<module_directory>/<work_item_directory>/<issue_directory>` —
+dropping levels the issue has none of; sub-issues sit beside their parent.
+
+`multica issue get` shows `directory_name` and `delivery_path` (the table has a
+`DIRECTORY` column). `GET /api/issues/{id}/directory` reports `ok`, `missing`,
+`unallocated`, `no_collab_path`, `root_unavailable` or `invalid` without
+writing; `POST /api/issues/{id}/directory/ensure` allocates and creates it.
+Moving an issue moves its subtree's folders too: `directory_sync:"sync"`
+(default) answers 409 `running_agent_tasks` while an agent works in the folder,
+`"defer"` leaves it for later, `"force"` moves it anyway. A missing source
+folder is not an error; an existing destination is never overwritten, and a
+person may point the issue at an existing folder with
+`multica issue update <id> --directory-name "<folder>"` — pointer only, no
+files move; machine credentials get 403.
+
 ## Custom properties: typed workflow state
 
 Workspaces may define custom issue properties (Severity, Environment, QA
