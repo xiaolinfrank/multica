@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { api } from "../api";
 import { invalidateCockpitArtifactSourceAttachments } from "../cockpit/artifact-queries";
+import { cockpitWriteError, isCockpitRunningTasksError } from "../cockpit/write-errors";
 import { issueKeys } from "./queries";
 import { directoryKeys } from "../directory/queries";
 import { invalidateIssueOperationBasis } from "./operation-basis";
@@ -191,10 +192,19 @@ export function useUpdateIssue() {
   const wsId = useWorkspaceId();
   return useMutation({
     mutationKey: issueWriteMutationKey(wsId),
-    mutationFn: ({ id, move_intent: moveIntent, ...data }: UpdateIssueMutationInput) => {
-      if (!moveIntent) return api.updateIssue(id, data);
-      const { position: _optimisticPosition, ...target } = data;
-      return api.moveIssue(id, { ...target, ...moveIntent });
+    mutationFn: async ({ id, move_intent: moveIntent, ...data }: UpdateIssueMutationInput) => {
+      try {
+        if (!moveIntent) return await api.updateIssue(id, data);
+        const { position: _optimisticPosition, ...target } = data;
+        return await api.moveIssue(id, { ...target, ...moveIntent });
+      } catch (error) {
+        // Translate a running-folder 409 so issue refiling reaches the shared
+        // conflict dialog; other ApiErrors (such as revision_conflict) keep
+        // their original shape for errorCode(err).
+        const translated = cockpitWriteError(error);
+        if (isCockpitRunningTasksError(translated)) throw translated;
+        throw error;
+      }
     },
     onMutate: ({ id, move_intent: _moveIntent, ...data }) => {
       // suppress_run is a write-time control field, not an Issue column.

@@ -131,8 +131,10 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
       // A filing write refused because an agent works in the folder is a
       // choice, not a failure: hold the write and offer sync-now / later,
       // exactly like the plan tree.
-      const retryWithMode = (mode: "force" | "defer") =>
-        updateField({ ...updates, directory_sync: mode === "force" ? "force" : "defer" }, options);
+      const retryWithMode = (mode: "force" | "defer") => {
+        setDirectoryConflict(null);
+        updateField({ ...updates, directory_sync: mode }, options);
+      };
       const withConflict = (opts?: IssueSurfaceMutationOptions): IssueSurfaceMutationOptions => ({
         ...opts,
         onError: (err) => {
