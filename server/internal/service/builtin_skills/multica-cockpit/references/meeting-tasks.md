@@ -19,6 +19,14 @@ with `status=backlog`, the intended project/module and an explicit assignee.
 Do not dispatch an agent just by creating or linking the Issue. The platform UI
 uses the same Issue creation dialog as everywhere else.
 
+When the board's default meeting location is an L3 work item, a meeting task
+created for that location is filed AT that work item from birth: the created
+Issue carries it as `work_item_id` (so `multica issue create ... --work-item
+<uuid-or-code>` is the equivalent), the project/module come from the work item,
+and the same row is not also written into the "related work items" relation.
+A board whose archive node is not an L3 row keeps the older
+`cockpit_node_issue` link.
+
 For preparation, resolve the actual created Issue UUID, append one association,
 then set its purpose. Commands never replace a partially loaded collection:
 

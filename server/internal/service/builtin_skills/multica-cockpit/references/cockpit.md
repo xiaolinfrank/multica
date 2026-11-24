@@ -300,11 +300,14 @@ NAS command flags and receipts are documented in [nas-export.md](nas-export.md).
 Where the task and the folder go is board configuration, not code:
 `meeting_project_id`, `meeting_module_id`, `meeting_node_id` and `meeting_dir`
 on the cockpit row, set through `PATCH /api/cockpit` or remembered by a
-provision. `meeting_node_id` is the archive sub-item — a node on this board's
-tree, one level below the module (the meeting-materials work item): its folder holds
-the material and its `code` opens the meeting task's title. The folder chain
-below the project's collaboration space is created if it is missing, one level
-at a time. This endpoint requires an existing root; a missing path does not identify the storage failure or authorize a replacement root.
+provision. `meeting_node_id` is the archive work item — on a reconciled board an
+L3 row under the module row (the meeting-materials work item): its folder holds
+the material and its `code` opens the meeting task's title. A meeting links only
+to a project row, a module row, or a work item row; a fourth level or deeper is
+refused with `400` (`meetings can only link to project, module, or work item
+rows`) by the whole-set link write, the single-link write, and meeting creation
+with `node_id`. The folder chain below the project's collaboration space is
+created if it is missing, one level at a time. This endpoint requires an existing root; a missing path does not identify the storage failure or authorize a replacement root.
 For local internal-disk storage, verify exact binding, ownership, permissions and containment before preparing the root, then retry; never substitute another root.
 The meeting directory is the task/result layer; its persistent copy does not replace Issue attachments or `## Output` rules.
 
@@ -326,6 +329,15 @@ a space was a historical duplicate in some boards and must not be written,
 recreated, or used as an alternative delivery location. Check the actual
 binding before provisioning or filing material, and reconcile any disagreement
 first.
+
+When the board has not confirmed `meeting_dir`, the server proposes the path
+from stored names, never by matching titles against the disk: the module
+segment is `module.directory_name` (or its L2 `directory_name`), and the
+segment for an L3 archive work item is that row's `directory_name`. Only when a
+stored name is absent does it compute the share-style name from the code and
+title. A stored name that is not a single safe path segment (for example one
+containing `/`, `\`, or `..`) is reported as an error instead of being silently
+rewritten. A project row or the module row itself contributes no segment.
 
 Directory root boundaries and partial outcomes: [directory-operations.md](directory-operations.md). Persistent meeting directory preparation uses [meeting-directory.md](meeting-directory.md).
 
