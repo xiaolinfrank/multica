@@ -205,3 +205,198 @@ func TestCockpitMeetingWorkPackageFilesAtWorkItem(t *testing.T) {
 		t.Errorf("retry left %d issues, want one", n)
 	}
 }
+
+// A request that clears a level must send that level, not omit it: an omitted
+// module_id falls back to the board's stored module, which is how a preview of
+// "P1 / M2" was answered with P1's old work item and refused as a
+// contradiction. `module_id=` and `node_id=` are explicit clearings.
+func TestCockpitMeetingDestinationHonoursClearedLevels(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Meeting destination cleared levels", true)
+	otherModuleDir := "06.07另一模块"
+	otherModule := dbfx.Module(t, f.project, "06.07 另一模块", testutil.Cols{
+		"workspace_id": f.wsID, "directory_name": otherModuleDir,
+	})
+	if err := os.Mkdir(filepath.Join(f.root, otherModuleDir), 0o755); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	otherRoot := t.TempDir()
+	otherProject := dbfx.Project(t, "07另一项目", testutil.Cols{
+		"workspace_id": f.wsID, "collab_path": otherRoot,
+	})
+	patchCockpit(t, f.wsID, map[string]any{
+		"meeting_project_id": f.project, "meeting_module_id": f.module, "meeting_node_id": f.node,
+	}).Want(http.StatusOK)
+
+	cases := []struct {
+		name      string
+		query     string
+		wantDir   string
+		wantError string
+	}{
+		{
+			name:    "work item cleared keeps the module",
+			query:   "?project_id=" + f.project + "&module_id=" + f.module + "&node_id=",
+			wantDir: filepath.Join(f.root, "06.06多方协同与会议"),
+		},
+		{
+			name:    "another module does not inherit the old work item",
+			query:   "?project_id=" + f.project + "&module_id=" + otherModule + "&node_id=",
+			wantDir: filepath.Join(f.root, otherModuleDir),
+		},
+		{
+			name:    "another module without a node parameter still drops the work item",
+			query:   "?project_id=" + f.project + "&module_id=" + otherModule,
+			wantDir: filepath.Join(f.root, otherModuleDir),
+		},
+		{
+			name:    "project only does not inherit the old module or work item",
+			query:   "?project_id=" + otherProject + "&module_id=&node_id=",
+			wantDir: otherRoot,
+		},
+		{
+			name:    "another project without a module parameter still drops the module",
+			query:   "?project_id=" + otherProject + "&node_id=",
+			wantDir: otherRoot,
+		},
+		{
+			name:    "an emptied module keeps the board's project",
+			query:   "?project_id=" + f.project + "&module_id=&node_id=",
+			wantDir: f.root,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var dest CockpitMeetingDestinationResponse
+			testutil.Call(t, cockpitHandler(testHandler.GetCockpitMeetingDestination),
+				cockpitRequest(http.MethodGet, "/api/cockpit/meetings/destination"+tc.query, f.wsID, nil)).
+				Want(http.StatusOK).
+				JSON(&dest)
+			if dest.Error != "" || dest.BaseDir != tc.wantDir {
+				t.Fatalf("base_dir = %q err = %q, want %q", dest.BaseDir, dest.Error, tc.wantDir)
+			}
+		})
+	}
+
+	// The scan reads the same destination, so it must honour the same empty
+	// fields instead of announcing the old work item's folder.
+	var scan CockpitMeetingScanResponse
+	testutil.Call(t, cockpitHandler(testHandler.ScanCockpitMeetingFolders),
+		cockpitRequest(http.MethodGet,
+			"/api/cockpit/meetings/scan?project_id="+f.project+"&module_id="+otherModule+"&node_id=", f.wsID, nil)).
+		Want(http.StatusOK).
+		JSON(&scan)
+	if scan.BaseDir != filepath.Join(f.root, otherModuleDir) {
+		t.Fatalf("scan base_dir = %q err = %q, want %q", scan.BaseDir, scan.Error, filepath.Join(f.root, otherModuleDir))
+	}
+}
+
+// An old board that was never reconciled can carry a standalone archive row:
+// no parent, no project, no module. Its own name IS the last folder segment,
+// even though the row sits at depth 0.
+func TestCockpitMeetingPathKeepsStandaloneArchiveRow(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Meeting path standalone archive", true)
+	dbfx.Exec(t, "UPDATE cockpit SET plan_reconciled_at = NULL WHERE workspace_id = $1", f.wsID)
+	cockpitID := dbfx.QueryRow(t, "SELECT id::text FROM cockpit WHERE workspace_id=$1", f.wsID)
+	var boardID string
+	cockpitID.Scan(&boardID)
+	standalone := dbfx.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.wsID, "cockpit_id": boardID,
+		"code": "09.09", "name": "独立归档", "directory_name": "09.09独立归档", "position": 0,
+	})
+
+	var dest CockpitMeetingDestinationResponse
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitMeetingDestination),
+		cockpitRequest(http.MethodGet,
+			"/api/cockpit/meetings/destination?project_id="+f.project+"&node_id="+standalone, f.wsID, nil)).
+		Want(http.StatusOK).
+		JSON(&dest)
+
+	want := filepath.Join(f.root, "09.09独立归档")
+	if dest.Error != "" || dest.BaseDir != want {
+		t.Fatalf("base_dir = %q err = %q, want %q", dest.BaseDir, dest.Error, want)
+	}
+	if dest.BaseDirExists {
+		t.Errorf("base_dir_exists = true, but the folder was never created: the name must be composed, not scanned for")
+	}
+}
+
+// On a reconciled board a project row or module row names one branch. Naming
+// a row from another branch is a contradiction; naming only the row fills its
+// project and module in.
+func TestCockpitMeetingDestinationRefusesCrossBranchRows(t *testing.T) {
+	f := newMeetingArchiveFixture(t, "Meeting destination cross branch", true)
+	otherRoot := t.TempDir()
+	otherProject := dbfx.Project(t, "07另一项目", testutil.Cols{
+		"workspace_id": f.wsID, "collab_path": otherRoot,
+	})
+	cockpitID := dbfx.QueryRow(t, "SELECT id::text FROM cockpit WHERE workspace_id=$1", f.wsID)
+	var boardID string
+	cockpitID.Scan(&boardID)
+	otherL1 := dbfx.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.wsID, "cockpit_id": boardID, "project_id": otherProject,
+		"code": "07", "name": "07另一项目", "position": 1,
+	})
+	projectRowID := dbfx.QueryRow(t,
+		"SELECT id::text FROM cockpit_node WHERE workspace_id=$1 AND project_id=$2 AND parent_id IS NULL LIMIT 1",
+		f.wsID, f.project)
+	var ownL1 string
+	projectRowID.Scan(&ownL1)
+	otherModuleDir := "06.07另一模块"
+	otherModule := dbfx.Module(t, f.project, "06.07 另一模块", testutil.Cols{
+		"workspace_id": f.wsID, "directory_name": otherModuleDir,
+	})
+	otherL2 := dbfx.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.wsID, "cockpit_id": boardID, "parent_id": ownL1,
+		"project_id": f.project, "module_id": otherModule,
+		"code": "06.07", "name": "06.07 另一模块", "position": 1,
+	})
+
+	refused := []string{
+		"?project_id=" + f.project + "&module_id=" + f.module + "&node_id=" + otherL1,
+		"?project_id=" + f.project + "&module_id=" + f.module + "&node_id=" + otherL2,
+	}
+	for _, query := range refused {
+		var dest CockpitMeetingDestinationResponse
+		testutil.Call(t, cockpitHandler(testHandler.GetCockpitMeetingDestination),
+			cockpitRequest(http.MethodGet, "/api/cockpit/meetings/destination"+query, f.wsID, nil)).
+			Want(http.StatusBadRequest).
+			JSON(&dest)
+		if strings.TrimSpace(dest.Error) == "" {
+			t.Errorf("%s was refused without a reason", query)
+		}
+	}
+
+	// A module from another project is refused as well, through the preview's
+	// own error field: that is how "no folder can be worked out" reads.
+	var crossProject CockpitMeetingDestinationResponse
+	testutil.Call(t, cockpitHandler(testHandler.GetCockpitMeetingDestination),
+		cockpitRequest(http.MethodGet,
+			"/api/cockpit/meetings/destination?project_id="+otherProject+"&module_id="+f.module+"&node_id=", f.wsID, nil)).
+		Want(http.StatusOK).
+		JSON(&crossProject)
+	if !strings.Contains(crossProject.Error, "does not belong to the selected project") || crossProject.BaseDir != "" {
+		t.Errorf("cross-project module answered %+v", crossProject)
+	}
+
+	// Naming only the row fills in the branch it belongs to.
+	cases := []struct {
+		query    string
+		wantDir  string
+		wantProj string
+		wantMod  string
+	}{
+		{"?node_id=" + otherL1, otherRoot, otherProject, ""},
+		{"?node_id=" + otherL2, filepath.Join(f.root, otherModuleDir), f.project, otherModule},
+	}
+	for _, tc := range cases {
+		var dest CockpitMeetingDestinationResponse
+		testutil.Call(t, cockpitHandler(testHandler.GetCockpitMeetingDestination),
+			cockpitRequest(http.MethodGet, "/api/cockpit/meetings/destination"+tc.query, f.wsID, nil)).
+			Want(http.StatusOK).
+			JSON(&dest)
+		if dest.Error != "" || dest.BaseDir != tc.wantDir || dest.ProjectID != tc.wantProj || dest.ModuleID != tc.wantMod {
+			t.Errorf("%s answered base_dir %q (%s) for %q/%q, want %q for %q/%q",
+				tc.query, dest.BaseDir, dest.Error, dest.ProjectID, dest.ModuleID, tc.wantDir, tc.wantProj, tc.wantMod)
+		}
+	}
+}

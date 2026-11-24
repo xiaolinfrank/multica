@@ -375,6 +375,20 @@ func (h *Handler) validateMeetingDirectoryReferences(ctx context.Context, cc coc
 			if err != nil {
 				return err
 			}
+			// A project row or module row is only valid for its own branch.
+			// `reconcileMeetingNodeDestination` fills an unnamed level in; a
+			// level named explicitly has to agree with the row.
+			if depth == 0 && node.ProjectID.Valid && projectID.Valid && node.ProjectID != projectID {
+				return errors.New("the project row does not belong to the selected project")
+			}
+			if depth == 1 {
+				if node.ProjectID.Valid && projectID.Valid && node.ProjectID != projectID {
+					return errors.New("the module row does not belong to the selected project")
+				}
+				if node.ModuleID.Valid && moduleID.Valid && node.ModuleID != moduleID {
+					return errors.New("the module row does not belong to the selected module")
+				}
+			}
 			if depth == 2 {
 				parent, ok, err := meetingNodeParent(ctx, h.Queries, cc, node)
 				if err != nil {
@@ -442,11 +456,122 @@ func meetingWorkItemUnder(ctx context.Context, q *db.Queries, cc cockpitContext,
 	return node, parent, true, nil
 }
 
-// reconcileMeetingNodeDestination keeps an L3 archive target and its project
-// and module together. On a reconciled board the work item's parent module row
-// IS the work item's module, so a request that names only the work item has
-// its project and module derived from it; a request that names a different
-// project or module is refused rather than stored as a contradiction.
+// meetingDestinationRefs is a request's meeting destination: the board's
+// stored choice, overridden by whichever fields the request actually named.
+type meetingDestinationRefs struct {
+	projectID       pgtype.UUID
+	projectExplicit bool
+	moduleID        pgtype.UUID
+	moduleExplicit  bool
+	nodeID          pgtype.UUID
+	nodeExplicit    bool
+}
+
+// resolve applies the "moving down clears what is below" rule. A request that
+// switches project must not keep the old project's module, and one that
+// switches module must not keep the old module's work item: those rows belong
+// to the level above, and carrying them over files the meeting in a folder the
+// request never named (or is refused as a contradiction).
+func (refs meetingDestinationRefs) resolve(cc cockpitContext) meetingDestinationRefs {
+	if refs.projectExplicit && refs.projectID != cc.cockpit.MeetingProjectID && !refs.moduleExplicit {
+		refs.moduleID = pgtype.UUID{}
+	}
+	if refs.moduleID != cc.cockpit.MeetingModuleID && !refs.nodeExplicit {
+		refs.nodeID = pgtype.UUID{}
+	}
+	return refs
+}
+
+// meetingDestinationRefsFromQuery reads the destination query parameters.
+// `module_id=` and `node_id=` are explicit clearings — the absence of the
+// parameter is what means "use the board's stored choice".
+func meetingDestinationRefsFromQuery(r *http.Request, cc cockpitContext) (meetingDestinationRefs, string, bool) {
+	refs := meetingDestinationRefs{
+		projectID: cc.cockpit.MeetingProjectID,
+		moduleID:  cc.cockpit.MeetingModuleID,
+		nodeID:    cc.cockpit.MeetingNodeID,
+	}
+	query := r.URL.Query()
+	if v := strings.TrimSpace(query.Get("project_id")); v != "" {
+		id, err := util.ParseUUID(v)
+		if err != nil {
+			return refs, "invalid project_id", false
+		}
+		refs.projectID, refs.projectExplicit = id, true
+	}
+	if _, sent := query["module_id"]; sent {
+		v := strings.TrimSpace(query.Get("module_id"))
+		refs.moduleID, refs.moduleExplicit = pgtype.UUID{}, true
+		if v != "" {
+			id, err := util.ParseUUID(v)
+			if err != nil {
+				return refs, "invalid module_id", false
+			}
+			refs.moduleID = id
+		}
+	}
+	if _, sent := query["node_id"]; sent {
+		v := strings.TrimSpace(query.Get("node_id"))
+		refs.nodeID, refs.nodeExplicit = pgtype.UUID{}, true
+		if v != "" {
+			id, err := util.ParseUUID(v)
+			if err != nil {
+				return refs, "invalid node_id", false
+			}
+			refs.nodeID = id
+		}
+	}
+	return refs.resolve(cc), "", true
+}
+
+// meetingDestinationRefsFromJSON reads the same three fields from a request
+// body, where a present-but-empty field is again an explicit clearing.
+func meetingDestinationRefsFromJSON(projectID, moduleID, nodeID *string, cc cockpitContext) (meetingDestinationRefs, string, bool) {
+	refs := meetingDestinationRefs{
+		projectID: cc.cockpit.MeetingProjectID,
+		moduleID:  cc.cockpit.MeetingModuleID,
+		nodeID:    cc.cockpit.MeetingNodeID,
+	}
+	if projectID != nil {
+		refs.projectID, refs.projectExplicit = pgtype.UUID{}, true
+		if v := strings.TrimSpace(*projectID); v != "" {
+			id, err := util.ParseUUID(v)
+			if err != nil {
+				return refs, "invalid project_id", false
+			}
+			refs.projectID = id
+		}
+	}
+	if moduleID != nil {
+		refs.moduleID, refs.moduleExplicit = pgtype.UUID{}, true
+		if v := strings.TrimSpace(*moduleID); v != "" {
+			id, err := util.ParseUUID(v)
+			if err != nil {
+				return refs, "invalid module_id", false
+			}
+			refs.moduleID = id
+		}
+	}
+	if nodeID != nil {
+		refs.nodeID, refs.nodeExplicit = pgtype.UUID{}, true
+		if v := strings.TrimSpace(*nodeID); v != "" {
+			id, err := util.ParseUUID(v)
+			if err != nil {
+				return refs, "invalid node_id", false
+			}
+			refs.nodeID = id
+		}
+	}
+	return refs.resolve(cc), "", true
+}
+
+// reconcileMeetingNodeDestination keeps an archive target and its project and
+// module together. On a reconciled board the work item's parent module row IS
+// the work item's module, so a request that names only the work item has its
+// project and module derived from it; a request that names a different project
+// or module is refused rather than stored as a contradiction. A project or
+// module row names the branch it belongs to the same way, so picking one from
+// another branch is refused too.
 func (h *Handler) reconcileMeetingNodeDestination(
 	ctx context.Context,
 	cc cockpitContext,
@@ -460,12 +585,36 @@ func (h *Handler) reconcileMeetingNodeDestination(
 	if err != nil {
 		return pgtype.UUID{}, pgtype.UUID{}, err
 	}
-	if depth != 2 {
-		return projectID, moduleID, nil
-	}
 	node, err := h.Queries.GetCockpitNode(ctx, db.GetCockpitNodeParams{ID: nodeID, WorkspaceID: cc.workspaceID})
 	if err != nil {
 		return pgtype.UUID{}, pgtype.UUID{}, errors.New("meeting sub-item not found on this board")
+	}
+	// A project row and a module row name a branch, not a new destination: the
+	// levels below them are the rows' own bindings, and a row from another
+	// branch is a contradiction rather than a filing.
+	if depth == 0 {
+		if !node.ProjectID.Valid {
+			return projectID, moduleID, nil
+		}
+		if projectExplicit && projectID != node.ProjectID {
+			return pgtype.UUID{}, pgtype.UUID{}, errors.New("the project row does not belong to the selected project")
+		}
+		return node.ProjectID, moduleID, nil
+	}
+	if depth == 1 {
+		if node.ProjectID.Valid {
+			if projectExplicit && projectID != node.ProjectID {
+				return pgtype.UUID{}, pgtype.UUID{}, errors.New("the module row does not belong to the selected project")
+			}
+			projectID = node.ProjectID
+		}
+		if node.ModuleID.Valid {
+			if moduleExplicit && moduleID != node.ModuleID {
+				return pgtype.UUID{}, pgtype.UUID{}, errors.New("the module row does not belong to the selected module")
+			}
+			moduleID = node.ModuleID
+		}
+		return projectID, moduleID, nil
 	}
 	parent, ok, err := meetingNodeParent(ctx, h.Queries, cc, node)
 	if err != nil {
@@ -673,12 +822,16 @@ func (h *Handler) meetingBaseDir(
 			return meetingDirPlan{}, errors.New("meeting sub-item not found on this board")
 		}
 		// A project row or the module row itself adds no segment: it names
-		// where the path already is, not a folder inside it.
+		// where the path already is, not a folder inside it. A board that was
+		// never reconciled can still carry a free-standing archive row (no
+		// parent, no project, no module binding); that row IS the archive
+		// folder, so its own segment must not be dropped.
 		depth, err := meetingNodeDepth(ctx, h.Queries, cc, nodeID)
 		if err != nil {
 			return meetingDirPlan{}, err
 		}
-		if depth == 2 {
+		archiveRow := depth == 2 || (!cc.cockpit.PlanReconciledAt.Valid && !node.ProjectID.Valid && !node.ModuleID.Valid)
+		if archiveRow {
 			name, err := meetingWorkItemFolderName(node)
 			if err != nil {
 				return meetingDirPlan{}, err
@@ -757,43 +910,14 @@ func (h *Handler) GetCockpitMeetingDestination(w http.ResponseWriter, r *http.Re
 	}
 	ctx := r.Context()
 
-	projectID := cc.cockpit.MeetingProjectID
-	projectExplicit := false
-	if v := strings.TrimSpace(r.URL.Query().Get("project_id")); v != "" {
-		id, err := util.ParseUUID(v)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid project_id")
-			return
-		}
-		projectID = id
-		projectExplicit = true
+	refs, badField, ok := meetingDestinationRefsFromQuery(r, cc)
+	if !ok {
+		writeError(w, http.StatusBadRequest, badField)
+		return
 	}
-	moduleID := cc.cockpit.MeetingModuleID
-	moduleExplicit := false
-	if v := strings.TrimSpace(r.URL.Query().Get("module_id")); v != "" {
-		id, err := util.ParseUUID(v)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid module_id")
-			return
-		}
-		moduleID = id
-		moduleExplicit = true
-	}
-	nodeID := cc.cockpit.MeetingNodeID
-	if _, sent := r.URL.Query()["node_id"]; sent {
-		v := strings.TrimSpace(r.URL.Query().Get("node_id"))
-		nodeID = pgtype.UUID{}
-		if v != "" {
-			id, err := util.ParseUUID(v)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid node_id")
-				return
-			}
-			nodeID = id
-		}
-	}
+	projectID, moduleID, nodeID := refs.projectID, refs.moduleID, refs.nodeID
 
-	projectID, moduleID, resolveErr := h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, projectExplicit, moduleExplicit)
+	projectID, moduleID, resolveErr := h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, refs.projectExplicit, refs.moduleExplicit)
 	if resolveErr != nil {
 		writeError(w, http.StatusBadRequest, resolveErr.Error())
 		return
@@ -949,40 +1073,15 @@ func (h *Handler) ProvisionCockpitMeeting(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	projectID := cc.cockpit.MeetingProjectID
-	projectExplicit := false
-	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
-		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ProjectID), "project_id")
-		if !ok {
-			return
-		}
-		projectID = id
-		projectExplicit = true
+	refs, badField, ok := meetingDestinationRefsFromJSON(req.ProjectID, req.ModuleID, req.NodeID, cc)
+	if !ok {
+		writeError(w, http.StatusBadRequest, badField)
+		return
 	}
-	moduleID := cc.cockpit.MeetingModuleID
-	moduleExplicit := false
-	if req.ModuleID != nil && strings.TrimSpace(*req.ModuleID) != "" {
-		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ModuleID), "module_id")
-		if !ok {
-			return
-		}
-		moduleID = id
-		moduleExplicit = true
-	}
-	nodeID := cc.cockpit.MeetingNodeID
-	if req.NodeID != nil {
-		nodeID = pgtype.UUID{}
-		if v := strings.TrimSpace(*req.NodeID); v != "" {
-			id, ok := parseUUIDOrBadRequest(w, v, "node_id")
-			if !ok {
-				return
-			}
-			nodeID = id
-		}
-	}
+	projectID, moduleID, nodeID := refs.projectID, refs.moduleID, refs.nodeID
 
 	var reconcileErr error
-	projectID, moduleID, reconcileErr = h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, projectExplicit, moduleExplicit)
+	projectID, moduleID, reconcileErr = h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, refs.projectExplicit, refs.moduleExplicit)
 	if reconcileErr != nil {
 		writeError(w, http.StatusBadRequest, reconcileErr.Error())
 		return
@@ -2044,44 +2143,15 @@ func (h *Handler) ScanCockpitMeetingFolders(w http.ResponseWriter, r *http.Reque
 	}
 	ctx := r.Context()
 
-	projectID := cc.cockpit.MeetingProjectID
-	projectExplicit := false
-	if v := strings.TrimSpace(r.URL.Query().Get("project_id")); v != "" {
-		id, err := util.ParseUUID(v)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid project_id")
-			return
-		}
-		projectID = id
-		projectExplicit = true
+	refs, badField, ok := meetingDestinationRefsFromQuery(r, cc)
+	if !ok {
+		writeError(w, http.StatusBadRequest, badField)
+		return
 	}
-	moduleID := cc.cockpit.MeetingModuleID
-	moduleExplicit := false
-	if v := strings.TrimSpace(r.URL.Query().Get("module_id")); v != "" {
-		id, err := util.ParseUUID(v)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid module_id")
-			return
-		}
-		moduleID = id
-		moduleExplicit = true
-	}
-	nodeID := cc.cockpit.MeetingNodeID
-	if _, sent := r.URL.Query()["node_id"]; sent {
-		v := strings.TrimSpace(r.URL.Query().Get("node_id"))
-		nodeID = pgtype.UUID{}
-		if v != "" {
-			id, err := util.ParseUUID(v)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid node_id")
-				return
-			}
-			nodeID = id
-		}
-	}
+	projectID, moduleID, nodeID := refs.projectID, refs.moduleID, refs.nodeID
 
 	resp := CockpitMeetingScanResponse{Entries: []CockpitMeetingScanEntry{}}
-	projectID, moduleID, err := h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, projectExplicit, moduleExplicit)
+	projectID, moduleID, err := h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, refs.projectExplicit, refs.moduleExplicit)
 	if err != nil {
 		resp.Error = err.Error()
 		writeJSON(w, http.StatusOK, resp)
@@ -2263,40 +2333,15 @@ func (h *Handler) ImportCockpitMeetingFolders(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	projectID := cc.cockpit.MeetingProjectID
-	projectExplicit := false
-	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
-		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ProjectID), "project_id")
-		if !ok {
-			return
-		}
-		projectID = id
-		projectExplicit = true
+	refs, badField, ok := meetingDestinationRefsFromJSON(req.ProjectID, req.ModuleID, req.NodeID, cc)
+	if !ok {
+		writeError(w, http.StatusBadRequest, badField)
+		return
 	}
-	moduleID := cc.cockpit.MeetingModuleID
-	moduleExplicit := false
-	if req.ModuleID != nil && strings.TrimSpace(*req.ModuleID) != "" {
-		id, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ModuleID), "module_id")
-		if !ok {
-			return
-		}
-		moduleID = id
-		moduleExplicit = true
-	}
-	nodeID := cc.cockpit.MeetingNodeID
-	if req.NodeID != nil {
-		nodeID = pgtype.UUID{}
-		if v := strings.TrimSpace(*req.NodeID); v != "" {
-			id, ok := parseUUIDOrBadRequest(w, v, "node_id")
-			if !ok {
-				return
-			}
-			nodeID = id
-		}
-	}
+	projectID, moduleID, nodeID := refs.projectID, refs.moduleID, refs.nodeID
 
 	var reconcileErr error
-	projectID, moduleID, reconcileErr = h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, projectExplicit, moduleExplicit)
+	projectID, moduleID, reconcileErr = h.reconcileMeetingNodeDestination(ctx, cc, projectID, moduleID, nodeID, refs.projectExplicit, refs.moduleExplicit)
 	if reconcileErr != nil {
 		writeError(w, http.StatusBadRequest, reconcileErr.Error())
 		return
