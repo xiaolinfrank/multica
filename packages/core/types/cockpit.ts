@@ -498,7 +498,10 @@ export type CockpitNodePatch = Partial<
     | "contract"
     | "source"
   >
->;
+> & {
+  /** What a rename/move/renumber does with the row's folder on disk. */
+  directory_sync?: "sync" | "defer" | "force";
+};
 
 export type CockpitPaymentPatch = Partial<
   Pick<CockpitPayment, "label" | "pay_date" | "amount" | "position">

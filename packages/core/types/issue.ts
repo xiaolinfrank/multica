@@ -231,6 +231,18 @@ export interface Issue {
    * empty-issue fallback must keep compiling.
    */
   work_item_id?: string | null;
+  /**
+   * The delivery folder's name, one segment under the work item (or module).
+   * Null until the folder is first needed; a project without a collaboration
+   * space never gets one. Optional for the same compatibility reason as
+   * module_id.
+   */
+  directory_name?: string | null;
+  /**
+   * The full delivery path, composed by the server for a detail response.
+   * List responses omit it; absence is not "no folder".
+   */
+  delivery_path?: string | null;
   position: number;
   // Ordered barrier group among sibling sub-issues (null = unstaged). The
   // parent assignee is woken when a stage closes while a later one waits;

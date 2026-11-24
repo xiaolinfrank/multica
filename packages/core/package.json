@@ -37,6 +37,7 @@
     "./issues": "./issues/index.ts",
     "./graph": "./graph/index.ts",
     "./cockpit": "./cockpit/index.ts",
+    "./directory": "./directory/index.ts",
     "./cockpit/queries": "./cockpit/queries.ts",
     "./cockpit/model": "./cockpit/model.ts",
     "./graph/queries": "./graph/queries.ts",

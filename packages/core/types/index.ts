@@ -1,3 +1,4 @@
+export type * from "./directory";
 export type * from "./cockpit-input";
 export type * from "./cockpit-governance";
 export type * from "./cockpit-read";

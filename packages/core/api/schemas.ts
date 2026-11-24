@@ -1,4 +1,6 @@
 import { z } from "zod";
+
+import { NodeDirectorySyncResultSchema } from "./directory-schemas";
 export {
   CockpitOverviewScopeSchema, CockpitOverviewIssueCountsSchema, CockpitAttentionItemSchema, CockpitAttentionPageSchema,
   CockpitExecutionOverviewItemSchema, CockpitExecutionOverviewPageSchema, CockpitRecentMeetingSchema, CockpitRecentMeetingPageSchema, CockpitOverviewDataSchema,
@@ -1557,6 +1559,10 @@ export const IssueSchema = z.object({
   // Same compatibility reasoning as module_id: a server that predates the
   // work-item filing omits the field entirely (S1/S4).
   work_item_id: z.string().nullable().default(null),
+  // The delivery folder's name and (detail only) its composed path. Absent on
+  // an older server; null means "not allocated yet".
+  directory_name: z.string().nullable().catch(null).default(null),
+  delivery_path: z.string().nullable().catch(null).optional(),
   position: z.number(),
   // Older backends predate `stage`; default to null so a missing field parses
   // cleanly into the non-optional Issue.stage (number | null).
@@ -1725,6 +1731,8 @@ export const ModuleSchema = z.object({
   updated_at: z.string(),
   issue_count: z.number().default(0),
   done_count: z.number().default(0),
+  // Present on a create/update that touched the folder; absent on reads.
+  directory_sync: NodeDirectorySyncResultSchema.optional().catch(undefined),
 }).loose();
 
 export const ListModulesResponseSchema = z.object({

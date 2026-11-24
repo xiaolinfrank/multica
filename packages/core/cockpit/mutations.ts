@@ -223,6 +223,9 @@ export function useCreateCockpitNode(wsId: string) {
 export function useUpdateCockpitNode(wsId: string) {
   return useCockpitRowMutation(
     wsId,
+    // `directory_sync` rides in the patch: the server decides what the folder
+    // does, and a 409 is thrown as a typed running-tasks refusal by the caller
+    // path that goes through cockpitWriteError.
     ({ id, patch }: { id: string; patch: CockpitNodePatch }) => api.updateCockpitNode(id, patch),
     ({ id, patch }, board) => ({
       ...board,
@@ -660,9 +663,9 @@ export function useCreateCockpitWorkItem(wsId: string) {
 export function useRenameCockpitWorkItem(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+    mutationFn: async ({ id, name, directorySync }: { id: string; name: string; directorySync?: "sync" | "defer" | "force" }) => {
       try {
-        const node = await api.updateCockpitNode(id, { name });
+        const node = await api.updateCockpitNode(id, directorySync ? { name, directory_sync: directorySync } : { name });
         // A malformed response parses to the empty node; a rename that does
         // not confirm the row and the name is not a rename.
         if (node.id !== id || node.name !== name.trim()) throw new CockpitUnconfirmedWriteError();
@@ -745,9 +748,10 @@ export function useDeleteCockpitWorkItem(wsId: string) {
 export function useRenumberCockpitChildren(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (nodeId: string) => {
+    mutationFn: async (vars: string | { nodeId: string; directorySync?: "sync" | "defer" | "force" }) => {
+      const { nodeId, directorySync } = typeof vars === "string" ? { nodeId: vars, directorySync: undefined as "sync" | "defer" | "force" | undefined } : vars;
       try {
-        return await api.renumberCockpitChildren(nodeId);
+        return await api.renumberCockpitChildren(nodeId, directorySync);
       } catch (error) {
         throw cockpitWriteError(error);
       }

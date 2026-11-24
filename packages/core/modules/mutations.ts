@@ -35,7 +35,10 @@ export function useUpdateModule() {
   return useMutation({
     mutationFn: ({ id, ...data }: { id: string } & UpdateModuleRequest) =>
       api.updateModule(id, data),
-    onMutate: ({ id, ...data }) => {
+    onMutate: ({ id, directory_sync: _directorySync, ...data }) => {
+      // `directory_sync` is a control field ("what does the rename do with the
+      // folder"), not row data — the row's `directory_sync` is the server's
+      // result, so it must not be overwritten with the request's mode.
       qc.cancelQueries({ queryKey: moduleKeys.list(wsId) });
       const prevList = qc.getQueryData<ListModulesResponse>(moduleKeys.list(wsId));
       const prevDetail = qc.getQueryData<Module>(moduleKeys.detail(wsId, id));

@@ -8,6 +8,10 @@ import type * as MeetingPreparation from "../types/cockpit-meeting-preparation";
 import * as PreparationSchemas from "./cockpit-meeting-preparation-schemas";
 import { cockpitPreparationCommandAcknowledged, cockpitPreparationEffectAcknowledged } from "../cockpit/meeting-preparation";
 import { CockpitMeetingProvisionWriteSchema, CockpitMeetingDestinationReadSchema } from "./schemas";
+import {
+  DirectoryFillResultSchema, IssueDirectoryEnsureResultSchema, IssueDirectoryStatusSchema,
+  NodeDirectorySyncResponseSchema, PlanDirectoryListSchema,
+} from "./directory-schemas";
 import type {
   CockpitMeetingLifecycleHeader,
   CockpitLifecycleCommandPage, CockpitLifecycleCommandDetail, CockpitLifecycleCommandResult, CockpitLifecycleAction,
@@ -28,6 +32,10 @@ import type { CockpitIssueArtifactContextPage } from "../types/cockpit-issue-art
 import { CockpitIssueArtifactContextPageSchema } from "./cockpit-issue-artifact-schemas";
 import { CockpitUnconfirmedReadError, CockpitUnconfirmedWriteError } from "../cockpit/errors";
 import type { CockpitNodeCreate, CockpitNodeCreated, CockpitWorkItemCreate, CockpitNodeMoved, CockpitRenumberResult, CockpitReconcileReport } from "../types/cockpit";
+import type {
+  DirectoryFillResult, IssueDirectoryEnsureResult, IssueDirectoryStatus,
+  NodeDirectorySyncResult, PlanDirectoryStatus,
+} from "../types/directory";
 import type { CockpitDirectoryPage, CockpitDirectoryPageQuery, CockpitDirectoryReceipt, CockpitDirectoryWrite, CockpitDirectoryNaturalKey } from "../types/cockpit-directory";
 import { CockpitDirectoryPageSchema, CockpitDirectoryReceiptSchema } from "./cockpit-directory-schemas";
 import { normalizedCockpitDirectoryQuery, cockpitDirectoryNaturalKey, cockpitDirectoryWriteAcknowledged } from "../cockpit/directory-page";
@@ -2211,16 +2219,58 @@ export class ApiClient {
   }
 
   /** Renumber a node's children to the order they are shown in (S3). */
-  async renumberCockpitChildren(nodeId: string): Promise<CockpitRenumberResult | null> {
+  async renumberCockpitChildren(nodeId: string, directorySync?: "sync" | "defer" | "force"): Promise<CockpitRenumberResult | null> {
     const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/renumber`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify(directorySync ? { directory_sync: directorySync } : {}),
     });
     const result = parseWithFallback<CockpitRenumberResult | null>(raw, CockpitRenumberResultSchema, null, {
       endpoint: "POST /api/cockpit/nodes/:id/renumber",
     });
     if (!result || result.id !== nodeId) throw new CockpitUnconfirmedWriteError();
     return result;
+  }
+
+  /** Folder status for up to 100 plan rows, read on demand. The plan tree
+   *  itself never stats the share; this is the panel's own request. */
+  async listPlanDirectories(wsId: string, nodeIds: string[], signal?: AbortSignal): Promise<PlanDirectoryStatus[]> {
+    const raw = await this.fetch<unknown>(
+      `/api/cockpit/plan/directories?node_ids=${nodeIds.map(encodeURIComponent).join(",")}`,
+      { headers: { "X-Workspace-ID": wsId }, signal },
+    );
+    const parsed = parseWithFallback(raw, PlanDirectoryListSchema, { items: [] }, {
+      endpoint: "GET /api/cockpit/plan/directories",
+    });
+    return parsed.items;
+  }
+
+  /** Create or rename one row's folder now. */
+  async syncCockpitNodeDirectory(wsId: string, nodeId: string, force = false): Promise<{ directory_sync: NodeDirectorySyncResult; directory?: PlanDirectoryStatus }> {
+    const raw = await this.fetch<unknown>(`/api/cockpit/nodes/${encodeURIComponent(nodeId)}/directory/sync`, {
+      method: "POST",
+      headers: { "X-Workspace-ID": wsId },
+      body: JSON.stringify({ force }),
+    });
+    return parseWithFallback(raw, NodeDirectorySyncResponseSchema, { directory_sync: { status: "failed" } }, {
+      endpoint: "POST /api/cockpit/nodes/:id/directory/sync",
+    });
+  }
+
+  /** Preview (default) or apply the plan-wide folder pass. */
+  async fillCockpitPlanDirectories(
+    wsId: string,
+    body: { apply?: boolean; project_id?: string; force?: boolean },
+    signal?: AbortSignal,
+  ): Promise<DirectoryFillResult> {
+    const raw = await this.fetch<unknown>("/api/cockpit/plan/directories/fill", {
+      method: "POST",
+      headers: { "X-Workspace-ID": wsId },
+      signal,
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(raw, DirectoryFillResultSchema, { applied: false, items: [], counts: {}, shared_collab_projects: [] }, {
+      endpoint: "POST /api/cockpit/plan/directories/fill",
+    });
   }
 
   /** Preview or apply the one-time plan reconcile (S2). A second apply is a
@@ -2250,6 +2300,28 @@ export class ApiClient {
     return parseWithFallback(raw, schema, emptyCockpitNode(""), {
       endpoint: "PATCH /api/cockpit/nodes/:id",
     });
+  }
+
+  /** The issue's delivery folder, read when the detail row opens. Never part
+   *  of the issue list. */
+  async getIssueDirectory(issueId: string, signal?: AbortSignal): Promise<IssueDirectoryStatus> {
+    const raw = await this.fetch<unknown>(`/api/issues/${encodeURIComponent(issueId)}/directory`, { signal });
+    return parseWithFallback(raw, IssueDirectoryStatusSchema, {
+      issue_id: issueId, project_id: null, project_collab_path: null, directory_name: null,
+      full_path: null, status: "invalid", running_tasks: [], shared_collab_projects: [],
+    }, { endpoint: "GET /api/issues/:id/directory" });
+  }
+
+  /** Allocate the issue's folder name if needed and create the folder (and
+   *  parents) on the server. This is the "open folder" path. */
+  async ensureIssueDirectory(issueId: string): Promise<IssueDirectoryEnsureResult> {
+    const raw = await this.fetch<unknown>(`/api/issues/${encodeURIComponent(issueId)}/directory/ensure`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    return parseWithFallback(raw, IssueDirectoryEnsureResultSchema, {
+      directory_name: null, full_path: null, status: "invalid", exists: false, shared_collab_projects: [],
+    }, { endpoint: "POST /api/issues/:id/directory/ensure" });
   }
 
   async deleteCockpitNode(id: string): Promise<void> {

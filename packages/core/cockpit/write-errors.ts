@@ -1,5 +1,7 @@
 import type { CockpitStatusNotInWorkflow } from "../types/cockpit";
+import type { RunningAgentTask } from "../types/directory";
 import { CockpitStatusNotInWorkflowBodySchema } from "../api/schemas";
+import { RunningAgentTasksRefusalSchema } from "../api/directory-schemas";
 import { parseWithFallback } from "../api/schema";
 
 // Plan-write errors (S3/S4). The server gives each refusal a reason a reader
@@ -32,6 +34,26 @@ export class CockpitPlanWriteRefusedError extends Error {
     this.message = message;
     this.code = code;
   }
+}
+
+/** A structural write (rename, move, renumber) refused because an agent is
+ *  working in the folder it would rename. The reader chooses "sync now"
+ *  (`force`) or "later" (`defer`); nothing was written. */
+export class CockpitRunningTasksError extends CockpitPlanWriteRefusedError {
+  readonly runningTasks: RunningAgentTask[];
+  constructor(message: string, runningTasks: RunningAgentTask[]) {
+    super(message, 409, "running_agent_tasks");
+    this.name = "CockpitRunningTasksError";
+    this.runningTasks = runningTasks;
+  }
+}
+
+/** Branch on this rather than on `.code`: a thrown error crosses package
+ *  boundaries where `instanceof` is not reliable. */
+export function isCockpitRunningTasksError(error: unknown): error is CockpitRunningTasksError {
+  return error instanceof CockpitRunningTasksError
+    || (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "running_agent_tasks"
+      && Array.isArray((error as { runningTasks?: unknown }).runningTasks));
 }
 
 /** A second apply of the one-time reconcile is refused with 409. Distinguish
@@ -67,6 +89,12 @@ export function cockpitWriteError(error: unknown): Error {
         message: parsed.error || message,
       });
     }
+  }
+  if (status === 409) {
+    const refusal = parseWithFallback<import("zod").z.infer<typeof RunningAgentTasksRefusalSchema> | null>(
+      body, RunningAgentTasksRefusalSchema, null, { endpoint: "plan write refusal (running tasks)" },
+    );
+    if (refusal) return new CockpitRunningTasksError(refusal.error || message, refusal.running_tasks);
   }
   return new CockpitPlanWriteRefusedError(message, status, (body as { code?: unknown })?.code as string | undefined);
 }

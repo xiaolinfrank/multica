@@ -106,6 +106,13 @@ export interface UpdateIssueRequest {
    *  cancelled removes the mark. Write-only — read it back through
    *  `listIssueDuplicates`. Control field: strip from optimistic patches. */
   duplicate_of_issue_id?: string;
+  /** Point the issue at an existing delivery folder name (one safe segment).
+   *  Human only; the server moves no files for it. */
+  directory_name?: string;
+  /** What a filing change (project/module/work item/parent) does with the
+   *  existing folder: sync (default), defer or force. Control field — strip
+   *  from optimistic patches. */
+  directory_sync?: "sync" | "defer" | "force";
 }
 
 /** Both sides of an issue's duplicate relation (MUL-7349). */

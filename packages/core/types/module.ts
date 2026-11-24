@@ -3,6 +3,8 @@
 // holds modules is workspace-scoped and invalidated like project caches.
 
 export interface Module {
+  /** Present when the write that produced this row also touched its folder. */
+  directory_sync?: import("./directory").NodeDirectorySyncResult;
   id: string;
   workspace_id: string;
   project_id: string;
@@ -31,6 +33,8 @@ export interface UpdateModuleRequest {
   title?: string;
   description?: string | null;
   position?: number;
+  /** What a rename does with the module's folder on disk. */
+  directory_sync?: "sync" | "defer" | "force";
 }
 
 export interface ListModulesResponse {
