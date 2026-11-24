@@ -734,6 +734,16 @@ describe("computeCockpitDigest", () => {
   it("puts overdue and blocked work under support, and drops cancelled work entirely", () => {
     expect(digest.support.items.map((item) => item.key)).toEqual(["blocked", "late"]);
   });
+
+  it("counts a leftover 100% row as overdue when its issues say it is not done", () => {
+    // §5.4: the hand-typed progress no longer decides once issues are counted.
+    const residue = node({ id: "residue", code: "R", kind: "work_item", status: "进行中", progress: 100, end_date: "2026-05-01" });
+    const counts = new Map<string, CockpitPlanTaskCount>([["residue", {
+      node_id: "residue", primary_total: 4, reference_total: 0, active: 3, done: 1, closed: 0,
+    }]]);
+    const withResidue = computeCockpitDigest(board({ nodes: [...nodes, residue] }), "2026-06-15", undefined, counts);
+    expect(withResidue.support.items.map((item) => item.key)).toContain("residue");
+  });
 });
 
 describe("cockpitStatusColor", () => {

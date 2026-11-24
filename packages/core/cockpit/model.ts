@@ -1277,7 +1277,7 @@ export function computeCockpitDigest(
       blocked.push(leaf);
       continue;
     }
-    if (isCockpitNodeActive(leaf) && isCockpitNodeLate(leaf, today)) overdue.push(leaf);
+    if (isCockpitNodeActive(leaf) && isCockpitNodeLate(leaf, today, taskCounts?.get(leaf.id))) overdue.push(leaf);
   }
   const support: CockpitDigestSupport = {
     blockedCount: blocked.length,
@@ -1917,9 +1917,13 @@ const NOT_STARTED_STATUSES = new Set(["待开始", "未开始", "not started", "
  * work has not begun. Distinct from late — nothing is overdue yet, but the row
  * is drifting, and drift is cheaper to fix than a miss.
  */
-export function isCockpitNodeDrifting(node: CockpitNode, today: string): boolean {
+export function isCockpitNodeDrifting(
+  node: CockpitNode,
+  today: string,
+  counts?: CockpitPlanTaskCount | null,
+): boolean {
   if (!node.start_date || !node.end_date) return false;
-  if (isCockpitNodeLate(node, today)) return false;
+  if (isCockpitNodeLate(node, today, counts)) return false;
   const status = node.status.trim();
   if (!NOT_STARTED_STATUSES.has(status) && !NOT_STARTED_STATUSES.has(status.toLowerCase())) {
     return false;
