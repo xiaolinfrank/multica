@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Blocks, ChevronRight, FolderKanban, ListTree } from "@multica/ui/icons";
-import { useWorkspaceId } from "@multica/core/hooks";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import {
@@ -27,7 +26,7 @@ const PAGE_SIZE = 20;
  *  one project's plan at a time (never the whole workspace), and search is the
  *  paged server selector — the same shape the ownership picker uses. */
 export function CockpitPlanNodePicker({
-  wsId: wsIdProp,
+  wsId,
   scope,
   label,
   value,
@@ -40,7 +39,9 @@ export function CockpitPlanNodePicker({
   open: controlledOpen,
   onOpenChange,
 }: {
-  wsId?: string;
+  /** Required: the picker renders in dialogs and tests, where a route-scoped
+   *  workspace hook is absent, and an empty workspace queries nothing. */
+  wsId: string;
   scope?: CockpitScope;
   label: string;
   /** The already-resolved code and name of the current link. */
@@ -54,8 +55,6 @@ export function CockpitPlanNodePicker({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const workspaceId = useWorkspaceId();
-  const wsId = wsIdProp ?? workspaceId;
   const { t } = useT("cockpit");
   const [internalOpen, setInternalOpen] = useState(false);
   const open = disabled ? false : controlledOpen ?? internalOpen;
@@ -76,6 +75,7 @@ export function CockpitPlanNodePicker({
     if (!open) {
       setText("");
       setSaveError("");
+      setPendingProject(null);
       return;
     }
     setExpandedProject(constrainedProjectId);
@@ -166,27 +166,43 @@ export function CockpitPlanNodePicker({
   };
 
   // A project row can be clicked before its plan arrives; the click asks for
-  // that project's plan and lands on the row once it is there.
+  // that project's plan and lands on the row once it is there. The pending
+  // click only survives while it still describes the expanded project: a plan
+  // that cannot answer, a missing row, or a move to another project cancels it
+  // rather than filing against whatever loads next.
   useEffect(() => {
-    if (!pendingProject || !rowForProject) return;
+    if (!pendingProject) return;
+    if (pendingProject !== expandedProject) {
+      setPendingProject(null);
+      return;
+    }
+    if (planUnavailableReason || (plan.isSuccess && !rowForProject)) {
+      setPendingProject(null);
+      return;
+    }
+    if (!rowForProject) return;
     setPendingProject(null);
     void choose(rowForProject.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingProject, rowForProject]);
+  }, [pendingProject, expandedProject, planUnavailableReason, plan.isSuccess, rowForProject]);
 
-  const projectRowButton = (projectId: string, title: string, rowId: string | null) => (
+  // A project row is only missing its plan row once that plan has actually
+  // been read: a collapsed row and a row still loading are both clickable, and
+  // clicking either asks for the plan and lands on the row when it arrives.
+  const projectRowButton = (projectId: string, title: string, rowId: string | null, missingRow: boolean) => (
     <button
       type="button"
-      disabled={saving || !rowId}
+      disabled={saving || missingRow}
       onClick={() => {
         if (rowId) void choose(rowId);
-        else {
+        else if (!saving) {
+          setExpandedModule(null);
           setExpandedProject(projectId);
           setPendingProject(projectId);
         }
       }}
       className="flex min-w-0 flex-1 items-center gap-1.5 rounded-xs px-1 py-1 text-left text-caption hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-      title={rowId ? title : t(($) => $.node_picker.project_row_missing)}
+      title={missingRow ? t(($) => $.node_picker.project_row_missing) : title}
     >
       <FolderKanban className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="truncate">{title}</span>
@@ -194,7 +210,7 @@ export function CockpitPlanNodePicker({
   );
 
   return (
-    <Popover open={open} onOpenChange={(next) => { if (!next) { setText(""); setSaveError(""); } setOpen(next); }}>
+    <Popover open={open} onOpenChange={(next) => { if (!next) { setText(""); setSaveError(""); setPendingProject(null); } setOpen(next); }}>
       <PopoverTrigger
         disabled={disabled}
         render={triggerRender ?? (
@@ -266,6 +282,10 @@ export function CockpitPlanNodePicker({
               {projects.map((project) => {
                 const expanded = expandedProject === project.id;
                 const rowId = expanded ? rowForProject?.id ?? null : null;
+                // Only a read plan that names no project row is a missing row.
+                // While it loads (or when it could not be read) the row stays
+                // clickable and the panel below says what happened.
+                const missingRow = expanded && plan.isSuccess && !planUnavailableReason && !rowId;
                 return (
                   <div key={project.id}>
                     <div className="flex min-w-0 items-center gap-1">
@@ -275,13 +295,14 @@ export function CockpitPlanNodePicker({
                         aria-label={`${t(($) => $.node_picker.toggle_project)} ${project.title}`}
                         className="grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground hover:text-foreground"
                         onClick={() => {
+                          setPendingProject(null);
                           setExpandedProject(expanded ? null : project.id);
                           setExpandedModule(null);
                         }}
                       >
                         <ChevronRight className={`size-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
                       </button>
-                      {projectRowButton(project.id, project.title, rowId)}
+                      {projectRowButton(project.id, project.title, rowId, missingRow)}
                     </div>
                     {expanded ? (
                       <div className="ml-4 space-y-0.5 border-l border-border/60 pl-1">
@@ -318,7 +339,7 @@ export function CockpitPlanNodePicker({
                                   </button>
                                   <button
                                     type="button"
-                                    disabled={saving || !row}
+                                    disabled={saving}
                                     onClick={() => {
                                       if (row) void choose(row.id);
                                       else setExpandedModule(module.id);
