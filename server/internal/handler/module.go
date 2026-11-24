@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/multica-ai/multica/server/internal/collabfs"
-	"github.com/multica-ai/multica/server/internal/localpaths"
-	"github.com/multica-ai/multica/server/internal/service"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,7 +12,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/multica-ai/multica/server/internal/collabfs"
+	"github.com/multica-ai/multica/server/internal/localpaths"
 	"github.com/multica-ai/multica/server/internal/logger"
+	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
@@ -325,19 +326,25 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 		moduleRow, hasRow = row, true
 	}
 	if params.Title.Valid && req.DirectoryName == nil {
-		base := module.Title
 		renameTo = collabfs.SanitizeFolderName(params.Title.String, 0)
 		if hasRow {
 			renameTo = collabfs.SanitizeFolderName(moduleRow.Code+params.Title.String, 0)
 		}
-		_ = base
 	}
 	currentFolder := module.DirectoryName.String
 	if hasRow && currentFolder == "" {
 		currentFolder = moduleRow.DirectoryName.String
 	}
 	willRename := renameTo != "" && renameTo != currentFolder
-	if willRename && syncMode == DirectorySyncSync {
+	// A project with no collaboration space has no folder to rename, so an
+	// agent working elsewhere is no reason to refuse the edit.
+	hasCollab := false
+	if project, err := h.Queries.GetProjectInWorkspace(r.Context(), db.GetProjectInWorkspaceParams{
+		ID: module.ProjectID, WorkspaceID: wsUUID,
+	}); err == nil {
+		hasCollab = project.CollabPath.Valid && strings.TrimSpace(project.CollabPath.String) != ""
+	}
+	if willRename && hasCollab && syncMode == DirectorySyncSync {
 		tasks, err := h.Queries.ListRunningAgentTasksForModules(r.Context(), db.ListRunningAgentTasksForModulesParams{
 			WorkspaceID: wsUUID, ModuleIds: []pgtype.UUID{module.ID},
 		})
@@ -356,6 +363,19 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 		slog.Error("update module failed", append(logger.RequestAttrs(r), "error", err)...)
 		writeError(w, http.StatusInternalServerError, "failed to update module")
 		return
+	}
+	// `module.directory_name` and its plan row are the same string by
+	// contract. An explicit folder name is a metadata edit, so the row follows
+	// it here; a title-driven rename goes through renameModuleFolder below,
+	// which writes both.
+	if req.DirectoryName != nil && hasRow {
+		if err := h.Queries.SetCockpitNodeDirectoryName(r.Context(), db.SetCockpitNodeDirectoryNameParams{
+			WorkspaceID: wsUUID, ID: moduleRow.ID, DirectoryName: *req.DirectoryName,
+		}); err != nil {
+			slog.Error("update module row folder failed", append(logger.RequestAttrs(r), "error", err)...)
+			writeError(w, http.StatusInternalServerError, "failed to update module folder")
+			return
+		}
 	}
 	resp := moduleToResponse(updated)
 	if willRename && syncMode != DirectorySyncDefer {

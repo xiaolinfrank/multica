@@ -1502,7 +1502,10 @@ func (h *Handler) UpdateCockpitNode(w http.ResponseWriter, r *http.Request) {
 	beforePD, _ := h.loadPlanDirectory(r.Context(), qtx, cc.workspaceID, current)
 	willChangeFolder := cc.cockpit.PlanReconciledAt.Valid && beforePD.kind == "work_item" &&
 		((req.Name != nil && strings.TrimSpace(*req.Name) != current.Name) || (parentTouched && params.ParentID != current.ParentID))
-	if willChangeFolder && syncMode == DirectorySyncSync {
+	// Only a project with a collaboration space has a folder to disturb; a
+	// plan-only board must not refuse a rename because an agent runs elsewhere.
+	hasCollab := beforePD.project.CollabPath.Valid && strings.TrimSpace(beforePD.project.CollabPath.String) != ""
+	if willChangeFolder && hasCollab && syncMode == DirectorySyncSync {
 		tasks, err := qtx.ListRunningAgentTasksForWorkItems(r.Context(), db.ListRunningAgentTasksForWorkItemsParams{
 			WorkspaceID: cc.workspaceID, WorkItemIds: []pgtype.UUID{current.ID},
 		})
