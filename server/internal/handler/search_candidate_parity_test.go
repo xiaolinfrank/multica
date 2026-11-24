@@ -317,6 +317,7 @@ func runSearchForParity(t *testing.T, label, query string, args []any) []searchP
 			&sr.issue.WorkItemID,
 			&sr.issue.Revision,
 			&sr.issue.DuplicateOfIssueID,
+			&sr.issue.DirectoryName,
 			&sr.matchSource,
 			&sr.matchedCommentContent,
 		); err != nil {
@@ -335,7 +336,8 @@ func runSearchForParity(t *testing.T, label, query string, args []any) []searchP
 }
 
 // buildLegacySearchQueryForParity is the parent commit's buildSearchQuery copied
-// verbatim except for its name and the two columns added since: duplicate_of_issue_id
+// verbatim except for its name and the columns added since: duplicate_of_issue_id
+// and directory_name
 // (MUL-7349) and work_item_id (plan-tree filing). Both queries project the same
 // columns so one scanner reads them. Keeping the original implementation here avoids
 // proving parity against a re-derived oracle that could share the new query's
@@ -580,7 +582,7 @@ func buildLegacySearchQueryForParity(phrase string, terms []string, queryNum int
 		i.assignee_type, i.assignee_id, i.creator_type, i.creator_id,
 		i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position,
 		i.start_date, i.due_date, i.created_at, i.updated_at, i.last_activity_at, i.number, i.project_id, i.module_id, i.work_item_id,
-		i.revision, i.duplicate_of_issue_id,
+		i.revision, i.duplicate_of_issue_id, i.directory_name,
 		%s AS match_source,
 		%s AS matched_comment_content
 	FROM issue i

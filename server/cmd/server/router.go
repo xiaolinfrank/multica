@@ -2186,6 +2186,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetIssue)
 					r.Put("/", h.UpdateIssue)
+					// S7: the delivery folder is read and created on demand —
+					// never as part of the issue list.
+					r.Get("/directory", h.GetIssueDirectory)
+					r.Post("/directory/ensure", h.EnsureIssueDirectory)
 					r.Post("/move", h.MoveIssue)
 					r.Delete("/", h.DeleteIssue)
 					r.Post("/comments/trigger-preview", h.PreviewCommentTriggers)
@@ -2381,6 +2385,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				// owns the code, parent and directory name. Agents may call it
 				// (§0 item 20), with an optional creation_key for retries.
 				r.Post("/work-items", h.CreateCockpitWorkItem)
+				// S7: folders are read and repaired on demand; the plan tree
+				// never stats the share itself.
+				r.Get("/plan/directories", h.ListCockpitPlanDirectories)
+				r.With(handler.RequireHumanActor).Post("/plan/directories/fill", h.FillCockpitPlanDirectories)
 				r.Get("/issues/{issueId}/primary-node", h.GetCockpitIssuePrimaryNode)
 				r.Get("/issues/{issueId}/actions", h.ListCockpitIssueActionSources)
 				r.Get("/issues/{issueId}/artifacts", h.ListCockpitIssueArtifactContexts)
@@ -2406,6 +2414,8 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Patch("/", h.UpdateCockpitNode)
 					// S3: renumber the children to the order they are shown in.
 					r.With(handler.RequireHumanActor).Post("/renumber", h.RenumberCockpitChildren)
+					// S7: create or rename this row's folder on demand.
+					r.With(handler.RequireHumanActor).Post("/directory/sync", h.SyncCockpitNodeDirectory)
 					r.Get("/operation-basis", h.GetNodeOperationBasis)
 					r.Delete("/", h.DeleteCockpitNode)
 					r.Put("/issues", h.SetCockpitNodeIssues)

@@ -101,6 +101,17 @@ type IssueResponse struct {
 	// (empty object when unset) so frontend code can `issue.metadata[key]`
 	// without nil-guarding the parent field.
 	Metadata map[string]any `json:"metadata"`
+	// DirectoryName is the delivery folder's name, one segment under the
+	// work item (or module). Null until the folder is first needed; a project
+	// without a collaboration space never gets one.
+	DirectoryName *string `json:"directory_name"`
+	// DeliveryPath is the full path composed from the issue's filing and
+	// directory_name. Detail responses only: it is pure database arithmetic,
+	// but a list does not need 200 copies of the same prefix.
+	DeliveryPath *string `json:"delivery_path,omitempty"`
+	// DirectorySync reports what a filing change did with the folders that
+	// follow the issue (the issue's own, and its sub-issues').
+	DirectorySync []NodeDirectorySync `json:"directory_sync,omitempty"`
 	// Properties is the custom-property value bag keyed by property definition
 	// UUID (see property.go). Always emitted, mirroring Metadata.
 	Properties  map[string]any          `json:"properties"`
@@ -525,6 +536,7 @@ func issueToResponse(i db.Issue, issuePrefix string) IssueResponse {
 		ProjectID:          uuidToPtr(i.ProjectID),
 		ModuleID:           uuidToPtr(i.ModuleID),
 		WorkItemID:         uuidToPtr(i.WorkItemID),
+		DirectoryName:      textToPtr(i.DirectoryName),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -565,6 +577,7 @@ func issueListRowToResponse(i db.ListIssuesRow, issuePrefix string) IssueRespons
 		ProjectID:          uuidToPtr(i.ProjectID),
 		ModuleID:           uuidToPtr(i.ModuleID),
 		WorkItemID:         uuidToPtr(i.WorkItemID),
+		DirectoryName:      textToPtr(i.DirectoryName),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -637,6 +650,7 @@ func openIssueRowToResponse(i db.ListOpenIssuesRow, issuePrefix string) IssueRes
 		ProjectID:          uuidToPtr(i.ProjectID),
 		ModuleID:           uuidToPtr(i.ModuleID),
 		WorkItemID:         uuidToPtr(i.WorkItemID),
+		DirectoryName:      textToPtr(i.DirectoryName),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -2716,6 +2730,14 @@ func (h *Handler) GetIssue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The delivery path is composed from rows already loaded, so the detail
+	// can show it without asking whether the folder exists.
+	if folder, err := h.loadIssueFolder(r.Context(), h.Queries, issue); err == nil {
+		if full := folder.fullPath(); full != "" {
+			resp.DeliveryPath = &full
+		}
+	}
+
 	if sourceContext, err := h.issueSourceContextDetail(r.Context(), issue); err == nil {
 		resp.SourceContext = sourceContext
 	} else if !errors.Is(err, pgx.ErrNoRows) {
@@ -3910,6 +3932,15 @@ type UpdateIssueRequest struct {
 	// no explicit null. Write-only: read the relation back from
 	// GET /api/issues/{id}/duplicates. Not accepted by batch updates.
 	DuplicateOfIssueID *string `json:"duplicate_of_issue_id,omitempty"`
+	// DirectoryName points the issue at a folder name people already use.
+	// Human only, one safe path segment, and it does not move any files: the
+	// folder is adopted where it is. The directory row reports a missing
+	// folder and offers to create it.
+	DirectoryName *string `json:"directory_name,omitempty"`
+	// DirectorySync says what a filing change does with the existing folder:
+	// sync (default) moves it, defer leaves it for later, force moves it even
+	// while an agent is working in it.
+	DirectorySync *string `json:"directory_sync,omitempty"`
 }
 
 func mergeIssueChannelMediaDescription(current, incoming string, base *string, attachments []db.Attachment) string {
@@ -4182,6 +4213,86 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		if field := triageLockedField(rawFields); field != "" {
 			writeIssueInTriage(w, field)
 			return
+		}
+	}
+	dirMode, validMode := parseDirectorySyncMode(rawFields)
+	if !validMode {
+		writeError(w, http.StatusBadRequest, "directory_sync must be sync, defer or force")
+		return
+	}
+	if req.DirectoryName != nil {
+		if !h.applyIssueDirectoryName(w, r, prevIssue, *req.DirectoryName) {
+			return
+		}
+	}
+	// Folder moves only matter when the filing itself changes.
+	filingTouched := false
+	for _, key := range []string{"project_id", "module_id", "work_item_id", "parent_issue_id"} {
+		if _, touched := rawFields[key]; touched {
+			filingTouched = true
+			break
+		}
+	}
+	requestedProject := prevIssue.ProjectID
+	if req.ProjectID != nil && strings.TrimSpace(*req.ProjectID) != "" {
+		if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ProjectID), "project_id"); ok {
+			requestedProject = parsed
+		} else {
+			return
+		}
+	}
+	requestedWorkItem := prevIssue.WorkItemID
+	if req.WorkItemID != nil && strings.TrimSpace(*req.WorkItemID) != "" {
+		if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.WorkItemID), "work_item_id"); ok {
+			requestedWorkItem = parsed
+		} else {
+			return
+		}
+	}
+	requestedModule := prevIssue.ModuleID
+	if req.ModuleID != nil && strings.TrimSpace(*req.ModuleID) != "" {
+		if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*req.ModuleID), "module_id"); ok {
+			requestedModule = parsed
+		} else {
+			return
+		}
+	}
+	filingWillChange := filingTouched &&
+		(requestedProject != prevIssue.ProjectID || requestedModule != prevIssue.ModuleID || requestedWorkItem != prevIssue.WorkItemID)
+	var beforeSubtree []db.ListIssueSubtreeDirectoryRowsRow
+	if filingWillChange {
+		beforeSubtree = h.subtreeDirectoryRows(r.Context(), h.Queries, prevIssue.WorkspaceID, prevIssue.ID)
+	}
+	if filingWillChange && dirMode == DirectorySyncSync && req.DirectoryName == nil {
+		hasFolder := false
+		for _, row := range beforeSubtree {
+			if row.DirectoryName.String != "" {
+				hasFolder = true
+				break
+			}
+		}
+		if hasFolder {
+			tasks, err := h.Queries.ListRunningAgentTasksForIssue(r.Context(), db.ListRunningAgentTasksForIssueParams{
+				WorkspaceID: prevIssue.WorkspaceID, IssueID: prevIssue.ID,
+			})
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to check running tasks")
+				return
+			}
+			if len(tasks) > 0 {
+				rows := make([]RunningTaskRef, 0, len(tasks))
+				for _, task := range tasks {
+					rows = append(rows, h.runningTaskRefs(r.Context(), prevIssue.WorkspaceID, []runningTask{
+						{task.TaskID, task.IssueID, task.IssueNumber, task.Status},
+					})...)
+				}
+				writeJSON(w, http.StatusConflict, map[string]any{
+					"code":          "running_agent_tasks",
+					"error":         "agent tasks are running in this issue's folder; sync now or defer",
+					"running_tasks": rows,
+				})
+				return
+			}
 		}
 	}
 
@@ -4530,6 +4641,28 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 
 	prefix := h.getIssuePrefix(r.Context(), issue.WorkspaceID)
 	resp := issueToResponse(issue, prefix)
+	// A hand-picked folder name is a database write only: the files stay put.
+	if req.DirectoryName != nil {
+		renamed, err := h.Queries.UpdateIssueDirectoryName(r.Context(), db.UpdateIssueDirectoryNameParams{
+			ID: issue.ID, WorkspaceID: issue.WorkspaceID, DirectoryName: *req.DirectoryName,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to set the delivery folder name")
+			return
+		}
+		issue.DirectoryName = renamed.DirectoryName
+		resp.DirectoryName = textToPtr(renamed.DirectoryName)
+	}
+	// The folders that follow a filing change, the issue's own and its
+	// sub-issues'. A missing source folder is not a failure: most historical
+	// issues never had one.
+	if filingWillChange && dirMode != DirectorySyncDefer && req.DirectoryName == nil && len(beforeSubtree) > 0 {
+		afterSubtree := h.subtreeDirectoryRows(r.Context(), h.Queries, issue.WorkspaceID, issue.ID)
+		moves := h.planIssueDirectoryMoves(r.Context(), h.Queries, issue.WorkspaceID, beforeSubtree, afterSubtree)
+		if results := h.moveIssueDirectories(r.Context(), h.Queries, moves); len(results) > 0 {
+			resp.DirectorySync = results
+		}
+	}
 	slog.Info("issue updated", append(logger.RequestAttrs(r), "issue_id", id, "workspace_id", workspaceID)...)
 
 	h.fillStatusCategory(r.Context(), issue.WorkspaceID, &resp)
@@ -5552,12 +5685,30 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		// flag describe this commit, including when another writer edited a
 		// nullable field after the initial per-item validation. It also owns the
 		// refile of a moved issue's subtree.
+		batchFiling := filingFieldsTouched(rawUpdates)
+		var batchBefore []db.ListIssueSubtreeDirectoryRowsRow
+		if batchFiling {
+			batchBefore = h.subtreeDirectoryRows(r.Context(), h.Queries, prevIssue.WorkspaceID, prevIssue.ID)
+		}
 		issue, lockedPrev, _, refiled, writeErr := h.updateIssueAtomically(
 			writeCtx, prevIssue.WorkspaceID, params, rawUpdates, nil, nil, nil, issueStatusGuard, handoff != nil,
 		)
 		err = writeErr
 		if err == nil {
 			prevIssue = lockedPrev
+			// The batch has no per-issue confirmation UI, so a running agent
+			// defers the folder move rather than failing the whole write; the
+			// directory row reports the mismatch and offers to sync.
+			if batchFiling && len(batchBefore) > 0 {
+				after := h.subtreeDirectoryRows(r.Context(), h.Queries, issue.WorkspaceID, issue.ID)
+				moves := h.planIssueDirectoryMoves(r.Context(), h.Queries, issue.WorkspaceID, batchBefore, after)
+				if len(moves) > 0 {
+					tasks, _ := h.Queries.ListRunningAgentTasksForIssue(r.Context(), db.ListRunningAgentTasksForIssueParams{WorkspaceID: issue.WorkspaceID, IssueID: issue.ID})
+					if len(tasks) == 0 {
+						h.moveIssueDirectories(r.Context(), h.Queries, moves)
+					}
+				}
+			}
 		}
 
 		if err != nil {
