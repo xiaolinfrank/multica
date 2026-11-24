@@ -2,15 +2,13 @@ package handler
 
 import (
 	"context"
-
 	"encoding/json"
 	"errors"
-	"github.com/go-chi/chi/v5"
 	"net/http"
-	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -55,10 +53,22 @@ func (f issueFolder) collabPath() string {
 }
 
 func (f issueFolder) fullPath() string {
-	if f.collabPath() == "" || len(f.segments) == 0 {
+	if f.blocked != "" {
 		return ""
 	}
-	return filepath.Join(append([]string{f.collabPath()}, f.segments...)...)
+	moduleDir, workItemDir := (*string)(nil), (*string)(nil)
+	if f.module != nil {
+		moduleDir = &f.module.DirectoryName.String
+	}
+	if f.workItem != nil {
+		workItemDir = &f.workItem.DirectoryName.String
+	}
+	issueDir := f.issue.DirectoryName.String
+	path, err := collabfs.DeliveryPath(f.project.CollabPath.String, moduleDir, workItemDir, &issueDir)
+	if err != nil {
+		return ""
+	}
+	return path
 }
 
 // loadIssueFolder resolves the project/module/work item chain. Every hop is a
@@ -255,7 +265,17 @@ func (h *Handler) EnsureIssueDirectory(w http.ResponseWriter, r *http.Request) {
 	status := h.issueDirectoryStatus(ctx, h.Queries, folder)
 	if folder.blocked == "" && len(folder.segments) > 0 {
 		if err := collabfs.EnsureDir(folder.collabPath(), folder.segments...); err != nil {
-			status.Status = "missing"
+			// Keep the disk's own category: a share that is away is not a
+			// missing folder, and an unsafe entry is not something a retry
+			// fixes by waiting.
+			switch {
+			case errors.Is(err, collabfs.ErrRootUnavailable):
+				status.Status = "root_unavailable"
+			case errors.Is(err, collabfs.ErrDirectoryChanged), errors.Is(err, collabfs.ErrOutsideRoot):
+				status.Status = "invalid"
+			default:
+				status.Status = "missing"
+			}
 			status.Error = err.Error()
 		} else {
 			status.Status = "ok"
