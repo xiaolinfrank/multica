@@ -5,12 +5,14 @@ import { LayoutGroup, motion, useReducedMotion } from "motion/react";
 import { cockpitSurfacePath, type CockpitScope, type CockpitSurface } from "@multica/core/cockpit";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { buttonVariants } from "@multica/ui/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@multica/ui/components/ui/dropdown-menu";
+import { MoreHorizontal, ShieldCheck } from "@multica/ui/icons";
 import { cn } from "@multica/ui/lib/utils";
-import { CalendarDays, ChartNoAxesGantt, Files, LayoutDashboard, Layers3, MessageSquare, ShieldCheck } from "lucide-react";
+import { CalendarDays, ChartNoAxesGantt, LayoutDashboard, Layers3, MessageSquare } from "lucide-react";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 
-export function CockpitShell({ surface, scope, title, scopeControl, secondaryNavigation, actions, notice, pendingChangeCount, artifactsAvailable = false, focusedWorkbench = false, scopeSummary, children }: {
+export function CockpitShell({ surface, scope, title, scopeControl, secondaryNavigation, actions, notice, pendingChangeCount, focusedWorkbench = false, scopeSummary, children }: {
   surface: CockpitSurface;
   scope: CockpitScope;
   title?: React.ReactNode;
@@ -19,7 +21,6 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
   actions?: React.ReactNode;
   notice?: React.ReactNode;
   pendingChangeCount?: number;
-  artifactsAvailable?: boolean;
   focusedWorkbench?: boolean;
   scopeSummary?: React.ReactNode;
   children: React.ReactNode;
@@ -31,15 +32,19 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
   const navigationRef = useRef<HTMLElement>(null);
   useEffect(() => {
     navigationRef.current?.querySelector<HTMLAnchorElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [surface, artifactsAvailable, pendingChangeCount, scope.projectId, scope.moduleId]);
+  }, [surface, pendingChangeCount, scope.projectId, scope.moduleId]);
   const navigation = [
     { value: "chat" as const, label: t(($) => $.shell.chat), Icon: MessageSquare },
     { value: "work" as const, label: t(($) => $.shell.overview), Icon: LayoutDashboard },
     { value: "plan" as const, label: t(($) => $.shell.plan), Icon: ChartNoAxesGantt },
     { value: "meetings" as const, label: t(($) => $.shell.meetings), Icon: CalendarDays },
-    ...(artifactsAvailable ? [{ value: "artifacts" as const, label: t(($) => $.shell.artifacts), Icon: Files }] : []),
-    { value: "governance" as const, label: t(($) => $.shell.governance), Icon: ShieldCheck },
   ];
+  // Governance moved into "More" in S9: it keeps its surface, deep links and
+  // active state, but no longer occupies a top-level tab.
+  const governanceActive = surface === "governance";
+  const pendingBadge = pendingChangeCount !== undefined && pendingChangeCount > 0
+    ? <span className="cockpit-nav-badge rounded-full px-1.5 text-micro tabular-nums" title={t(($) => $.governance.pending)}>{pendingChangeCount}</span>
+    : null;
   return <section data-cockpit-design="silver" data-surface={surface} className="cockpit-skin cockpit-frame @container/cockpit-shell flex h-full min-h-0 min-w-0 flex-col" aria-label={t(($) => $.work_overview.cockpit)}>
     <header className={cn("cockpit-masthead shrink-0 px-4 pt-3 lg:px-6", focusedWorkbench && "@max-[80rem]/cockpit-shell:pt-2")}>
       <div className={cn("cockpit-identity grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 pb-3 @min-[40rem]/cockpit-shell:grid-cols-[auto_minmax(0,1fr)_auto]", focusedWorkbench && "@max-[80rem]/cockpit-shell:hidden")}>
@@ -56,8 +61,19 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
           {surface === value && <motion.span aria-hidden className="cockpit-nav-active" layoutId="active-surface"
             transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 36 }} />}
           <Icon className="size-4" aria-hidden /><span>{label}</span>
-          {value === "governance" && pendingChangeCount !== undefined && pendingChangeCount > 0 && <span className="cockpit-nav-badge rounded-full px-1.5 text-micro tabular-nums" title={t(($) => $.governance.pending)}>{pendingChangeCount}</span>}
         </AppLink>)}
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<button type="button" aria-current={governanceActive ? "page" : undefined}
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "cockpit-nav-link cockpit-nav-more shrink-0 gap-2 rounded-lg px-3 whitespace-nowrap focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset", governanceActive && "font-semibold bg-accent text-accent-foreground hover:bg-accent/80")} />}>
+            <MoreHorizontal className="size-4" aria-hidden /><span>{t(($) => $.shell.more)}</span>{pendingBadge}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem render={<AppLink href={cockpitSurfacePath(paths.cockpit(), "governance", scope)} aria-current={governanceActive ? "page" : undefined} />}>
+              <ShieldCheck className="size-4" aria-hidden /><span>{t(($) => $.shell.governance)}</span>
+              {pendingChangeCount !== undefined && pendingChangeCount > 0 && <span className="ml-auto text-caption tabular-nums">{pendingChangeCount}</span>}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </nav></LayoutGroup>
       <div className={cn("cockpit-scope min-w-0 max-w-full @min-[64rem]/cockpit-shell:max-w-[26rem] @min-[64rem]/cockpit-shell:shrink-0 @min-[64rem]/cockpit-shell:[&_button]:max-w-44", focusedWorkbench && "@max-[80rem]/cockpit-shell:hidden")}>{scopeControl}</div>
       </div>

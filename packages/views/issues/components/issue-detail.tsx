@@ -127,8 +127,7 @@ import { PluginPanelSection } from "../../plugins";
 import { PullRequestsSection } from "./pull-requests-section";
 import { CockpitNodesSection } from "./cockpit-nodes-section";
 import { CockpitMeetingsSection } from "./cockpit-meetings-section";
-import { CockpitIssueInputManifest, CockpitIssueInputManifestInspector } from "../../cockpit/components/cockpit-issue-input-manifest";
-import { CockpitArtifactContexts } from "./cockpit-artifact-contexts";
+import { CockpitIssueInputManifestInspector } from "../../cockpit/components/cockpit-issue-input-manifest";
 import { useGitHubSettings } from "@multica/core/github";
 import { DeliverablesSection } from "./deliverables/deliverables-section";
 import { DeliverablesOverview } from "./deliverables/deliverables-overview";
@@ -3120,8 +3119,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
           against, including the meeting that filed it. Editable from either
           end; hides itself when the workspace keeps no register. */}
       <CockpitMeetingsSection issueId={issue.id} />
-      <CockpitArtifactContexts issueId={issue.id} />
-      <CockpitIssueInputManifest issueId={issue.id} />
+      {/* Artifacts/acceptance and input-manifest entries are hidden for one
+          release (S9); the components, URLs and backend stay available. */}
 
       {/* Deliverables — the files this issue's comments delivered. Hidden
           while there are none. */}

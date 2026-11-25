@@ -49,7 +49,7 @@ describe("unified cockpit shell", () => {
     expect(screen.queryByRole("navigation", { name: "Cockpit sections" })).not.toBeInTheDocument();
     expect(board).not.toHaveBeenCalled();
   });
-  it("mounts the bounded work overview and available destinations without mounting the complete board", () => {
+  it("mounts the bounded work overview and keeps only the four primary destinations in the top navigation", () => {
     route.params = new URLSearchParams("tab=work");
     setup();
     expect(screen.getByRole("region", { name: "Work overview" })).toBeInTheDocument();
@@ -57,8 +57,26 @@ describe("unified cockpit shell", () => {
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Execution plan" })).toHaveAttribute("href", "/acme/cockpit?tab=plan");
     expect(screen.getByRole("link", { name: "Meetings" })).toHaveAttribute("href", "/acme/cockpit?tab=meetings");
-    expect(screen.getByRole("link", { name: "Artifacts" })).toHaveAttribute("href", "/acme/cockpit?tab=artifacts");
-    expect(screen.getByRole("link", { name: "Governance" })).toHaveAttribute("href", "/acme/cockpit?tab=governance");
+    const sections = screen.getByRole("navigation", { name: enCockpit.shell.navigation });
+    expect(within(sections).getAllByRole("link")).toHaveLength(4);
+    expect(within(sections).queryByRole("link", { name: "Artifacts" })).not.toBeInTheDocument();
+    expect(within(sections).queryByRole("link", { name: "Governance" })).not.toBeInTheDocument();
+    expect(within(sections).getByRole("button", { name: enCockpit.shell.more })).toBeVisible();
+  });
+
+  it("opens Governance from the More menu with the current scope and a pending badge", async () => {
+    vi.mocked(api.listCockpitChangePage).mockResolvedValue({ workspace_id: "ws-1", scope: { project_id: "p1", module_id: "m1", project_title: "", module_title: "" }, q: "", status: "pending", items: [], counts: { pending: 3, decided: 0 }, total: 3, next_cursor: null });
+    route.params = new URLSearchParams("tab=plan&project=p1&module=m1");
+    setup();
+    const sections = screen.getByRole("navigation", { name: enCockpit.shell.navigation });
+    await waitFor(() => expect(within(sections).getByRole("button", { name: /More/ })).toHaveTextContent("3"));
+    const more = within(sections).getByRole("button", { name: /More/ });
+    expect(more).not.toHaveAttribute("aria-current", "page");
+
+    await userEvent.setup().click(more);
+    const governance = await screen.findByRole("menuitem", { name: /Governance/ });
+    expect(governance).toHaveAttribute("href", "/acme/cockpit?tab=governance&project=p1&module=m1");
+    expect(governance).toHaveTextContent("3");
   });
 
   it("keeps unavailable services out of navigation and explains an old deep link without issuing their reads", () => {
@@ -89,7 +107,8 @@ describe("unified cockpit shell", () => {
     const sections = screen.getByRole("navigation", { name: enCockpit.shell.navigation });
     const views = screen.getByRole("navigation", { name: enCockpit.plan_views.navigation });
     expect(sections).not.toContainElement(views);
-    expect(within(sections).getAllByRole("link")).toHaveLength(6);
+    expect(within(sections).getAllByRole("link")).toHaveLength(4);
+    expect(within(sections).getByRole("button", { name: enCockpit.shell.more })).toBeVisible();
     expect(within(views).getAllByRole("link")).toHaveLength(6);
     expect(within(sections).getByRole("link", { current: "page" })).toHaveAccessibleName("Execution plan");
     expect(within(views).getByRole("link", { current: "page" })).toHaveAccessibleName("Budget & payments");
@@ -108,7 +127,8 @@ describe("unified cockpit shell", () => {
       route.params = new URLSearchParams("tab=governance&project=p1&module=m1");
       const { rerender } = setup();
       const sections = screen.getByRole("navigation", { name: enCockpit.shell.navigation });
-      const governance = within(sections).getByRole("link", { current: "page" });
+      const governance = within(sections).getByRole("button", { current: "page" });
+      expect(governance).toHaveAccessibleName(enCockpit.shell.more);
       expect(scrollIntoView.mock.contexts).toContain(governance);
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
       const links = within(sections).getAllByRole("link");

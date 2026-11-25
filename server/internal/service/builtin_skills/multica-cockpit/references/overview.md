@@ -72,16 +72,19 @@ not an approval endpoint. Read current object state and revision before a write;
 an overview may become stale. `version_number` gives provenance, not authority to
 approve a newer version. Unresolved history is not truncated by the meeting window.
 
-The cockpit root opens this work overview by default; the menu order is unchanged.
+The cockpit root opens this work overview by default. The top navigation lists
+Chat, Work overview, Execution plan and Meetings; Governance (待确认 / 变更审阅)
+lives under the More menu at its end, and its pending count shows there. Direct
+`?tab=governance` and the legacy `?tab=changes` links still open it.
 `?tab=chat` explicitly opens Mika-only chat: new conversations target the built-in
 `system_key=mika` agent directly without an agent picker; platform chat remains
 multi-agent. Explicit chat session links remain chat links, while object targets
 retain precedence. Project selection supplies durable project context through the daemon.
 The work surface uses the same workspace/project/module scope; `?tab=work` (legacy `?tab=overview`) also opens
 this overview. `?view=operations` preserves
-the original business overview; `?tab=gantt|finance|changes|meetings` selects an
-existing area — 执行甘特图 (the execution plan board), 财务支出, 待确认 (governance)
-and 会议管理 (the meeting register) respectively. `?node=<uuid>` opens L3 and `?meeting=<uuid>&action=<uuid>` opens an
+the original business overview; `?tab=plan` and `?tab=gantt|finance` select the
+execution plan board and its 财务支出 view, while `?tab=meetings` opens 会议管理
+(the meeting register). `?node=<uuid>` opens L3 and `?meeting=<uuid>&action=<uuid>` opens an
 action in its meeting. A meeting target takes precedence over a conflicting node.
 
 The new overview omits full issue/minutes bodies and legacy relationship arrays.

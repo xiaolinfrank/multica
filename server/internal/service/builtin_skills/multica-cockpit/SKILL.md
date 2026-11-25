@@ -1,6 +1,6 @@
 ---
 name: multica-cockpit
-description: "Use when reading or editing the workspace cockpit: 项目总览 / 执行甘特图 / 财务支出 / 待确认 / 会议管理 (`?tab=work|gantt|finance|changes|meetings`), project → module → work item plan, dates, owners, progress, payments, meetings, minutes, formal review and collab copies."
+description: "Use when reading or editing the workspace cockpit: 项目总览 / 执行甘特图 / 财务支出 / 待确认 / 会议管理 (`?tab=work|plan|meetings|governance`), project → module → work item plan, dates, owners, progress, payments, meetings, minutes, formal review and collab copies."
 user-invocable: false
 allowed-tools: Bash(multica *)
 ---
@@ -16,7 +16,7 @@ multica cockpit plan --project-id <project-uuid> --output json
 multica cockpit node get <code-or-uuid> --output json
 ```
 
-The cockpit is one shared board per workspace; writes broadcast to open clients. Its home is a chat with the built-in Mika (`system_key=mika`, even when renamed); work overview, execution gantt, meeting register, finance and changes (governance) remain separate tabs.
+The cockpit is one shared board per workspace; writes broadcast to open clients. Its home is a chat with the built-in Mika (`system_key=mika`, even when renamed); Chat, Work overview, Execution plan and Meetings are the primary tabs, and Governance (待确认 / 变更审阅) sits under the More menu.
 A new cockpit chat retains its initial project/module scope in its first visible message (`*` means all); scope is context, not authorization — changing it starts a new compose, not a silent retargeting of an existing conversation.
 
 Load this skill for cockpit requests. Read first, explain the target and expected change, then use the commands below.

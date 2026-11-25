@@ -70,7 +70,7 @@ export function CockpitPage() {
     label={t(($) => $.header.title)} placeholder={t(($) => $.header.title_placeholder)} displayClassName="text-title-sm font-semibold" /> : undefined;
   if (isReport && metadata && today) return <><CockpitInputInspector wsId={wsId} accountId={metadata.actor.user_id} /><CockpitReport wsId={wsId} scope={scope} asOf={today} returnHref={returnHref} /></>;
   return <><CockpitInputInspector wsId={wsId} accountId={metadata?.actor.user_id ?? ""} /><CockpitShell surface={surface} scope={scope} title={title} focusedWorkbench={focusedWorkbench}
-    scopeSummary={<span className="block truncate" title={scopeLabel}>{scopeLabel}</span>} pendingChangeCount={pendingChanges.data?.counts.pending} artifactsAvailable={metadata?.capabilities?.artifacts === true}
+    scopeSummary={<span className="block truncate" title={scopeLabel}>{scopeLabel}</span>} pendingChangeCount={pendingChanges.data?.counts.pending}
     actions={metadata && <>{metadata.actor.is_human && surface !== "chat" && <CockpitSavedViewsControl wsId={wsId} userId={metadata.actor.user_id} capture={() => captureCockpitSavedView(wsId, navigation.searchParams)}
       onApply={(definition) => { applyCockpitSavedView(wsId, definition); navigation.push(cockpitSavedViewPath(navigation.pathname, definition)); }} />}
       <AppLink href={reportHref} className={buttonVariants({ variant: "outline", size: "sm" })}><Presentation className="size-4" />{t(($) => $.report.title)}</AppLink></>}
