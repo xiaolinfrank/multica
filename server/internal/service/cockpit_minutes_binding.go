@@ -15,7 +15,7 @@ import (
 
 type CockpitMinutesBindingCommand struct {
 	WorkspaceID, MeetingID, ActorID, IssueID pgtype.UUID
-	ExpectedRevision                        int64
+	ExpectedRevision                         int64
 }
 
 func (s *IssueService) beginMinutesBinding(ctx context.Context, p CockpitMinutesBindingCommand) (pgx.Tx, *db.Queries, cockpitMinutesState, error) {

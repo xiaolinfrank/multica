@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/testutil"
 	"github.com/multica-ai/multica/server/internal/util"
-	"github.com/multica-ai/multica/server/pkg/dbid"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
+	"github.com/multica-ai/multica/server/pkg/dbid"
 )
 
 func TestCockpitInputReadCursorCannotCrossIdentityFilterOrPage(t *testing.T) {
@@ -144,7 +144,6 @@ func TestCockpitInputReadAttachmentsArePagedExistingIssueFacts(t *testing.T) {
 		t.Fatalf("missing Issue fabricated empty picker: %v", err)
 	}
 }
-
 
 func inputReferenceFixture(t *testing.T) (cockpitWorkflowFixture, CockpitInputRead, pgtype.UUID, pgtype.UUID) {
 	t.Helper()

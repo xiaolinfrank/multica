@@ -67,7 +67,9 @@ func TestCockpitArtifactExplicitInputManifestKeepsCrossIssueProvenance(t *testin
 	sourceIssue := parseTestUUID(t, f.Issue(t, "Original collection task"))
 	// The generic fixture inserts its numbered Issue directly; synchronize the
 	// allocator before the real canonical Review Issue is created below.
-	if _,err:=f.Pool.Exec(ctx,"UPDATE workspace SET issue_counter=GREATEST(issue_counter,(SELECT COALESCE(max(number),0) FROM issue WHERE workspace_id=$1)) WHERE id=$1",f.ws);err!=nil{t.Fatal(err)}
+	if _, err := f.Pool.Exec(ctx, "UPDATE workspace SET issue_counter=GREATEST(issue_counter,(SELECT COALESCE(max(number),0) FROM issue WHERE workspace_id=$1)) WHERE id=$1", f.ws); err != nil {
+		t.Fatal(err)
+	}
 	manifest := dbid.NewV7()
 	f.Insert(t, "cockpit_issue_input_manifest_version", testutil.Cols{"id": manifest, "workspace_id": f.ws, "issue_id": sourceIssue, "version_number": 3, "command_key": dbid.NewV7(), "request_hash": strings.Repeat("a", 64), "receipt": testutil.Raw("'{}'::jsonb"), "manifest_hash": strings.Repeat("b", 64), "item_total": 0, "required_total": 0, "created_by": f.owner})
 	// Artifact teardown must precede the fixture manifest/Issue cleanup because

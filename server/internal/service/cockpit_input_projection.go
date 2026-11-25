@@ -557,7 +557,6 @@ func inputProjectionTransferActions(dto *CockpitInputTransferMetadata, p Cockpit
 	}
 }
 
-
 // Principal DTOs can come from retained receipts. Invalid identities are an
 // integrity failure, never anonymous identities or a missing-object response.
 func inputParsePrincipalIDs(p CockpitInputPrincipal) (inputProjectionActor, error) {
