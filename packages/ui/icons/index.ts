@@ -99,6 +99,7 @@ export const CreditCard = /* @__PURE__ */ createIcon("CreditCard", glyph.CreditC
 export const Crown = /* @__PURE__ */ createIcon("Crown", glyph.Crown);
 export const Database = /* @__PURE__ */ createIcon("Database", glyph.Database);
 export const Delete = /* @__PURE__ */ createIcon("Delete", glyph.Delete);
+export const Diamond = /* @__PURE__ */ createIcon("Diamond", glyph.Diamond);
 export const Dices = /* @__PURE__ */ createIcon("Dices", glyph.Dices);
 export const Download = /* @__PURE__ */ createIcon("Download", glyph.Download);
 export const Ellipsis = /* @__PURE__ */ createIcon("Ellipsis", glyph.MoreHorizontal);
