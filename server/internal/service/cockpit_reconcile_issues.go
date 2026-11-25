@@ -453,6 +453,13 @@ func (st *cockpitReconciler) apply() error {
 			if err := st.q.SetCockpitNodeDirectoryName(st.ctx, db.SetCockpitNodeDirectoryNameParams{WorkspaceID: st.ws, ID: n.id, DirectoryName: n.directory.String}); err != nil {
 				return err
 			}
+			if n.moduleID.Valid {
+				if info := st.moduleIdx[n.moduleID]; info != nil && (!info.module.DirectoryName.Valid || info.module.DirectoryName.String == "") {
+					if err := st.q.SetModuleDirectoryName(st.ctx, db.SetModuleDirectoryNameParams{WorkspaceID: st.ws, ID: n.moduleID, DirectoryName: n.directory.String}); err != nil {
+						return err
+					}
+				}
+			}
 		}
 	}
 	for _, n := range created {
@@ -462,6 +469,13 @@ func (st *cockpitReconciler) apply() error {
 		if n.directory.Valid && n.directory.String != "" {
 			if err := st.q.SetCockpitNodeDirectoryName(st.ctx, db.SetCockpitNodeDirectoryNameParams{WorkspaceID: st.ws, ID: n.id, DirectoryName: n.directory.String}); err != nil {
 				return err
+			}
+			if n.moduleID.Valid {
+				if info := st.moduleIdx[n.moduleID]; info != nil && (!info.module.DirectoryName.Valid || info.module.DirectoryName.String == "") {
+					if err := st.q.SetModuleDirectoryName(st.ctx, db.SetModuleDirectoryNameParams{WorkspaceID: st.ws, ID: n.moduleID, DirectoryName: n.directory.String}); err != nil {
+						return err
+					}
+				}
 			}
 		}
 	}

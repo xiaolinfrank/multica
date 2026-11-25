@@ -152,6 +152,24 @@ func TestCockpitPlanReconcileRestoresStructureAndFilesIssues(t *testing.T) {
 		t.Fatalf("merged group children = %d, want 8", got)
 	}
 
+	// Backfilled module rows (NewModuleNodes) strip the code prefix from the
+	// module title too, and keep the module's existing directory_name synced
+	// onto the L2 row so directory fill never builds double-prefixed names.
+	var mod0106Title string
+	if err := f.Pool.QueryRow(ctx, "SELECT title FROM module WHERE workspace_id=$1 AND id=$2", f.ws, module0106).Scan(&mod0106Title); err != nil {
+		t.Fatal(err)
+	}
+	if mod0106Title != "资源调研" {
+		t.Fatalf("backfilled module 01.06 title = %q, want %q", mod0106Title, "资源调研")
+	}
+	var mod0106Dir, node0106Dir string
+	if err := f.Pool.QueryRow(ctx, "SELECT COALESCE(m.directory_name, ''), COALESCE(n.directory_name, '') FROM module m JOIN cockpit_node n ON n.module_id=m.id WHERE m.workspace_id=$1 AND m.id=$2", f.ws, module0106).Scan(&mod0106Dir, &node0106Dir); err != nil {
+		t.Fatal(err)
+	}
+	if mod0106Dir == "" || mod0106Dir != node0106Dir {
+		t.Fatalf("module/node directory_name drift: module=%q node=%q", mod0106Dir, node0106Dir)
+	}
+
 	// A second apply is refused: once the plan is reconciled its codes are
 	// fixed, and re-applying would renumber rows reordered since. Idempotency
 	// is proven by the dry run reporting nothing left to change.
@@ -1122,5 +1140,37 @@ func TestCockpitPlanReconcileKeepsTitlePrefixRootNumber(t *testing.T) {
 	}
 	if reflowCode == "" || reflowCode == "00" {
 		t.Fatalf("reflow root code = %q", reflowCode)
+	}
+}
+
+func TestReconcileCockpitPlanPreservesExistingModuleDirectoryName(t *testing.T) {
+	f := newCockpitWorkflowFixture(t)
+	ctx := context.Background()
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := f.Project(t, "01 高质量数据集")
+	mod := f.Module(t, project, "01.04 组学数据产出协同")
+	if _, err := f.Pool.Exec(ctx, "UPDATE module SET directory_name = $1 WHERE id = $2", "01.04 组学数据产出协同", mod); err != nil {
+		t.Fatal(err)
+	}
+	l1 := parseTestUUID(t, f.Insert(t, "cockpit_node", testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "code": "01", "name": "高质量数据集", "position": 0}))
+	l2 := parseTestUUID(t, f.Insert(t, "cockpit_node", testutil.Cols{"workspace_id": f.WorkspaceID, "cockpit_id": board.ID, "parent_id": l1, "code": "01.04", "name": "组学数据产出协同", "position": 0}))
+
+	report, err := f.issues.ReconcileCockpitPlan(ctx, CockpitReconcileInput{WorkspaceID: f.ws, ActorID: f.owner, Apply: true},
+		func(context.Context, *db.Queries, db.Cockpit) (string, error) { return "snap", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Blockers) != 0 {
+		t.Fatalf("blockers: %v", report.Blockers)
+	}
+	var modDir, nodeDir string
+	if err := f.Pool.QueryRow(ctx, "SELECT COALESCE(m.directory_name, ''), COALESCE(n.directory_name, '') FROM module m JOIN cockpit_node n ON n.id = $1 WHERE m.id = $2", l2, mod).Scan(&modDir, &nodeDir); err != nil {
+		t.Fatal(err)
+	}
+	if modDir != "01.04 组学数据产出协同" || nodeDir != "01.04 组学数据产出协同" {
+		t.Fatalf("directory_name = module %q / node %q, want both preserved as %q", modDir, nodeDir, "01.04 组学数据产出协同")
 	}
 }

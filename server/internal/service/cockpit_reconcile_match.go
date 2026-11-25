@@ -364,6 +364,7 @@ func (st *cockpitReconciler) assignModules() {
 		st.order = append(st.order, id)
 		st.children[root.id] = append(st.children[root.id], id)
 		bound[module.ID] = id
+		st.stripModuleTitle(module)
 		st.report.NewModuleNodes = append(st.report.NewModuleNodes, CockpitReconcileNewModuleNode{ModuleID: util.UUIDToString(module.ID), NodeID: util.UUIDToString(id), Code: code, Title: info.name, Source: source})
 	}
 	st.rebuildTree()
@@ -642,6 +643,15 @@ func (st *cockpitReconciler) computeDirectoryNames() {
 		if n.directory.Valid && n.directory.String != "" {
 			st.report.DirectoryNames = append(st.report.DirectoryNames, CockpitReconcileDirectory{NodeID: util.UUIDToString(id), Code: n.code, Name: n.name, DirectoryName: n.directory.String, Source: "existing"})
 			continue
+		}
+		// Keep a bound module's existing folder name when it already has one so
+		// the L2 row and its module never drift onto separate NAS folders.
+		if st.depth(id) == 1 && n.moduleID.Valid {
+			if info := st.moduleIdx[n.moduleID]; info != nil && info.module.DirectoryName.Valid && info.module.DirectoryName.String != "" {
+				n.directory = info.module.DirectoryName
+				st.report.DirectoryNames = append(st.report.DirectoryNames, CockpitReconcileDirectory{NodeID: util.UUIDToString(id), Code: n.code, Name: n.name, DirectoryName: n.directory.String, Source: "existing"})
+				continue
+			}
 		}
 		name := n.code + n.name
 		n.directory = pgtype.Text{String: name, Valid: true}
