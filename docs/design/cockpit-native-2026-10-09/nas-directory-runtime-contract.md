@@ -1,5 +1,7 @@
 # N1 会议目录准备运行合同
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 日期：2026-10-11。状态：**N1 已实现并在 agent 3 验收、部署常驻**。9092–9104 包含三表、11 个独立索引与保护，共 13 对；26 文件已冻结并通过临时 schema 验证，专用测试库与常驻向前迁移完成，业务验收详见[验收记录](review-meeting-directory-2026-10-11.md)。本稿取代 [NAS 后端草案](nas-input-backend-contract.md) 中 N1 的未定部分，沿用 [交互草案](nas-input-interaction-contract.md)；保留已部署阶段 L 的会议准备与取消处置。
 
 本片只有可靠目录准备：检查现有绑定、预览固定路径、保存一次明确授权、逐步骤补缺、准确回读与接手。没有文件候选浏览、复制输入、转写、Agent 派发或 NAS 发布。本片不创建 Issue；原 provision 里的任务行为仍使用原 canonical 入口并单独回报。

@@ -1,5 +1,7 @@
 # NAS 人机协作空间：驾驶舱原生工作流设计
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 日期：2026-10-09。状态：总体设计，部分实现。固定纪要NAS副本与持久操作已在阶段D落地，实际边界见[nas-export-contract.md](./nas-export-contract.md)及[开发记录](./implementation-status.md)。以下其余目标概念不等于已实现。本文补充 [主提案](./proposal.md) 的产出物、NAS 与自动化部分。原设计阶段仅只读源码并编写提案；当前实现和验收范围以关联的合同/开发记录为准，不将目标概念当成已上线能力。
 
 ## 1. 目标与边界

@@ -1,5 +1,7 @@
 # 通用成果与 L3 验收合同
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 > **2026-10-12 总纲修订**：「当前通过的验收结论不可撤销（last_approved 只前移）」被原则 2 取代（切片 R2：revoke_approval）；「已通过历史不改写、needs_reacceptance 提示漂移」属事件层与提示层，保留。 详见[设计总纲](./design-principles-2026-10-12.md)与[评审记录](./review-2026-10-12.md)。
 
 本合同承接 proposal 中的“执行与证据链”。代码候选已通过 agent 3 隔离验收，尚未部署常驻或生产；实际状态见[开发进度](./implementation-status.md)。新增 fork 编号范围已确认扩至 9000–9999，本批为 9000–9064，另以 9065 修正保留关系查询；不修改已应用迁移，不将正式成果混入纪要版本表，不把附件名称分组当作版本身份。

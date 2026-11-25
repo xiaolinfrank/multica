@@ -1,5 +1,7 @@
 # NAS 输入资料与目录准备：交互实施草案
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 日期：2026-10-11。状态：**设计草案，未实现、未验收**。本文件收敛 [NAS 专项设计](./nas-workspace.md) 的 N1 / N2，以及[交互恢复审计](./interaction-recovery-audit.md#会议议题批次及-nas-下一步2026-10-11)所列断点。阶段 L 模板、取消和归档产品继续冻结；本文件不改变其接口或发布范围。
 
 本文定义入口、呈现、确认与恢复要求，不指定已存在的新表、路由、命令名或权限字段。实现前由领域与 core 合同确定具体 DTO、预算和服务能力。自动目录观察、转写、OCR、批量历史导入和跨主机调度不因本草案而视作可用。

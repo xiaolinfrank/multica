@@ -1,5 +1,7 @@
 # 工作总览：入口、口径与有界读取
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 更新：2026-10-10。此文描述本批实现合同，验证结果另见 [implementation-status.md](./implementation-status.md)。
 
 ## 入口与闭环

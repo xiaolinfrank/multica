@@ -1,5 +1,7 @@
 # 驾驶舱原生化：剩余范围与完成标准
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 更新：2026-10-12（同日增补[设计总纲](./design-principles-2026-10-12.md)与可逆性验收）。用户要求持续开发直到已批准设计全部完成。本文件把剩余范围与可观察的验收条件固定下来；实现、验证和常驻部署分别记录，不以单一切片完成代替整体完成。此前完成项见[开发进度](./implementation-status.md)。
 
 | 工作线 | 完成标准 | 当前状态 |

@@ -1,5 +1,7 @@
 # Artifact history scale verification on agent 3
 
+> **Status: Historical.** The remote development host described here is retired. Current development, runtime/API checks, and browser acceptance run in this checkout's managed local environment; see the repository root `AGENTS.md`.
+
 This is an opt-in measurement of the real artifact database/read models. It is separate from the earlier 100,000-Issue / 20,000-meeting fixture. No Agent, external object store or NAS is contacted. The coordinating Mac may compile the test binary; execution belongs exclusively to `fosun_agent_3` and its dedicated `multica_test` database.
 
 The runner requires `MULTICA_RUN_COCKPIT_ARTIFACT_SCALE=1`, `USER=fosun_agent_3`, `DATABASE_URL` equal to the verified `TEST_DATABASE_URL`, and a database name ending in `_test`. Stop the isolated QA API/Web and acquire the existing single-run test lock first. The resident application and its database remain untouched. Migrations 9000–9064 must already be applied by the designated migration runner.

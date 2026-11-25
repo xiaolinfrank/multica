@@ -1,5 +1,7 @@
 # Agent 3 Redis integration tests
 
+> **Status: Historical.** The remote development host described here is retired. Current development, runtime/API checks, and browser acceptance run in this checkout's managed local environment; see the repository root `AGENTS.md`.
+
 Run this selection on `fosun_agent_3`. Uploaded test artifacts live under `~/var/multica-dev-test/suite`, separately from the running application in `~/var/multica-dev`. The coordinating Mac may build binaries and perform static checks; it is not the test environment.
 
 ## Dedicated dependencies

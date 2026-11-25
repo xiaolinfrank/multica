@@ -1,5 +1,7 @@
 # Multica 驾驶舱原生化：架构与体验提案
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 日期：2026-10-09。状态：第二轮设计提案，待评审；本轮不实施产品变更。
 
 配套设计：

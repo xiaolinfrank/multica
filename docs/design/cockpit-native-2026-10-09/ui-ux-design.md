@@ -1,5 +1,7 @@
 # Multica 项目驾驶舱：独立 UI / UX 设计规格
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 > 2026-10-13：会议部分已由用户裁定简化，当前方案见[会议管理简化](../cockpit-native-2026-10-13/simplification.md)。议题、准备模板、会议资料四通道、会议固定成果关联、三栏工作台和行动跟进均不再是实施目标；下文保留历史设计/验收证据。
 
 

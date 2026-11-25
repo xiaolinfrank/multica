@@ -1,5 +1,7 @@
 # 工作如何由 Issue 承接
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 > **2026-10-12 总纲修订**：「启动纪要任务后执行门禁永久放行」的 release 描述随切片 R1 修订为可改的就绪条件；「评审 Issue 完成≠通过」「发布是业务命令」等核心规则保留。 详见[设计总纲](./design-principles-2026-10-12.md)与[评审记录](./review-2026-10-12.md)。
 
 日期：2026-10-09。状态：第二轮设计提案；用于明确执行边界，不表示已新增 Issue 类型或自动化规则。

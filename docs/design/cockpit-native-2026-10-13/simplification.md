@@ -1,5 +1,7 @@
 # 会议管理简化
 
+> **Status: Partially superseded.** The simplifications here still hold, and later work went further: the unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, the four-level delivery directory, hidden artifacts/input entries, and Governance moved under the More menu. The running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and root `AGENTS.md` are authoritative.
+
 2026-10-13 用户裁定；替代 R4 议题工作台以及此前准备模板、会议输入资料收集、会议固定成果关联和行动跟进的交互方案。三条总纲仍成立：关联即属性、确认可逆、投影而非状态机。
 
 ## 唯一主流程

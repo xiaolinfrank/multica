@@ -30,9 +30,9 @@ Multica is a task management platform where people and agents collaborate on iss
 
 Use `Makefile`, workspace `package.json` files, and `pnpm-workspace.yaml` for current commands and versions. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and worktree operations.
 
-- For this deployment, the designated test environment is `fosun_agent_3` (`10.35.182.2`), under `~/var/multica-dev`. The coordinating Mac and its local worktrees are for development, builds, and static checks; do not provision or treat a local service stack as the test environment.
-- Run runtime/API, Redis integration, and browser acceptance verification on agent 3. Identify the host in verification reports; local checks never count as agent 3 acceptance. Inspect the existing remote configuration and [scripts/dev-node-sync.sh](scripts/dev-node-sync.sh) before synchronization or service operations; preserve the remote environment rather than copying production configuration.
-- Redis integration on agent 3 uses [scripts/test-redis.sh](scripts/test-redis.sh) and the separate `~/var/multica-dev-test/redis.env` profile. Test Redis is disposable and distinct from application Redis; see [the operator guide](docs/development/agent3-redis-tests.md) for binary-only execution when Go is unavailable on the test host.
+- Local development, runtime/API checks, and browser verification use this checkout's managed local environment (API on `:18080`, web on `:13000`). Do not target a retired remote development host.
+- Run Go database tests against the separate test database (`multica_test`, initialized via `scripts/ensure-test-db.sh .env` or `make test`); never point tests at the local development database (`multica`).
+- Production runs on a separate host; keep production read-only during development and never run production deployments, migrations, or writes without explicit human confirmation.
 - Use the checkout's managed environment: `make up`, `make status`, `make down`. `make down` preserves data; `make destroy` removes the environment and its data.
 - Worktrees share PostgreSQL but have isolated databases/ports. Use the environment scripts and `.env.worktree`; do not copy the main checkout's `.env` or manually create a database through an assumed PostgreSQL instance.
 - Regenerate sqlc with `make sqlc` after SQL changes.

@@ -1,5 +1,7 @@
 # N2 原始输入：后端实施合同
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 日期：2026-10-12。状态：**N2 实施与验收中。9105–9142 已在 4713783dc 冻结，并在 agent 3 独立测试库应用；9143 到期恢复索引也已单独验证并应用，测试库账本为 829 条。常驻环境仍为 N1，N2 尚未完成真实页面、真实 NAS 与大文件整体验收。** N1 目录准备唯一合同为[目录准备运行合同](nas-directory-runtime-contract.md)，本文不重复其状态机、表或权限。[交互合同](nas-input-interaction-contract.md)保留入口与恢复要求。
 
 N2 首片必须同时交付：浏览器直接上传、受管 NAS 手动选择、独立输入身份与固定版本、会议/议题引用、已有 Issue 的版本化输入清单、真实 Run 的固定清单与交付门禁。无需 L3、纪要工作包、评审人或虚构 Attachment。登记不创建任务，不发起 Review，不自动确认材料齐备；转写、OCR、自动监视、递归摄取和任意 Agent 执行不在本片。

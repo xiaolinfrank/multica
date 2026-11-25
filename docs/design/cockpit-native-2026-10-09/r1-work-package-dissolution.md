@@ -1,5 +1,7 @@
 # R1 实施合同：工作包解散与纪要任务关联多条化（2026-10-12）
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 依据[设计总纲](./design-principles-2026-10-12.md)原则 1/2/3，取代 [work-package-contract](./work-package-contract.md)（已注记）。本合同规定 R1 的目标模型与兼容边界；实现与验证记录进 implementation-status。
 
 ## 目标模型

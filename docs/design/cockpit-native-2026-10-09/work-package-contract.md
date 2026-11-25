@@ -1,5 +1,7 @@
 # 会议工作包首批实现合同
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 > **2026-10-12 总纲修订**：本合同的工作包单绑定、启用终态、release 冻结与门禁焊接设计已被原则 1/2 取代（切片 R1），**整份待重写**；在重写前本文仅描述已部署实现的现状，新开发不得按本文扩展。 详见[设计总纲](./design-principles-2026-10-12.md)与[评审记录](./review-2026-10-12.md)。
 
 2026-10-09。承接 implementation-status.md 后续会议闭环；本文件记录首批实际实现范围与接口；评审人交接已由[交接与恢复合同](./reviewer-handoff-contract.md)扩展。

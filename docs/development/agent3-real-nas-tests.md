@@ -1,5 +1,7 @@
 # agent 3 真实 NAS 验证
 
+> **Status: Historical.** The remote development host described here is retired. Current development, runtime/API checks, and browser acceptance run in this checkout's managed local environment; see the repository root `AGENTS.md`.
+
 ## 当前结论
 
 2026-10-10，正式执行器新增的显式 `create_only` 模式已在 `fosun_agent_3`（`10.35.182.2`）的真实 `/Volumes/人机协作空间` SMB 挂载上通过文件系统和 PostgreSQL 后台执行链验证。原 `atomic` 模式的独占提交限制仍在，系统不会自动降级。此次尚未部署常驻环境；新界面的浏览器整体验收另行记录。

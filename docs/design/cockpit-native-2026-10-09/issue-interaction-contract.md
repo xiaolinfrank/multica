@@ -1,5 +1,7 @@
 # Issue 操作依据与批量结果合同
 
+> **Status: Superseded / partially superseded.** This document records an earlier cockpit design. The current source of truth is the running code, `server/internal/workspacecontext/collaboration-v1.md`, the built-in `multica-cockpit` skill, and the repository root `AGENTS.md`. The unified project → module → work item → issue tree, single ownership through `issue.work_item_id`, four-level delivery directories, hidden artifacts/input entries, and Governance under the More menu supersede the interaction details below.
+
 2026-10-11，实现合同；操作依据、批量回执和层级事务已提交后端 `b2f191fc0`。agent 3 完整 handler 回归 2640 个父用例通过，1 个既有外部联网用例按门控跳过；界面浏览器验收和常驻部署已完成，见[验证报告](implementation/agent3-issue-operation-validation.json)及[部署报告](implementation/agent3-operation-resident-deployment.json)。本批不新增 DDL，不改变既有业务权限或自动执行规则；读依据用于解释和引导，写事务中的实际校验始终权威。
 
 ## 现有事实与不能混淆的边界
