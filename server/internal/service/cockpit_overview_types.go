@@ -13,8 +13,10 @@ type CockpitOverviewQuery struct {
 type CockpitOverviewScope struct {
 	WorkspaceID  string  `json:"workspace_id"`
 	ProjectID    *string `json:"project_id"`
+	ProjectCode  string  `json:"project_code,omitempty"`
 	ProjectTitle string  `json:"project_title"`
 	ModuleID     *string `json:"module_id"`
+	ModuleCode   string  `json:"module_code,omitempty"`
 	ModuleTitle  string  `json:"module_title"`
 	AsOf         string  `json:"as_of"`
 	GeneratedAt  string  `json:"generated_at"`
@@ -105,8 +107,10 @@ type CockpitExecutionOverviewItem struct {
 	Code          string                     `json:"code"`
 	Name          string                     `json:"name"`
 	ProjectID     string                     `json:"project_id"`
+	ProjectCode   string                     `json:"project_code,omitempty"`
 	ProjectTitle  string                     `json:"project_title"`
 	ModuleID      string                     `json:"module_id"`
+	ModuleCode    string                     `json:"module_code,omitempty"`
 	ModuleTitle   string                     `json:"module_title"`
 	PlanOwner     string                     `json:"plan_owner"`
 	PlanStatus    string                     `json:"plan_status"`

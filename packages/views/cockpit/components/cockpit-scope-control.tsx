@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cockpitScopedPath, cockpitScopeModulesOptions, cockpitScopeProjectsOptions, type CockpitScope } from "@multica/core/cockpit";
+import { formatCodedTitle } from "@multica/core/projects/coded-title";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
@@ -12,17 +13,19 @@ import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { CockpitFlowPaging, useCockpitSearch } from "./cockpit-task-flow";
 
-export function CockpitScopeControl({ wsId, scope, projectTitle, moduleTitle }: {
-  wsId: string; scope: CockpitScope; projectTitle?: string; moduleTitle?: string;
+export function CockpitScopeControl({ wsId, scope, projectCode, projectTitle, moduleCode, moduleTitle }: {
+  wsId: string; scope: CockpitScope; projectCode?: string; projectTitle?: string; moduleCode?: string; moduleTitle?: string;
 }) {
   const { t } = useT("cockpit");
   const navigation = useNavigation();
   const select = (next: CockpitScope) => navigation.push(cockpitScopedPath(navigation.pathname, navigation.searchParams, next));
+  const selectedProjectLabel = formatCodedTitle(projectCode, projectTitle);
+  const selectedModuleLabel = formatCodedTitle(moduleCode, moduleTitle);
   return <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label={t(($) => $.shell.scope)}>
-    <CockpitScopePicker wsId={wsId} kind="project" projectId={null} selectedId={scope.projectId} selectedTitle={projectTitle ?? ""}
+    <CockpitScopePicker wsId={wsId} kind="project" projectId={null} selectedId={scope.projectId} selectedTitle={selectedProjectLabel}
       onSelect={(projectId) => select({ projectId, moduleId: null })} />
     {scope.projectId ? <CockpitScopePicker key={scope.projectId} wsId={wsId} kind="module" projectId={scope.projectId}
-      selectedId={scope.moduleId} selectedTitle={moduleTitle ?? ""} onSelect={(moduleId) => select({ ...scope, moduleId })} />
+      selectedId={scope.moduleId} selectedTitle={selectedModuleLabel} onSelect={(moduleId) => select({ ...scope, moduleId })} />
       : scope.moduleId ? <span role="alert" className="max-w-80 text-caption text-destructive">{t(($) => $.shell.module_needs_project)}</span>
         : <span className="text-caption text-muted-foreground">{t(($) => $.shell.module_scope_hint)}</span>}
   </div>;
@@ -63,12 +66,15 @@ export function CockpitScopePicker({ wsId, kind, projectId, selectedId, selected
         {(query.isError || (query.isSuccess && !data)) ? <div role="alert" className="space-y-2 text-caption text-destructive"><p>{kind === "module" ? t(($) => $.binding.modules_failed) : t(($) => $.binding.load_failed)}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>{t(($) => $.binding.retry)}</Button></div>
           : query.isPending || changing ? <div role="status" className="flex items-center gap-2 px-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.issues.searching)}</div>
-            : data && <><ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain">{data.items.map((item) => <li key={item.id}>
+            : data && <><ul className="max-h-64 space-y-1 overflow-y-auto overscroll-contain">{data.items.map((item) => {
+              const itemLabel = formatCodedTitle(item.code, item.title);
+              return <li key={item.id}>
               <Button type="button" variant={item.id === selectedId ? "secondary" : "ghost"} className="h-auto min-h-9 w-full justify-start whitespace-normal text-left"
-                aria-label={item.title} aria-pressed={item.id === selectedId} onClick={() => select(item.id)}>
-                <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden /><span className="line-clamp-2 min-w-0 break-words" title={item.title}>{item.title}</span>
+                aria-label={itemLabel} aria-pressed={item.id === selectedId} onClick={() => select(item.id)}>
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden /><span className="line-clamp-2 min-w-0 break-words" title={itemLabel}>{itemLabel}</span>
                 {item.id === selectedId && <Check className="ml-auto size-3.5 shrink-0" aria-hidden />}
-              </Button></li>)}</ul>
+              </Button></li>;
+            })}</ul>
               {data.items.length === 0 && <div className="space-y-2 px-2 text-caption text-muted-foreground"><p>{t(($) => $.task_flow.no_matches)}</p>{!q && emptyAction}</div>}</>}
         {data ? <CockpitFlowPaging page={cursors.length} shown={data.items.length} total={data.total} hasNext={Boolean(data.next_cursor)} busy={query.isFetching || changing}
           onPrevious={() => { if (cursors.length > 1) setCursors(cursors.slice(0, -1)); }} onNext={() => { if (data.next_cursor) setCursors([...cursors, data.next_cursor]); }} />

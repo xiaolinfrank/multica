@@ -6,6 +6,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { selectRecentContexts, useRecentContextStore, type RecentContextEntry } from "@multica/core/chat";
 import { issueDetailOptions } from "@multica/core/issues/queries";
 import { projectDetailOptions } from "@multica/core/projects/queries";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import type { Issue, Project } from "@multica/core/types";
 import type { MentionItem } from "../../editor/extensions/mention-suggestion";
 import { useNavigation } from "../../navigation";
@@ -34,10 +35,10 @@ function issueToMentionItem(
   };
 }
 
-function projectToMentionItem(project: Pick<Project, "id" | "title" | "description" | "icon" | "status">, group: "current" | "recent"): MentionItem {
+function projectToMentionItem(project: Pick<Project, "id" | "code" | "title" | "description" | "icon" | "status">, group: "current" | "recent"): MentionItem {
   return {
     id: project.id,
-    label: project.title,
+    label: formatProjectTitle(project),
     type: "project",
     description: project.description ?? undefined,
     icon: project.icon,

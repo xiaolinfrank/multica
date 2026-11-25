@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { moduleListOptions } from "@multica/core/modules/queries";
+import { formatModuleTitle } from "@multica/core/projects/coded-title";
 import {
   useDeleteModule,
   useReorderModules,
@@ -104,7 +105,9 @@ function SortableModuleRow({
         />
       ) : (
         <>
-          <span className="min-w-0 flex-1 truncate text-caption">{module.title}</span>
+          <span className="min-w-0 flex-1 truncate text-caption" title={formatModuleTitle(module)}>
+            {formatModuleTitle(module)}
+          </span>
           <span className="shrink-0 text-micro text-muted-foreground tabular-nums">
             {module.issue_count}
           </span>

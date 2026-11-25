@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Blocks, ChevronRight, FolderKanban, ListTree } from "@multica/ui/icons";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatCodedTitle, sortByCode } from "@multica/core/projects/coded-title";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import {
   cockpitPlanOptions,
@@ -84,7 +85,7 @@ export function CockpitPlanNodePicker({
 
   const { data: allProjects = [] } = useQuery(projectListOptions(wsId));
   const projects = useMemo(
-    () => (constrainedProjectId ? allProjects.filter((project) => project.id === constrainedProjectId) : allProjects),
+    () => sortByCode(constrainedProjectId ? allProjects.filter((project) => project.id === constrainedProjectId) : allProjects),
     [allProjects, constrainedProjectId],
   );
 
@@ -114,7 +115,7 @@ export function CockpitPlanNodePicker({
     enabled: open && !searchMode && expandedProject !== null,
   });
   const visibleModules = useMemo(
-    () => (constrainedModuleId ? modules.filter((module) => module.id === constrainedModuleId) : modules),
+    () => sortByCode(constrainedModuleId ? modules.filter((module) => module.id === constrainedModuleId) : modules),
     [modules, constrainedModuleId],
   );
 
@@ -282,6 +283,7 @@ export function CockpitPlanNodePicker({
               {projects.map((project) => {
                 const expanded = expandedProject === project.id;
                 const rowId = expanded ? rowForProject?.id ?? null : null;
+                const projectLabel = formatCodedTitle(project.code, project.title);
                 // Only a read plan that names no project row is a missing row.
                 // While it loads (or when it could not be read) the row stays
                 // clickable and the panel below says what happened.
@@ -292,7 +294,7 @@ export function CockpitPlanNodePicker({
                       <button
                         type="button"
                         aria-expanded={expanded}
-                        aria-label={`${t(($) => $.node_picker.toggle_project)} ${project.title}`}
+                        aria-label={`${t(($) => $.node_picker.toggle_project)} ${projectLabel}`}
                         className="grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground hover:text-foreground"
                         onClick={() => {
                           setPendingProject(null);
@@ -302,7 +304,7 @@ export function CockpitPlanNodePicker({
                       >
                         <ChevronRight className={`size-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
                       </button>
-                      {projectRowButton(project.id, project.title, rowId, missingRow)}
+                      {projectRowButton(project.id, projectLabel, rowId, missingRow)}
                     </div>
                     {expanded ? (
                       <div className="ml-4 space-y-0.5 border-l border-border/60 pl-1">
@@ -324,6 +326,7 @@ export function CockpitPlanNodePicker({
                           visibleModules.map((module) => {
                             const moduleOpen = expandedModule === module.id;
                             const row = moduleRowFor(module.id);
+                            const moduleLabel = formatCodedTitle(module.code ?? row?.code, module.title);
                             const workItems = workItemsFor(module.id);
                             return (
                               <div key={module.id}>
@@ -331,7 +334,7 @@ export function CockpitPlanNodePicker({
                                   <button
                                     type="button"
                                     aria-expanded={moduleOpen}
-                                    aria-label={`${t(($) => $.node_picker.toggle_module)} ${module.title}`}
+                                    aria-label={`${t(($) => $.node_picker.toggle_module)} ${moduleLabel}`}
                                     className="grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground hover:text-foreground"
                                     onClick={() => setExpandedModule(moduleOpen ? null : module.id)}
                                   >
@@ -345,10 +348,10 @@ export function CockpitPlanNodePicker({
                                       else setExpandedModule(module.id);
                                     }}
                                     className="flex min-w-0 flex-1 items-center gap-1.5 rounded-xs px-1 py-1 text-left text-caption hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-                                    title={row ? module.title : t(($) => $.node_picker.module_row_missing)}
+                                    title={row ? moduleLabel : t(($) => $.node_picker.module_row_missing)}
                                   >
                                     <Blocks className="size-3.5 shrink-0 text-muted-foreground" />
-                                    <span className="truncate">{module.title}</span>
+                                    <span className="truncate">{moduleLabel}</span>
                                   </button>
                                 </div>
                                 {moduleOpen ? (

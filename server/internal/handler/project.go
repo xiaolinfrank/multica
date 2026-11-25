@@ -25,6 +25,7 @@ import (
 type ProjectResponse struct {
 	ID          string  `json:"id"`
 	WorkspaceID string  `json:"workspace_id"`
+	Code        *string `json:"code,omitempty"`
 	Title       string  `json:"title"`
 	Description *string `json:"description"`
 	Icon        *string `json:"icon"`
@@ -112,6 +113,34 @@ func (h *Handler) loadProjectResourceCount(ctx context.Context, projectID pgtype
 	return rows[0].ResourceCount
 }
 
+func (h *Handler) loadProjectCodes(ctx context.Context, workspaceID pgtype.UUID, projectIDs []pgtype.UUID) map[string]string {
+	codes := make(map[string]string, len(projectIDs))
+	if len(projectIDs) == 0 {
+		return codes
+	}
+	rows, err := h.Queries.ListProjectCockpitCodes(ctx, db.ListProjectCockpitCodesParams{
+		WorkspaceID: workspaceID,
+		ProjectIds:  projectIDs,
+	})
+	if err != nil {
+		return codes
+	}
+	for _, row := range rows {
+		if row.Code != "" {
+			codes[uuidToString(row.ProjectID)] = row.Code
+		}
+	}
+	return codes
+}
+
+func (h *Handler) loadProjectCode(ctx context.Context, workspaceID, projectID pgtype.UUID) *string {
+	codes := h.loadProjectCodes(ctx, workspaceID, []pgtype.UUID{projectID})
+	if code, ok := codes[uuidToString(projectID)]; ok && code != "" {
+		return &code
+	}
+	return nil
+}
+
 type CreateProjectRequest struct {
 	Title       string                                `json:"title"`
 	Description *string                               `json:"description"`
@@ -177,9 +206,10 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Batch-fetch issue stats and resource counts for all projects
+	// Batch-fetch issue stats, resource counts and cockpit codes for all projects
 	statsMap := make(map[string]db.GetProjectIssueStatsRow)
 	resourceCountMap := make(map[string]int64)
+	codeMap := make(map[string]string)
 	if len(projects) > 0 {
 		projectIDs := make([]pgtype.UUID, len(projects))
 		for i, p := range projects {
@@ -202,11 +232,16 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 				resourceCountMap[uuidToString(c.ProjectID)] = c.ResourceCount
 			}
 		}
+		codeMap = h.loadProjectCodes(r.Context(), wsUUID, projectIDs)
 	}
 
 	resp := make([]ProjectResponse, len(projects))
 	for i, p := range projects {
 		resp[i] = projectToResponse(p)
+		if code, ok := codeMap[resp[i].ID]; ok {
+			c := code
+			resp[i].Code = &c
+		}
 		if s, ok := statsMap[resp[i].ID]; ok {
 			resp[i].IssueCount = s.TotalCount
 			resp[i].DoneCount = s.DoneCount
@@ -235,6 +270,7 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := projectToResponse(project)
+	resp.Code = h.loadProjectCode(r.Context(), wsUUID, project.ID)
 	resp.IssueCount, resp.DoneCount = h.loadProjectIssueStats(r.Context(), wsUUID, project.ID)
 	resp.ResourceCount = h.loadProjectResourceCount(r.Context(), project.ID)
 	writeJSON(w, http.StatusOK, resp)
@@ -452,9 +488,10 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 			h.writeProjectWriteError(w, r, err, "create")
 			return
 		}
-		resp := projectToResponse(project)
-		h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{"project": resp})
 		h.ensurePlanSkeleton(r.Context(), wsUUID)
+		resp := projectToResponse(project)
+		resp.Code = h.loadProjectCode(r.Context(), wsUUID, project.ID)
+		h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{"project": resp})
 		writeJSON(w, http.StatusCreated, resp)
 		return
 	}
@@ -513,10 +550,11 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	for i, row := range resourceRows {
 		resourceResp[i] = projectResourceToResponse(row)
 	}
+	h.ensurePlanSkeleton(r.Context(), wsUUID)
 	resp := projectToResponse(project)
+	resp.Code = h.loadProjectCode(r.Context(), wsUUID, project.ID)
 	resp.ResourceCount = int64(len(resourceResp))
 	h.publish(protocol.EventProjectCreated, workspaceID, "member", userID, map[string]any{"project": resp})
-	h.ensurePlanSkeleton(r.Context(), wsUUID)
 	for _, rr := range resourceResp {
 		h.publish(protocol.EventProjectResourceCreated, workspaceID, "member", userID, map[string]any{
 			"resource":   rr,
@@ -684,6 +722,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := projectToResponse(project)
+	resp.Code = h.loadProjectCode(r.Context(), wsUUID, project.ID)
 	resp.IssueCount, resp.DoneCount = h.loadProjectIssueStats(r.Context(), wsUUID, project.ID)
 	resp.ResourceCount = h.loadProjectResourceCount(r.Context(), project.ID)
 	h.publish(protocol.EventProjectUpdated, workspaceID, "member", userID, map[string]any{"project": resp})
@@ -862,10 +901,10 @@ func buildProjectSearchQuery(phrase string, terms []string, includeClosed bool) 
 	// --- WHERE clause ---
 	var whereParts []string
 
-	// Full phrase match: title or description
+	// Full phrase match: code, title, "code title", or description
 	phraseMatch := fmt.Sprintf(
-		"(LOWER(p.title) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s)",
-		phraseContains, phraseContains,
+		"(LOWER(p.title) LIKE %s OR LOWER(COALESCE(cn.code, '')) LIKE %s OR LOWER(CONCAT_WS(' ', NULLIF(COALESCE(cn.code, ''), ''), p.title)) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s)",
+		phraseContains, phraseContains, phraseContains, phraseContains,
 	)
 	whereParts = append(whereParts, phraseMatch)
 
@@ -875,8 +914,8 @@ func buildProjectSearchQuery(phrase string, terms []string, includeClosed bool) 
 		for _, tp := range termParams {
 			tc := "'%' || " + tp + " || '%'"
 			termConditions = append(termConditions, fmt.Sprintf(
-				"(LOWER(p.title) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s)",
-				tc, tc,
+				"(LOWER(p.title) LIKE %s OR LOWER(COALESCE(cn.code, '')) LIKE %s OR LOWER(COALESCE(p.description, '')) LIKE %s)",
+				tc, tc, tc,
 			))
 		}
 		whereParts = append(whereParts, "("+strings.Join(termConditions, " AND ")+")")
@@ -891,20 +930,20 @@ func buildProjectSearchQuery(phrase string, terms []string, includeClosed bool) 
 	// --- ORDER BY ranking ---
 	var rankCases []string
 
-	// Tier 0: Exact title match
-	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) = %s THEN 0", phraseParam))
+	// Tier 0: Exact code or title match
+	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) = %s OR LOWER(COALESCE(cn.code, '')) = %s THEN 0", phraseParam, phraseParam))
 
-	// Tier 1: Title starts with phrase
-	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) LIKE %s THEN 1", phraseStartsWith))
+	// Tier 1: Code or title starts with phrase
+	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) LIKE %s OR LOWER(COALESCE(cn.code, '')) LIKE %s THEN 1", phraseStartsWith, phraseStartsWith))
 
-	// Tier 2: Title contains phrase
-	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) LIKE %s THEN 2", phraseContains))
+	// Tier 2: Title, code, or "code title" contains phrase
+	rankCases = append(rankCases, fmt.Sprintf("WHEN LOWER(p.title) LIKE %s OR LOWER(COALESCE(cn.code, '')) LIKE %s OR LOWER(CONCAT_WS(' ', NULLIF(COALESCE(cn.code, ''), ''), p.title)) LIKE %s THEN 2", phraseContains, phraseContains, phraseContains))
 
-	// Tier 3: Title matches all words (multi-word only)
+	// Tier 3: Title/code matches all words (multi-word only)
 	if len(termParams) > 1 {
 		var titleTerms []string
 		for _, tp := range termParams {
-			titleTerms = append(titleTerms, fmt.Sprintf("LOWER(p.title) LIKE '%s' || %s || '%s'", "%", tp, "%"))
+			titleTerms = append(titleTerms, fmt.Sprintf("(LOWER(p.title) LIKE '%s' || %s || '%s' OR LOWER(COALESCE(cn.code, '')) LIKE '%s' || %s || '%s')", "%", tp, "%", "%", tp, "%"))
 		}
 		rankCases = append(rankCases, fmt.Sprintf("WHEN (%s) THEN 3", strings.Join(titleTerms, " AND ")))
 	}
@@ -918,30 +957,30 @@ func buildProjectSearchQuery(phrase string, terms []string, includeClosed bool) 
 	// ranking, and the command palette renders projects above issues, so
 	// without this a cancelled project can be the very first row of the result
 	// list. Demote ahead of rankExpr, with the same direct-hit exception as
-	// issue search (see buildSearchQuery): an exact title means the user is
-	// targeting that one project.
+	// issue search (see buildSearchQuery): an exact title or code means the
+	// user is targeting that one project.
 	cancelledRank := fmt.Sprintf(
-		"CASE WHEN p.status = 'cancelled' AND LOWER(p.title) <> %s THEN 1 ELSE 0 END",
-		phraseParam,
+		"CASE WHEN p.status = 'cancelled' AND LOWER(p.title) <> %s AND LOWER(COALESCE(cn.code, '')) <> %s THEN 1 ELSE 0 END",
+		phraseParam, phraseParam,
 	)
 
 	// --- match_source expression ---
 	matchSourceExpr := fmt.Sprintf(`CASE
-		WHEN LOWER(p.title) LIKE %s THEN 'title'
+		WHEN LOWER(p.title) LIKE %s OR LOWER(COALESCE(cn.code, '')) LIKE %s OR LOWER(CONCAT_WS(' ', NULLIF(COALESCE(cn.code, ''), ''), p.title)) LIKE %s THEN 'title'
 		ELSE 'description'
-	END`, phraseContains)
+	END`, phraseContains, phraseContains, phraseContains)
 
 	if len(termParams) > 1 {
 		var titleTerms []string
 		for _, tp := range termParams {
-			titleTerms = append(titleTerms, fmt.Sprintf("LOWER(p.title) LIKE '%s' || %s || '%s'", "%", tp, "%"))
+			titleTerms = append(titleTerms, fmt.Sprintf("(LOWER(p.title) LIKE '%s' || %s || '%s' OR LOWER(COALESCE(cn.code, '')) LIKE '%s' || %s || '%s')", "%", tp, "%", "%", tp, "%"))
 		}
 		matchSourceExpr = fmt.Sprintf(`CASE
-			WHEN LOWER(p.title) LIKE %s THEN 'title'
+			WHEN LOWER(p.title) LIKE %s OR LOWER(COALESCE(cn.code, '')) LIKE %s OR LOWER(CONCAT_WS(' ', NULLIF(COALESCE(cn.code, ''), ''), p.title)) LIKE %s THEN 'title'
 			WHEN (%s) THEN 'title'
 			ELSE 'description'
 		END`,
-			phraseContains, strings.Join(titleTerms, " AND "),
+			phraseContains, phraseContains, phraseContains, strings.Join(titleTerms, " AND "),
 		)
 	}
 
@@ -954,6 +993,11 @@ func buildProjectSearchQuery(phrase string, terms []string, includeClosed bool) 
 		p.created_at, p.updated_at, p.creator_type, p.creator_id,
 		%s AS match_source
 	FROM project p
+	LEFT JOIN LATERAL (
+		SELECT n.code FROM cockpit_node n
+		WHERE n.workspace_id = p.workspace_id AND n.project_id = p.id AND n.module_id IS NULL
+		ORDER BY n.position ASC, n.id ASC LIMIT 1
+	) cn ON TRUE
 	WHERE p.workspace_id = %s AND %s
 	ORDER BY %s, %s, p.updated_at DESC
 	LIMIT %s OFFSET %s`,
@@ -1064,9 +1108,10 @@ func (h *Handler) SearchProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Batch-fetch issue stats and resource counts
+	// Batch-fetch issue stats, resource counts and cockpit codes
 	statsMap := make(map[string]db.GetProjectIssueStatsRow)
 	resourceCountMap := make(map[string]int64)
+	codeMap := make(map[string]string)
 	if len(results) > 0 {
 		projectIDs := make([]pgtype.UUID, len(results))
 		for i, r := range results {
@@ -1089,11 +1134,16 @@ func (h *Handler) SearchProjects(w http.ResponseWriter, r *http.Request) {
 				resourceCountMap[uuidToString(c.ProjectID)] = c.ResourceCount
 			}
 		}
+		codeMap = h.loadProjectCodes(ctx, wsUUID, projectIDs)
 	}
 
 	resp := make([]SearchProjectResponse, len(results))
 	for i, row := range results {
 		pr := projectToResponse(row.project)
+		if code, ok := codeMap[pr.ID]; ok {
+			c := code
+			pr.Code = &c
+		}
 		if s, ok := statsMap[pr.ID]; ok {
 			pr.IssueCount = s.TotalCount
 			pr.DoneCount = s.DoneCount

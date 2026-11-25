@@ -64,17 +64,23 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  $12::int AS page_size,$13::int AS days
 ), node_tree AS (
  SELECT n.id,n.parent_id,n.project_id,n.module_id,n.project_id AS resolved_project,n.module_id AS resolved_module,
+ CASE WHEN n.project_id IS NOT NULL AND n.module_id IS NULL THEN n.code ELSE '' END AS resolved_project_code,
+ CASE WHEN n.module_id IS NOT NULL THEN n.code ELSE '' END AS resolved_module_code,
  ARRAY[n.id] AS path,TRUE AS valid
  FROM cockpit_node n,args x WHERE n.workspace_id=x.ws AND n.parent_id IS NULL
  UNION ALL
  SELECT n.id,n.parent_id,n.project_id,n.module_id,COALESCE(n.project_id,t.resolved_project),COALESCE(n.module_id,t.resolved_module),
+ CASE WHEN n.project_id IS NOT NULL AND n.module_id IS NULL THEN n.code ELSE t.resolved_project_code END,
+ CASE WHEN n.module_id IS NOT NULL THEN n.code ELSE t.resolved_module_code END,
  t.path||n.id,t.valid AND (n.project_id IS NULL OR t.resolved_project IS NULL OR n.project_id=t.resolved_project)
  AND (n.module_id IS NULL OR (t.resolved_module IS NULL AND n.project_id IS NOT NULL))
  FROM cockpit_node n JOIN node_tree t ON n.parent_id=t.id CROSS JOIN args x
  WHERE n.workspace_id=x.ws AND NOT n.id=ANY(t.path)
 ), execution AS (
  SELECT n.id,n.code,n.name,n.owner,n.status,n.start_date,n.end_date,p.id AS project_id,p.title AS project_title,
- m.id AS module_id,m.title AS module_title
+ t.resolved_project_code AS project_code,
+ m.id AS module_id,m.title AS module_title,
+ t.resolved_module_code AS module_code
  FROM node_tree t JOIN cockpit_node n ON n.id=t.id CROSS JOIN args x
  JOIN module m ON m.workspace_id=x.ws AND m.id=t.resolved_module AND m.project_id=t.resolved_project
  JOIN project p ON p.workspace_id=x.ws AND p.id=t.resolved_project
@@ -199,11 +205,11 @@ WITH RECURSIVE args AS NOT MATERIALIZED (
  SELECT node_id,count(*) FILTER(WHERE category NOT IN ('done','closed')) AS active_total,
  jsonb_build_object('total',count(*) FILTER (WHERE (TRUE) AND (TRUE)),'active',count(*) FILTER (WHERE (TRUE) AND (category NOT IN ('done','closed'))),'unstarted',count(*) FILTER (WHERE (TRUE) AND (category='unstarted')),'started',count(*) FILTER (WHERE (TRUE) AND (category='started')),'done',count(*) FILTER (WHERE (TRUE) AND (category='done')),'closed',count(*) FILTER (WHERE (TRUE) AND (category='closed')),'unknown',count(*) FILTER (WHERE (TRUE) AND (category='unknown')),'overdue',count(*) FILTER (WHERE (TRUE) AND (overdue)),'blocked',count(*) FILTER (WHERE (TRUE) AND (blocked)),'unassigned',count(*) FILTER (WHERE (TRUE) AND (category NOT IN ('done','closed') AND assignee_id IS NULL))) AS counts FROM primary_facts GROUP BY node_id
 ), execution_page AS (
- SELECT e.id, e.code, e.name, e.owner, e.status, e.start_date, e.end_date, e.project_id, e.project_title, e.module_id, e.module_title FROM execution e CROSS JOIN args x WHERE x.section IN ('overview','execution') AND (x.cursor_key='' OR e.id::text>x.cursor_key)
+ SELECT e.id, e.code, e.name, e.owner, e.status, e.start_date, e.end_date, e.project_id, e.project_title, e.project_code, e.module_id, e.module_title, e.module_code FROM execution e CROSS JOIN args x WHERE x.section IN ('overview','execution') AND (x.cursor_key='' OR e.id::text>x.cursor_key)
  ORDER BY e.id LIMIT (SELECT CASE WHEN section='overview' THEN 7 ELSE page_size+1 END FROM args)
 ), execution_cards AS (
- SELECT e.id,jsonb_build_object('id',e.id,'code',e.code,'name',e.name,'project_id',e.project_id,'project_title',e.project_title,
- 'module_id',e.module_id,'module_title',e.module_title,'plan_owner',e.owner,'plan_status',e.status,'plan_start_date',e.start_date,'plan_end_date',e.end_date,
+ SELECT e.id,jsonb_build_object('id',e.id,'code',e.code,'name',e.name,'project_id',e.project_id,'project_title',e.project_title,'project_code',e.project_code,
+ 'module_id',e.module_id,'module_title',e.module_title,'module_code',e.module_code,'plan_owner',e.owner,'plan_status',e.status,'plan_start_date',e.start_date,'plan_end_date',e.end_date,
  'issue_counts',COALESCE(c.counts,jsonb_build_object('total',0,'active',0,'unstarted',0,'started',0,'done',0,'closed',0,'unknown',0,'overdue',0,'blocked',0,'unassigned',0))) AS card FROM execution_page e LEFT JOIN execution_counts c ON c.node_id=e.id
 ), recent AS (
  SELECT m.id, m.code, m.title, m.meet_date, m.time_range, m.status, m.created_at, m.ended_at, m.archived_at, m.created_by, m.minutes_focus_issue_id, m.minutes_reviewer_id, m.minutes_materials_ready, m.minutes_current_version_id, m.minutes_published_version_id,w.minutes_issue_id,w.current_version_id,w.version_number,w.published_version_id,

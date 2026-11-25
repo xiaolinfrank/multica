@@ -1658,6 +1658,7 @@ export const ProjectSchema = z.object({
 
   id: z.string(),
   workspace_id: z.string(),
+  code: z.string().nullable().default(null).catch(null),
   title: z.string(),
   description: z.string().nullable(),
   icon: z.string().nullable(),
@@ -1723,6 +1724,7 @@ export const ModuleSchema = z.object({
   id: z.string(),
   workspace_id: z.string(),
   project_id: z.string(),
+  code: z.string().nullable().default(null).catch(null),
   title: z.string(),
   directory_name: z.string().nullable().optional(),
   description: z.string().nullable(),

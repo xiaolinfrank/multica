@@ -291,3 +291,119 @@ func TestCockpitSurfaceOverviewModuleKeepsItsOwnIssueFacts(t *testing.T) {
 		t.Fatalf("second module mixed facts: %+v", out)
 	}
 }
+
+func TestCockpitScopeChoicesReturnCodesOrderSearchAndPaginate(t *testing.T) {
+	f := newPlanningFixture(t)
+	ctx := context.Background()
+	board, err := f.q.GetCockpitByWorkspace(ctx, f.ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 22 more projects (23 total with f.project) — mix coded out of creation
+	// order and an uncoded project so ordering, code search, and cursor paging
+	// are all exercised.
+	uncodedID := f.Project(t, "Uncoded Project")
+	project02 := f.Project(t, "Second Programme")
+	f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.ws, "cockpit_id": board.ID, "project_id": project02,
+		"code": "02", "name": "Second Programme", "position": 2.0,
+	})
+	project01 := f.Project(t, "First Programme")
+	f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.ws, "cockpit_id": board.ID, "project_id": project01,
+		"code": "01", "name": "First Programme", "position": 1.0,
+	})
+	for i := 3; i <= 22; i++ {
+		pid := f.Project(t, fmt.Sprintf("Extra Programme %02d", i))
+		f.Insert(t, "cockpit_node", testutil.Cols{
+			"workspace_id": f.ws, "cockpit_id": board.ID, "project_id": pid,
+			"code": fmt.Sprintf("%02d", i), "name": fmt.Sprintf("Extra Programme %02d", i), "position": float64(i),
+		})
+	}
+
+	base := CockpitSurfaceQuery{WorkspaceID: f.ws, ActorID: f.owner, Human: true}
+	page1, err := f.issues.ListCockpitScopeChoices(ctx, base, "projects", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page1.Items) != 20 || page1.NextCursor == nil {
+		t.Fatalf("page1 = len %d cursor %v, want 20 with next cursor", len(page1.Items), page1.NextCursor)
+	}
+	if page1.Items[0].Code != "01" || page1.Items[0].ID != project01 {
+		t.Fatalf("first choice = %+v, want 01 (%s)", page1.Items[0], project01)
+	}
+	if page1.Items[1].Code != "02" || page1.Items[1].ID != project02 {
+		t.Fatalf("second choice = %+v, want 02 (%s)", page1.Items[1], project02)
+	}
+
+	page2, err := f.issues.ListCockpitScopeChoices(ctx, base, "projects", "", *page1.NextCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	var all []CockpitScopeChoice
+	for _, item := range append(page1.Items, page2.Items...) {
+		if seen[item.ID] {
+			t.Fatalf("duplicate choice across pages: %s", item.ID)
+		}
+		seen[item.ID] = true
+		all = append(all, item)
+	}
+	if int64(len(all)) != page1.Total {
+		t.Fatalf("paginated count = %d, want total %d", len(all), page1.Total)
+	}
+	if all[len(all)-1].ID != uncodedID || all[len(all)-1].Code != "" {
+		t.Fatalf("uncoded project should sort after coded ones, last = %+v", all[len(all)-1])
+	}
+
+	// Search by code alone and by "code title".
+	byCode, err := f.issues.ListCockpitScopeChoices(ctx, base, "projects", "02", "")
+	if err != nil || len(byCode.Items) != 1 || byCode.Items[0].ID != project02 {
+		t.Fatalf("search by code 02 = %+v / %v", byCode.Items, err)
+	}
+	byCombined, err := f.issues.ListCockpitScopeChoices(ctx, base, "projects", "01 first", "")
+	if err != nil || len(byCombined.Items) != 1 || byCombined.Items[0].ID != project01 {
+		t.Fatalf("search by combined code+title = %+v / %v", byCombined.Items, err)
+	}
+
+	// Modules carry their code, sort by code, and search by code.
+	mod02 := f.Module(t, project01, "Module Two")
+	mod01 := f.Module(t, project01, "Module One")
+	var l1ID string
+	if err := f.Pool.QueryRow(ctx, `SELECT id::text FROM cockpit_node WHERE workspace_id=$1 AND project_id=$2 AND module_id IS NULL`, f.ws, project01).Scan(&l1ID); err != nil {
+		t.Fatal(err)
+	}
+	f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.ws, "cockpit_id": board.ID, "parent_id": l1ID, "project_id": project01, "module_id": mod02,
+		"code": "01.02", "name": "Module Two", "position": 2.0,
+	})
+	f.Insert(t, "cockpit_node", testutil.Cols{
+		"workspace_id": f.ws, "cockpit_id": board.ID, "parent_id": l1ID, "project_id": project01, "module_id": mod01,
+		"code": "01.01", "name": "Module One", "position": 1.0,
+	})
+	modQuery := base
+	modQuery.ProjectID = parseTestUUID(t, project01)
+	modChoices, err := f.issues.ListCockpitScopeChoices(ctx, modQuery, "modules", "", "")
+	if err != nil || len(modChoices.Items) != 2 {
+		t.Fatalf("module choices = %+v / %v", modChoices.Items, err)
+	}
+	if modChoices.Items[0].Code != "01.01" || modChoices.Items[1].Code != "01.02" {
+		t.Fatalf("module order = %+v, want 01.01 then 01.02", modChoices.Items)
+	}
+	modByCode, err := f.issues.ListCockpitScopeChoices(ctx, modQuery, "modules", "01.02", "")
+	if err != nil || len(modByCode.Items) != 1 || modByCode.Items[0].ID != mod02 {
+		t.Fatalf("module search by code = %+v / %v", modByCode.Items, err)
+	}
+
+	// Surface context exposes project_code and module_code.
+	ctxQuery := modQuery
+	ctxQuery.ModuleID = parseTestUUID(t, mod01)
+	surfaceCtx, err := f.issues.GetCockpitSurfaceContext(ctx, ctxQuery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if surfaceCtx.Scope.ProjectCode != "01" || surfaceCtx.Scope.ModuleCode != "01.01" {
+		t.Fatalf("surface context codes = %+v, want 01 / 01.01", surfaceCtx.Scope)
+	}
+}

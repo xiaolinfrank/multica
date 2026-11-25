@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "@multica/core/i18n/react";
 import enProjects from "../../locales/en/projects.json";
@@ -7,12 +7,16 @@ import enIssues from "../../locales/en/issues.json";
 import { ModulePicker } from "./module-picker";
 import { PillButton } from "../../common/pill-button";
 
+const mockModules = vi.hoisted(() => ({
+  current: [
+    { id: "module-1", title: "Parser rewrite", project_id: "project-1" } as { id: string; code?: string | null; title: string; project_id: string },
+    { id: "module-2", title: "Sync engine", project_id: "project-1" },
+  ],
+}));
+
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({
-    data: [
-      { id: "module-1", title: "Parser rewrite", project_id: "project-1" },
-      { id: "module-2", title: "Sync engine", project_id: "project-1" },
-    ],
+    data: mockModules.current,
   }),
   // useCreateModule: mutate runs the mocked api below; cache writes are
   // irrelevant to these tests.
@@ -163,5 +167,31 @@ describe("ModulePicker", () => {
     await user.click(trigger);
     expect(screen.queryByPlaceholderText(SEARCH_PLACEHOLDER)).not.toBeInTheDocument();
     expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("displays plan codes, sorts coded modules by code, and filters by code", async () => {
+    const user = userEvent.setup();
+    const prev = mockModules.current;
+    mockModules.current = [
+      { id: "module-2", code: "01.02", title: "前瞻性队列", project_id: "project-1" },
+      { id: "module-1", code: "01.01", title: "回顾性队列", project_id: "project-1" },
+    ];
+    try {
+      renderPicker({ moduleId: "module-1", projectId: "project-1" });
+      const trigger = screen.getByRole("button", { name: "01.01 回顾性队列" });
+      await user.click(trigger);
+
+      const searchInput = await screen.findByPlaceholderText(SEARCH_PLACEHOLDER);
+      const popup = searchInput.closest("[data-slot='popover-content']") as HTMLElement;
+      const m1 = within(popup).getByRole("button", { name: "01.01 回顾性队列" });
+      const m2 = within(popup).getByRole("button", { name: "01.02 前瞻性队列" });
+      expect(m1.compareDocumentPosition(m2) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      await user.type(searchInput, "01.02");
+      expect(within(popup).getByRole("button", { name: "01.02 前瞻性队列" })).toBeVisible();
+      expect(within(popup).queryByRole("button", { name: "01.01 回顾性队列" })).toBeNull();
+    } finally {
+      mockModules.current = prev;
+    }
   });
 });

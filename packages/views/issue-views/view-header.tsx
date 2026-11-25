@@ -82,6 +82,7 @@ import { PageHeader } from "../layout/page-header";
 import { RefreshablePageIcon } from "../layout/refreshable-page-icon";
 import { ActionShortcutKeycaps } from "../common/shortcut-keycaps";
 import { ProjectIcon } from "../projects/components/project-icon";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import { IssueDisplayControls, IssueFilterMenu } from "../issues/components/issues-header";
 import { ChipSpan, useFilterChips, type FilterChip } from "../issues/components/filter-chips-bar";
 import { useViewBaseline } from "../issues/surface/view-baseline-context";
@@ -171,7 +172,7 @@ export function IssueViewHeader({
     base.kind === "workspace" ? "all_issues" : base.kind === "my" ? (myScope === "agents" ? "my_agents" : "my_issues") : null;
   const baseName =
     base.kind === "project"
-      ? base.project.title
+      ? formatProjectTitle(base.project)
       : t(($) => $.views.builtin[builtinKey!]);
   const baseIcon =
     base.kind === "project" ? (

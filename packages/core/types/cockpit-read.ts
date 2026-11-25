@@ -1,6 +1,6 @@
 import type { Cockpit, CockpitNode, CockpitPayment, CockpitMilestone, CockpitMeeting, CockpitMeetingIssueLink, CockpitMeetingNodeLink } from "./cockpit";
 
-export interface CockpitReadScope { project_id: string | null; module_id: string | null; project_title: string; module_title: string }
+export interface CockpitReadScope { project_id: string | null; module_id: string | null; project_code?: string; project_title: string; module_code?: string; module_title: string }
 export interface CockpitContextData {
   workspace_id: string; scope: CockpitReadScope; cockpit: Cockpit | null;
   actor: { user_id: string; role: string; is_human: boolean }; has_meeting_workflows: boolean; has_stable_bindings: boolean;
@@ -26,7 +26,7 @@ export interface CockpitPlanExportData extends CockpitPlanData {
 }
 export interface CockpitReadPage<T> { items: T[]; total: number; next_cursor: string | null }
 export interface CockpitObjectRelationPage<T> extends CockpitReadPage<T> { workspace_id: string; object_id: string; kind: string; payment_total: number }
-export interface CockpitScopeItem { id: string; title: string; project_id: string | null }
+export interface CockpitScopeItem { id: string; code?: string; title: string; project_id: string | null }
 export interface CockpitScopeItemPage extends CockpitReadPage<CockpitScopeItem> { workspace_id: string; project_id: string | null }
 export type CockpitMeetingCard = Omit<CockpitMeeting, "note" | "minutes" | "decisions" | "actions"> & {
   issue_count: number; node_count: number; workflow_enabled: boolean; workflow_stage: string; display_excerpt: string;
@@ -45,7 +45,7 @@ export interface CockpitMeetingRegisterPage extends CockpitReadPage<CockpitMeeti
 }
 export type CockpitMeetingArchiveFilter = "active" | "archived" | "all";
 export interface CockpitNodeBindingContext {
-  project_id: string | null; module_id: string | null; project_title: string; module_title: string;
+  project_id: string | null; module_id: string | null; project_code?: string; project_title: string; module_code?: string; module_title: string;
   source_node_id: string | null; eligible: boolean; reason: string;
 }
 export interface CockpitNodeDetailData extends CockpitContextData {

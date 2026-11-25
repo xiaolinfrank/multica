@@ -26,6 +26,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { memberListOptions, agentListOptions, squadListOptions } from "@multica/core/workspace/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import { PROJECT_STATUS_CONFIG } from "@multica/core/projects/config";
 import { labelListOptions } from "@multica/core/labels/queries";
 import { propertyListOptions } from "@multica/core/properties";
@@ -519,7 +520,10 @@ export function useFilterChips(
   }
   if (deltaProjects.length > 0 || deltaNoProject) {
     const projectById = new Map(projects.map((p) => [p.id, p]));
-    const names = deltaProjects.map((id) => projectById.get(id)?.title);
+    const names = deltaProjects.map((id) => {
+      const p = projectById.get(id);
+      return p ? formatProjectTitle(p) : undefined;
+    });
     if (deltaNoProject) names.push(t(($) => $.filters.no_project));
     const emojis = deltaProjects
       .map((id) => projectById.get(id)?.icon)

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Boxes, Plus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { useCreateModule } from "@multica/core/modules/mutations";
+import { formatModuleTitle, sortByCode } from "@multica/core/projects/coded-title";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type { UpdateIssueRequest } from "@multica/core/types";
 import { toast } from "sonner";
@@ -51,7 +52,9 @@ export function ModulePicker({
     ...moduleListOptions(wsId, projectId ?? undefined),
     enabled: projectId !== null,
   });
+  const orderedModules = useMemo(() => sortByCode(modules), [modules]);
   const current = modules.find((m) => m.id === moduleId);
+  const currentLabel = formatModuleTitle(current);
   const [filter, setFilter] = useState("");
   const createModule = useCreateModule();
   // Same controlled-open normalization as the project picker: Base UI
@@ -61,12 +64,18 @@ export function ModulePicker({
   const open = locked ? false : controlledOpen ?? internalOpen;
   const setOpen = locked ? () => {} : onOpenChange ?? setInternalOpen;
 
-  // Substring plus pinyin so Chinese module titles are reachable from
-  // latin input, matching the project picker.
+  // Substring (including plan code) plus pinyin so Chinese module titles are
+  // reachable from latin input, matching the project picker.
   const query = filter.trim().toLowerCase();
-  const filtered = modules.filter(
-    (m) => m.title.toLowerCase().includes(query) || matchesPinyin(m.title, query),
-  );
+  const filtered = orderedModules.filter((m) => {
+    if (!query) return true;
+    const label = formatModuleTitle(m).toLowerCase();
+    return (
+      label.includes(query) ||
+      m.title.toLowerCase().includes(query) ||
+      matchesPinyin(m.title, query)
+    );
+  });
   // Linear-style inline creation: the search text doubles as the new
   // module's title. Hidden on an exact (case-insensitive) duplicate —
   // picking the existing row is the same outcome with no extra row.
@@ -74,7 +83,11 @@ export function ModulePicker({
   const canCreate =
     projectId !== null &&
     createTitle.length > 0 &&
-    !modules.some((m) => m.title.trim().toLowerCase() === query);
+    !modules.some(
+      (m) =>
+        m.title.trim().toLowerCase() === query ||
+        formatModuleTitle(m).trim().toLowerCase() === query,
+    );
 
   const resolvedTriggerRender = triggerRender ?? (
     <button type="button" disabled={locked} className={PICKER_TRIGGER_CLASS} />
@@ -85,7 +98,7 @@ export function ModulePicker({
       <PropertyPicker
         open={open}
         onOpenChange={setOpen}
-        width="w-52"
+        width="w-64"
         align={align}
         searchable={!readOnly}
         header={readOnly && restriction ? <div className="p-2 text-caption">{restriction}</div> : undefined}
@@ -104,7 +117,7 @@ export function ModulePicker({
           ) : current ? (
             <>
               <Boxes className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate">{current.title}</span>
+              <span className="truncate">{currentLabel}</span>
             </>
           ) : (
             <>
@@ -128,19 +141,23 @@ export function ModulePicker({
           <span className="text-muted-foreground">{t(($) => $.module.picker.none)}</span>
         </PickerItem>
 
-        {filtered.map((m) => (
-          <PickerItem
-            key={m.id}
-            selected={m.id === moduleId}
-            onClick={() => {
-              onUpdate({ module_id: m.id });
-              setOpen(false);
-            }}
-          >
-            <Boxes className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="truncate">{m.title}</span>
-          </PickerItem>
-        ))}
+        {filtered.map((m) => {
+          const itemLabel = formatModuleTitle(m);
+          return (
+            <PickerItem
+              key={m.id}
+              selected={m.id === moduleId}
+              truncationTooltip={itemLabel}
+              onClick={() => {
+                onUpdate({ module_id: m.id });
+                setOpen(false);
+              }}
+            >
+              <Boxes className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="truncate">{itemLabel}</span>
+            </PickerItem>
+          );
+        })}
 
         {modules.length === 0 && !canCreate && (
           <div className="px-2 py-1.5 text-caption text-muted-foreground">

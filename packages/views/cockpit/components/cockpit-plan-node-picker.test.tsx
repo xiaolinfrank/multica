@@ -334,4 +334,34 @@ describe("CockpitPlanNodePicker", () => {
     // The tree is still there to try another row.
     expect(screen.getByRole("textbox", { name: "Search by code or name…" })).toBeInTheDocument();
   });
+
+  it("displays plan codes on projects and modules when titles are stripped of prefixes", async () => {
+    setApiInstance({
+      listProjects: async () => ({
+        projects: [{ ...project, code: "01", title: "高质量数据集" }],
+        total: 1,
+      }),
+      listModules: async () => ({
+        modules: [{ ...modules[0], code: "01.01", title: "回顾性队列" }],
+        total: 1,
+      }),
+      getCockpitPlan: async () =>
+        planData([
+          {
+            id: PROJECT_ROW_ID, code: "01", name: "高质量数据集", kind: "project",
+            parent_id: null, position: 0, project_id: PROJECT_ID, module_id: null,
+          },
+          {
+            id: MODULE_ROW_ID, code: "01.01", name: "回顾性队列", kind: "module",
+            parent_id: PROJECT_ROW_ID, position: 0, project_id: PROJECT_ID, module_id: MODULE_ID,
+          },
+        ]),
+    } as unknown as ApiClient);
+
+    show(vi.fn());
+    open();
+    expect(await screen.findByRole("button", { name: "01 高质量数据集" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Expand project 01 高质量数据集" }));
+    expect(await screen.findByRole("button", { name: "01.01 回顾性队列" })).toBeVisible();
+  });
 });

@@ -64,3 +64,11 @@ FROM issue
 WHERE workspace_id = sqlc.arg('workspace_id')::uuid
   AND project_id = ANY(sqlc.arg('project_ids')::uuid[])
 GROUP BY project_id;
+
+-- name: ListProjectCockpitCodes :many
+SELECT DISTINCT ON (project_id) project_id, code
+FROM cockpit_node
+WHERE workspace_id = sqlc.arg('workspace_id')::uuid
+  AND project_id = ANY(sqlc.arg('project_ids')::uuid[])
+  AND module_id IS NULL
+ORDER BY project_id, position ASC, id ASC;

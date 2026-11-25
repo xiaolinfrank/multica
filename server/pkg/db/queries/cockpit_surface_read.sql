@@ -103,17 +103,37 @@ SELECT jsonb_build_object(
 
 -- name: ListCockpitScopeChoices :one
 WITH choices AS (
- SELECT p.id,p.title,NULL::uuid AS project_id FROM project p
+ SELECT p.id, p.title, COALESCE(n.code, '') AS code, NULL::uuid AS project_id
+ FROM project p
+ LEFT JOIN LATERAL (
+  SELECT cn.code FROM cockpit_node cn
+  WHERE cn.workspace_id = p.workspace_id AND cn.project_id = p.id AND cn.module_id IS NULL
+  ORDER BY cn.position ASC, cn.id ASC LIMIT 1
+ ) n ON TRUE
  WHERE p.workspace_id=sqlc.arg('workspace_id')::uuid AND sqlc.arg('kind')::text='projects'
- AND (sqlc.arg('query')::text='' OR strpos(lower(p.title),lower(sqlc.arg('query')::text))>0)
+ AND (sqlc.arg('query')::text='' OR strpos(lower(p.title),lower(sqlc.arg('query')::text))>0
+  OR strpos(lower(COALESCE(n.code,'')),lower(sqlc.arg('query')::text))>0
+  OR strpos(lower(concat_ws(' ', NULLIF(COALESCE(n.code,''), ''), p.title)),lower(sqlc.arg('query')::text))>0)
  UNION ALL
- SELECT m.id,m.title,m.project_id FROM module m
+ SELECT m.id, m.title, COALESCE(n.code, '') AS code, m.project_id
+ FROM module m
+ LEFT JOIN LATERAL (
+  SELECT cn.code FROM cockpit_node cn
+  WHERE cn.workspace_id = m.workspace_id AND cn.module_id = m.id
+  ORDER BY cn.position ASC, cn.id ASC LIMIT 1
+ ) n ON TRUE
  WHERE m.workspace_id=sqlc.arg('workspace_id')::uuid AND sqlc.arg('kind')::text='modules' AND m.project_id=sqlc.narg('project_id')::uuid
- AND (sqlc.arg('query')::text='' OR strpos(lower(m.title),lower(sqlc.arg('query')::text))>0)
+ AND (sqlc.arg('query')::text='' OR strpos(lower(m.title),lower(sqlc.arg('query')::text))>0
+  OR strpos(lower(COALESCE(n.code,'')),lower(sqlc.arg('query')::text))>0
+  OR strpos(lower(concat_ws(' ', NULLIF(COALESCE(n.code,''), ''), m.title)),lower(sqlc.arg('query')::text))>0)
 ), page AS (
- SELECT * FROM choices WHERE sqlc.arg('cursor_key')::text='' OR id::text>sqlc.arg('cursor_key')::text ORDER BY id LIMIT 21
+ SELECT * FROM choices
+ WHERE sqlc.narg('cursor_id')::uuid IS NULL
+  OR (code = '', code, id) > (sqlc.arg('cursor_code')::text = '', sqlc.arg('cursor_code')::text, sqlc.narg('cursor_id')::uuid)
+ ORDER BY (code = '') ASC, code ASC, id ASC
+ LIMIT 21
 )
-SELECT jsonb_build_object('items',COALESCE((SELECT jsonb_agg(p ORDER BY p.id) FROM page p),'[]'::jsonb),'total',(SELECT count(*) FROM choices))::jsonb AS payload;
+SELECT jsonb_build_object('items',COALESCE((SELECT jsonb_agg(p ORDER BY (p.code = '') ASC, p.code ASC, p.id ASC) FROM page p),'[]'::jsonb),'total',(SELECT count(*) FROM choices))::jsonb AS payload;
 
 -- name: ListCockpitMeetingRegister :one
 -- Search sees full source text; list rows return metadata and a short excerpt.

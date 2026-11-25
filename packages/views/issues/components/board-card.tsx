@@ -21,6 +21,7 @@ import { useActorName } from "@multica/core/workspace/hooks";
 import { useLocale, useT, useTimeAgo } from "../../i18n";
 import { ProjectIcon } from "../../projects/components/project-icon";
 import { moduleListOptions } from "@multica/core/modules/queries";
+import { formatModuleTitle, formatProjectTitle } from "@multica/core/projects/coded-title";
 import { PriorityIcon } from "./priority-icon";
 import { PriorityPicker, StartDatePicker, DueDatePicker } from "./pickers";
 import { IssueAssigneeControl } from "./issue-assignee-control";
@@ -246,14 +247,14 @@ export const BoardCardContent = memo(function BoardCardContent({
           {showProject && (
             <span className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground max-w-[160px]">
               <ProjectIcon project={project} size="sm" />
-              <span className="truncate">{project!.title}</span>
+              <span className="truncate">{formatProjectTitle(project)}</span>
             </span>
           )}
           {showModule && (
             <span className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-micro text-muted-foreground">
               <Boxes className="size-3 shrink-0" />
               <span className="truncate">
-                {module?.title ?? t(($) => $.table.value_unavailable)}
+                {module ? formatModuleTitle(module) : t(($) => $.table.value_unavailable)}
               </span>
             </span>
           )}

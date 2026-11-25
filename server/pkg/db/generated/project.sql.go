@@ -182,6 +182,45 @@ func (q *Queries) GetProjectIssueStats(ctx context.Context, arg GetProjectIssueS
 	return items, nil
 }
 
+const listProjectCockpitCodes = `-- name: ListProjectCockpitCodes :many
+SELECT DISTINCT ON (project_id) project_id, code
+FROM cockpit_node
+WHERE workspace_id = $1::uuid
+  AND project_id = ANY($2::uuid[])
+  AND module_id IS NULL
+ORDER BY project_id, position ASC, id ASC
+`
+
+type ListProjectCockpitCodesParams struct {
+	WorkspaceID pgtype.UUID   `json:"workspace_id"`
+	ProjectIds  []pgtype.UUID `json:"project_ids"`
+}
+
+type ListProjectCockpitCodesRow struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	Code      string      `json:"code"`
+}
+
+func (q *Queries) ListProjectCockpitCodes(ctx context.Context, arg ListProjectCockpitCodesParams) ([]ListProjectCockpitCodesRow, error) {
+	rows, err := q.db.Query(ctx, listProjectCockpitCodes, arg.WorkspaceID, arg.ProjectIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProjectCockpitCodesRow{}
+	for rows.Next() {
+		var i ListProjectCockpitCodesRow
+		if err := rows.Scan(&i.ProjectID, &i.Code); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
 SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id, creator_type, creator_id, collab_path FROM project
 WHERE workspace_id = $1

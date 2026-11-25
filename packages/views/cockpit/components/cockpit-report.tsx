@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, CalendarDays, CircleCheck, ClipboardList, Printer, RefreshCw, Target, TriangleAlert } from "lucide-react";
 import { cockpitReportOptions, cockpitObjectPath, cockpitSurfacePath, cockpitAttentionDestination, type CockpitScope } from "@multica/core/cockpit";
 import { useWorkspacePaths } from "@multica/core/paths";
+import { formatCodedTitle } from "@multica/core/projects/coded-title";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { AppLink } from "../../navigation";
@@ -31,7 +32,7 @@ function ReportSession({ wsId, scope, asOf: initialAsOf, returnHref, onPrint }: 
     try { await onPrint(paper.current); } catch (cause) { setPrintError(cause instanceof Error ? cause.message : t(($) => $.report.print_failed)); }
     finally { printLock.current = false; setPrinting(false); }
   };
-  const scopeTitle = data ? [data.scope.projectTitle || data.scope.projectId, data.scope.moduleTitle || data.scope.moduleId].filter(Boolean).join(" / ") || t(($) => $.shell.all_projects) : "";
+  const scopeTitle = data ? [formatCodedTitle(data.scope.projectCode, data.scope.projectTitle) || data.scope.projectId, formatCodedTitle(data.scope.moduleCode, data.scope.moduleTitle) || data.scope.moduleId].filter(Boolean).join(" / ") || t(($) => $.shell.all_projects) : "";
   const sourceLink = (href: string, text: string) => <AppLink href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-caption text-primary hover:underline">{text}<ArrowUpRight className="size-3.5" aria-hidden /></AppLink>;
   return <section className="cockpit-skin cockpit-report @container/report flex min-h-0 flex-1 flex-col" aria-label={t(($) => $.report.title)}>
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3 lg:px-8">

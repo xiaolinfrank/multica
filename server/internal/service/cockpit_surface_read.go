@@ -32,7 +32,9 @@ type CockpitSurfaceQuery struct {
 type CockpitSurfaceScope struct {
 	ProjectID    *string `json:"project_id"`
 	ModuleID     *string `json:"module_id"`
+	ProjectCode  string  `json:"project_code,omitempty"`
 	ProjectTitle string  `json:"project_title"`
+	ModuleCode   string  `json:"module_code,omitempty"`
 	ModuleTitle  string  `json:"module_title"`
 }
 
@@ -84,8 +86,13 @@ type CockpitSurfacePlan struct {
 }
 type CockpitScopeChoice struct {
 	ID        string  `json:"id"`
+	Code      string  `json:"code,omitempty"`
 	Title     string  `json:"title"`
 	ProjectID *string `json:"project_id"`
+}
+type scopeChoiceCursor struct {
+	Code string `json:"code"`
+	ID   string `json:"id"`
 }
 type CockpitScopeChoicePage struct {
 	WorkspaceID string               `json:"workspace_id"`
@@ -126,6 +133,9 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 			return out, planningError(err)
 		}
 		out.Scope.ProjectTitle = project.Title
+		if codes, err := q.ListProjectCockpitCodes(ctx, db.ListProjectCockpitCodesParams{WorkspaceID: p.WorkspaceID, ProjectIds: []pgtype.UUID{p.ProjectID}}); err == nil && len(codes) > 0 {
+			out.Scope.ProjectCode = codes[0].Code
+		}
 	}
 	if p.ModuleID.Valid {
 		module, err := q.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{WorkspaceID: p.WorkspaceID, ID: p.ModuleID})
@@ -136,6 +146,9 @@ func readCockpitSurfaceContext(ctx context.Context, q *db.Queries, p CockpitSurf
 			return out, fmt.Errorf("%w: module_id does not belong to project_id", ErrCockpitWorkflowInput)
 		}
 		out.Scope.ModuleTitle = module.Title
+		if codes, err := q.ListModuleCockpitCodes(ctx, db.ListModuleCockpitCodesParams{WorkspaceID: p.WorkspaceID, ModuleIds: []pgtype.UUID{p.ModuleID}}); err == nil && len(codes) > 0 {
+			out.Scope.ModuleCode = codes[0].Code
+		}
 	}
 	board, err := q.GetCockpitByWorkspace(ctx, p.WorkspaceID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -230,10 +243,18 @@ func (s *IssueService) ListCockpitScopeChoices(ctx context.Context, p CockpitSur
 	if err != nil {
 		return out, err
 	}
+	var cursorID pgtype.UUID
+	var cursorCode string
 	if key != "" {
-		if _, err = util.ParseUUID(key); err != nil {
+		var parsed scopeChoiceCursor
+		if err = json.Unmarshal([]byte(key), &parsed); err != nil {
 			return out, fmt.Errorf("%w: invalid scope cursor", ErrCockpitWorkflowInput)
 		}
+		cursorID, err = util.ParseUUID(parsed.ID)
+		if err != nil {
+			return out, fmt.Errorf("%w: invalid scope cursor", ErrCockpitWorkflowInput)
+		}
+		cursorCode = parsed.Code
 	}
 	tx, q, err := s.beginPlanningRead(ctx)
 	if err != nil {
@@ -243,7 +264,14 @@ func (s *IssueService) ListCockpitScopeChoices(ctx context.Context, p CockpitSur
 	if _, err = readCockpitSurfaceContext(ctx, q, p); err != nil {
 		return out, err
 	}
-	payload, err := q.ListCockpitScopeChoices(ctx, db.ListCockpitScopeChoicesParams{WorkspaceID: p.WorkspaceID, ProjectID: p.ProjectID, Kind: kind, Query: search, CursorKey: key})
+	payload, err := q.ListCockpitScopeChoices(ctx, db.ListCockpitScopeChoicesParams{
+		WorkspaceID: p.WorkspaceID,
+		ProjectID:   p.ProjectID,
+		Kind:        kind,
+		Query:       search,
+		CursorID:    cursorID,
+		CursorCode:  cursorCode,
+	})
 	if err != nil {
 		return out, err
 	}
@@ -254,7 +282,9 @@ func (s *IssueService) ListCockpitScopeChoices(ctx context.Context, p CockpitSur
 	out.ProjectID = planningUUID(p.ProjectID)
 	if len(out.Items) > 20 {
 		out.Items = out.Items[:20]
-		out.NextCursor = makeOverviewCursor(scope, out.Items[19].ID)
+		last := out.Items[19]
+		rawCursor, _ := json.Marshal(scopeChoiceCursor{Code: last.Code, ID: last.ID})
+		out.NextCursor = makeOverviewCursor(scope, string(rawCursor))
 	}
 	return out, tx.Commit(ctx)
 }

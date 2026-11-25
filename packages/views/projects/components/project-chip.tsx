@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { projectListOptions, projectDetailOptions } from "@multica/core/projects/queries";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { ProjectIcon } from "./project-icon";
 import { useT } from "../../i18n";
@@ -59,7 +60,7 @@ export function ProjectChip({
   return (
     <span className={cls}>
       <ProjectIcon project={project} size="md" />
-      <span className="min-w-0 truncate text-foreground">{project.title}</span>
+      <span className="min-w-0 truncate text-foreground">{formatProjectTitle(project)}</span>
     </span>
   );
 }

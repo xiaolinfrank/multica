@@ -81,6 +81,7 @@ import { WebhookPayloadPreview } from "./webhook-payload-preview";
 import { WebhookDeliveriesSection } from "./webhook-deliveries-section";
 import { AgentPicker } from "./pickers/agent-picker";
 import { ProjectPicker } from "../../projects/components/project-picker";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import { ProjectIcon } from "../../projects/components/project-icon";
 import {
   PickerEmpty,
@@ -826,7 +827,7 @@ function AutopilotProperties({ autopilot, canWrite }: { autopilot: Autopilot; ca
   ) : project ? (
     <>
       <ProjectIcon project={project} size="sm" />
-      <span className="truncate">{project.title}</span>
+      <span className="truncate">{formatProjectTitle(project)}</span>
     </>
   ) : (
     <span className="truncate text-muted-foreground">{t(($) => $.detail.project_unavailable)}</span>

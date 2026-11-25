@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { CommandBarContext } from "@multica/core/command-bar";
 import { WORKSPACE_PAGES, type WorkspacePageKey } from "@multica/core/paths";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import { partitionAggregatedSearchResults } from "@multica/core/search/cancelled-rank";
 import type { SearchIssueResult, SearchProjectResult } from "@multica/core/types";
 import { useT } from "../i18n";
@@ -112,7 +113,7 @@ export function issueScore(issue: SearchIssueResult, q: string): number {
 }
 
 export function projectScore(project: SearchProjectResult, q: string): number {
-  return Math.max(scoreText(project.title, q), SERVER_ONLY_SCORE);
+  return Math.max(scoreText(formatProjectTitle(project), q), scoreText(project.title, q), SERVER_ONLY_SCORE);
 }
 
 function maxScore(entries: readonly { score: number }[]) {
@@ -257,8 +258,16 @@ export function useRootModel(
       const member = visibleObjects.members[0];
       if (member) candidates.push({ type: "member", member: member.item, score: member.score });
       if (!stale) {
-        const project = partitioned.liveProjects.find((p) => scoreText(p.title, resultsQ) >= 80);
-        if (project) candidates.push({ type: "project", project, score: scoreText(project.title, resultsQ) });
+        const project = partitioned.liveProjects.find(
+          (p) => Math.max(scoreText(formatProjectTitle(p), resultsQ), scoreText(p.title, resultsQ)) >= 80,
+        );
+        if (project) {
+          candidates.push({
+            type: "project",
+            project,
+            score: Math.max(scoreText(formatProjectTitle(project), resultsQ), scoreText(project.title, resultsQ)),
+          });
+        }
       }
       const top = candidates.sort((a, b) => b.score - a.score)[0];
       if (top && top.score >= 80 && top.score >= liveIssueScore) bestMatch = top;

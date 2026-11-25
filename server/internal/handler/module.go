@@ -32,6 +32,7 @@ type ModuleResponse struct {
 	ID            string  `json:"id"`
 	WorkspaceID   string  `json:"workspace_id"`
 	ProjectID     string  `json:"project_id"`
+	Code          *string `json:"code,omitempty"`
 	Title         string  `json:"title"`
 	DirectoryName *string `json:"directory_name,omitempty"`
 	Description   *string `json:"description"`
@@ -100,6 +101,42 @@ func (h *Handler) loadModuleStats(ctx context.Context, workspaceID pgtype.UUID, 
 	return statsMap
 }
 
+func (h *Handler) loadModuleCodes(ctx context.Context, workspaceID pgtype.UUID, modules []db.Module) map[string]string {
+	codes := make(map[string]string, len(modules))
+	if len(modules) == 0 {
+		return codes
+	}
+	moduleIDs := make([]pgtype.UUID, len(modules))
+	for i, m := range modules {
+		moduleIDs[i] = m.ID
+	}
+	rows, err := h.Queries.ListModuleCockpitCodes(ctx, db.ListModuleCockpitCodesParams{
+		WorkspaceID: workspaceID,
+		ModuleIds:   moduleIDs,
+	})
+	if err != nil {
+		return codes
+	}
+	for _, row := range rows {
+		if row.Code != "" {
+			codes[uuidToString(row.ModuleID)] = row.Code
+		}
+	}
+	return codes
+}
+
+func (h *Handler) loadModuleCode(ctx context.Context, workspaceID, moduleID pgtype.UUID) *string {
+	rows, err := h.Queries.ListModuleCockpitCodes(ctx, db.ListModuleCockpitCodesParams{
+		WorkspaceID: workspaceID,
+		ModuleIds:   []pgtype.UUID{moduleID},
+	})
+	if err != nil || len(rows) == 0 || rows[0].Code == "" {
+		return nil
+	}
+	code := rows[0].Code
+	return &code
+}
+
 // validateModuleTitle trims and bounds a module title; a non-empty second
 // return is the 400 already written.
 func validateModuleTitle(w http.ResponseWriter, raw string) (string, bool) {
@@ -149,9 +186,14 @@ func (h *Handler) ListModules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	statsMap := h.loadModuleStats(r.Context(), wsUUID, modules)
+	codeMap := h.loadModuleCodes(r.Context(), wsUUID, modules)
 	resp := make([]ModuleResponse, len(modules))
 	for i, m := range modules {
 		resp[i] = moduleToResponse(m)
+		if code, ok := codeMap[resp[i].ID]; ok {
+			c := code
+			resp[i].Code = &c
+		}
 		if s, ok := statsMap[resp[i].ID]; ok {
 			resp[i].IssueCount = s.TotalCount
 			resp[i].DoneCount = s.DoneCount
@@ -179,6 +221,7 @@ func (h *Handler) GetModule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := moduleToResponse(module)
+	resp.Code = h.loadModuleCode(r.Context(), wsUUID, module.ID)
 	resp.IssueCount, resp.DoneCount = h.loadModuleIssueStats(r.Context(), wsUUID, module.ID)
 	writeJSON(w, http.StatusOK, map[string]any{"module": resp})
 }
@@ -233,6 +276,7 @@ func (h *Handler) CreateModule(w http.ResponseWriter, r *http.Request) {
 		slog.Warn("resolve module folder name failed", append(logger.RequestAttrs(r), "error", err)...)
 	}
 	resp := moduleToResponse(module)
+	resp.Code = h.loadModuleCode(r.Context(), wsUUID, module.ID)
 	// The folder is created after the row: a NAS that is down must not lose
 	// the module, and the panel offers a retry.
 	if sync := h.ensureModuleFolder(r.Context(), h.Queries, wsUUID, module); sync != nil {
@@ -378,6 +422,10 @@ func (h *Handler) UpdateModule(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	resp := moduleToResponse(updated)
+	if hasRow && moduleRow.Code != "" {
+		c := moduleRow.Code
+		resp.Code = &c
+	}
 	if willRename && syncMode != DirectorySyncDefer {
 		result := h.renameModuleFolder(r.Context(), wsUUID, updated, moduleRow, hasRow, currentFolder, renameTo)
 		resp.DirectorySync = &result
@@ -526,9 +574,14 @@ func (h *Handler) ReorderModules(w http.ResponseWriter, r *http.Request) {
 	}
 
 	statsMap := h.loadModuleStats(r.Context(), wsUUID, updated)
+	codeMap := h.loadModuleCodes(r.Context(), wsUUID, updated)
 	resp := make([]ModuleResponse, len(updated))
 	for i, m := range updated {
 		resp[i] = moduleToResponse(m)
+		if code, ok := codeMap[resp[i].ID]; ok {
+			c := code
+			resp[i].Code = &c
+		}
 		if s, ok := statsMap[resp[i].ID]; ok {
 			resp[i].IssueCount = s.TotalCount
 			resp[i].DoneCount = s.DoneCount

@@ -13,6 +13,7 @@ import type { Project, ProjectStatus, ProjectPriority } from "@multica/core/type
 import { useAuthStore } from "@multica/core/auth";
 import { canDeleteProject } from "@multica/core/projects/deletion-permissions";
 import { projectDetailOptions } from "@multica/core/projects/queries";
+import { formatCodedTitle, formatModuleTitle } from "@multica/core/projects/coded-title";
 import { useModalStore } from "@multica/core/modals";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { useUpdateProject, useDeleteProject } from "@multica/core/projects/mutations";
@@ -178,13 +179,14 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       recordRecentContext(wsId, {
         type: "project",
         id: project.id,
-        label: project.title,
+        label: formatCodedTitle(project.code, project.title),
         subtitle: project.description ?? undefined,
         icon: project.icon,
         projectStatus: project.status,
       });
     }
-  }, [project?.id, project?.title, project?.description, project?.icon, project?.status, recordRecentContext, wsId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only record when displayed metadata changes
+  }, [project?.id, project?.code, project?.title, project?.description, project?.icon, project?.status, recordRecentContext, wsId]);
   const issueTab = useIssuesScope(`project:${projectId}`);
   const issueScope = useMemo(
     () => ({ type: "project" as const, projectId, actorKind: issueTab }),
@@ -784,7 +786,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                 className="flex w-full min-w-0 items-center gap-1.5 border-b border-border/60 px-2 py-1 text-left text-caption hover:bg-accent aria-selected:bg-accent"
               >
                 <Blocks className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">{module.title}</span>
+                <span className="truncate">{formatModuleTitle(module)}</span>
               </button>
             ))}
           </div>
@@ -935,7 +937,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                               {selectedNode
                                 ? `${selectedNode.code} ${selectedNode.name}`.trim()
                                 : legacyModuleRecord
-                                  ? legacyModuleRecord.title
+                                  ? formatModuleTitle(legacyModuleRecord)
                                   : t(($) => $.detail.no_module_row)}
                             </span>
                             <button

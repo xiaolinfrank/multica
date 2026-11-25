@@ -6,6 +6,8 @@ export type ProjectPriority = "urgent" | "high" | "medium" | "low" | "none";
 export interface Project {
   id: string;
   workspace_id: string;
+  /** Plan outline code from the project's bound L1 cockpit_node (e.g. "01"). */
+  code?: string | null;
   title: string;
   description: string | null;
   icon: string | null;

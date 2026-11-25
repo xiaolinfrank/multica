@@ -45,10 +45,10 @@ Cockpit chat renders scope literals such as `project=*` and `module=*` as inline
 
 | GET endpoint | Purpose |
 | --- | --- |
-| `/api/cockpit/context` | Nullable board, actor and scope titles; no collection payloads |
+| `/api/cockpit/context` | Nullable board, actor and scope titles/codes (`project_code`, `module_code`); no collection payloads |
 | `/api/cockpit/plan` | Complete scoped nodes with `kind`/`project_status`, payments, milestones, work-item counts and a slim code index; `include_closed` shows paused/completed/cancelled projects |
-| `/api/cockpit/scopes/projects` | Project metadata search; `q`, `cursor`, 20 per page |
-| `/api/cockpit/scopes/modules` | Module metadata search within `project_id`; 20 per page |
+| `/api/cockpit/scopes/projects` | Project metadata search (matches title and plan `code`, ordered by `code`); `q`, `cursor`, 20 per page |
+| `/api/cockpit/scopes/modules` | Module metadata search within `project_id` (matches title and plan `code`, ordered by `code`); 20 per page |
 | `/api/cockpit/meetings` | Meeting metadata register, repeated filters and calendar counts |
 | `/api/cockpit/nodes/{id}` | One node, ancestors, authoritative binding, counts and relation previews |
 | `/api/cockpit/meetings/{meetingId}` | One full meeting and bounded Issue/node link previews |

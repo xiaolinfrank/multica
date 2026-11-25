@@ -22,6 +22,7 @@ import { useWorkspaceId } from "@multica/core/hooks";
 import { PRIORITY_DISPLAY_ORDER } from "@multica/core/issues/config";
 import { PROJECT_STATUS_CONFIG, PROJECT_STATUS_ORDER } from "@multica/core/projects/config";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatProjectTitle, sortByCode } from "@multica/core/projects/coded-title";
 import { labelListOptions } from "@multica/core/labels/queries";
 import { memberListOptions, agentListOptions, squadListOptions } from "@multica/core/workspace/queries";
 import {
@@ -106,10 +107,13 @@ export interface FilterValueOption {
   group?: string;
 }
 
-/** Case-insensitive substring or pinyin-initials match. */
+/** Case-insensitive substring or pinyin-initials match (also matching after an
+ *  optional leading plan code prefix such as "01 高质量数据集"). */
 export function matchesFilterQuery(text: string, query: string): boolean {
   if (!query) return true;
-  return text.toLowerCase().includes(query) || matchesPinyin(text, query);
+  if (text.toLowerCase().includes(query) || matchesPinyin(text, query)) return true;
+  const withoutCode = text.replace(/^\d+(?:\.\d+)*\s+/, "");
+  return withoutCode !== text && matchesPinyin(withoutCode, query);
 }
 
 /**
@@ -210,9 +214,9 @@ export function useFilterValueCatalog(
           label: noProject,
           icon: <FolderMinus className="size-3.5 text-muted-foreground" />,
         },
-        ...projects.map((p) => ({
+        ...sortByCode(projects).map((p) => ({
           value: p.id,
-          label: p.title,
+          label: formatProjectTitle(p),
           icon: <ProjectIcon project={p} size="sm" />,
         })),
       ],

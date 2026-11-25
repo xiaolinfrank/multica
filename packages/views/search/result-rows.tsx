@@ -7,6 +7,7 @@ import { useWorkspaceId } from "@multica/core/hooks";
 import { issueStatusCategory } from "@multica/core/issues";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import { PROJECT_STATUS_CONFIG } from "@multica/core/projects/config";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import type {
   AgentAvailability,
 } from "@multica/core/agents";
@@ -73,7 +74,7 @@ export function ProjectResultRow({
       <div className="flex min-h-7 items-center gap-2.5">
         <ProjectIcon project={project} size="md" />
         <span className="min-w-0 flex-1 truncate">
-          <HighlightText text={project.title} query={query} />
+          <HighlightText text={formatProjectTitle(project)} query={query} />
         </span>
         <span
           className={`shrink-0 text-caption ${PROJECT_STATUS_CONFIG[status]?.color ?? "text-muted-foreground"}`}

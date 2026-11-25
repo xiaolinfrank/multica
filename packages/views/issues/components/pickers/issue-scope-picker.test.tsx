@@ -501,4 +501,43 @@ describe("IssueScopePicker", () => {
     expect(screen.queryByRole("button", { name: "No ownership" })).toBeNull();
     expect(onUpdate).not.toHaveBeenCalled();
   });
+
+  it("displays plan codes on projects and modules in both the tree and trigger path, ordered by code", async () => {
+    const codedProjects = [
+      { ...project, id: OUTSIDE_PROJECT_ID, code: "02", title: "算法平台" },
+      { ...project, id: PROJECT_ID, code: "01", title: "高质量数据集" },
+    ];
+    const codedModules = [
+      { ...makeModule(OTHER_MODULE_ID, "前瞻性队列", 1), code: "01.02" },
+      { ...makeModule(MODULE_ID, "回顾性队列", 0), code: "01.01" },
+    ];
+    setApiInstance({
+      listProjects: async () => ({ projects: codedProjects, total: codedProjects.length }),
+      listModules: async () => ({ modules: codedModules, total: codedModules.length }),
+      getCockpitPlan: async () => planData(),
+      searchCockpitScopeNodes: async () => ({
+        workspace_id: "ws-1",
+        scope: { project_id: null, module_id: null, q: "", eligible: true },
+        items: [],
+        total: 0,
+        filtered_total: 0,
+        next_cursor: null,
+      }),
+      getCockpitNodeDetail: async () => ({ node: { id: WORK_ITEM_ID, code: "01.01.01", name: "立项评估" } }),
+    } as unknown as ApiClient);
+
+    show(vi.fn(), { project_id: PROJECT_ID, module_id: MODULE_ID, work_item_id: WORK_ITEM_ID });
+    const trigger = await screen.findByRole("button", {
+      name: "01 高质量数据集 / 01.01 回顾性队列 / 01.01.01 立项评估",
+    });
+    fireEvent.click(trigger);
+
+    const project01 = await screen.findByRole("button", { name: "01 高质量数据集" });
+    const project02 = screen.getByRole("button", { name: "02 算法平台" });
+    expect(project01.compareDocumentPosition(project02) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const mod01 = await screen.findByRole("button", { name: "01.01 回顾性队列" });
+    const mod02 = screen.getByRole("button", { name: "01.02 前瞻性队列" });
+    expect(mod01.compareDocumentPosition(mod02) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

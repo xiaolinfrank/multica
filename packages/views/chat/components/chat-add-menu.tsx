@@ -13,6 +13,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
+import { formatProjectTitle, sortByCode } from "@multica/core/projects/coded-title";
 import type { Project } from "@multica/core/types";
 import { ProjectIcon } from "../../projects/components/project-icon";
 import { useT } from "../../i18n";
@@ -86,13 +87,13 @@ export function ChatAddMenu({
                 {t(($) => $.input.project_context)}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="max-h-72 min-w-52 overflow-y-auto">
-                {projects.map((project) => (
+                {sortByCode(projects).map((project) => (
                   <DropdownMenuItem
                     key={project.id}
                     onClick={() => onSelectProject(project.id)}
                   >
                     <ProjectIcon project={project} size="md" />
-                    <span className="min-w-0 flex-1 truncate">{project.title}</span>
+                    <span className="min-w-0 flex-1 truncate">{formatProjectTitle(project)}</span>
                     {project.id === projectId && <Check className="ml-auto" />}
                   </DropdownMenuItem>
                 ))}

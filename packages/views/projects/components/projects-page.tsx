@@ -24,6 +24,7 @@ import {
   type ProjectSortField,
   type ProjectViewMode,
 } from "@multica/core/projects";
+import { compareOptionalCode, formatProjectTitle } from "@multica/core/projects/coded-title";
 import {
   pinListOptions,
   useCreatePin,
@@ -308,7 +309,7 @@ function ProjectCard({
             className="flex min-w-0 flex-1 items-center gap-2"
           >
             <ProjectIcon project={project} size="sm" />
-            <h3 className="truncate text-body font-medium">{project.title}</h3>
+            <h3 className="truncate text-body font-medium">{formatProjectTitle(project)}</h3>
           </AppLink>
           <ProjectRowActions project={project} pinned={pinned} canDelete={canDelete} />
           <ProjectStatusBadge project={project} handleUpdate={handleUpdate} triggerClassName="shrink-0" />
@@ -573,21 +574,29 @@ export function ProjectsPage() {
     const dir = sortDirection === "asc" ? 1 : -1;
     const sorted = [...filtered];
     sorted.sort((a, b) => {
-      if (sortField === "name") return a.title.localeCompare(b.title) * dir;
+      if (sortField === "name") {
+        return (compareOptionalCode(a.code, b.code) || a.title.localeCompare(b.title)) * dir;
+      }
       if (sortField === "priority") {
         return (
           (PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]) * dir ||
+          compareOptionalCode(a.code, b.code) ||
           a.title.localeCompare(b.title)
         );
       }
       if (sortField === "status") {
         return (
           (STATUS_ORDER[a.status] - STATUS_ORDER[b.status]) * dir ||
+          compareOptionalCode(a.code, b.code) ||
           a.title.localeCompare(b.title)
         );
       }
       if (sortField === "progress") {
-        return (progressOf(a) - progressOf(b)) * dir || a.title.localeCompare(b.title);
+        return (
+          (progressOf(a) - progressOf(b)) * dir ||
+          compareOptionalCode(a.code, b.code) ||
+          a.title.localeCompare(b.title)
+        );
       }
       return (Date.parse(a.created_at) - Date.parse(b.created_at)) * dir;
     });
@@ -605,7 +614,7 @@ export function ProjectsPage() {
         cell: (project) => (
           <CollectionNameCell
             icon={<ProjectIcon project={project} size="sm" />}
-            title={project.title}
+            title={formatProjectTitle(project)}
           />
         ),
       },
@@ -870,7 +879,7 @@ export function ProjectsPage() {
               loading={isLoading}
               getRowId={(project) => project.id}
               getRowHref={(project) => wsPaths.projectDetail(project.id)}
-              getRowTitle={(project) => project.title}
+              getRowTitle={(project) => formatProjectTitle(project)}
               rowMenu={(project) => (
                 <ProjectRowActions
                   project={project}

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Blocks, ChevronRight, FolderKanban, ListTree } from "@multica/ui/icons";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatModuleTitle, formatProjectTitle, sortByCode } from "@multica/core/projects/coded-title";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import {
   cockpitPlanOptions,
@@ -122,7 +123,7 @@ export function IssueScopePicker({
 
   const { data: allProjects = [] } = useQuery(projectListOptions(wsId));
   const projects = useMemo(
-    () => (constrainedProjectId ? allProjects.filter((project) => project.id === constrainedProjectId) : allProjects),
+    () => sortByCode(constrainedProjectId ? allProjects.filter((project) => project.id === constrainedProjectId) : allProjects),
     [allProjects, constrainedProjectId],
   );
   const [expandedProject, setExpandedProject] = useState<string | null>(value.project_id ?? constrainedProjectId);
@@ -142,7 +143,7 @@ export function IssueScopePicker({
     enabled: open && expandedProject !== null && query === "",
   });
   const visibleModules = useMemo(
-    () => (constrainedModuleId ? modules.filter((module) => module.id === constrainedModuleId) : modules),
+    () => sortByCode(constrainedModuleId ? modules.filter((module) => module.id === constrainedModuleId) : modules),
     [modules, constrainedModuleId],
   );
 
@@ -248,14 +249,24 @@ export function IssueScopePicker({
   };
 
   const hasValue = Boolean(value.project_id || value.module_id || value.work_item_id);
+  const selectedProjectText = selectedProject
+    ? formatProjectTitle(selectedProject)
+    : effectiveProjectId
+      ? "…"
+      : "";
+  const selectedModuleText = value.module_id
+    ? selectedModule
+      ? formatModuleTitle(selectedModule)
+      : "…"
+    : "";
   const workItemText = selectedWorkItem
     ? `${selectedWorkItem.code} ${selectedWorkItem.name}`.trim()
     : "…";
   // The full address survives as the tooltip: the segments below are allowed
   // to shorten, but nothing about the filing is lost to a reader.
   const fullPath = [
-    selectedProject?.title ?? (effectiveProjectId ? "…" : ""),
-    value.module_id ? selectedModule?.title ?? "…" : "",
+    selectedProjectText,
+    selectedModuleText,
     value.work_item_id ? workItemText : "",
   ]
     .filter(Boolean)
@@ -301,12 +312,12 @@ export function IssueScopePicker({
                 {/* Project and module give way first, down to `min-w-8` (a
                     character and an ellipsis), then the work item shrinks. */}
                 <span className="min-w-8 shrink-[10000] truncate">
-                  {selectedProject?.title ?? (effectiveProjectId ? "…" : "")}
+                  {selectedProjectText}
                 </span>
                 {value.module_id && (
                   <>
                     <Separator />
-                    <span className="min-w-8 shrink-[100] truncate">{selectedModule?.title ?? "…"}</span>
+                    <span className="min-w-8 shrink-[100] truncate">{selectedModuleText}</span>
                   </>
                 )}
                 {value.work_item_id && (
@@ -370,19 +381,23 @@ export function IssueScopePicker({
               query={queryState(search, null)}
               onSelect={chooseWorkItem}
               showBreadcrumb
-              projectLabel={(id) => projectById.get(id)?.title}
+              projectLabel={(id) => {
+                const project = projectById.get(id);
+                return project ? formatProjectTitle(project) : undefined;
+              }}
             />
           ) : (
             <>
               {projects.map((project) => {
                 const expanded = expandedProject === project.id;
+                const projectText = formatProjectTitle(project);
                 return (
                   <div key={project.id}>
                     <div className="flex min-w-0 items-center gap-1">
                       <button
                         type="button"
                         aria-expanded={expanded}
-                        aria-label={`${t(($) => $.pickers.scope.toggle_project)} ${project.title}`}
+                        aria-label={`${t(($) => $.pickers.scope.toggle_project)} ${projectText}`}
                         className="grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground hover:text-foreground"
                         onClick={() => {
                           setExpandedProject(expanded ? null : project.id);
@@ -395,23 +410,25 @@ export function IssueScopePicker({
                         type="button"
                         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-xs px-1 py-1 text-left text-caption hover:bg-accent"
                         aria-pressed={value.project_id === project.id && value.module_id === constrainedModuleId}
+                        title={projectText}
                         onClick={() => commit({ project_id: project.id, module_id: constrainedModuleId, work_item_id: null })}
                       >
                         <ProjectIcon project={project} size="sm" />
-                        <span className="truncate">{project.title}</span>
+                        <span className="truncate">{projectText}</span>
                       </button>
                     </div>
                     {expanded ? (
                       <div className="ml-4 space-y-0.5 border-l border-border/60 pl-1">
                         {visibleModules.map((module) => {
                           const moduleOpen = expandedModule === module.id;
+                          const moduleText = formatModuleTitle(module);
                           return (
                             <div key={module.id}>
                               <div className="flex min-w-0 items-center gap-1">
                                 <button
                                   type="button"
                                   aria-expanded={moduleOpen}
-                                  aria-label={`${t(($) => $.pickers.scope.toggle_module)} ${module.title}`}
+                                  aria-label={`${t(($) => $.pickers.scope.toggle_module)} ${moduleText}`}
                                   className="grid size-5 shrink-0 place-items-center rounded-xs text-muted-foreground hover:text-foreground"
                                   onClick={() => setExpandedModule(moduleOpen ? null : module.id)}
                                 >
@@ -421,10 +438,11 @@ export function IssueScopePicker({
                                   type="button"
                                   className="flex min-w-0 flex-1 items-center gap-1.5 rounded-xs px-1 py-1 text-left text-caption hover:bg-accent"
                                   aria-pressed={value.module_id === module.id && value.work_item_id === null}
+                                  title={moduleText}
                                   onClick={() => commit({ project_id: module.project_id, module_id: module.id, work_item_id: null })}
                                 >
                                   <Blocks className="size-3.5 shrink-0 text-muted-foreground" />
-                                  <span className="truncate">{module.title}</span>
+                                  <span className="truncate">{moduleText}</span>
                                 </button>
                               </div>
                               {moduleOpen ? (

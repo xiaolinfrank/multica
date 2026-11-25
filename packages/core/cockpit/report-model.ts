@@ -3,7 +3,7 @@ import type { CockpitOverviewData } from "../types/cockpit-overview";
 /** An explicit presentation whitelist. Financial fields, descriptions, capabilities and actor identity never enter this model. */
 export function cockpitReportData(data: CockpitOverviewData) {
   return {
-    workspaceId: data.workspace_id, scope: { projectId: data.project_id, moduleId: data.module_id ?? null, projectTitle: data.project_title, moduleTitle: data.module_title ?? "" },
+    workspaceId: data.workspace_id, scope: { projectId: data.project_id, moduleId: data.module_id ?? null, projectCode: data.project_code ?? "", projectTitle: data.project_title, moduleCode: data.module_code ?? "", moduleTitle: data.module_title ?? "" },
     asOf: data.as_of, retrievedAt: data.generated_at,
     title: data.board?.title ?? "", goal: data.board?.goal_title ?? "", goalDate: data.board?.goal_date ?? null, hasBoard: Boolean(data.board),
     summary: {

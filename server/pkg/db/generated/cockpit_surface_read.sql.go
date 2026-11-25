@@ -453,17 +453,37 @@ func (q *Queries) ListCockpitMeetingRegister(ctx context.Context, arg ListCockpi
 
 const listCockpitScopeChoices = `-- name: ListCockpitScopeChoices :one
 WITH choices AS (
- SELECT p.id,p.title,NULL::uuid AS project_id FROM project p
+ SELECT p.id, p.title, COALESCE(n.code, '') AS code, NULL::uuid AS project_id
+ FROM project p
+ LEFT JOIN LATERAL (
+  SELECT cn.code FROM cockpit_node cn
+  WHERE cn.workspace_id = p.workspace_id AND cn.project_id = p.id AND cn.module_id IS NULL
+  ORDER BY cn.position ASC, cn.id ASC LIMIT 1
+ ) n ON TRUE
  WHERE p.workspace_id=$1::uuid AND $2::text='projects'
- AND ($3::text='' OR strpos(lower(p.title),lower($3::text))>0)
+ AND ($3::text='' OR strpos(lower(p.title),lower($3::text))>0
+  OR strpos(lower(COALESCE(n.code,'')),lower($3::text))>0
+  OR strpos(lower(concat_ws(' ', NULLIF(COALESCE(n.code,''), ''), p.title)),lower($3::text))>0)
  UNION ALL
- SELECT m.id,m.title,m.project_id FROM module m
+ SELECT m.id, m.title, COALESCE(n.code, '') AS code, m.project_id
+ FROM module m
+ LEFT JOIN LATERAL (
+  SELECT cn.code FROM cockpit_node cn
+  WHERE cn.workspace_id = m.workspace_id AND cn.module_id = m.id
+  ORDER BY cn.position ASC, cn.id ASC LIMIT 1
+ ) n ON TRUE
  WHERE m.workspace_id=$1::uuid AND $2::text='modules' AND m.project_id=$4::uuid
- AND ($3::text='' OR strpos(lower(m.title),lower($3::text))>0)
+ AND ($3::text='' OR strpos(lower(m.title),lower($3::text))>0
+  OR strpos(lower(COALESCE(n.code,'')),lower($3::text))>0
+  OR strpos(lower(concat_ws(' ', NULLIF(COALESCE(n.code,''), ''), m.title)),lower($3::text))>0)
 ), page AS (
- SELECT id, title, project_id FROM choices WHERE $5::text='' OR id::text>$5::text ORDER BY id LIMIT 21
+ SELECT id, title, code, project_id FROM choices
+ WHERE $5::uuid IS NULL
+  OR (code = '', code, id) > ($6::text = '', $6::text, $5::uuid)
+ ORDER BY (code = '') ASC, code ASC, id ASC
+ LIMIT 21
 )
-SELECT jsonb_build_object('items',COALESCE((SELECT jsonb_agg(p ORDER BY p.id) FROM page p),'[]'::jsonb),'total',(SELECT count(*) FROM choices))::jsonb AS payload
+SELECT jsonb_build_object('items',COALESCE((SELECT jsonb_agg(p ORDER BY (p.code = '') ASC, p.code ASC, p.id ASC) FROM page p),'[]'::jsonb),'total',(SELECT count(*) FROM choices))::jsonb AS payload
 `
 
 type ListCockpitScopeChoicesParams struct {
@@ -471,7 +491,8 @@ type ListCockpitScopeChoicesParams struct {
 	Kind        string      `json:"kind"`
 	Query       string      `json:"query"`
 	ProjectID   pgtype.UUID `json:"project_id"`
-	CursorKey   string      `json:"cursor_key"`
+	CursorID    pgtype.UUID `json:"cursor_id"`
+	CursorCode  string      `json:"cursor_code"`
 }
 
 func (q *Queries) ListCockpitScopeChoices(ctx context.Context, arg ListCockpitScopeChoicesParams) ([]byte, error) {
@@ -480,7 +501,8 @@ func (q *Queries) ListCockpitScopeChoices(ctx context.Context, arg ListCockpitSc
 		arg.Kind,
 		arg.Query,
 		arg.ProjectID,
-		arg.CursorKey,
+		arg.CursorID,
+		arg.CursorCode,
 	)
 	var payload []byte
 	err := row.Scan(&payload)

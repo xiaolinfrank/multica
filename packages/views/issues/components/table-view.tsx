@@ -96,6 +96,7 @@ import {
 import { useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { propertyListOptions } from "@multica/core/properties";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatModuleTitle, formatProjectTitle } from "@multica/core/projects/coded-title";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { issueTableModuleGroupSpec } from "@multica/core/issues/surface/group-spec";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -2034,18 +2035,14 @@ export function TableView({
         if (!value.project_id) return t(($) => $.swimlane.no_project);
         // A project the query cannot resolve (deleted, or not visible to this
         // member) reads as unavailable — never as its raw id.
-        return (
-          groupProjectMap.get(value.project_id)?.title ??
-          t(($) => $.table.value_unavailable)
-        );
+        const project = groupProjectMap.get(value.project_id);
+        return project ? formatProjectTitle(project) : t(($) => $.table.value_unavailable);
       }
       if (value.kind === "module") {
         if (!value.module_id) return t(($) => $.swimlane.no_module);
         // Deleted / unresolvable modules read as unavailable, like projects.
-        return (
-          groupModuleMap.get(value.module_id)?.title ??
-          t(($) => $.table.value_unavailable)
-        );
+        const module = groupModuleMap.get(value.module_id);
+        return module ? formatModuleTitle(module) : t(($) => $.table.value_unavailable);
       }
       if (value.kind === "parent") {
         if (value.value_state === "unset") {

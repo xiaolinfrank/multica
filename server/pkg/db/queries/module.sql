@@ -93,3 +93,10 @@ WHERE issue.workspace_id = $1
 
 -- name: DeleteModulesForProject :execrows
 DELETE FROM module WHERE workspace_id = $1 AND project_id = $2;
+
+-- name: ListModuleCockpitCodes :many
+SELECT DISTINCT ON (module_id) module_id, code
+FROM cockpit_node
+WHERE workspace_id = sqlc.arg('workspace_id')::uuid
+  AND module_id = ANY(sqlc.arg('module_ids')::uuid[])
+ORDER BY module_id, position ASC, id ASC;

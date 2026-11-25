@@ -4,7 +4,14 @@ import { CockpitSchema, CockpitNodeSchema, CockpitPaymentSchema, CockpitMileston
 const count = z.number().int().nonnegative();
 const page = <T extends z.ZodType>(item: T) => z.object({ items: z.array(item), total: count, next_cursor: z.string().nullable() })
   .refine((value) => value.total >= value.items.length, "Page count is smaller than its contents");
-export const CockpitReadScopeSchema = z.object({ project_id: z.string().nullable(), module_id: z.string().nullable(), project_title: z.string(), module_title: z.string() });
+export const CockpitReadScopeSchema = z.object({
+  project_id: z.string().nullable(),
+  module_id: z.string().nullable(),
+  project_code: z.string().optional().catch(undefined),
+  project_title: z.string(),
+  module_code: z.string().optional().catch(undefined),
+  module_title: z.string(),
+});
 export const CockpitContextDataSchema = z.object({
   workspace_id: z.string().min(1), scope: CockpitReadScopeSchema, cockpit: CockpitSchema.nullable(),
   actor: z.object({ user_id: z.string().min(1), role: z.string(), is_human: z.boolean() }), has_meeting_workflows: z.boolean(), has_stable_bindings: z.boolean(),
@@ -31,7 +38,7 @@ export const CockpitPlanDataSchema = CockpitContextDataSchema.safeExtend({
   counts: z.object({ nodes: count, payments: count, milestones: count, index_nodes: count }),
 }).refine((value) => value.counts.nodes === value.nodes.length && value.counts.payments === value.payments.length
   && value.counts.milestones === value.milestones.length && value.counts.index_nodes === value.node_index.length, "Plan scope must be complete");
-export const CockpitScopeItemPageSchema = page(z.object({ id: z.string().min(1), title: z.string(), project_id: z.string().nullable() })).safeExtend({
+export const CockpitScopeItemPageSchema = page(z.object({ id: z.string().min(1), code: z.string().optional().catch(undefined), title: z.string(), project_id: z.string().nullable() })).safeExtend({
   workspace_id: z.string().min(1), project_id: z.string().nullable(),
 });
 export const CockpitPlanExportDataSchema = CockpitPlanDataSchema.safeExtend({
@@ -51,7 +58,7 @@ export const CockpitMeetingRegisterPageSchema = page(CockpitMeetingCardSchema).s
 });
 export const CockpitNodeDetailDataSchema = CockpitContextDataSchema.safeExtend({
   node: CockpitNodeSchema, ancestors: z.array(CockpitNodeSchema), children_count: count, scope_match: z.boolean(), node_index: nodeIndex,
-  binding: z.object({ project_id: z.string().nullable(), module_id: z.string().nullable(), project_title: z.string(), module_title: z.string(), source_node_id: z.string().nullable(), eligible: z.boolean(), reason: z.string() }),
+  binding: z.object({ project_id: z.string().nullable(), module_id: z.string().nullable(), project_code: z.string().optional().catch(undefined), project_title: z.string(), module_code: z.string().optional().catch(undefined), module_title: z.string(), source_node_id: z.string().nullable(), eligible: z.boolean(), reason: z.string() }),
   payments: page(CockpitPaymentSchema), payment_total: z.number().finite(), meetings: page(CockpitMeetingCardSchema),
 });
 export const CockpitMeetingDetailDataSchema = CockpitContextDataSchema.safeExtend({

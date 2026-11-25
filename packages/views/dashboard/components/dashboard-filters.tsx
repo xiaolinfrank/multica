@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarDays, ChevronDown, FolderKanban } from "@multica/ui/icons";
+import { formatProjectTitle, sortByCode } from "@multica/core/projects/coded-title";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   DropdownMenu,
@@ -13,7 +14,7 @@ import { ProjectIcon } from "../../projects/components/project-icon";
 import { useT } from "../../i18n";
 import { ALL_PROJECTS, TIME_RANGES, type TimeRange } from "./dashboard-shared";
 
-type DashboardProject = { id: string; title: string; icon: string | null };
+type DashboardProject = { id: string; code?: string | null; title: string; icon: string | null };
 
 /**
  * Page-scoped time range.
@@ -100,6 +101,7 @@ export function ProjectFilter({
   // page applies when it derives the effective `projectId` for the queries, so
   // the chip cannot claim a filter the data is not actually narrowed by.
   const selected = projects.find((p) => p.id === projectValue);
+  const orderedProjects = sortByCode(projects);
 
   return (
     <DropdownMenu>
@@ -117,7 +119,7 @@ export function ProjectFilter({
               <FolderKanban className="size-3.5 text-muted-foreground" />
             )}
             <span className="max-w-40 truncate">
-              {selected ? selected.title : allLabel}
+              {selected ? formatProjectTitle(selected) : allLabel}
             </span>
             <ChevronDown className="size-3 text-muted-foreground" />
           </Button>
@@ -132,10 +134,10 @@ export function ProjectFilter({
             <FolderKanban className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{allLabel}</span>
           </DropdownMenuRadioItem>
-          {projects.map((project) => (
+          {orderedProjects.map((project) => (
             <DropdownMenuRadioItem key={project.id} value={project.id}>
               <ProjectIcon project={project} size="sm" />
-              <span className="truncate">{project.title}</span>
+              <span className="truncate">{formatProjectTitle(project)}</span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

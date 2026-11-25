@@ -13,6 +13,7 @@ import { issueKeys } from "@multica/core/issues/queries";
 import { projectSidebarSource } from "@multica/core/issues/sidebar-list";
 import { cockpitNodeDetailOptions, cockpitPlanOptions, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
 import { moduleListOptions } from "@multica/core/modules/queries";
+import { formatModuleTitle, formatProjectTitle } from "@multica/core/projects/coded-title";
 import { useSidebarProjectPrefs, useUpdateSidebarProjectPrefs } from "@multica/core/issues/sidebar-project-prefs";
 import { openCreateIssueWithPreference } from "@multica/core/issues/stores/create-mode-store";
 import { useSidebarKeptStore } from "@multica/core/issues/stores/sidebar-kept-store";
@@ -301,13 +302,13 @@ function ProjectTreeItem({
         rowRef={setActivatorNodeRef}
         {...listeners}
         href={p.projectDetail(project.id)}
-        label={project.title}
+        label={formatProjectTitle(project)}
         icon={<Folder className="size-4 shrink-0" />}
         active={active}
         expanded={expanded}
         onExpandedChange={setExpanded}
         listId={listId}
-        toggleLabel={t(($) => $.panels.work.project_plan, { name: project.title })}
+        toggleLabel={t(($) => $.panels.work.project_plan, { name: formatProjectTitle(project) })}
         onPrefetch={prefetch}
         onNavigate={(event) => {
           if (!wasDragged.current) return;
@@ -407,7 +408,7 @@ function ProjectPlanRows({
           <li key={module.id}>
             <TreeRow
               href={`${projectHref}?module=${encodeURIComponent(module.id)}`}
-              label={module.title}
+              label={formatModuleTitle(module)}
               icon={<Blocks className="size-4 shrink-0" />}
               active={false}
               className={PLAN_CHILD_CLASS}

@@ -1,8 +1,10 @@
 export interface CockpitOverviewScope {
   workspace_id: string;
   project_id: string | null;
+  project_code?: string;
   project_title: string;
   module_id?: string | null;
+  module_code?: string;
   module_title?: string;
   as_of: string;
   generated_at: string;
@@ -70,8 +72,10 @@ export interface CockpitExecutionOverviewItem {
   code: string;
   name: string;
   project_id: string;
+  project_code?: string;
   project_title: string;
   module_id: string;
+  module_code?: string;
   module_title: string;
   plan_owner: string;
   plan_status: string;

@@ -12,6 +12,7 @@ import {
 import { childIssuesOptions, issueDetailOptions, useUpdateIssue } from "@multica/core/issues";
 import { moduleListOptions } from "@multica/core/modules/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatModuleTitle, formatProjectTitle } from "@multica/core/projects/coded-title";
 import { useIssueScopeMove } from "../../issues/components/use-issue-scope-move";
 import type { CockpitNode, CockpitTaskCreate, Issue } from "@multica/core/types";
 import { issueOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
@@ -110,8 +111,10 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
 
   const label = (projectId_: string | null, moduleId_: string | null, workItem: string | null) => {
     if (!projectId_ && !moduleId_ && !workItem) return t(($) => $.task_flow.unfiled);
-    const project = projectId_ ? projects.data?.find((entry) => entry.id === projectId_)?.title ?? projectId_ : null;
-    const module = moduleId_ ? modules.data?.find((entry) => entry.id === moduleId_)?.title ?? moduleId_ : null;
+    const projectEntry = projectId_ ? projects.data?.find((entry) => entry.id === projectId_) : undefined;
+    const moduleEntry = moduleId_ ? modules.data?.find((entry) => entry.id === moduleId_) : undefined;
+    const project = projectId_ ? (projectEntry ? formatProjectTitle(projectEntry) : projectId_) : null;
+    const module = moduleId_ ? (moduleEntry ? formatModuleTitle(moduleEntry) : moduleId_) : null;
     return [project, module, workItem].filter(Boolean).join(" / ");
   };
   const previousWorkItemRow = previousWorkItem.data?.node;

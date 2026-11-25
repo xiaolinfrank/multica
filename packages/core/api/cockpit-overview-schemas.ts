@@ -7,8 +7,8 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
 }, "Invalid calendar date");
 const optionalDate = date.nullable().catch(null).default(null);
 export const CockpitOverviewScopeSchema = z.object({
-  workspace_id: z.string().min(1), project_id: z.string().nullable(), project_title: z.string().default(""),
-  module_id: z.string().nullable().default(null), module_title: z.string().default(""),
+  workspace_id: z.string().min(1), project_id: z.string().nullable(), project_code: z.string().optional().catch(undefined), project_title: z.string().default(""),
+  module_id: z.string().nullable().default(null), module_code: z.string().optional().catch(undefined), module_title: z.string().default(""),
   as_of: date, generated_at: z.string().datetime({ offset: true }).refine((value) => Number.isFinite(Date.parse(value))),
 }).loose();
 export const CockpitOverviewIssueCountsSchema = z.object({
@@ -30,8 +30,8 @@ export const CockpitAttentionPageSchema = CockpitOverviewScopeSchema.extend({
   view: z.string(), kind: z.string().default(""), items: z.array(CockpitAttentionItemSchema), total: count, next_cursor: z.string().nullable(),
 }).refine((page) => page.total >= page.items.length, "Page count is smaller than its contents");
 export const CockpitExecutionOverviewItemSchema = z.object({
-  id: z.string().min(1), code: z.string().default(""), name: z.string().default(""), project_id: z.string(), project_title: z.string().default(""),
-  module_id: z.string(), module_title: z.string().default(""), plan_owner: z.string().default(""), plan_status: z.string().default(""),
+  id: z.string().min(1), code: z.string().default(""), name: z.string().default(""), project_id: z.string(), project_code: z.string().optional().catch(undefined), project_title: z.string().default(""),
+  module_id: z.string(), module_code: z.string().optional().catch(undefined), module_title: z.string().default(""), plan_owner: z.string().default(""), plan_status: z.string().default(""),
   plan_start_date: optionalDate, plan_end_date: optionalDate, issue_counts: CockpitOverviewIssueCountsSchema,
 }).loose();
 export const CockpitExecutionOverviewPageSchema = CockpitOverviewScopeSchema.extend({

@@ -256,6 +256,44 @@ func (q *Queries) GetModulesByIDs(ctx context.Context, arg GetModulesByIDsParams
 	return items, nil
 }
 
+const listModuleCockpitCodes = `-- name: ListModuleCockpitCodes :many
+SELECT DISTINCT ON (module_id) module_id, code
+FROM cockpit_node
+WHERE workspace_id = $1::uuid
+  AND module_id = ANY($2::uuid[])
+ORDER BY module_id, position ASC, id ASC
+`
+
+type ListModuleCockpitCodesParams struct {
+	WorkspaceID pgtype.UUID   `json:"workspace_id"`
+	ModuleIds   []pgtype.UUID `json:"module_ids"`
+}
+
+type ListModuleCockpitCodesRow struct {
+	ModuleID pgtype.UUID `json:"module_id"`
+	Code     string      `json:"code"`
+}
+
+func (q *Queries) ListModuleCockpitCodes(ctx context.Context, arg ListModuleCockpitCodesParams) ([]ListModuleCockpitCodesRow, error) {
+	rows, err := q.db.Query(ctx, listModuleCockpitCodes, arg.WorkspaceID, arg.ModuleIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListModuleCockpitCodesRow{}
+	for rows.Next() {
+		var i ListModuleCockpitCodesRow
+		if err := rows.Scan(&i.ModuleID, &i.Code); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listModules = `-- name: ListModules :many
 SELECT id, workspace_id, project_id, title, description, position, created_at, updated_at, directory_name FROM module
 WHERE workspace_id = $1

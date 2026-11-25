@@ -9,6 +9,7 @@ import {
 } from "@multica/core/cockpit";
 import type { CockpitAttentionItem, CockpitExecutionOverviewItem, CockpitOverviewIssueCounts, CockpitRecentMeeting } from "@multica/core/types";
 import { useWorkspacePaths } from "@multica/core/paths";
+import { formatCodedTitle } from "@multica/core/projects/coded-title";
 import { isBuiltInIssueStatus, isIssueStatusCategory } from "@multica/core/issue-statuses";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
@@ -140,15 +141,18 @@ function ExecutionRows({ items, scope }: { items: CockpitExecutionOverviewItem[]
   const { t } = useT("cockpit");
   const locale = useLocale();
   const paths = useWorkspacePaths();
-  return <ul className="divide-y divide-border/70">{items.map((node) => <li key={node.id} className="py-3 first:pt-0"><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id }, scope)} newTabTitle={node.name}
-    className="group block rounded-lg outline-offset-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="mb-1 line-clamp-1 text-micro text-muted-foreground" title={`${node.project_title} / ${node.module_title}`}>{node.project_title} / {node.module_title}</p>
+  return <ul className="divide-y divide-border/70">{items.map((node) => {
+    const scopeBreadcrumb = `${formatCodedTitle(node.project_code, node.project_title)} / ${formatCodedTitle(node.module_code, node.module_title)}`;
+    return <li key={node.id} className="py-3 first:pt-0"><AppLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: node.id }, scope)} newTabTitle={node.name}
+    className="group block rounded-lg outline-offset-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="mb-1 line-clamp-1 text-micro text-muted-foreground" title={scopeBreadcrumb}>{scopeBreadcrumb}</p>
       <h3 className="line-clamp-2 break-words text-body font-medium group-hover:underline" title={`${node.code} ${node.name}`}><span className="mr-2 font-mono text-caption text-muted-foreground">{node.code}</span>{node.name}</h3></div><ArrowUpRight className="mt-1 size-4 shrink-0 text-muted-foreground" aria-hidden /></div>
     <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-caption [overflow-wrap:anywhere]"><span className="rounded bg-brand/8 px-1.5 py-0.5 font-medium text-brand">{t(($) => $.work_overview.open_task_count, { count: node.issue_counts.active })}</span>
       {node.issue_counts.overdue > 0 && <span className="text-destructive">{t(($) => $.work_overview.overdue_count, { count: node.issue_counts.overdue })}</span>}
       <span className="line-clamp-1 min-w-0 max-w-full text-muted-foreground" title={node.plan_owner}>{node.plan_owner || t(($) => $.workflow.unassigned)}</span>
       {node.plan_status && <span className="line-clamp-1 min-w-0 max-w-full text-muted-foreground" title={node.plan_status}>{node.plan_status}</span>}</div>
     {node.plan_end_date && <p className="mt-1.5 text-micro text-muted-foreground">{t(($) => $.work_overview.planned_end, { date: calendarDate(node.plan_end_date, locale) })}</p>}
-  </AppLink></li>)}</ul>;
+  </AppLink></li>;
+  })}</ul>;
 }
 
 function MeetingRows({ items, scope }: { items: CockpitRecentMeeting[]; scope: CockpitScope }) {

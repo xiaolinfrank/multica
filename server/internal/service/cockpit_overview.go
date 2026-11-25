@@ -113,6 +113,9 @@ func (s *IssueService) readCockpitOverview(ctx context.Context, p CockpitOvervie
 			return out, planningError(err)
 		}
 		out.ProjectTitle = project.Title
+		if codes, err := q.ListProjectCockpitCodes(ctx, db.ListProjectCockpitCodesParams{WorkspaceID: p.WorkspaceID, ProjectIds: []pgtype.UUID{p.ProjectID}}); err == nil && len(codes) > 0 {
+			out.ProjectCode = codes[0].Code
+		}
 	}
 	if p.ModuleID.Valid {
 		module, err := q.GetModuleInWorkspace(ctx, db.GetModuleInWorkspaceParams{WorkspaceID: p.WorkspaceID, ID: p.ModuleID})
@@ -123,6 +126,9 @@ func (s *IssueService) readCockpitOverview(ctx context.Context, p CockpitOvervie
 			return out, fmt.Errorf("%w: module_id does not belong to project_id", ErrCockpitWorkflowInput)
 		}
 		out.ModuleTitle = module.Title
+		if codes, err := q.ListModuleCockpitCodes(ctx, db.ListModuleCockpitCodesParams{WorkspaceID: p.WorkspaceID, ModuleIds: []pgtype.UUID{p.ModuleID}}); err == nil && len(codes) > 0 {
+			out.ModuleCode = codes[0].Code
+		}
 	}
 	out.Actor = CockpitOverviewActor{UserID: util.UUIDToString(member.UserID), Role: member.Role, IsHuman: p.Human}
 	if section == "overview" {

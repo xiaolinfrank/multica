@@ -8,6 +8,8 @@ export interface Module {
   id: string;
   workspace_id: string;
   project_id: string;
+  /** Plan outline code from the module's bound L2 cockpit_node (e.g. "01.01"). */
+  code?: string | null;
   title: string;
   directory_name?: string | null;
   description: string | null;

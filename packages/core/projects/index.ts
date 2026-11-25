@@ -1,4 +1,11 @@
 export { canDeleteProject } from "./deletion-permissions";
+export {
+  compareOptionalCode,
+  formatCodedTitle,
+  formatModuleTitle,
+  formatProjectTitle,
+  sortByCode,
+} from "./coded-title";
 export { projectKeys, projectListOptions, projectDetailOptions } from "./queries";
 export { useCreateProject, useUpdateProject, useDeleteProject } from "./mutations";
 export { useProjectDraftStore } from "./draft-store";

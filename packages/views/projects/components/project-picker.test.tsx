@@ -7,12 +7,16 @@ import enIssues from "../../locales/en/issues.json";
 import { ProjectPicker } from "./project-picker";
 import { PillButton } from "../../common/pill-button";
 
+const mockProjects = vi.hoisted(() => ({
+  current: [
+    { id: "project-1", title: "Launch Command Center", icon: null } as { id: string; code?: string | null; title: string; icon: string | null },
+    { id: "project-2", title: "Mobile Web", icon: null },
+  ],
+}));
+
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({
-    data: [
-      { id: "project-1", title: "Launch Command Center", icon: null },
-      { id: "project-2", title: "Mobile Web", icon: null },
-    ],
+    data: mockProjects.current,
   }),
 }));
 
@@ -165,5 +169,31 @@ describe("ProjectPicker", () => {
     render(withI18n(<ProjectPicker projectId="project-1" onUpdate={onUpdate} disabled open />));
     expect(screen.queryByPlaceholderText(SEARCH_PLACEHOLDER)).not.toBeInTheDocument();
     expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("displays plan codes, sorts coded projects by code, and filters by code", async () => {
+    const user = userEvent.setup();
+    const prev = mockProjects.current;
+    mockProjects.current = [
+      { id: "project-2", code: "02", title: "算法平台", icon: null },
+      { id: "project-1", code: "01", title: "高质量数据集", icon: null },
+    ];
+    try {
+      renderPicker({ projectId: "project-1" });
+      const trigger = screen.getByRole("button", { name: "01 高质量数据集" });
+      await user.click(trigger);
+
+      const searchInput = await screen.findByPlaceholderText(SEARCH_PLACEHOLDER);
+      const popup = searchInput.closest("[data-slot='popover-content']") as HTMLElement;
+      const p1 = within(popup).getByRole("button", { name: "01 高质量数据集" });
+      const p2 = within(popup).getByRole("button", { name: "02 算法平台" });
+      expect(p1.compareDocumentPosition(p2) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      await user.type(searchInput, "02");
+      expect(within(popup).getByRole("button", { name: "02 算法平台" })).toBeVisible();
+      expect(within(popup).queryByRole("button", { name: "01 高质量数据集" })).toBeNull();
+    } finally {
+      mockProjects.current = prev;
+    }
   });
 });

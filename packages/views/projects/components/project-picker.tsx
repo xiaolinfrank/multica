@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FolderKanban } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatProjectTitle, sortByCode } from "@multica/core/projects/coded-title";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type { UpdateIssueRequest } from "@multica/core/types";
 import { ProjectIcon } from "./project-icon";
@@ -52,7 +53,9 @@ export function ProjectPicker({
   const { t } = useT("projects");
   const wsId = useWorkspaceId();
   const { data: projects = [] } = useQuery(projectListOptions(wsId));
+  const orderedProjects = useMemo(() => sortByCode(projects), [projects]);
   const current = projects.find((p) => p.id === projectId);
+  const currentLabel = formatProjectTitle(current);
   const [filter, setFilter] = useState("");
   // Normalize to an always-boolean controlled `open`, matching the other
   // pickers (status/priority/assignee/labels). Base UI latches a controlled
@@ -64,12 +67,18 @@ export function ProjectPicker({
   const open = disabled ? false : controlledOpen ?? internalOpen;
   const setOpen = disabled ? () => {} : onOpenChange ?? setInternalOpen;
 
-  // Client-side filter: substring match plus pinyin so Chinese project names
-  // are reachable by latin input (e.g. "sjtmh" → "数据透明化").
+  // Client-side filter: match code, title, combined "code title", plus pinyin
+  // so Chinese project names are reachable by latin input (e.g. "sjtmh" → "数据透明化").
   const query = filter.trim().toLowerCase();
-  const filtered = projects.filter(
-    (p) => p.title.toLowerCase().includes(query) || matchesPinyin(p.title, query),
-  );
+  const filtered = orderedProjects.filter((p) => {
+    if (!query) return true;
+    const label = formatProjectTitle(p).toLowerCase();
+    return (
+      label.includes(query) ||
+      p.title.toLowerCase().includes(query) ||
+      matchesPinyin(p.title, query)
+    );
+  });
 
   // Callers that bring their own trigger (create pill, chat pill, autopilot
   // card, table cell) take over the trigger entirely.
@@ -82,7 +91,7 @@ export function ProjectPicker({
       <PropertyPicker
         open={open}
         onOpenChange={setOpen}
-        width="w-52"
+        width="w-64"
         align={align}
         searchable={!readOnly}
         header={readOnly && restriction ? <div className="p-2 text-caption">{restriction}</div> : undefined}
@@ -95,7 +104,7 @@ export function ProjectPicker({
           current ? (
             <>
               <ProjectIcon project={current} size="sm" />
-              <span className="truncate">{current.title}</span>
+              <span className="truncate">{currentLabel}</span>
             </>
           ) : (
             <>
@@ -120,20 +129,23 @@ export function ProjectPicker({
           <span className="text-muted-foreground">{t(($) => $.picker.no_project)}</span>
         </PickerItem>
 
-        {filtered.map((p) => (
-          <PickerItem
-            key={p.id}
-            selected={p.id === projectId}
-            truncationTooltip={p.title}
-            onClick={() => {
-              onUpdate({ project_id: p.id });
-              setOpen(false);
-            }}
-          >
-            <ProjectIcon project={p} size="sm" />
-            <span className="truncate">{p.title}</span>
-          </PickerItem>
-        ))}
+        {filtered.map((p) => {
+          const itemLabel = formatProjectTitle(p);
+          return (
+            <PickerItem
+              key={p.id}
+              selected={p.id === projectId}
+              truncationTooltip={itemLabel}
+              onClick={() => {
+                onUpdate({ project_id: p.id });
+                setOpen(false);
+              }}
+            >
+              <ProjectIcon project={p} size="sm" />
+              <span className="truncate">{itemLabel}</span>
+            </PickerItem>
+          );
+        })}
 
         {projects.length === 0 && (
           <div className="px-2 py-1.5 text-caption text-muted-foreground">{t(($) => $.picker.empty)}</div>

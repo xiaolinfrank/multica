@@ -28,7 +28,9 @@ type CockpitSurfacePage struct {
 type CockpitSurfaceBinding struct {
 	ProjectID    *string `json:"project_id"`
 	ModuleID     *string `json:"module_id"`
+	ProjectCode  string  `json:"project_code,omitempty"`
 	ProjectTitle string  `json:"project_title"`
+	ModuleCode   string  `json:"module_code,omitempty"`
 	ModuleTitle  string  `json:"module_title"`
 	SourceNodeID *string `json:"source_node_id"`
 	Eligible     bool    `json:"eligible"`
@@ -221,6 +223,9 @@ func (s *IssueService) GetCockpitSurfaceNode(ctx context.Context, p CockpitSurfa
 			return out, e
 		} else {
 			out.Binding.ProjectTitle = record.Title
+			if codes, err := q.ListProjectCockpitCodes(ctx, db.ListProjectCockpitCodesParams{WorkspaceID: p.WorkspaceID, ProjectIds: []pgtype.UUID{project}}); err == nil && len(codes) > 0 {
+				out.Binding.ProjectCode = codes[0].Code
+			}
 		}
 	}
 	if module.Valid {
@@ -232,6 +237,9 @@ func (s *IssueService) GetCockpitSurfaceNode(ctx context.Context, p CockpitSurfa
 			return out, e
 		} else {
 			out.Binding.ModuleTitle = record.Title
+			if codes, err := q.ListModuleCockpitCodes(ctx, db.ListModuleCockpitCodesParams{WorkspaceID: p.WorkspaceID, ModuleIds: []pgtype.UUID{module}}); err == nil && len(codes) > 0 {
+				out.Binding.ModuleCode = codes[0].Code
+			}
 		}
 	}
 	out.Binding.ProjectID = planningUUID(project)

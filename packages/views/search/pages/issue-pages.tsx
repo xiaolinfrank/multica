@@ -19,6 +19,7 @@ import { issueLabelsOptions, labelListOptions } from "@multica/core/labels/queri
 import { useAttachLabelToIssue, useDetachLabel } from "@multica/core/labels/mutations";
 import { useModalStore } from "@multica/core/modals";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatProjectTitle, sortByCode } from "@multica/core/projects/coded-title";
 import { quickActionListOptions, useRunQuickAction } from "@multica/core/quick-actions";
 import type { Issue, IssuePriority, Label } from "@multica/core/types";
 import { StatusIcon } from "../../issues/components/status-icon";
@@ -418,8 +419,8 @@ export function IssueProjectPage({ target, query }: { target: IssueTarget; query
   const writer = useIssueTargetWriter(target);
   const { data: projects = [] } = useQuery(projectListOptions(wsId));
   const current = common(writer.issues, (issue) => issue.project_id);
-  const live = projects.filter((project) => project.status !== "cancelled" || project.id === current);
-  const visible = filterByLabel(live, query, (project) => project.title);
+  const live = sortByCode(projects.filter((project) => project.status !== "cancelled" || project.id === current));
+  const visible = filterByLabel(live, query, (project) => formatProjectTitle(project));
   const noProjectLabel = t(($) => $.pages.no_project);
   const q = query.trim().toLowerCase();
   return (
@@ -450,7 +451,7 @@ export function IssueProjectPage({ target, query }: { target: IssueTarget; query
         >
           <ProjectIcon project={project} size="md" />
           <span className="min-w-0 flex-1 truncate">
-            <HighlightText text={project.title} query={query} />
+            <HighlightText text={formatProjectTitle(project)} query={query} />
           </span>
           {current === project.id && <RowCheck label={t(($) => $.pages.current)} />}
         </CommandPrimitive.Item>

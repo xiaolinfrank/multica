@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
+import { formatCodedTitle } from "@multica/core/projects/coded-title";
 import { applyCockpitSavedView, captureCockpitSavedView, cockpitSavedViewPath, cockpitContextOptions, cockpitChangePageOptions, cockpitShellDestination, cockpitSurfacePath, useUpdateCockpit } from "@multica/core/cockpit";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
@@ -62,8 +63,8 @@ export function CockpitPage() {
   const pendingChanges = useQuery({ ...cockpitChangePageOptions(wsId, scope, { status: "pending", page_size: 1 }), enabled: Boolean(metadata && !isReport) });
   const artifactId = navigation.searchParams.get("artifact");
   const focusedWorkbench = Boolean(metadata && ((surface === "meetings" && navigation.searchParams.get("meeting")) || (surface === "plan" && navigation.searchParams.get("node"))));
-  const projectLabel = scope.projectId ? metadata?.scope.project_title || scope.projectId : t(($) => $.shell.all_projects);
-  const moduleLabel = scope.moduleId ? metadata?.scope.module_title || scope.moduleId : "";
+  const projectLabel = scope.projectId ? formatCodedTitle(metadata?.scope.project_code, metadata?.scope.project_title) || scope.projectId : t(($) => $.shell.all_projects);
+  const moduleLabel = scope.moduleId ? formatCodedTitle(metadata?.scope.module_code, metadata?.scope.module_title) || scope.moduleId : "";
   const scopeLabel = [projectLabel, moduleLabel].filter(Boolean).join(" / ");
   const title = metadata?.cockpit ? <EditableText value={metadata.cockpit.title} disabled={!metadata.actor.is_human}
     onCommit={(value) => update.mutate({ title: value }, { onError: () => toast.error(t(($) => $.errors.save_failed)) })}
@@ -74,7 +75,7 @@ export function CockpitPage() {
     actions={metadata && <>{metadata.actor.is_human && surface !== "chat" && <CockpitSavedViewsControl wsId={wsId} userId={metadata.actor.user_id} capture={() => captureCockpitSavedView(wsId, navigation.searchParams)}
       onApply={(definition) => { applyCockpitSavedView(wsId, definition); navigation.push(cockpitSavedViewPath(navigation.pathname, definition)); }} />}
       <AppLink href={reportHref} className={buttonVariants({ variant: "outline", size: "sm" })}><Presentation className="size-4" />{t(($) => $.report.title)}</AppLink></>}
-    scopeControl={<CockpitScopeControl wsId={wsId} scope={scope} projectTitle={metadata?.scope.project_title} moduleTitle={metadata?.scope.module_title} />}
+    scopeControl={<CockpitScopeControl wsId={wsId} scope={scope} projectCode={metadata?.scope.project_code} projectTitle={metadata?.scope.project_title} moduleCode={metadata?.scope.module_code} moduleTitle={metadata?.scope.module_title} />}
     secondaryNavigation={surface === "plan" ? <CockpitPlanViews selected={planView} scope={scope} /> : undefined}
     notice={context.isError && metadata ? <div role="alert" className="flex flex-wrap items-center gap-2 text-caption">{t(($) => $.work_overview.refresh_failed)}<Button type="button" variant="outline" size="sm" onClick={() => void context.refetch()}>{t(($) => $.binding.retry)}</Button></div> : undefined}>
     {!today || context.isPending ? <div role="status" className="flex items-center gap-2 p-6 text-caption"><Spinner />{t(($) => $.work_overview.loading)}</div>
