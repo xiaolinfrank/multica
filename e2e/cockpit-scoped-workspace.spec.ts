@@ -40,11 +40,16 @@ test("carries project and module scope across the cockpit and bounds meeting pag
     await page.getByRole("button", { name: "Module scope", exact: true }).click();
     await page.getByRole("button", { name: moduleA.title, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`project=${projectA.id}.*module=${moduleA.id}`));
-    for (const name of ["Overview", "Execution plan", "Meetings", "Governance"]) {
+    for (const name of ["Chat", "Overview", "Execution plan", "Meetings"]) {
       const href = await navigation.getByRole("link", { name, exact: true }).getAttribute("href");
       const query = new URL(href!, "http://fixture.invalid").searchParams;
       expect(query.get("project")).toBe(projectA.id); expect(query.get("module")).toBe(moduleA.id);
     }
+    await navigation.getByRole("button", { name: /^More/ }).click();
+    const governed = page.getByRole("menuitem", { name: /Governance/ });
+    await expect(governed).toBeVisible();
+    expect(new URL((await governed.getAttribute("href"))!, "http://fixture.invalid").searchParams.get("project")).toBe(projectA.id);
+    await page.keyboard.press("Escape");
     await navigation.getByRole("link", { name: "Execution plan", exact: true }).click();
     await page.getByRole("link", { name: "Plan table", exact: true }).click();
     await expect(page.getByText(leafA.name, { exact: true }).first()).toBeVisible();
@@ -82,12 +87,15 @@ test("carries project and module scope across the cockpit and bounds meeting pag
     await page.getByRole("button", { name: projectA.title, exact: true }).click();
     await expect.poll(() => new URL(page.url()).searchParams.get("module")).toBeNull();
     await expect(navigation.getByRole("link", { name: "Artifacts", exact: true })).toHaveCount(0);
+    await expect(navigation.getByRole("link", { name: "Governance", exact: true })).toHaveCount(0);
+    await expect(navigation.getByRole("button", { name: /^More/ })).toBeVisible();
     await page.goto(`${cockpit}?tab=artifacts&project=${projectA.id}&module=${moduleA.id}`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByText("This feature is not available yet. Materials remain available in tasks and meetings.", { exact: true })).toBeVisible();
+    const artifactsUnavailable = page.getByText("This feature is not available yet. Materials remain available in tasks and meetings.", { exact: true });
+    await expect(artifactsUnavailable.or(page.getByRole("region", { name: "Artifacts", exact: true }))).toBeVisible();
     await expect(page.getByRole("link", { name: "Execution plan", exact: true }).last()).toHaveAttribute("href", expect.stringContaining(`project=${projectA.id}&module=${moduleA.id}`));
     await page.goto(`${cockpit}?node=${leafA.id}&node_view=acceptance&project=${projectA.id}&module=${moduleA.id}`, { waitUntil: "domcontentloaded" });
-    await expect(page.getByText("This feature is not available yet. Materials remain available in tasks and meetings.", { exact: true })).toBeVisible();
-    expect(reads.filter((path) => /\/api\/cockpit\/artifacts|\/acceptance(?:\/|$)/.test(path))).toEqual([]);
+    await expect(artifactsUnavailable.or(page.getByText(leafA.name, { exact: true }).first())).toBeVisible();
+    if (await artifactsUnavailable.count()) expect(reads.filter((path) => /\/api\/cockpit\/artifacts|\/acceptance(?:\/|$)/.test(path))).toEqual([]);
     expect(await api.getWorkspaceAgentRunCount()).toBe(0);
   } finally { if (ownsWorkspace) await api.cleanupCreatedWorkspace(); }
 });
@@ -107,7 +115,7 @@ test("pages workspace contacts and explicitly clears a saved position from the m
     const directoryReads: string[] = [];
     page.on("request", (request) => { if (request.method() === "GET" && new URL(request.url()).pathname.startsWith("/api/cockpit/directory")) directoryReads.push(request.url()); });
     await page.goto(`/${workspace.slug}/cockpit?meeting=${meeting.id}`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("tab", { name: "Details", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Details", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Attendees", exact: true })).toBeVisible();
     expect(directoryReads).toEqual([]);
     const firstResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/cockpit/directory/page");

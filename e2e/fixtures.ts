@@ -538,8 +538,7 @@ export class TestApiClient {
     return property as { id: string; name: string; config: { options?: { id: string; name: string; color: string }[] } };
   }
 
-  async updateProject(id: string, updates: Record<string, unknown>) {
-    const res = await this.authedFetch(`/api/projects/${id}`, {
+  async updateProject(id: string, updates: Record<string, unknown>) {    const res = await this.authedFetch(`/api/projects/${id}`, {
       method: "PUT",
       body: JSON.stringify(updates),
     });
@@ -563,6 +562,16 @@ export class TestApiClient {
     if (!module?.id) throw new Error("create module returned no module identity");
     this.createdModuleIds.push(module.id);
     return module;
+  }
+
+  /** Mark the one-time plan migration applied so structure write paths open. */
+  async applyCockpitPlanReconcile() {
+    const res = await this.authedFetch("/api/cockpit/plan/reconcile", {
+      method: "POST",
+      body: JSON.stringify({ apply: true }),
+    });
+    if (!res.ok) throw new Error(`cockpit reconcile failed: ${res.status} ${await res.text()}`);
+    return res.json();
   }
 
   async createCockpitNode(body: {

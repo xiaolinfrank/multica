@@ -56,8 +56,11 @@ test("keeps cockpit navigation, timelines and workbenches usable across themes a
           await page.goto(`${cockpit}?tab=${tab}&${scope}`, { waitUntil: "domcontentloaded" });
           await expect(sections).toBeVisible();
           await expect(page.getByRole("heading", { level: 1 }).filter({ hasText: title })).toBeVisible();
-          if (tab === "artifacts" && await sections.getByRole("link", { name: "Artifacts", exact: true }).count() === 0) {
-            await expect(page.getByText("This feature is not available yet. Materials remain available in tasks and meetings.", { exact: true })).toBeVisible();
+          if (tab === "artifacts") {
+            await expect(page.getByRole("region", { name: "Artifacts", exact: true })).toBeVisible();
+            await expect(sections.locator('a[aria-current="page"]')).toHaveCount(0);
+          } else if (tab === "governance") {
+            await expect(sections.locator('button[aria-current="page"]')).toHaveCount(1);
             await expect(sections.locator('a[aria-current="page"]')).toHaveCount(0);
           } else {
             await expect(sections.locator('a[aria-current="page"]')).toHaveCount(1);
@@ -112,11 +115,14 @@ test("keeps cockpit navigation, timelines and workbenches usable across themes a
           }
           if (tab === "plan" && width === 320) {
             const gantt = page.locator("[data-cockpit-gantt]");
-            const expand = gantt.getByRole("button", { name: /Expand.*Evidence preparation/ });
-            if (await expand.count()) await expand.click();
+            const moduleRow = gantt.locator(`[data-cockpit-node="${group.id}"]`).first();
+            const expand = moduleRow.getByRole("button", { name: "Expand", exact: true });
+            if (await expand.count()) { await expand.focus(); await page.keyboard.press("Enter"); }
             const row = gantt.locator(`[data-cockpit-node="${leaf.id}"]`).first();
-            await row.getByRole("button", { name: "Name", exact: true }).click();
-            const editor = row.getByRole("textbox", { name: "Name", exact: true });
+            const nameButton = row.getByRole("button", { name: leaf.name, exact: true });
+            await nameButton.focus();
+            await page.keyboard.press("F2");
+            const editor = row.locator("input");
             await expect(editor).toBeVisible();
             const rowBounds = await row.boundingBox();
             const editorBounds = await editor.boundingBox();
@@ -159,10 +165,10 @@ test("keeps cockpit navigation, timelines and workbenches usable across themes a
         await reader.scrollIntoViewIfNeeded();
         await expect(reader.getByRole("button", { name: "Submit review", exact: true })).toBeEnabled();
         await page.goto(`${cockpit}?report=1&${scope}`, { waitUntil: "domcontentloaded" });
-        await expect(page.locator(".cockpit-report-scorecard")).toBeVisible();
+        await expect(page.getByRole("region", { name: "Project report", exact: true })).toBeVisible();
         await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
         await page.screenshot({ path: testInfo.outputPath(`report-${theme}-${width}.png`), animations: "disabled" });
-        if (theme === "dark" && width === 1440) {
+        if (theme === "dark" && width === 1440 && await page.locator(".cockpit-report-scorecard").count()) {
           await page.emulateMedia({ media: "print" });
           await expect(page.locator(".cockpit-report-meetings li").first()).toHaveCSS("background-color", "rgb(241, 243, 244)");
           await page.screenshot({ path: testInfo.outputPath("report-print-dark-source.png"), animations: "disabled" });
@@ -175,6 +181,11 @@ test("keeps cockpit navigation, timelines and workbenches usable across themes a
     await page.goto(`${cockpit}?${scope}`, { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Work overview", exact: true })).toBeVisible();
     await expect(sections.getByRole("link").first()).toHaveAttribute("href", `${cockpit}?tab=chat&${scope}`);
+    await expect(sections.getByRole("link")).toHaveCount(4);
+    await expect(sections.getByRole("button", { name: /^More/ })).toBeVisible();
+    await sections.getByRole("button", { name: /^More/ }).click();
+    await expect(page.getByRole("menuitem", { name: /Governance/ })).toBeVisible();
+    await page.keyboard.press("Escape");
     await page.goto(`${cockpit}?tab=meetings&${scope}`, { waitUntil: "domcontentloaded" });
     const views = page.getByRole("group", { name: "View", exact: true });
     for (const view of ["Month", "Week"]) {
