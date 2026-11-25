@@ -342,14 +342,6 @@ func collabFolderName(title string) string {
 	return head + strings.TrimSpace(rest)
 }
 
-// childDirNamed finds the folder inside parent that answers to want, matched
-// without the spacing the platform and the share disagree about. Returns ""
-// when parent cannot be read — an unmounted share, or a folder nobody has
-// created yet — which the caller answers with a proposal.
-func childDirNamed(parent, want string) string {
-	return childDirNamedInRoot(parent, parent, want)
-}
-
 func (h *Handler) validateMeetingDirectoryReferences(ctx context.Context, cc cockpitContext, projectID, moduleID, nodeID pgtype.UUID) error {
 	if projectID.Valid {
 		if _, err := h.Queries.GetProjectInWorkspace(ctx, db.GetProjectInWorkspaceParams{ID: projectID, WorkspaceID: cc.workspaceID}); err != nil {

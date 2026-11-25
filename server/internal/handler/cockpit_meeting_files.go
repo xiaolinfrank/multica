@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"errors"
-	"io"
 
 	"github.com/multica-ai/multica/server/internal/collabfs"
 )
@@ -62,43 +61,4 @@ func (d *meetingArchiveDirectory) entries(ctx context.Context, limit int) ([]str
 
 func (d *meetingArchiveDirectory) visibleCount(ctx context.Context) (int, error) {
 	return d.VisibleCount(ctx)
-}
-
-// childDirNamedInRoot finds a child of parent whose name matches want once
-// spacing is ignored. A match must open as a real directory under the same
-// pinned root; the lexicographically smallest one wins so repeated calls agree.
-func childDirNamedInRoot(root, parent, want string) string {
-	archive, err := openMeetingArchive(root)
-	if err != nil {
-		return ""
-	}
-	defer archive.close()
-	dir, err := archive.directory(parent, false)
-	if err != nil {
-		return ""
-	}
-	target, match := collabfs.NormalizeForMatch(want), ""
-	for {
-		names, err := dir.File().Readdirnames(128)
-		for _, name := range names {
-			if collabfs.NormalizeForMatch(name) != target || (match != "" && name >= match) {
-				continue
-			}
-			child, openErr := dir.child(name, false)
-			if openErr == nil {
-				match = name
-				_ = child.File().Close()
-			}
-		}
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return ""
-		}
-	}
-	if dir.verify() != nil {
-		return ""
-	}
-	return match
 }
