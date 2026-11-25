@@ -204,14 +204,36 @@ describe("sidebarProjects", () => {
     project("p2", "Alpha", "planned"),
     project("p3", "Gamma", "completed"),
     project("p4", "Delta", "paused"),
+    project("p5", "Epsilon", "cancelled"),
   ];
 
+  it("lists only in-progress projects by default", () => {
+    expect(
+      sidebarProjects(projects, DEFAULT_SIDEBAR_PROJECT_SETTINGS, [], "u1").map((p) => p.id),
+    ).toEqual(["p1"]);
+  });
+
   it("follows the manual order, then list order for projects it does not name", () => {
-    expect(sidebarProjects(projects, DEFAULT_SIDEBAR_PROJECT_SETTINGS, ["p4"], "u1").map((p) => p.id)).toEqual([
+    const settings: SidebarProjectSettings = {
+      ...DEFAULT_SIDEBAR_PROJECT_SETTINGS,
+      statuses: ["planned", "in_progress", "paused"],
+    };
+    expect(sidebarProjects(projects, settings, ["p4"], "u1").map((p) => p.id)).toEqual([
       "p4",
       "p1",
       "p2",
     ]);
+  });
+
+  it("follows the manual order within the default in-progress filter", () => {
+    const extra = project("p6", "Zeta", "in_progress");
+    const shown = [...projects, extra];
+    expect(
+      sidebarProjects(shown, DEFAULT_SIDEBAR_PROJECT_SETTINGS, ["p6"], "u1").map((p) => p.id),
+    ).toEqual(["p6", "p1"]);
+    expect(
+      sidebarProjects(shown, DEFAULT_SIDEBAR_PROJECT_SETTINGS, [], "u1").map((p) => p.id),
+    ).toEqual(["p1", "p6"]);
   });
 
   it("filters by status and lead, and sorts by name", () => {

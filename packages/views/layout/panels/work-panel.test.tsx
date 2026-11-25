@@ -343,6 +343,34 @@ describe("WorkPanel issue highlight", () => {
   });
 });
 
+describe("WorkPanel project list", () => {
+  const STATUS_TITLES = [
+    ["in_progress", "Doing"],
+    ["planned", "Later"],
+    ["paused", "On hold"],
+    ["completed", "Shipped"],
+    ["cancelled", "Dropped"],
+  ] as const;
+
+  it("lists only in-progress projects by default and points View all at the full list", async () => {
+    const projects = STATUS_TITLES.map(
+      ([status, title], index) =>
+        ({ ...PROJECT, id: `project-${index}`, title, status }) as unknown as Project,
+    );
+
+    renderPanel("/acme/issues", [], projects);
+
+    expect(await screen.findByRole("link", { name: "Doing" })).toBeInTheDocument();
+    for (const [, title] of STATUS_TITLES.filter(([status]) => status !== "in_progress")) {
+      expect(screen.queryByRole("link", { name: title })).toBeNull();
+    }
+    expect(screen.getByRole("link", { name: "View all 5 projects" })).toHaveAttribute(
+      "href",
+      "/acme/projects",
+    );
+  });
+});
+
 describe("WorkPanel starred Unread view after its last issue is read", () => {
   const unreadRow = (scope: Pick<typeof screen, "queryByRole"> = screen) =>
     scope.queryByRole("link", { name: /^Unread/ });

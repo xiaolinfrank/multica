@@ -146,7 +146,7 @@ function installApi(overrides: Partial<Record<string, unknown>> = {}) {
 /** `path` is the project page for Desktop unless given otherwise — the
  *  cockpit's own address uses `?node=` too, and the tree must only answer
  *  it on a project page. */
-function renderSection(path = "/acme/projects/p1") {
+function renderSection(path = "/acme/projects/p1", projects = PROJECTS) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(
     issueViewPreferenceOptions("ws-1", SIDEBAR_PROJECTS_SCOPE).queryKey,
@@ -161,7 +161,7 @@ function renderSection(path = "/acme/projects/p1") {
       <ProjectsSection
         wsId="ws-1"
         pathname={path}
-        projects={PROJECTS}
+        projects={projects}
         totalProjects={4}
         plainRowsLit
       />
@@ -210,6 +210,17 @@ describe("ProjectsSection", () => {
     renderSection();
     fireEvent.click(screen.getByRole("button", { name: "Projects" }));
     expect(useSidebarTreeStore.getState().projectsCollapsed).toBe(true);
+  });
+
+  it("keeps the view-all link when the filter matches no projects", () => {
+    renderSection("/acme/projects/p1", []);
+
+    // No rows means no empty list above the link — just the way into all of them.
+    expect(screen.queryByText("Desktop")).toBeNull();
+    expect(screen.getByRole("link", { name: "View all 4 projects" })).toHaveAttribute(
+      "href",
+      "/acme/projects",
+    );
   });
 });
 

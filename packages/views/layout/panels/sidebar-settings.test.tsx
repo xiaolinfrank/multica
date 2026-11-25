@@ -102,6 +102,25 @@ describe("ProjectsSectionSettings", () => {
     expect(lastSaved().projects.statuses).toContain("completed");
   });
 
+  it("starts on in-progress only and Reset restores that default", async () => {
+    openSettings();
+
+    expect(chip("In Progress")).toHaveAttribute("aria-pressed", "true");
+    for (const name of ["Planned", "Paused", "Completed", "Cancelled"]) {
+      expect(chip(name)).toHaveAttribute("aria-pressed", "false");
+    }
+
+    fireEvent.click(chip("Planned"));
+    await waitFor(() => expect(chip("Planned")).toHaveAttribute("aria-pressed", "true"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    await waitFor(() => expect(chip("Planned")).toHaveAttribute("aria-pressed", "false"));
+    expect(chip("In Progress")).toHaveAttribute("aria-pressed", "true");
+    expect(lastSaved().projects.statuses).toEqual(
+      DEFAULT_SIDEBAR_PROJECT_SETTINGS.statuses,
+    );
+  });
+
   it("resets the project list at once", async () => {
     openSettings();
 

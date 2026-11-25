@@ -117,7 +117,7 @@
       "views": "ビュー",
       "new_project": "新規プロジェクト",
       "new_issue_in_project": "{{name}} に新規タスク",
-      "all_projects_other": "すべてのプロジェクト（{{count}}）",
+      "all_projects_other": "すべてのプロジェクトを表示（{{count}}）",
       "project_issues": "{{name}} のタスク",
       "project_issues_empty": "タスクはありません",
       "project_issues_error": "タスクを読み込めませんでした",

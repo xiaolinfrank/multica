@@ -39,10 +39,24 @@ export interface SidebarProjectSettings {
 
 export const DEFAULT_SIDEBAR_PROJECT_SETTINGS: SidebarProjectSettings = {
   ordering: "manual",
-  statuses: ["planned", "in_progress", "paused"],
+  statuses: ["in_progress"],
   onlyMine: false,
   showCount: true,
 };
+
+/**
+ * v1: the default project filter changed to in-progress only. Anything stored
+ * before this version carries the old in-memory default after a single
+ * expand/collapse; migrate only that untouched set so a deliberate choice of
+ * planned/paused keeps working.
+ */
+const SIDEBAR_TREE_STORAGE_VERSION = 1;
+const LEGACY_DEFAULT_PROJECT_STATUSES: ProjectStatus[] = ["planned", "in_progress", "paused"];
+
+function isUntouchedLegacyProjectFilter(statuses: readonly string[] | undefined): boolean {
+  if (!Array.isArray(statuses) || statuses.length !== LEGACY_DEFAULT_PROJECT_STATUSES.length) return false;
+  return LEGACY_DEFAULT_PROJECT_STATUSES.every((status) => statuses.includes(status));
+}
 
 
 /**
@@ -105,7 +119,21 @@ export const useSidebarTreeStore = create<SidebarTreeState>()(
     }),
     {
       name: "multica_sidebar_tree",
+      version: SIDEBAR_TREE_STORAGE_VERSION,
       storage: createJSONStorage(() => createWorkspaceAwareStorage(defaultStorage)),
+      migrate: (persisted, version) => {
+        const p = (persisted ?? {}) as Partial<PersistedSidebarTree>;
+        if (version >= SIDEBAR_TREE_STORAGE_VERSION) return p;
+        if (!isUntouchedLegacyProjectFilter(p.projectSettings?.statuses)) return p;
+        return {
+          ...p,
+          projectSettings: {
+            ...DEFAULT_SIDEBAR_PROJECT_SETTINGS,
+            ...p.projectSettings,
+            statuses: DEFAULT_SIDEBAR_PROJECT_SETTINGS.statuses,
+          },
+        };
+      },
       partialize: (state): PersistedSidebarTree => ({
         expanded: state.expanded,
         issueSettings: state.issueSettings,

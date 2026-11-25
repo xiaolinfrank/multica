@@ -185,27 +185,29 @@ export function ProjectsSection({
         </>
       }
     >
-      <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={DRAG_MODIFIERS} onDragEnd={onDragEnd}>
-        <SortableContext items={projects.map((project) => project.id)} strategy={verticalListSortingStrategy}>
-          <PanelList>
-            {projects.map((project) => (
-              <ProjectTreeItem
-                key={project.id}
-                wsId={wsId}
-                project={project}
-                active={plainRowsLit && isPathWithin(pathname, p.projectDetail(project.id))}
-                showCount={projectSettings.showCount}
-                activeNodeId={activeNodeId}
-                activeProjectId={activeProjectId}
-                activeModuleRowId={activeModuleRowId}
-                activeModuleId={activeModuleId}
-                activeWorkItemId={activeWorkItemId}
-              />
-            ))}
-          </PanelList>
-        </SortableContext>
-      </DndContext>
-      <PanelList className="mt-px">
+      {projects.length > 0 && (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={DRAG_MODIFIERS} onDragEnd={onDragEnd}>
+          <SortableContext items={projects.map((project) => project.id)} strategy={verticalListSortingStrategy}>
+            <PanelList>
+              {projects.map((project) => (
+                <ProjectTreeItem
+                  key={project.id}
+                  wsId={wsId}
+                  project={project}
+                  active={plainRowsLit && isPathWithin(pathname, p.projectDetail(project.id))}
+                  showCount={projectSettings.showCount}
+                  activeNodeId={activeNodeId}
+                  activeProjectId={activeProjectId}
+                  activeModuleRowId={activeModuleRowId}
+                  activeModuleId={activeModuleId}
+                  activeWorkItemId={activeWorkItemId}
+                />
+              ))}
+            </PanelList>
+          </SortableContext>
+        </DndContext>
+      )}
+      <PanelList className={projects.length > 0 ? "mt-px" : undefined}>
         {totalProjects === 0 ? (
           <li>
             <button
