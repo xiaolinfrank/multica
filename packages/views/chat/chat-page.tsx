@@ -60,7 +60,7 @@ export function ChatPage() {
   return <ChatPageSurface />;
 }
 
-export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSystemKey, defaultProjectId = null, title, conversationStarters, initialContext }: {
+export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSystemKey, defaultProjectId = null, title, conversationStarters, initialContext, lockProjectContext = false }: {
   routeHref?: string;
   defaultAgentSystemKey?: string;
   fixedAgentSystemKey?: string;
@@ -68,6 +68,12 @@ export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSy
   title?: string;
   conversationStarters?: AgentConversationStarter[];
   initialContext?: string;
+  /**
+   * The host already owns project scope (Cockpit Chat's scope control), so the
+   * composer must not offer a second, conflicting project picker. The session
+   * is still created with the host's scope (`defaultProjectId`).
+   */
+  lockProjectContext?: boolean;
 } = {}) {
   const { t } = useT("chat");
   const { pathname, searchParams, push, replace } = useNavigation();
@@ -235,11 +241,15 @@ export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSy
               kind: "chat",
               session: commandBarSession,
               archive: (session: ChatSession) => commandBarHandlersRef.current.handleArchive(session),
-              changeProject: (projectId: string | null) =>
-                commandBarHandlersRef.current.changeProjectContext(projectId),
+              ...(lockProjectContext
+                ? {}
+                : {
+                    changeProject: (projectId: string | null) =>
+                      commandBarHandlersRef.current.changeProjectContext(projectId),
+                  }),
             }
           : null,
-      [commandBarSession],
+      [commandBarSession, lockProjectContext],
     ),
   );
 
@@ -298,6 +308,7 @@ export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSy
         activeSessionId={c.activeSessionId}
         onSelectSession={handleSelect}
         onArchive={handleArchive}
+        getSessionHref={sessionHref}
       />
     </div>
   );
@@ -421,10 +432,16 @@ export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSy
       />
 
       <ChatInput
-        onSend={(content, attachments, commitInput, draftAttachments) => c.handleSend(
-          !c.activeSessionId && initialContext ? `${initialContext}\n\n${content}` : content,
-          attachments, commitInput, draftAttachments,
-        )}
+        onSend={(content, attachments, commitInput, draftAttachments) => {
+          const withInitialContext = !c.activeSessionId && Boolean(initialContext);
+          return c.handleSend(
+            withInitialContext ? `${initialContext}\n\n${content}` : content,
+            attachments,
+            commitInput,
+            draftAttachments,
+            withInitialContext ? { titleSeed: content } : undefined,
+          );
+        }}
         restoreDraftRequest={c.restoreDraftRequest}
         conversationStarterRequest={c.conversationStarterRequest}
         onConversationStarterApplied={c.handleConversationStarterApplied}
@@ -444,10 +461,10 @@ export function ChatPageSurface({ routeHref, defaultAgentSystemKey, fixedAgentSy
         agentAccessRevoked={c.isAgentAccessRevoked}
         agentRuntimeRequired={!c.isAgentRuntimeBound}
         agentName={c.activeAgent?.name}
-        projects={c.projects}
-        projectId={c.activeProjectId}
+        projects={lockProjectContext ? undefined : c.projects}
+        projectId={lockProjectContext ? null : c.activeProjectId}
         projectContextUnsupported={c.projectContextUnsupported}
-        onProjectChange={changeProjectContext}
+        onProjectChange={lockProjectContext ? undefined : changeProjectContext}
         isProjectUpdating={c.isProjectUpdating}
         focusRequest={c.focusInputRequest}
       />

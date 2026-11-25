@@ -86,6 +86,7 @@ export function ChatThreadList({
   activeSessionId,
   onSelectSession,
   onArchive,
+  getSessionHref,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
@@ -95,6 +96,9 @@ export function ChatThreadList({
   // aware (desktop advances to the next chat; mobile drops back to the list)
   // and routes through the shared controller — see ChatPage.handleArchive.
   onArchive: (session: ChatSession) => void;
+  // The host may own the route (Cockpit Chat): a modifier click must land on
+  // the host's address for this session, not the platform chat tab.
+  getSessionHref?: (sessionId: string) => string | null;
 }) {
   const { t } = useT("chat");
   const locale = useLocale();
@@ -104,7 +108,11 @@ export function ChatThreadList({
   // affordance simply stays off.
   const slug = useWorkspaceSlug();
   const sessionHref = (sessionId: string) =>
-    slug ? `${paths.workspace(slug).chat()}?session=${sessionId}` : null;
+    getSessionHref
+      ? getSessionHref(sessionId)
+      : slug
+        ? `${paths.workspace(slug).chat()}?session=${sessionId}`
+        : null;
   // Optional: the list renders bare in tests; without an adapter the web
   // modifier-click affordance stays off (desktop keeps selection anyway).
   const navigation = useOptionalNavigation();

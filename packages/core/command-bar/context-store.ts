@@ -40,7 +40,11 @@ export type CommandBarContext =
       kind: "chat";
       session: ChatSession;
       archive: (session: ChatSession) => void;
-      changeProject: (projectId: string | null) => void;
+      /**
+       * Absent when the host owns project scope (Cockpit Chat): offering a
+       * second project picker would conflict with the host's scope control.
+       */
+      changeProject?: (projectId: string | null) => void;
     };
 
 export type CommandBarContextKind = CommandBarContext["kind"];

@@ -29,6 +29,11 @@ vi.mock("@multica/core/hooks", () => ({
   useWorkspaceId: () => "ws-1",
 }));
 
+vi.mock("@multica/core/paths", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/paths")>()),
+  useWorkspaceSlug: () => "acme",
+}));
+
 vi.mock("@multica/core/agents", () => ({
   orderChatAgentsBySeat: (agents: unknown[]) => [...(agents as unknown[])],
   useWorkspacePresenceMap: () => ({ byAgent: new Map() }),
@@ -59,8 +64,21 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 import { ChatThreadList } from "./chat-thread-list";
+import { NavigationProvider, type NavigationAdapter } from "../../navigation";
 
 const TEST_RESOURCES = { en: { chat: enChat, issues: enIssues } };
+
+// Web shape: a shareable URL but no native new-tab handling, so the row's own
+// modifier-click path runs (the cockpit href flows through it).
+const navigation: NavigationAdapter = {
+  push: vi.fn(),
+  replace: vi.fn(),
+  back: vi.fn(),
+  pathname: "/acme/chat",
+  searchParams: new URLSearchParams(),
+  hash: "",
+  getShareableUrl: (path) => path,
+};
 
 function makeSession(overrides: Partial<ChatSession> & Pick<ChatSession, "id">): ChatSession {
   return {
@@ -89,6 +107,8 @@ const sessions: ChatSession[] = [
   makeSession({ id: "s3", updated_at: "2026-07-08T01:00:00Z" }),
 ];
 
+type SessionCallbackMock = ReturnType<typeof vi.fn<(session: ChatSession) => void>>;
+
 function renderList(
   activeSessionId: string | null,
   {
@@ -96,18 +116,28 @@ function renderList(
     onSelectSession = vi.fn(),
     renderedSessions = sessions,
     renderedAgents = [agent],
+    getSessionHref,
+  }: {
+    onArchive?: SessionCallbackMock;
+    onSelectSession?: SessionCallbackMock;
+    renderedSessions?: ChatSession[];
+    renderedAgents?: Agent[];
+    getSessionHref?: (sessionId: string) => string | null;
   } = {},
 ) {
   render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 560, itemHeight: 56 }}>
       <I18nProvider locale="en" resources={TEST_RESOURCES}>
-        <ChatThreadList
-          sessions={renderedSessions}
-          agents={renderedAgents}
-          activeSessionId={activeSessionId}
-          onSelectSession={onSelectSession}
-          onArchive={onArchive}
-        />
+        <NavigationProvider value={navigation}>
+          <ChatThreadList
+            sessions={renderedSessions}
+            agents={renderedAgents}
+            activeSessionId={activeSessionId}
+            onSelectSession={onSelectSession}
+            onArchive={onArchive}
+            getSessionHref={getSessionHref}
+          />
+        </NavigationProvider>
       </I18nProvider>
     </VirtuosoMockContext.Provider>,
   );
@@ -174,6 +204,57 @@ describe("ChatThreadList archive delegation", () => {
     // Advance + mutation are the parent/controller's job now; the list stays out.
     expect(setActiveSession).not.toHaveBeenCalled();
     expect(archiveMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe("ChatThreadList session links", () => {
+  it("uses the host's session href for a modifier click", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    renderList(null, {
+      getSessionHref: (id) => `/acme/cockpit?tab=chat&project=p1&session=${id}`,
+    });
+
+    fireEvent.click(screen.getByText("Chat s1"), { metaKey: true });
+
+    expect(open).toHaveBeenCalledWith(
+      "/acme/cockpit?tab=chat&project=p1&session=s1",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    open.mockRestore();
+  });
+
+  it("falls back to the platform chat address without a host href", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    renderList(null);
+
+    fireEvent.click(screen.getByText("Chat s1"), { ctrlKey: true });
+
+    expect(open).toHaveBeenCalledWith(
+      "/acme/chat?session=s1",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    open.mockRestore();
+  });
+
+  it("uses the host's session href for a middle click", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    renderList(null, {
+      getSessionHref: (id) => `/acme/cockpit?tab=chat&project=p1&session=${id}`,
+    });
+
+    fireEvent(
+      screen.getByText("Chat s1").closest("[tabindex]")!,
+      new MouseEvent("auxclick", { bubbles: true, button: 1 }),
+    );
+
+    expect(open).toHaveBeenCalledWith(
+      "/acme/cockpit?tab=chat&project=p1&session=s1",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    open.mockRestore();
   });
 });
 

@@ -278,19 +278,22 @@ export function useChatCommandGroup(context: ContextOf<"chat"> | null): PaletteC
   const setPinned = useSetChatSessionPinned();
   return useMemo(() => {
     if (!context) return null;
-    const { session } = context;
+    const { session, changeProject } = context;
     if (session.status === "archived") return null;
     const pinned = !!session.pinned;
-    const commands: PaletteCommand[] = [
-      {
+    const commands: PaletteCommand[] = [];
+    if (changeProject) {
+      commands.push({
         id: "chat-link-project",
         label: t(($) => $.chat.link_project),
         icon: FolderInput,
         keywords: ["project", "context", "项目", "关联"],
-        page: { type: "chat-project", session, changeProject: context.changeProject },
+        page: { type: "chat-project", session, changeProject },
         crumb: session.title,
         primary: true,
-      },
+      });
+    }
+    commands.push(
       {
         id: "chat-pin",
         label: pinned ? t(($) => $.chat.unpin) : t(($) => $.chat.pin),
@@ -307,7 +310,7 @@ export function useChatCommandGroup(context: ContextOf<"chat"> | null): PaletteC
         run: () => context.archive(session),
         primary: true,
       },
-    ];
+    );
     return {
       id: "context-chat",
       heading: <ContextHeading label={t(($) => $.context.current_chat)} detail={session.title} />,

@@ -17,7 +17,7 @@ multica cockpit node get <code-or-uuid> --output json
 ```
 
 The cockpit is one shared board per workspace; writes broadcast to open clients. Its home is a chat with the built-in Mika (`system_key=mika`, even when renamed); Chat, Work overview, Execution plan and Meetings are the primary tabs, and Governance (待确认 / 变更审阅) sits under the More menu.
-A new cockpit chat retains its initial project/module scope in its first visible message (`*` means all); scope is context, not authorization — changing it starts a new compose, not a silent retargeting of an existing conversation.
+A new cockpit chat retains its initial project/module scope in its first visible message (`*` means all); scope is context, not authorization — changing it starts a new compose, not a silent retargeting of an existing conversation. The cockpit scope control is the chat's only project picker: the composer locks out a second one so the session's project cannot drift from the visible scope.
 
 Load this skill for cockpit requests. Read first, explain the target and expected change, then use the commands below.
 Simple reads and explicitly requested ordinary field edits can be completed in chat; multi-step preparation, minutes writing and repository work belong on an Issue.

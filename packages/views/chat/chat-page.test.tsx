@@ -26,21 +26,28 @@ vi.mock("./components/chat-message-list", () => ({
   ChatMessageSkeleton: () => <div>chat-message-skeleton</div>,
 }));
 vi.mock("./components/chat-input", () => ({
-  ChatInput: ({ onSend }: { onSend: (text: string) => void }) => <button onClick={() => onSend("hello")}>chat-input</button>,
+  ChatInput: (props: Record<string, unknown>) => {
+    chatInputProps.current = props;
+    return <button onClick={() => (props.onSend as (text: string) => void)("hello")}>chat-input</button>;
+  },
 }));
 vi.mock("./components/chat-thread-list", () => ({
   ChatThreadList: ({
     onSelectSession,
+    ...props
   }: {
     onSelectSession: (s: { id: string; agent_id: string }) => void;
-  }) => (
-    <button
-      type="button"
-      onClick={() => onSelectSession({ id: "session-9", agent_id: "agent-9" })}
-    >
-      select-thread
-    </button>
-  ),
+  } & Record<string, unknown>) => {
+    chatThreadListProps.current = props;
+    return (
+      <button
+        type="button"
+        onClick={() => onSelectSession({ id: "session-9", agent_id: "agent-9" })}
+      >
+        select-thread
+      </button>
+    );
+  },
 }));
 vi.mock("./components/chat-session-header", () => ({
   ChatSessionHeader: () => <div>chat-session-header</div>,
@@ -101,6 +108,8 @@ const mockToastError = vi.hoisted(() => vi.fn());
 const mockSeedAgent = vi.hoisted(() => vi.fn());
 const mockSeedProject = vi.hoisted(() => vi.fn());
 const mockSend = vi.hoisted(() => vi.fn());
+const chatInputProps = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
+const chatThreadListProps = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
 const mockSetActiveSession = vi.hoisted(() =>
   vi.fn((id: string | null) => {
     storeRef.current = { ...storeRef.current, activeSessionId: id };
@@ -139,6 +148,8 @@ vi.mock("./components/use-chat-controller", async () => {
         () => storeRef.current,
       ).activeSessionId,
       selectedAgentId: null,
+      activeProjectId: "project-a",
+      projects: [],
       currentSession: null,
       isSessionArchived: false,
       isAgentArchived: false,
@@ -254,6 +265,8 @@ beforeEach(() => {
   agentsSettledRef.current = true;
   platformWorkspace.slug = "acme";
   layout.width = DESKTOP;
+  chatInputProps.current = null;
+  chatThreadListProps.current = null;
 });
 
 describe("ChatPage URL synchronization", () => {
@@ -503,6 +516,8 @@ describe("cockpit-hosted ChatPage", () => {
     expect(mockSeedProject).toHaveBeenCalledWith("p1");
     fireEvent.click(screen.getByRole("button", { name: "chat-input" }));
     expect(mockSend.mock.lastCall?.[0]).toBe("project=p1; module=m1\n\nhello");
+    // The session title comes from what the user typed, not the scope header.
+    expect(mockSend.mock.lastCall?.[4]).toEqual({ titleSeed: "hello" });
   });
   it("preserves cockpit scope and route when a new session exists, without redirecting to platform chat", () => {
     const view = renderPage("project=p1&module=m1", { pathname: "/acme/cockpit", pageProps: props });
@@ -516,5 +531,36 @@ describe("cockpit-hosted ChatPage", () => {
     expect(mockSeedProject).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "chat-input" }));
     expect(mockSend.mock.lastCall?.[0]).toBe("hello");
+    // No prefix means no title seed: the controller keeps its default.
+    expect(mockSend.mock.lastCall?.[4]).toBeUndefined();
+  });
+
+  it("locks the composer's project picker to the cockpit's own scope control", () => {
+    renderPage("project=p1&module=m1", {
+      pathname: "/acme/cockpit",
+      pageProps: { ...props, lockProjectContext: true },
+    });
+
+    expect(chatInputProps.current).toMatchObject({
+      projects: undefined,
+      projectId: null,
+      onProjectChange: undefined,
+    });
+  });
+
+  it("keeps the project picker wired on the plain Chat page", () => {
+    renderPage("session=session-1");
+
+    expect(chatInputProps.current?.projectId).toBe("project-a");
+    expect(typeof chatInputProps.current?.onProjectChange).toBe("function");
+  });
+
+  it("opens cockpit threads at their cockpit address, so modifier clicks stay in Cockpit Chat", () => {
+    renderPage("project=p1&module=m1", { pathname: "/acme/cockpit", pageProps: props });
+
+    const getSessionHref = chatThreadListProps.current?.getSessionHref as
+      | ((sessionId: string) => string | null)
+      | undefined;
+    expect(getSessionHref?.("s1")).toBe("/acme/cockpit?project=p1&module=m1&session=s1");
   });
 });

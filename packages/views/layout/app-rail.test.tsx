@@ -9,6 +9,7 @@ import { AppShellProvider, useAppShell } from "./app-shell-context";
 
 const state = vi.hoisted(() => ({
   pathname: "/acme/issues",
+  searchParams: new URLSearchParams(),
   appForeground: true,
   inboxUnread: 0,
   chatSessions: [] as { id: string; unread_count?: number }[],
@@ -27,7 +28,11 @@ vi.mock("../navigation", () => ({
       {children}
     </a>
   ),
-  useNavigation: () => ({ pathname: state.pathname, push: vi.fn() }),
+  useNavigation: () => ({
+    pathname: state.pathname,
+    searchParams: state.searchParams,
+    push: vi.fn(),
+  }),
 }));
 vi.mock("@multica/core/paths", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@multica/core/paths")>();
@@ -99,6 +104,7 @@ const countBadge = (href: string) => link(href)?.querySelector("number-flow-reac
 
 beforeEach(() => {
   state.pathname = "/acme/issues";
+  state.searchParams = new URLSearchParams();
   state.appForeground = true;
   state.inboxUnread = 0;
   state.chatSessions = [];
@@ -205,6 +211,26 @@ describe("AppRail chat badge", () => {
 
   it("still counts a remembered selection no chat surface is showing", () => {
     state.chatSessions = [{ id: "a", unread_count: 2 }, { id: "b", unread_count: 3 }];
+    state.chat = { activeSessionId: "a", isOpen: false };
+    renderRail();
+    expect(chatBadge()).toHaveAttribute("aria-label", "5");
+  });
+
+  // Cockpit Chat renders the same conversation full-page, so the session the
+  // user is reading there must not badge from behind it.
+  it("excludes the session being read on the cockpit chat surface", () => {
+    state.chatSessions = [{ id: "a", unread_count: 2 }, { id: "b", unread_count: 3 }];
+    state.pathname = "/acme/cockpit";
+    state.searchParams = new URLSearchParams("tab=chat");
+    state.chat = { activeSessionId: "a", isOpen: false };
+    renderRail();
+    expect(chatBadge()).toHaveAttribute("aria-label", "3");
+  });
+
+  it("counts the session while a cockpit tab other than chat is open", () => {
+    state.chatSessions = [{ id: "a", unread_count: 2 }, { id: "b", unread_count: 3 }];
+    state.pathname = "/acme/cockpit";
+    state.searchParams = new URLSearchParams("tab=work");
     state.chat = { activeSessionId: "a", isOpen: false };
     renderRail();
     expect(chatBadge()).toHaveAttribute("aria-label", "5");

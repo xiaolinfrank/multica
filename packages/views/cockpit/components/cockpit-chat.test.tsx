@@ -69,6 +69,7 @@ describe.each(["en", "zh-Hans", "ja", "ko"] as const)(
         defaultAgentSystemKey: "mika",
         fixedAgentSystemKey: "mika",
         defaultProjectId: scope.projectId,
+        lockProjectContext: true,
       });
     });
   },

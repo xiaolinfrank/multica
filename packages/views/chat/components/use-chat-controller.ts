@@ -519,6 +519,7 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
       attachmentIds?: string[],
       commitInput?: (options?: { extraDraftKeys?: string[]; clearEditor?: boolean }) => void,
       draftAttachments: Attachment[] = [],
+      options?: { titleSeed?: string },
     ): Promise<boolean> => {
       if (!activeAgent) {
         apiLogger.warn("sendChatMessage skipped: no active agent");
@@ -569,7 +570,7 @@ export function useChatController(opts?: { isActive?: boolean; defaultAgentSyste
 
       let sessionId: string | null = null;
       try {
-        sessionId = await ensureSession(finalContent);
+        sessionId = await ensureSession(options?.titleSeed ?? finalContent);
       } catch (err) {
         apiLogger.error("sendChatMessage.ensureSession.error", err);
         // A revoked invoke permission blocks session create with a structured

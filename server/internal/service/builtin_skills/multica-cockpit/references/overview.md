@@ -79,7 +79,9 @@ lives under the More menu at its end, and its pending count shows there. Direct
 `?tab=chat` explicitly opens Mika-only chat: new conversations target the built-in
 `system_key=mika` agent directly without an agent picker; platform chat remains
 multi-agent. Explicit chat session links remain chat links, while object targets
-retain precedence. Project selection supplies durable project context through the daemon.
+retain precedence. The cockpit scope control is the chat's only project picker:
+the session is created bound to that project, so its durable daemon context cannot
+drift from the visible scope.
 The work surface uses the same workspace/project/module scope; `?tab=work` (legacy `?tab=overview`) also opens
 this overview. `?view=operations` preserves
 the original business overview; `?tab=plan` and `?tab=gantt|finance` select the

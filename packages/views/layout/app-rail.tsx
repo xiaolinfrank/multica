@@ -18,13 +18,13 @@ import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import { CappedNumberFlow } from "@multica/ui/components/ui/number-flow";
 import { cn } from "@multica/ui/lib/utils";
 import { useAppForeground } from "../common/use-app-foreground";
+import { isFloatingChatRouteSuppressed } from "../chat/floating-chat-visibility";
 import { useT } from "../i18n";
 import { AppLink, useNavigation } from "../navigation";
 import { AccountMenu } from "./account-menu";
 import { useAppShell } from "./app-shell-context";
 import { NewIssueButton, SearchButton } from "./global-actions";
 import { HelpLauncher } from "./help-launcher";
-import { isPathWithin } from "./panel-nav";
 import { useTeamAgentStatus } from "./panels/team-status";
 import { RAIL_ICON_BUTTON_CLASS } from "./rail-styles";
 import { RailWorkspaces } from "./rail-workspaces";
@@ -42,7 +42,7 @@ type RailBadge =
 function useRailBadges(): Partial<Record<RailSpaceId, RailBadge>> {
   const wsId = useCurrentWorkspace()?.id;
   const p = useWorkspacePaths();
-  const { pathname } = useNavigation();
+  const { pathname, searchParams } = useNavigation();
   const inboxUnread = useInboxUnreadCount(wsId);
 
   const { data: chatSessions = [] } = useQuery({
@@ -58,8 +58,15 @@ function useRailBadges(): Partial<Record<RailSpaceId, RailBadge>> {
   const activeChatSessionId = useChatStore((s) => s.activeSessionId);
   const floatingChatOpen = useChatStore((s) => s.isOpen);
   const appForeground = useAppForeground();
+  // Cockpit Chat hosts the same full-page conversation, so a session read
+  // there must not badge either. Shares the route gate with the floating
+  // overlay and the ⌘J shortcut instead of re-deriving the cockpit rule.
+  const onChatSurface = isFloatingChatRouteSuppressed(pathname, p.chat(), {
+    pathname: p.cockpit(),
+    search: searchParams,
+  });
   const viewedChatSessionId =
-    appForeground && (floatingChatOpen || isPathWithin(pathname, p.chat()))
+    appForeground && (floatingChatOpen || onChatSurface)
       ? activeChatSessionId
       : null;
   const chatUnread = useMemo(

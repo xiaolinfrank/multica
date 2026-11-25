@@ -8,7 +8,7 @@ import { inboxUnreadSummaryOptions } from "@multica/core/inbox/queries";
 import { I18nProvider } from "@multica/core/i18n/react";
 import { issueDetailOptions, issueTimelineOptions } from "@multica/core/issues/queries";
 import { WORKSPACE_PAGES } from "@multica/core/paths";
-import type { Issue } from "@multica/core/types";
+import type { ChatSession, Issue } from "@multica/core/types";
 import {
   agentListOptions,
   memberListOptions,
@@ -740,6 +740,39 @@ describe("SearchCommand", () => {
       );
       await user.click(await rowText("Open agent settings"));
       expect(mockPush).toHaveBeenCalledWith("/ws-test/agents/agent-lambda?view=general");
+    });
+  });
+
+  describe("current chat", () => {
+    const chatSession = {
+      id: "session-1",
+      workspace_id: "ws-test",
+      creator_id: ME,
+      title: "Milestone sync",
+      status: "active",
+      has_unread: false,
+      unread_count: 0,
+      last_message: null,
+      pinned: false,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+    } as ChatSession;
+
+    it("offers linking a project when the page owns that action", () => {
+      registerContext({ kind: "chat", session: chatSession, archive: vi.fn(), changeProject: vi.fn() });
+      renderSearch();
+
+      expect(renderedValues()).toContain("command:context-chat:chat-link-project");
+    });
+
+    it("omits linking a project when the host owns the project scope", () => {
+      // Cockpit Chat's scope control is the single project picker; a second
+      // one in the palette would write a conflicting session project.
+      registerContext({ kind: "chat", session: chatSession, archive: vi.fn() });
+      renderSearch();
+
+      expect(renderedValues()).toContain("command:context-chat:chat-pin");
+      expect(renderedValues()).not.toContain("command:context-chat:chat-link-project");
     });
   });
 

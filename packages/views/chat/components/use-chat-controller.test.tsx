@@ -1184,6 +1184,35 @@ describe("useChatController.handleSend — compose target tracking", () => {
       expect.objectContaining({ clearEditor: true, extraDraftKeys: ["sA"] }),
     );
   });
+
+  it("titles a new session from the typed text, not the prefixed host context", async () => {
+    // Cockpit Chat prefixes the first message with its scope boilerplate for
+    // the agent's benefit; the title must describe what the user asked.
+    h.store.activeSessionId = null;
+    h.store.selectedAgentId = "agent-a";
+    h.sessions = [sA];
+    h.agents = [agentA];
+    const { result } = renderHook(() => useChatController());
+
+    await act(async () => {
+      await result.current.handleSend(
+        "Context: project=p1; module=m1\n\nCheck milestones",
+        undefined,
+        vi.fn(),
+        [],
+        { titleSeed: "Check milestones" },
+      );
+    });
+
+    expect(h.createSessionMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Check milestones" }),
+    );
+    expect(api.sendChatMessage).toHaveBeenCalledWith(
+      "new-session",
+      "Context: project=p1; module=m1\n\nCheck milestones",
+      undefined,
+    );
+  });
 });
 
 // MUL-6380: a chat session outlives the permission that created it. The agent can
