@@ -48,7 +48,9 @@ test("carries project and module scope across the cockpit and bounds meeting pag
     await navigation.getByRole("button", { name: /^More/ }).click();
     const governed = page.getByRole("menuitem", { name: /Governance/ });
     await expect(governed).toBeVisible();
-    expect(new URL((await governed.getAttribute("href"))!, "http://fixture.invalid").searchParams.get("project")).toBe(projectA.id);
+    const governedQuery = new URL((await governed.getAttribute("href"))!, "http://fixture.invalid").searchParams;
+    expect(governedQuery.get("project")).toBe(projectA.id);
+    expect(governedQuery.get("module")).toBe(moduleA.id);
     await page.keyboard.press("Escape");
     await navigation.getByRole("link", { name: "Execution plan", exact: true }).click();
     await page.getByRole("link", { name: "Plan table", exact: true }).click();

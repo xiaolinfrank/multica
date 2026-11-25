@@ -538,7 +538,8 @@ export class TestApiClient {
     return property as { id: string; name: string; config: { options?: { id: string; name: string; color: string }[] } };
   }
 
-  async updateProject(id: string, updates: Record<string, unknown>) {    const res = await this.authedFetch(`/api/projects/${id}`, {
+  async updateProject(id: string, updates: Record<string, unknown>) {
+    const res = await this.authedFetch(`/api/projects/${id}`, {
       method: "PUT",
       body: JSON.stringify(updates),
     });

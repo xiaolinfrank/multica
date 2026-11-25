@@ -61,6 +61,7 @@ test("keeps cockpit navigation, timelines and workbenches usable across themes a
             await expect(sections.locator('a[aria-current="page"]')).toHaveCount(0);
           } else if (tab === "governance") {
             await expect(sections.locator('button[aria-current="page"]')).toHaveCount(1);
+            await expect(sections.locator('button[aria-current="page"] .cockpit-nav-active')).toHaveCount(1);
             await expect(sections.locator('a[aria-current="page"]')).toHaveCount(0);
           } else {
             await expect(sections.locator('a[aria-current="page"]')).toHaveCount(1);

@@ -129,6 +129,7 @@ describe("unified cockpit shell", () => {
       const sections = screen.getByRole("navigation", { name: enCockpit.shell.navigation });
       const governance = within(sections).getByRole("button", { current: "page" });
       expect(governance).toHaveAccessibleName(enCockpit.shell.more);
+      expect(governance.querySelector(".cockpit-nav-active")).not.toBeNull();
       expect(scrollIntoView.mock.contexts).toContain(governance);
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
       const links = within(sections).getAllByRole("link");

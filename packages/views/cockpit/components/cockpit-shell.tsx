@@ -30,7 +30,7 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
   const reduceMotion = useReducedMotion();
   const navigationRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    navigationRef.current?.querySelector<HTMLAnchorElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    navigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [surface, pendingChangeCount, scope.projectId, scope.moduleId]);
   const navigation = [
     { value: "chat" as const, label: t(($) => $.shell.chat), Icon: MessageSquare },
@@ -63,7 +63,9 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
         </AppLink>)}
         <DropdownMenu>
           <DropdownMenuTrigger render={<button type="button" aria-current={governanceActive ? "page" : undefined}
-            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "cockpit-nav-link cockpit-nav-more shrink-0 gap-2 rounded-lg px-3 whitespace-nowrap focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset", governanceActive && "font-semibold bg-accent text-accent-foreground hover:bg-accent/80")} />}>
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "cockpit-nav-link cockpit-nav-more relative isolate shrink-0 gap-2 rounded-lg px-3 whitespace-nowrap focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset", governanceActive && "font-semibold")} />}>
+            {governanceActive && <motion.span aria-hidden className="cockpit-nav-active" layoutId="active-surface"
+              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 36 }} />}
             <MoreHorizontal className="size-4" aria-hidden /><span>{t(($) => $.shell.more)}</span>{pendingBadge}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
