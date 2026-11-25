@@ -6,9 +6,8 @@ import { cockpitSurfacePath, type CockpitScope, type CockpitSurface } from "@mul
 import { useWorkspacePaths } from "@multica/core/paths";
 import { buttonVariants } from "@multica/ui/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@multica/ui/components/ui/dropdown-menu";
-import { MoreHorizontal, ShieldCheck } from "@multica/ui/icons";
+import { CalendarDays, ChartGantt, LayoutDashboard, Layers3, MessageSquare, MoreHorizontal, ShieldCheck } from "@multica/ui/icons";
 import { cn } from "@multica/ui/lib/utils";
-import { CalendarDays, ChartNoAxesGantt, LayoutDashboard, Layers3, MessageSquare } from "lucide-react";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 
@@ -36,7 +35,7 @@ export function CockpitShell({ surface, scope, title, scopeControl, secondaryNav
   const navigation = [
     { value: "chat" as const, label: t(($) => $.shell.chat), Icon: MessageSquare },
     { value: "work" as const, label: t(($) => $.shell.overview), Icon: LayoutDashboard },
-    { value: "plan" as const, label: t(($) => $.shell.plan), Icon: ChartNoAxesGantt },
+    { value: "plan" as const, label: t(($) => $.shell.plan), Icon: ChartGantt },
     { value: "meetings" as const, label: t(($) => $.shell.meetings), Icon: CalendarDays },
   ];
   // Governance moved into "More" in S9: it keeps its surface, deep links and

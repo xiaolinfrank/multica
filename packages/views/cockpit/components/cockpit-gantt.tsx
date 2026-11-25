@@ -1,7 +1,6 @@
 "use client";
 
-import { ChartNoAxesGantt } from "lucide-react";
-import { Target } from "@multica/ui/icons";
+import { ChartGantt, Target } from "@multica/ui/icons";
 import { CockpitViewHeading } from "./cockpit-view-heading";
 
 // The execution gantt: the work-breakdown tree on the left, the timeline on
@@ -524,7 +523,7 @@ export function CockpitGantt({
 
   return (
     <div data-cockpit-row-count={rows.length} data-cockpit-gantt data-summary-width={zoom === "month" && rows.every((entry) => entry.children.length > 0) ? treeWidth + Math.max(0, daysBetween(axis.start, new Date(Date.UTC(Number(today.slice(0, 4)) + 1, 0, 1)))) * dayWidth : undefined} className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <CockpitViewHeading title={t(($) => $.tabs.gantt)} icon={ChartNoAxesGantt} />
+      <CockpitViewHeading title={t(($) => $.tabs.gantt)} icon={ChartGantt} />
       {/* Legend and provenance: what the chart is showing and what its colours
           mean, collapsible for anyone who already knows — and folded away with
           the toolbar, which is where the shipped board keeps it. */}

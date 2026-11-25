@@ -260,6 +260,12 @@ function renderPage() {
   ) };
 }
 
+// Governance left the primary navigation in S9 and now lives in "More".
+async function openGovernance() {
+  fireEvent.click(await screen.findByRole("button", { name: /^More/ }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /^Governance/ }));
+}
+
 describe("CockpitPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -547,7 +553,7 @@ describe("CockpitPage", () => {
       }
     ] });
     renderPage();
-    fireEvent.click(await screen.findByRole("link", { name: "Governance" }));
+    await openGovernance();
     expect(
       await screen.findByRole("button", { name: "Locate L3-02-08 in the gantt" }),
     ).toBeInTheDocument();
@@ -987,12 +993,13 @@ describe("CockpitPage versions", () => {
 
     renderPage();
 
-    // The badge is the tab's whole pitch: an unread count, before the click.
-    const tab = await screen.findByRole("link", { name: /^Governance/ });
-    await waitFor(() => expect(tab).toHaveTextContent("1"));
+    // The badge is the More trigger's whole pitch: an unread count, before the click.
+    const more = await screen.findByRole("button", { name: /^More/ });
+    await waitFor(() => expect(more).toHaveTextContent("1"));
     expect(api.listCockpitChanges).not.toHaveBeenCalled();
 
-    fireEvent.click(tab);
+    fireEvent.click(more);
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^Governance/ }));
     expect(await screen.findByText("Sign the governance agreement")).toBeInTheDocument();
     expect(screen.getByText("80")).toBeInTheDocument();
     expect(screen.getByText("agent")).toBeInTheDocument();
@@ -1049,7 +1056,7 @@ describe("CockpitPage versions", () => {
     });
 
     renderPage();
-    fireEvent.click(await screen.findByRole("link", { name: /^Governance/ }));
+    await openGovernance();
     fireEvent.click(await screen.findByRole("button", { name: enCockpit.governance.review_single }));
 
     const dialog = await screen.findByRole("dialog");
@@ -1063,7 +1070,7 @@ describe("CockpitPage versions", () => {
 
   it("offers the filing form and keeps it inert until a task is picked", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("link", { name: /^Governance/ }));
+    await openGovernance();
 
     expect(await screen.findByText("File a change for review")).toBeInTheDocument();
     const submit = screen.getByRole("button", { name: "File change" });
