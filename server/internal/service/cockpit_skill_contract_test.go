@@ -48,6 +48,7 @@ func TestCockpitSkillBodyStatesTheWorkItemModel(t *testing.T) {
 		"Related links never file",
 		"multica cockpit reconcile",
 		"`--include-closed`",
+		"Never run `multica update`",
 	} {
 		if !strings.Contains(string(body), contract) {
 			t.Errorf("cockpit SKILL.md is missing %q", contract)

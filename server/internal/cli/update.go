@@ -387,16 +387,41 @@ func UpdateViaDownload(targetVersion string) (string, error) {
 	return UpdateViaDownloadWithTimeout(targetVersion, DefaultUpdateDownloadTimeout)
 }
 
+// IsAppBundleExecutable reports whether path points to a binary inside a macOS
+// .app bundle (e.g. ".../BayClawFleet.app/Contents/MacOS/multica"). Replacing
+// such an executable in place breaks the bundle's code signature and
+// invalidates macOS TCC permissions.
+func IsAppBundleExecutable(path string) bool {
+	slashed := strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+	return strings.Contains(slashed, ".app/contents/macos/")
+}
+
+// CheckSelfUpdateExecutablePath refuses in-place self-update for executables
+// inside a macOS .app bundle so host deployment workflows remain the only path
+// that replaces and re-signs the bundle.
+func CheckSelfUpdateExecutablePath(path string) error {
+	if IsAppBundleExecutable(path) {
+		return fmt.Errorf("cannot self-update binary inside a macOS .app bundle (%s): replacing it in place invalidates its code signature and TCC permissions; deploy and re-sign the .app bundle via the host deployment workflow", path)
+	}
+	return nil
+}
+
 // UpdateViaDownloadWithTimeout downloads the latest release binary with a caller-selected timeout.
 func UpdateViaDownloadWithTimeout(targetVersion string, downloadTimeout time.Duration) (string, error) {
 	// Determine current binary path.
-	exePath, err := selfexec.Resolve()
+	rawExePath, err := selfexec.Resolve()
 	if err != nil {
 		return "", fmt.Errorf("resolve executable path: %w", err)
 	}
-	exePath, err = filepath.EvalSymlinks(exePath)
+	if err := CheckSelfUpdateExecutablePath(rawExePath); err != nil {
+		return "", err
+	}
+	exePath, err := filepath.EvalSymlinks(rawExePath)
 	if err != nil {
 		return "", fmt.Errorf("resolve symlink: %w", err)
+	}
+	if err := CheckSelfUpdateExecutablePath(exePath); err != nil {
+		return "", err
 	}
 
 	tag := normalizeReleaseTag(targetVersion)

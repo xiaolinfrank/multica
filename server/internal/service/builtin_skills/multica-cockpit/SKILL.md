@@ -138,3 +138,4 @@ Enablement, formal review and publication require authorized humans; submission 
 - Agents may submit minutes for their own issue but cannot approve or publish them.
 - Day-to-day execution lives on issues — use the issue commands and file the issue on its work item. Do not mirror an issue's description into a node's `note`; the filing is the connection, and duplicated text drifts.
 - Do not invent codes to fill gaps. A plan's codes are its own; add a row only when the work is real. Deleted codes cannot be reused (409), except when replaying an allowed import or snapshot.
+- Never run `multica update`, copy or overwrite host `multica` binaries, or run `codesign` on host `.app` bundles (for example under `~/Applications/`). Replacing or ad-hoc signing a host `.app` breaks its code signature and triggers macOS permission loops. If a documented cockpit or issue flag is unavailable in the installed CLI, stop and report the version mismatch to a human operator.

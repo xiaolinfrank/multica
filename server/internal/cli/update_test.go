@@ -302,3 +302,52 @@ func TestUpdateDownloadTimeoutOrDefault(t *testing.T) {
 		})
 	}
 }
+
+func TestIsAppBundleExecutable(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{
+			name: "standard macOS fleet app bundle",
+			path: "/Users/agent/Applications/BayClawFleet.inventory-v060-bio.app/Contents/MacOS/multica",
+			want: true,
+		},
+		{
+			name: "case insensitive app bundle components",
+			path: "/Applications/BayClaw.APP/Contents/MacOS/multica",
+			want: true,
+		},
+		{
+			name: "local bin executable",
+			path: "/Users/agent/.local/bin/multica",
+			want: false,
+		},
+		{
+			name: "homebrew cellar executable",
+			path: "/opt/homebrew/Cellar/multica/0.6.2/bin/multica",
+			want: false,
+		},
+		{
+			name: "directory merely ending in .app outside bundle structure",
+			path: "/tmp/my.app/multica",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsAppBundleExecutable(tt.path); got != tt.want {
+				t.Fatalf("IsAppBundleExecutable(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+			err := CheckSelfUpdateExecutablePath(tt.path)
+			if tt.want && err == nil {
+				t.Fatalf("CheckSelfUpdateExecutablePath(%q) = nil, want error", tt.path)
+			}
+			if !tt.want && err != nil {
+				t.Fatalf("CheckSelfUpdateExecutablePath(%q) = %v, want nil", tt.path, err)
+			}
+		})
+	}
+}

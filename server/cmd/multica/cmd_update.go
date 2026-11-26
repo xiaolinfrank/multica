@@ -3,15 +3,20 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/multica-ai/multica/server/internal/cli"
+	"github.com/multica-ai/multica/server/internal/selfexec"
 )
 
-var updateDownloadTimeout time.Duration = cli.DefaultUpdateDownloadTimeout
+var (
+	updateDownloadTimeout   time.Duration = cli.DefaultUpdateDownloadTimeout
+	resolveSelfExecForUpdate              = selfexec.Resolve
+)
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
@@ -26,6 +31,22 @@ func init() {
 func runUpdate(_ *cobra.Command, _ []string) error {
 	if updateDownloadTimeout <= 0 {
 		return fmt.Errorf("download timeout must be greater than zero")
+	}
+	if err := requireHumanLocalCommand("multica update"); err != nil {
+		return err
+	}
+	if !cli.IsReleaseVersion(version) {
+		return fmt.Errorf("multica update is disabled for custom/source build %q: downloading upstream releases would overwrite local extensions; update via your host deployment or source build workflow instead", version)
+	}
+	if exePath, err := resolveSelfExecForUpdate(); err == nil {
+		if err := cli.CheckSelfUpdateExecutablePath(exePath); err != nil {
+			return err
+		}
+		if resolved, err := filepath.EvalSymlinks(exePath); err == nil {
+			if err := cli.CheckSelfUpdateExecutablePath(resolved); err != nil {
+				return err
+			}
+		}
 	}
 
 	fmt.Fprintf(os.Stderr, "Current version: %s (commit: %s, built: %s)\n", version, commit, date)

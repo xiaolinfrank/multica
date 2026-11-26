@@ -155,10 +155,14 @@ context:
   also refuses `--all-profiles` and `--workspaces-root`, and its STATUS column
   stays blank because filling it would spend the Owner's credential.
 - Human/local profile and daemon commands — including `login`, `logout`,
-  `setup`, `workspace switch`, local runtime profile path mutation,
+  `setup`, `update`, `workspace switch`, local runtime profile path mutation,
   `daemon start` / `stop` / `restart`, `daemon logs`, and
   `daemon probe-runtimes` — are unavailable. `daemon stop` in particular would
-  terminate the daemon running this task and every sibling task on it.
+  terminate the daemon running this task and every sibling task on it, and
+  `update` (or manually copying/re-signing host `multica` binaries under
+  `~/Applications/` or `.app` bundles) breaks host code signatures and OS
+  permissions. If a required CLI command or flag is missing, stop and report
+  the version mismatch to a human operator instead of mutating host binaries.
 
 `MULTICA_DAEMON_PORT` alone is a weak, defense-in-depth signal for task-safe API
 and profile resolution, not task identity for human/local command rejection.
