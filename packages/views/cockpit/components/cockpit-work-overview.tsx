@@ -8,7 +8,7 @@ import {
   EMPTY_COCKPIT_DASHBOARD_VIEW, useCockpitDashboardViewStore, parseDay,
 } from "@multica/core/cockpit";
 import type { CockpitAttentionItem, CockpitExecutionOverviewItem, CockpitOverviewIssueCounts, CockpitRecentMeeting } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { formatCodedTitle } from "@multica/core/projects/coded-title";
 import { isBuiltInIssueStatus, isIssueStatusCategory } from "@multica/core/issue-statuses";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
@@ -91,7 +91,7 @@ function AttentionRows({ items, human, scope }: { items: CockpitAttentionItem[];
   return <ul className="divide-y divide-border/70">{items.map((item) => {
     const target = cockpitAttentionDestination(item.target);
     const restoreIssue = item.kind === "workflow" && item.reason === "restore_backlog" && item.next_action === "restore_backlog" ? item.target.issue_id : null;
-    const href = restoreIssue ? paths.issueDetail(restoreIssue) : target ? target.kind === "issue" ? paths.issueDetail(target.id) : cockpitObjectPath(paths.cockpit(), target, scope) : null;
+    const href = restoreIssue ? paths.issueDetail(issueRouteRef({ id: restoreIssue, identifier: null })) : target ? target.kind === "issue" ? paths.issueDetail(issueRouteRef({ id: target.id, identifier: null })) : cockpitObjectPath(paths.cockpit(), target, scope) : null;
     const Icon = icons[item.kind] ?? Layers3;
     const action = human && item.can_act && kinds[item.kind] && reasons[item.reason]
       ? item.next_action === "restore_backlog" && !restoreIssue ? t(($) => $.work_overview.release_minutes) : actions[item.next_action] ?? t(($) => $.work_overview.view_details)

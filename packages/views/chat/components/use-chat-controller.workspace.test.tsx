@@ -28,7 +28,6 @@ vi.mock("@multica/core/agents", () => ({
   pinAgentByName: (agents: never[]) => agents,
   isAgentRuntimeBound: () => false,
   useAgentPresenceDetail: () => ({ availability: "online" }),
-  useCustomizeConversationStartersHref: () => null,
   useWorkspaceAgentAvailability: () => "available",
 }));
 vi.mock("../../common/use-app-foreground", () => ({

@@ -8,7 +8,7 @@ import {
   cockpitMeetingPreparationDraftKey, useCockpitMeetingPreparationDraftStore, cockpitObjectPath, EMPTY_COCKPIT_SCOPE, cockpitPreparationGrantReplaced, settleCockpitPreparationCommand,
 } from "@multica/core/cockpit";
 import type { CockpitPreparationEffect, CockpitPreparationOperationHeader } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { useLocale, useT } from "../../i18n";
@@ -185,7 +185,7 @@ function PreparationEffectRow({ wsId, meetingId, effect, header, disabled }: { w
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const label = usePreparationEffectLabel(); const runStatus = usePreparationRunStatusLabel();
   const receipt = effect.receipt; const state = effect.state === "applied" || effect.state === "pending" || effect.state === "needs_attention" || effect.state === "skipped" ? t(($) => $.meeting_preparation[effect.state as "applied" | "pending" | "needs_attention" | "skipped"]) : t(($) => $.artifacts.unknown);
   return <li tabIndex={-1} data-effect-id={effect.id} aria-label={effect.label} className="space-y-2 py-3 text-caption focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><div className="flex flex-wrap items-start justify-between gap-2"><p className="line-clamp-2 min-w-0 flex-1 break-words font-medium" title={effect.label}>{effect.label}</p><span>{state}</span></div><p className="text-muted-foreground">{label(effect.kind)}</p>
-    {receipt?.issue && <AppLink target="_blank" rel="noopener noreferrer" className="break-words text-primary underline" href={paths.issueDetail(receipt.issue.identifier || receipt.issue.id)}>{receipt.issue.identifier} {receipt.issue.title} {t(($) => $.action_flow.new_tab)}</AppLink>}
+    {receipt?.issue && <AppLink target="_blank" rel="noopener noreferrer" className="break-words text-primary underline" href={paths.issueDetail(issueRouteRef({ id: receipt.issue.identifier || receipt.issue.id, identifier: null }))}>{receipt.issue.identifier} {receipt.issue.title} {t(($) => $.action_flow.new_tab)}</AppLink>}
     {effect.kind === "link_meeting" && receipt?.target_meeting_id && <AppLink target="_blank" rel="noopener noreferrer" className="block text-primary underline" href={cockpitObjectPath(paths.cockpit(), { kind: "meeting", id: receipt.target_meeting_id, view: "preparation" }, EMPTY_COCKPIT_SCOPE)}>{t(($) => $.meeting_disposition.open_target)} {t(($) => $.action_flow.new_tab)}</AppLink>}
     {effect.kind === "stop_run" && receipt && <div className="space-y-2"><p>{runStatus(receipt.run_status ?? "unknown")}</p><p className="text-muted-foreground">{t(($) => $.meeting_disposition.stop_hint)}</p>{receipt.run_id && <CockpitPreparationRun wsId={wsId} runId={receipt.run_id} issueId={receipt.issue_id} />}</div>}
     {effect.kind === "cancel_issue" && receipt && <p className="text-muted-foreground">{t(($) => $.meeting_preparation.actual_cancellations, { wakeups: receipt.stopped_wakeup_total, queued: receipt.cancelled_queue_total })}</p>}

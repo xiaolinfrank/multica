@@ -89,4 +89,39 @@ describe("batch result boundaries", () => {
     expect(parseBatchParentFilingConflict({ code: "child_module_mismatch", conflicts: [{ issue_id: "" }] })).toBeNull();
     expect(issueBatchParentFilingConflict(new Error("network"))).toBeNull();
   });
+  it("normalizes upstream per-item wire outcomes into canonical receipts", async () => {
+    const updateWire = {
+      workspace_id: "ws-1",
+      requested_ids: ["i1", "i2", "i3"],
+      transaction_mode: "per_item",
+      transaction_outcome: "partial",
+      updated: 2,
+      unconfirmed_ids: [],
+      results: [
+        { issue_id: "i1", identifier: "MUL-1", outcome: "updated", revision: 2, changed: true },
+        { issue_id: "i2", identifier: "MUL-2", outcome: "unchanged", revision: 5, changed: false },
+        { issue_id: "i3", identifier: "MUL-3", outcome: "skipped", code: "blocker_conflict", message: "blocked" },
+      ],
+    };
+    const updateReceipt = await reply(updateWire).client.batchUpdateIssues("ws-1", ids, { status: "done" });
+    expect(issueBatchAppliedIds(updateReceipt)).toEqual(["i1", "i2"]);
+    expect(updateReceipt.results[1]).toMatchObject({ issue_id: "i2", outcome: "applied", revision: 5, changed: false });
+    expect(updateReceipt.results[2]).toMatchObject({ issue_id: "i3", outcome: "rejected", code: "blocker_conflict" });
+
+    const deleteWire = {
+      workspace_id: "ws-1",
+      requested_ids: ["i1", "i2"],
+      transaction_mode: "atomic",
+      transaction_outcome: "committed",
+      deleted: 2,
+      unconfirmed_ids: [],
+      results: [
+        { issue_id: "i1", identifier: "MUL-1", outcome: "deleted" },
+        { issue_id: "i2", identifier: "MUL-2", outcome: "deleted" },
+      ],
+    };
+    const deleteReceipt = await reply(deleteWire).client.batchDeleteIssues("ws-1", ["i1", "i2"]);
+    expect(issueBatchComplete(deleteReceipt)).toBe(true);
+    expect(issueBatchAppliedIds(deleteReceipt)).toEqual(["i1", "i2"]);
+  });
 });

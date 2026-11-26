@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cockpitInputManifestVersionOptions, cockpitInputManifestVersionsOptions, cockpitIssueInputManifestOptions, cockpitIssueInputManifestPath } from "@multica/core/cockpit";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@multica/ui/components/ui/dialog";
 import { AppLink } from "../../navigation";
@@ -27,7 +27,7 @@ export function CockpitArtifactInputManifest({ wsId, producerIssueId, selectedIs
   return <section className="space-y-2 rounded-lg border border-border p-3" aria-label={t(($) => $.input_materials.artifact_manifest_source)}>
     <p className="text-caption font-medium">{t(($) => $.input_materials.artifact_manifest_source)}</p>
     {selectedVersionId && selectedIssueId ? <>
-      <AppLink href={cockpitIssueInputManifestPath(paths.issueDetail(selectedIssueId), new URLSearchParams(), selectedVersionId)} target="_blank" rel="noopener noreferrer" className="block break-words text-caption text-primary underline">
+      <AppLink href={cockpitIssueInputManifestPath(paths.issueDetail(issueRouteRef({ id: selectedIssueId, identifier: null })), new URLSearchParams(), selectedVersionId)} target="_blank" rel="noopener noreferrer" className="block break-words text-caption text-primary underline">
         {selectedIssue.data ? `${selectedIssue.data.issue.identifier} ${selectedIssue.data.issue.title}` : t(($) => $.input_materials.artifact_view_manifest)}
         {selected.data && <> · {t(($) => $.workflow.version, { number: selected.data.versionNumber })}</>} · {t(($) => $.action_flow.new_tab)}
       </AppLink>
@@ -46,7 +46,7 @@ export function CockpitArtifactInputManifest({ wsId, producerIssueId, selectedIs
           <ul className="max-h-80 space-y-2 overflow-y-auto overscroll-contain">{versions.data.items.map((version) => <li key={version.id} className="space-y-2 rounded-lg border border-border p-3"><p className="text-caption font-medium">{t(($) => $.workflow.version, { number: version.versionNumber })}</p>
             <p className="text-caption text-muted-foreground">{t(($) => $.input_materials.manifest_count, { count: version.itemTotal, required: version.requiredTotal })} · {version.createdByName} · {new Date(version.createdAt).toLocaleString(locale)}</p>
             <div className="flex flex-wrap gap-2"><Button type="button" variant={version.id === selectedVersionId ? "secondary" : "outline"} size="sm" disabled={disabled || scope.isError || !scope.data || version.id === selectedVersionId} onClick={() => { onChange({ inputManifestIssueId: version.issueId, inputManifestVersionId: version.id }); setOpen(false); }}>{version.id === selectedVersionId ? t(($) => $.input_materials.version_selected) : t(($) => $.input_materials.select_version)}</Button>
-              <AppLink href={cockpitIssueInputManifestPath(paths.issueDetail(version.issueId), new URLSearchParams(), version.id)} target="_blank" rel="noopener noreferrer" className="self-center text-caption text-primary underline">{t(($) => $.input_materials.artifact_view_manifest)} · {t(($) => $.action_flow.new_tab)}</AppLink></div>
+              <AppLink href={cockpitIssueInputManifestPath(paths.issueDetail(issueRouteRef({ id: version.issueId, identifier: null })), new URLSearchParams(), version.id)} target="_blank" rel="noopener noreferrer" className="self-center text-caption text-primary underline">{t(($) => $.input_materials.artifact_view_manifest)} · {t(($) => $.action_flow.new_tab)}</AppLink></div>
           </li>)}</ul>
           {versions.data.items.length === 0 && <p className="text-caption text-muted-foreground">{t(($) => $.input_materials.manifest_no_history)}</p>}
           <CockpitFlowPaging page={cursors.length} shown={versions.data.items.length} total={versions.data.total} hasNext={Boolean(versions.data.nextCursor)} busy={versions.isFetching} onPrevious={() => setCursors(cursors.slice(0, -1))} onNext={() => { if (versions.data.nextCursor) setCursors([...cursors, versions.data.nextCursor]); }} />

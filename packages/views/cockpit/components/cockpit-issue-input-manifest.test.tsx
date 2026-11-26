@@ -15,7 +15,7 @@ const manifestId = "b2000000-0000-4000-8000-000000000002";
 const navigation = { pathname: `/ws/issues/${issueId}`, searchParams: new URLSearchParams() };
 vi.mock("../../navigation", () => ({ useNavigation: () => navigation, AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
 vi.mock("./cockpit-input-run-launch", () => ({ CockpitInputRunLaunch: () => null }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
   getCockpitInputs: vi.fn(), getCockpitIssueInputManifest: vi.fn(), getCockpitInputManifestItems: vi.fn(), getCockpitInputVersionBatch: vi.fn(), saveCockpitIssueInputManifest: vi.fn(),
 } }));

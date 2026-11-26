@@ -90,6 +90,12 @@ func (h *Handler) cleanupQoderJournal(ctx context.Context, ws string) error {
 }
 
 func (h *Handler) prepareQoderWorkspaceDeletion(ctx context.Context, ws string) error {
+	var exists int
+	if err := h.DB.QueryRow(ctx, `SELECT 1 FROM cloud_agent_connection WHERE provider='qoder_cloud' AND workspace_id=$1`, ws).Scan(&exists); errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
 	tx, err := h.TxStarter.Begin(ctx)
 	if err != nil {
 		return err

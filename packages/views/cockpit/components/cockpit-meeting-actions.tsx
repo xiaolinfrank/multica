@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { collectCockpitActionItems, cockpitActionItemsCsv, cockpitMeetingActionsOptions, useCockpitActionCommandStore, cockpitTaskViewKey, EMPTY_COCKPIT_TASK_VIEW, useCockpitTaskViewStore } from "@multica/core/cockpit";
 import type { CockpitMeetingWorkflowSummary } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Spinner } from "@multica/ui/components/ui/spinner";
@@ -114,7 +114,7 @@ export function CockpitMeetingActions({ wsId, workflow, userId, readOnly }: { ws
               {action.source_superseded && action.status === "draft" && <span>{t(($) => $.meeting_actions.superseded)}</span>}
               {action.node_id && <span>{action.node_code} {action.node_name}</span>}
             </div>
-            {action.issue && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption"><AppLink href={paths.issueDetail(action.issue.identifier || action.issue.id)} newTabTitle={action.issue.title}
+            {action.issue && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption"><AppLink href={paths.issueDetail(issueRouteRef({ id: action.issue.identifier || action.issue.id, identifier: null }))} newTabTitle={action.issue.title}
               title={`${action.issue.identifier} ${action.issue.title}`} aria-label={`${action.issue.identifier} ${action.issue.title}`} className="line-clamp-2 min-w-0 flex-1 break-words hover:underline">
               <span className="mr-1 font-mono">{action.issue.identifier}</span>{action.issue.title}</AppLink><span className="text-muted-foreground">{issueStatus(action.issue.status)} · {action.issue.assignee_name || t(($) => $.workflow.unassigned)}</span></div>}
           </li>)}</ul>

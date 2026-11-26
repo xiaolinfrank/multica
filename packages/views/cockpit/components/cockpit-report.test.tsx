@@ -9,7 +9,7 @@ import enCockpit from "../../locales/en/cockpit.json";
 import { workOverview } from "./overview-test-fixtures";
 import { CockpitReport, type CockpitReportProps } from "./cockpit-report";
 vi.mock("@multica/core/api", () => ({ api: { getCockpitWorkOverview: vi.fn(), getCockpitPlan: vi.fn() } }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
 function teamOverview() { const data = workOverview(); return { ...data, attention: { ...data.attention, view: "team", total: data.summary.attention.team_total } }; }
 function setup(onPrint?: CockpitReportProps["onPrint"]) {

@@ -52,7 +52,11 @@ const selection = vi.hoisted(() => ({
 }));
 const deletionPolicy = vi.hoisted(() => ({ allowed: true }));
 vi.mock("@multica/core/issues/use-issue-deletion", () => ({
-  useIssueDeletion: () => ({ canDelete: () => deletionPolicy.allowed }),
+  useIssueDeletion: () => ({ canDelete: () => deletionPolicy.allowed, offersDelete: true }),
+}));
+vi.mock("@multica/core/permissions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/permissions")>()),
+  useIsGuest: () => false,
 }));
 
 vi.mock("@multica/core/issues/stores/selection-store", () => ({
@@ -129,7 +133,25 @@ vi.mock("./pickers", () => ({
       />
     </div>
   ),
+  AssigneePickerPanel: () => null,
+  DueDatePicker: () => null,
+  StartDatePicker: () => null,
 }));
+vi.mock("./pickers/batch-label-picker", () => ({ BatchLabelPicker: () => null }));
+vi.mock("../../projects/components/project-picker", () => ({ ProjectPicker: () => null }));
+vi.mock("@multica/core/paths", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/paths")>()),
+  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }),
+}));
+vi.mock("../../navigation", () => ({
+  AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a>,
+  useNavigation: () => ({ getShareableUrl: (path: string) => `https://app.example${path}` }),
+}));
+
+async function openDeleteItem() {
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  return screen.findByRole("menuitem", { name: /Delete \d+ issue/i });
+}
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
   return {
@@ -223,20 +245,21 @@ describe("BatchActionToolbar status routing (MUL-4155)", () => {
     await waitFor(() => expect(selection.deselect).toHaveBeenCalledWith(["a"]));
   });
 
-  it("disables deleting a selection containing an unauthorized issue", () => {
+  it("disables deleting a selection containing an unauthorized issue", async () => {
     deletionPolicy.allowed = false;
     render(<BatchActionToolbar issues={[makeIssue()]} />);
-    const button = screen.getByRole("button", { name: "Delete" });
-    expect(button).toBeDisabled();
-    fireEvent.click(button);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const item = await openDeleteItem();
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(item);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(batchDelete).not.toHaveBeenCalled();
   });
 
-  it("opens the dedicated delete confirmation, not the run-confirm modal", () => {
-    render([makeIssue({ status: "todo" })]);
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(screen.getByRole("dialog", { name: "Review selected issues" })).toBeInTheDocument();
+  it("keeps delete out of the bar and opens the dedicated confirmation from the More menu", async () => {
+    render(<BatchActionToolbar issues={[makeIssue({ status: "todo" })]} />);
+    expect(screen.queryByRole("button", { name: /delete/ })).not.toBeInTheDocument();
+    fireEvent.click(await openDeleteItem());
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument();
     expect(openModal).not.toHaveBeenCalled();
     expect(batchDelete).not.toHaveBeenCalled();
   });

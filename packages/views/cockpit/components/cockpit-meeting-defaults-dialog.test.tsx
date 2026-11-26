@@ -9,7 +9,7 @@ import enCommon from "../../locales/en/common.json";
 import enIssues from "../../locales/en/issues.json";
 
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
-vi.mock("@multica/core/paths", () => ({
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id, 
   useWorkspacePaths: () => ({ projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}` }),
 }));
 vi.mock("../../navigation", () => ({

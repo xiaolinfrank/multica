@@ -8,7 +8,7 @@ import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitBusinessMeetings } from "./cockpit-business-meetings";
 
 vi.mock("@multica/core/api", () => ({ api: { getCockpitMeetingRegister: vi.fn(), getCockpit: vi.fn() } }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
 const scope = { projectId: "project-1", moduleId: "module-1" };
 function meeting(number: number, date = "2026-10-10"): CockpitMeetingCard {

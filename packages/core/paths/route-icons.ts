@@ -37,6 +37,7 @@ export type RouteIconName =
   | "KeyRound"
   | "FolderGit2"
   | "BookOpenText"
+  | "Plug"
   | "Settings"
   | "Images"
   | "Gauge"
@@ -69,7 +70,9 @@ export type NavLabelKey =
   | "fleet"
   | "environment"
   | "workspaces"
+  | "docs"
   | "skills"
+  | "apps"
   | "settings";
 
 /** Stable identifier for each workspace navigation page. */
@@ -92,7 +95,9 @@ export type WorkspacePageKey =
   | "fleet"
   | "env"
   | "workspaces"
+  | "docs"
   | "skills"
+  | "apps"
   | "settings";
 
 export interface WorkspacePage {
@@ -131,7 +136,9 @@ export const WORKSPACE_PAGES: Record<WorkspacePageKey, WorkspacePage> = {
   fleet: { segment: "fleet", icon: "Server", navKey: "fleet" },
   env: { segment: "env", icon: "KeyRound", navKey: "environment" },
   workspaces: { segment: "workspaces", icon: "FolderGit2", navKey: "workspaces" },
+  docs: { segment: "docs", icon: "FileText", navKey: "docs" },
   skills: { segment: "skills", icon: "BookOpenText", navKey: "skills" },
+  apps: { segment: "apps", icon: "Plug", navKey: "apps" },
   settings: { segment: "settings", icon: "Settings", navKey: "settings" },
 };
 

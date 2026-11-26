@@ -36,18 +36,8 @@ func TestSQLCSchemaExpansionMatchesNumericMigrationOrder(t *testing.T) {
 	if err = yaml.Unmarshal(raw, &config); err != nil {
 		t.Fatal(err)
 	}
-	if len(config.SQL) != 1 {
-		t.Fatal("expected the backend SQL catalog")
-	}
-	var actual []string
-	for _, pattern := range config.SQL[0].Schema {
-		matches, err := filepath.Glob(filepath.Join(base, pattern))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, path := range matches {
-			actual = append(actual, filepath.Base(path))
-		}
+	if len(config.SQL) == 0 {
+		t.Fatal("expected at least one backend SQL catalog")
 	}
 	files, err := filepath.Glob(filepath.Join(base, "migrations", "*.up.sql"))
 	if err != nil {
@@ -60,7 +50,19 @@ func TestSQLCSchemaExpansionMatchesNumericMigrationOrder(t *testing.T) {
 	for i, path := range files {
 		expected[i] = filepath.Base(path)
 	}
-	if len(actual) == 0 || !reflect.DeepEqual(actual, expected) {
-		t.Fatalf("SQLC schema order differs from numeric runner: actual=%v expected=%v", actual, expected)
+	for i, catalog := range config.SQL {
+		var actual []string
+		for _, pattern := range catalog.Schema {
+			matches, err := filepath.Glob(filepath.Join(base, pattern))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range matches {
+				actual = append(actual, filepath.Base(path))
+			}
+		}
+		if len(actual) == 0 || !reflect.DeepEqual(actual, expected) {
+			t.Fatalf("SQLC catalog %d schema order differs from numeric runner: actual=%v expected=%v", i, actual, expected)
+		}
 	}
 }

@@ -7,7 +7,7 @@ import { CockpitInputVersionPicker } from "./cockpit-input-version-picker";
 import { inputHeader, inputVersion, INPUT_ID, INPUT_WS } from "./input-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getCockpitInputs: vi.fn(), getCockpitInput: vi.fn(), getCockpitInputVersions: vi.fn() } }));
 beforeEach(() => vi.clearAllMocks());

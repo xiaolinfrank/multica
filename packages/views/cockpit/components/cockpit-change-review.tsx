@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useApplyReviewedCockpitChange, usePreviewCockpitChangeBatch, useRejectCockpitChange, cockpitSurfacePath, type CockpitScope } from "@multica/core/cockpit";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@multica/ui/components/ui/dialog";
@@ -84,7 +84,7 @@ function ChangeReviewSession({ wsId, scope, contextKey, ids, canApplyField, fiel
                 {item.change.source_issue && (
                   <p className="flex min-w-0 flex-wrap items-center gap-x-2">
                     <span className="shrink-0 text-muted-foreground">{t(($) => $.governance.source_task)}</span>
-                    <AppLink href={paths.issueDetail(item.change.source_issue.id)} target="_blank" rel="noopener noreferrer" className="shrink-0 font-mono text-primary hover:underline">{item.change.source_issue.ref}</AppLink>
+                    <AppLink href={paths.issueDetail(issueRouteRef({ id: item.change.source_issue.id, identifier: null }))} target="_blank" rel="noopener noreferrer" className="shrink-0 font-mono text-primary hover:underline">{item.change.source_issue.ref}</AppLink>
                     <span className="min-w-0 break-words [overflow-wrap:anywhere]">{item.change.source_issue.title}</span>
                   </p>
                 )}

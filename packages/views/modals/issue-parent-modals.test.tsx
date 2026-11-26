@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.mocked(api.getIssue).mockImplementation(async (id) => issue(id));
   vi.mocked(api.listChildIssues).mockResolvedValue({ issues: [] });
   vi.mocked(api.getIssueOperationBasis).mockImplementation(async (ws, ids) => issueOperationPageFixture(ws, ids));
-  vi.mocked(api.updateIssue).mockImplementation(async (id, body) => ({ ...issue(id), ...body }));
+  vi.mocked(api.updateIssue).mockImplementation(async (id, body) => ({ ...issue(id), ...body }) as Issue);
 });
 describe.each([
   { name: "AddChildIssueModal", Component: AddChildIssueModal, writtenId: "selected-1", parentId: "issue-1" },

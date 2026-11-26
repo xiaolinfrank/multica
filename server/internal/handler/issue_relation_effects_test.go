@@ -19,7 +19,7 @@ func TestIssueRelationEffectsParentAdoptionHonorsScopeGuards(t *testing.T) {
 	withDescription := dbfx.Issue(t, "Atomic document adoptee", testutil.Cols{"workspace_id": f.ws, "project_id": f.project, "module_id": f.module})
 	var batch testIssueBatchReply
 	f.call(t, f.h.BatchUpdateIssues, http.MethodPost, "/batch-update", map[string]any{"issue_ids": []string{ordinary}, "updates": map[string]any{"parent_issue_id": parentB, "suppress_run": true}}).Want(200).JSON(&batch)
-	if batch.Updated != 1 || batch.Results[0].Outcome != "applied" {
+	if batch.Updated != 1 || batch.Results[0].Outcome != "updated" {
 		t.Fatal(batch)
 	}
 	var row IssueResponse

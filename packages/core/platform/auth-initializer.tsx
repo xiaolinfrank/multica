@@ -111,6 +111,11 @@ export function AuthInitializer({
         // the persistence contract explicitly.
         configStore
           .getState()
+          .setWebhookPayloadConditionsSupported(
+            cfg.webhook_payload_conditions_supported === true,
+          );
+        configStore
+          .getState()
           .setAgentConversationStartersSupported(
             cfg.agent_conversation_starters_supported === true,
           );
@@ -130,6 +135,7 @@ export function AuthInitializer({
         // predate the field. Both must land as "" so a collaboration space
         // path keeps its clipboard fallback.
         configStore.getState().setCollabSpaceHost(cfg.collab_space_host);
+        configStore.getState().setThemeStoreEnabled(cfg.theme_store_enabled === true);
         if (cfg.posthog_key) {
           initAnalytics({
             key: cfg.posthog_key,

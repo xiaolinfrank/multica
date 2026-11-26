@@ -16,7 +16,7 @@ import type {
 } from "@multica/core/types";
 import type { CockpitMember } from "./cockpit-people";
 import { Button } from "@multica/ui/components/ui/button";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
 import { Spinner } from "@multica/ui/components/ui/spinner";
@@ -43,7 +43,7 @@ export function CockpitMinutesTaskCard({ workflow }: { workflow: CockpitMeetingW
   return <section className="space-y-2 rounded-lg border border-border p-3" aria-label={t(($) => $.workflow.minutes_task)}>
     <h3 className="text-title-sm font-medium">{t(($) => $.workflow.minutes_task)}</h3>
     {issue ? <div className="space-y-1 text-caption">
-      <AppLink href={paths.issueDetail(issue.identifier || issue.id)} target="_blank" rel="noreferrer" className="text-primary underline">
+      <AppLink href={paths.issueDetail(issueRouteRef({ id: issue.identifier || issue.id, identifier: null }))} target="_blank" rel="noreferrer" className="text-primary underline">
         <span className="mr-1.5 font-mono text-muted-foreground">{issue.identifier || issue.id}</span>{issue.title}
       </AppLink>
       <p className="text-muted-foreground">{issue.status}</p>
@@ -177,7 +177,7 @@ export function CockpitMeetingWorkflowPanel({
         {actions.canReview && !readOnly ? t(($) => $.workflow.read_and_review) : t(($) => $.minutes_history.read_current)}</DialogTrigger>
       {current.has_feedback && <p className="text-caption text-muted-foreground">{t(($) => $.minutes_history.has_feedback)}</p>}
       {current.decision === "pending" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.formal_review_hint)}</p>}
-      {current.decision === "changes_requested" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.revision_hint)}{" "}{workflow.minutes_issue && <AppLink href={paths.issueDetail(workflow.minutes_issue.id)} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.workflow.revise_issue)}</AppLink>}</p>}
+      {current.decision === "changes_requested" && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.revision_hint)}{" "}{workflow.minutes_issue && <AppLink href={paths.issueDetail(issueRouteRef({ id: workflow.minutes_issue.id, identifier: null }))} target="_blank" rel="noreferrer" className="text-primary underline">{t(($) => $.workflow.revise_issue)}</AppLink>}</p>}
       {current.decision === "approved" && !current.published_at && !actions.canPublish && <p className="text-caption text-muted-foreground">{t(($) => $.workflow.publisher_required)}</p>}
       {current.decision === "approved" && !current.published_at && <CockpitMinutesPublishControl key={current.id} workflow={workflow}
         disabled={Boolean(readOnly || !actions.canPublish || commandBusy)} pending={publish.isPending}

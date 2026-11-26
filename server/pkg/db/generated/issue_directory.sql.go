@@ -345,7 +345,7 @@ const updateIssueDirectoryName = `-- name: UpdateIssueDirectoryName :one
 UPDATE issue SET directory_name = $1::text, updated_at = now()
 WHERE id = $2::uuid
   AND workspace_id = $3::uuid
-RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id, module_id, work_item_id, directory_name
+RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id, requester_user_id, description_revision, module_id, work_item_id, directory_name
 `
 
 type UpdateIssueDirectoryNameParams struct {
@@ -391,6 +391,8 @@ func (q *Queries) UpdateIssueDirectoryName(ctx context.Context, arg UpdateIssueD
 		&i.LastActivityAt,
 		&i.TriageState,
 		&i.DuplicateOfIssueID,
+		&i.RequesterUserID,
+		&i.DescriptionRevision,
 		&i.ModuleID,
 		&i.WorkItemID,
 		&i.DirectoryName,

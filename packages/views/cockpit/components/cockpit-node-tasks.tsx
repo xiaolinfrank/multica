@@ -17,7 +17,7 @@ import { useIssueScopeMove } from "../../issues/components/use-issue-scope-move"
 import type { CockpitNode, CockpitTaskCreate, Issue } from "@multica/core/types";
 import { issueOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
 import { IssueOperationRestriction } from "../../issues/components/issue-operation-restriction";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Textarea } from "@multica/ui/components/ui/textarea";
@@ -72,7 +72,7 @@ function NodeTaskCreate({ wsId, node, userId, disabled }: { wsId: string; node: 
         <Button type="button" disabled={disabled || create.isPending || !title.trim() || (!pending && (!fields.assigneeId || !executor.available))} aria-busy={create.isPending} onClick={() => void submit()}>
           {create.isPending && <Spinner />}{pending ? t(($) => $.task_flow.retry_creation) : t(($) => $.task_flow.create)}</Button></DialogFooter>
     </DialogContent>
-  </Dialog>{create.data && !open && <p className="text-caption"><AppLink href={paths.issueDetail(create.data.id)} newTabTitle={create.data.title} className="hover:underline">
+  </Dialog>{create.data && !open && <p className="text-caption"><AppLink href={paths.issueDetail(issueRouteRef({ id: create.data.id, identifier: null }))} newTabTitle={create.data.title} className="hover:underline">
     {t(($) => $.task_flow.request_confirmed, { name: create.data.identifier })}</AppLink></p>}</div>;
 }
 
@@ -173,7 +173,7 @@ function NodePrimaryAssign({ wsId, node, projectId, moduleId, disabled, referenc
 
       {selected && !reference && isSubIssue && <div role="alert" className="space-y-1 rounded-md bg-muted p-3 text-caption">
         <p>{t(($) => $.task_flow.assign_sub_issue)}</p>
-        {parentIssue.data && <AppLink href={paths.issueDetail(parentIssue.data.id)} newTabTitle={parentIssue.data.title} className="inline-flex rounded-sm font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">
+        {parentIssue.data && <AppLink href={paths.issueDetail(issueRouteRef({ id: parentIssue.data.id, identifier: null }))} newTabTitle={parentIssue.data.title} className="inline-flex rounded-sm font-medium text-foreground underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring">
           {t(($) => $.task_flow.assign_open_parent, { name: parentIssue.data.identifier })}
         </AppLink>}
       </div>}

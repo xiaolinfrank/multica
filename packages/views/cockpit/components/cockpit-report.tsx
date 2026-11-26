@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, CalendarDays, CircleCheck, ClipboardList, Printer, RefreshCw, Target, TriangleAlert } from "lucide-react";
 import { cockpitReportOptions, cockpitObjectPath, cockpitSurfacePath, cockpitAttentionDestination, type CockpitScope } from "@multica/core/cockpit";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { formatCodedTitle } from "@multica/core/projects/coded-title";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
@@ -72,7 +72,7 @@ function ReportSession({ wsId, scope, asOf: initialAsOf, returnHref, onPrint }: 
           {sourceLink(cockpitSurfacePath(paths.cockpit(), "plan", scope, "table"), t(($) => $.report.open_plan))}
         </section><section className="min-w-0"><h2 className="mb-2 flex items-center gap-2 text-title-sm font-medium"><CircleCheck className="size-4" />{t(($) => $.report.attention)}</h2>
           <p className="mb-3 text-caption text-muted-foreground">{t(($) => $.report.preview, { shown: data.attention.items.length, total: data.attention.total })}</p>
-          <ul className="divide-y divide-border">{data.attention.items.map((item) => { const target = cockpitAttentionDestination(item.target); const href = target ? target.kind === "issue" ? paths.issueDetail(target.id) : cockpitObjectPath(paths.cockpit(), target, scope) : null;
+          <ul className="divide-y divide-border">{data.attention.items.map((item) => { const target = cockpitAttentionDestination(item.target); const href = target ? target.kind === "issue" ? paths.issueDetail(issueRouteRef({ id: target.id, identifier: null })) : cockpitObjectPath(paths.cockpit(), target, scope) : null;
             return <li key={item.id} className="space-y-2 py-3"><p className="line-clamp-2 break-words text-body font-medium" title={item.title}>{item.title}</p>{item.dueDate && <p className="text-caption text-muted-foreground">{t(($) => $.task_flow.due, { date: item.dueDate })}</p>}{href && sourceLink(href, t(($) => $.report.source))}</li>; })}</ul>
           {data.attention.items.length === 0 && <p className="py-4 text-caption text-muted-foreground">{t(($) => $.report.no_attention)}</p>}
           {sourceLink(cockpitSurfacePath(paths.cockpit(), "work", scope), t(($) => $.report.open_work))}

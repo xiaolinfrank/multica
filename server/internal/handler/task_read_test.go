@@ -137,7 +137,8 @@ func TestTaskReadHTTPChatCreatorAndRunOnlyRemainDistinct(t *testing.T) {
 		suffix string
 	}{{testHandler.GetTaskByUser, ""}, {testHandler.ListTaskMessagesByUser, "/messages"}} {
 		taskReadCall(t, reader.fn, testUserID, ws, chatTask, reader.suffix).Want(200)
-		taskReadCall(t, reader.fn, owner, ws, chatTask, reader.suffix).Want(403)
+		// To anyone but its creator the chat transcript does not exist.
+		taskReadCall(t, reader.fn, owner, ws, chatTask, reader.suffix).Want(404)
 	}
 	autopilot := dbfx.Insert(t, "autopilot", testutil.Cols{"workspace_id": ws, "title": "Run read only", "assignee_id": agent,
 		"execution_mode": "run_only", "created_by_type": "member", "created_by_id": owner})

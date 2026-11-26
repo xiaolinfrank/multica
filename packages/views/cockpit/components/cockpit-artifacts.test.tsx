@@ -11,7 +11,7 @@ import { artifactFixture, artifactVersionFixture } from "./artifact-test-fixture
 import { CockpitArtifacts } from "./cockpit-artifacts";
 
 vi.mock("@multica/core/api", () => ({ api: { getCockpitArtifacts: vi.fn() } }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, newTabTitle: _newTabTitle, ...props }: React.ComponentProps<"a"> & { newTabTitle?: string }) => <a {...props}>{children}</a> }));
 const scope = { projectId: "project-1", moduleId: "module-1" };
 function page(query: CockpitArtifactQuery): CockpitArtifactPage {

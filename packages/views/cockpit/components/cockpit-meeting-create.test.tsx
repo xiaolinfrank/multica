@@ -10,7 +10,7 @@ import enCommon from "../../locales/en/common.json";
 import enIssues from "../../locales/en/issues.json";
 import { CockpitMeetingCreate, type CockpitMeetingCreateProps, type CockpitMeetingCreationResult } from "./cockpit-meeting-create";
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getCockpitContext: vi.fn(), getCockpitMeetingNextCode: vi.fn(), getCockpitMeetingDestination: vi.fn(), searchCockpitScopeMembers: vi.fn(), searchCockpitAssignees: vi.fn(), listProjects: vi.fn(), listModules: vi.fn(), getCockpitPlan: vi.fn(), getCockpitNodeDetail: vi.fn(), searchCockpitScopeNodes: vi.fn() } }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}`, settings: () => "/ws/settings" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}`, settings: () => "/ws/settings" }) }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("tab=meetings") }), AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
 const scope = { projectId: null, moduleId: null };
 const key = cockpitScopeViewKey("ws-1", scope);

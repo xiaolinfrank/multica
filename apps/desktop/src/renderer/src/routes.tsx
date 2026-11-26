@@ -1,11 +1,13 @@
-import { useEffect, useLayoutEffect } from "react";
-import { createMemoryRouter, Outlet, useLocation, useMatches } from "react-router-dom";
+import { DocsHomePage } from "@multica/views/docs";
+import { DocRoute, DocHistoryRoute, DocFolderRoute } from "./pages/doc-pages";
+import { useLayoutEffect } from "react";
+import { createMemoryRouter, Outlet, useLocation } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { IssueDetailPage } from "./pages/issue-detail-page";
 import { ProjectDetailPage } from "./pages/project-detail-page";
-import { ProjectGraphRoute } from "./pages/project-graph-page";
 import { AutopilotDetailPage } from "./pages/autopilot-detail-page";
 import { SkillDetailPage } from "./pages/skill-detail-page";
+import { AppDetailPage } from "./pages/app-detail-page";
 import { AgentDetailPage } from "./pages/agent-detail-page";
 import { AiBuilderSessionPage } from "./pages/ai-builder-session-page";
 import { MemberDetailPage } from "./pages/member-detail-page";
@@ -17,25 +19,23 @@ import { AttachmentPreviewRoute } from "./pages/attachment-preview-page";
 import { IssuesPage } from "@multica/views/issues/components";
 import { ProjectsPage } from "@multica/views/projects/components";
 import { DashboardPage } from "@multica/views/dashboard";
-import { FleetPage } from "@multica/views/fleet";
-import { WorkspacesPage } from "@multica/views/workspaces";
 import { AutopilotsPage } from "@multica/views/autopilots/components";
 import { MyIssuesPage } from "@multica/views/my-issues";
 import { SkillsPage } from "@multica/views/skills";
+import { AppsPage } from "@multica/views/apps";
 import { EnvPage } from "@multica/views/env";
-import { DesktopRuntimesPage } from "./components/desktop-runtimes-page";
-import { DesktopAgentsPage } from "./components/desktop-agents-page";
-import {
-  AiCreateAgentPage,
-  ManualCreateAgentPage,
-} from "@multica/views/agents";
-import { DesktopChooseRuntimePage } from "./components/desktop-choose-runtime-page";
-import { AgentCreatedPage } from "./pages/agent-created-page";
-import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/views/squads/components";
+import { FleetPage } from "@multica/views/fleet";
+import { WorkspacesPage } from "@multica/views/workspaces";
 import { OfficePage } from "@multica/views/office";
 import { GalleryPage } from "@multica/views/gallery";
 import { CockpitPage } from "@multica/views/cockpit";
 import { GraphPage } from "@multica/views/graph";
+import { DesktopRuntimesPage } from "./components/desktop-runtimes-page";
+import { DesktopAgentsPage } from "./components/desktop-agents-page";
+import { ManualCreateAgentPage } from "@multica/views/agents";
+import { DesktopChooseRuntimePage } from "./components/desktop-choose-runtime-page";
+import { AgentCreatedPage } from "./pages/agent-created-page";
+import { SquadsPage, SquadDetailPage as SquadDetailPageView } from "@multica/views/squads/components";
 import { AllViewsPage } from "@multica/views/issue-views";
 import { InboxPage } from "@multica/views/inbox";
 import { ChatPage } from "@multica/views/chat";
@@ -80,26 +80,6 @@ function DesktopSettingsRoute() {
 }
 
 /**
- * Sets document.title from the deepest matched route's handle.title.
- * The tab system observes document.title via MutationObserver.
- * Pages with dynamic titles (e.g. issue detail) override by setting
- * document.title directly via useDocumentTitle().
- */
-function TitleSync() {
-  const matches = useMatches();
-  const title = [...matches]
-    .reverse()
-    .find((m) => (m.handle as { title?: string })?.title)
-    ?.handle as { title?: string } | undefined;
-
-  useEffect(() => {
-    if (title?.title) document.title = title.title;
-  }, [title?.title]);
-
-  return null;
-}
-
-/**
  * Publishes the committed pathname. A layout effect, so the shell's update
  * lands in the same frame as the page it describes.
  */
@@ -112,11 +92,9 @@ function RenderedPathnameSync() {
   return null;
 }
 
-/** Wrapper that renders route children + TitleSync */
 function PageShell() {
   return (
     <>
-      <TitleSync />
       <RenderedPathnameSync />
       <Outlet />
     </>
@@ -139,6 +117,10 @@ function PageShell() {
  * router.navigate from unforeseen code), the index falls back to null
  * rather than 404; App.tsx's bootstrap repoints activeWorkspaceSlug on the
  * next render pass.
+ *
+ * Routes carry no titles. Tab and window titles are resolved from the URL by
+ * `parseTabSubject` (@multica/core/paths), so a new route segment needs a case
+ * there or it renders as "Unknown page" (routes.test.ts enforces this).
  */
 export const appRoutes: RouteObject[] = [
   {
@@ -163,38 +145,17 @@ export const appRoutes: RouteObject[] = [
                 <IssuesPage />
               </IssueViewUrlSync>
             ),
-            handle: { title: "Issues" },
           },
+          { path: "issues/:id", element: <IssueDetailPage /> },
           {
-            path: "issues/:id",
+            // The issue, opened on the newest version of one deliverable.
+            path: "issues/:id/deliverables/:name",
             element: <IssueDetailPage />,
-            handle: { title: "Issue" },
           },
-          {
-            path: "projects",
-            element: <ProjectsPage />,
-            handle: { title: "Projects" },
-          },
-          {
-            path: "projects/:id",
-            element: <ProjectDetailPage />,
-            handle: { title: "Project" },
-          },
-          {
-            path: "projects/:id/graph",
-            element: <ProjectGraphRoute />,
-            handle: { title: "Project Graph" },
-          },
-          {
-            path: "autopilots",
-            element: <AutopilotsPage />,
-            handle: { title: "Autopilot" },
-          },
-          {
-            path: "autopilots/:id",
-            element: <AutopilotDetailPage />,
-            handle: { title: "Autopilot" },
-          },
+          { path: "projects", element: <ProjectsPage /> },
+          { path: "projects/:id", element: <ProjectDetailPage /> },
+          { path: "autopilots", element: <AutopilotsPage /> },
+          { path: "autopilots/:id", element: <AutopilotDetailPage /> },
           {
             path: "my-issues",
             element: (
@@ -202,104 +163,46 @@ export const appRoutes: RouteObject[] = [
                 <MyIssuesPage />
               </IssueViewUrlSync>
             ),
-            handle: { title: "My Issues" },
           },
-          {
-            path: "runtimes",
-            element: <DesktopRuntimesPage />,
-            handle: { title: "Runtimes" },
-          },
-          {
-            path: "runtimes/:id",
-            element: <RuntimeDetailPage />,
-            handle: { title: "Machine" },
-          },
+          { path: "runtimes", element: <DesktopRuntimesPage /> },
+          { path: "runtimes/:id", element: <RuntimeDetailPage /> },
           {
             path: "runtimes/:id/runtime/:runtimeId",
             element: <RuntimeSettingsPage />,
-            handle: { title: "Runtime" },
           },
-          { path: "skills", element: <SkillsPage />, handle: { title: "Skills" } },
-          {
-            path: "skills/:id",
-            element: <SkillDetailPage />,
-            handle: { title: "Skill" },
-          },
-          { path: "env", element: <EnvPage />, handle: { title: "Environment" } },
-          { path: "agents", element: <DesktopAgentsPage />, handle: { title: "Agents" } },
-          {
-            path: "agents/new",
-            element: <DesktopChooseRuntimePage />,
-            handle: { title: "Create Agent" },
-          },
-          {
-            path: "agents/new/done/:agentId",
-            element: <AgentCreatedPage />,
-            handle: { title: "Create Agent" },
-          },
-          {
-            path: "agents/new/manual",
-            element: <ManualCreateAgentPage />,
-            handle: { title: "Create Agent" },
-          },
-          {
-            path: "agents/new/ai",
-            element: <AiCreateAgentPage />,
-            handle: { title: "Create Agent" },
-          },
-          {
-            path: "agents/new/ai/:sessionId",
-            element: <AiBuilderSessionPage />,
-            handle: { title: "Create Agent" },
-          },
-          {
-            path: "agents/:id",
-            element: <AgentDetailPage />,
-            handle: { title: "Agent" },
-          },
-          {
-            path: "members/:id",
-            element: <MemberDetailPage />,
-            handle: { title: "Member" },
-          },
-          { path: "office", element: <OfficePage />, handle: { title: "Office" } },
-          { path: "graph", element: <GraphPage />, handle: { title: "Graph" } },
-          { path: "gallery", element: <GalleryPage />, handle: { title: "Gallery" } },
-          { path: "cockpit", element: <CockpitPage />, handle: { title: "Cockpit" } },
-          { path: "squads", element: <SquadsPage />, handle: { title: "Squads" } },
-          { path: "views", element: <AllViewsPage />, handle: { title: "Views" } },
-          {
-            path: "squads/:id",
-            element: <SquadDetailPageView />,
-            handle: { title: "Squad" },
-          },
-          { path: "inbox", element: <InboxPage />, handle: { title: "Inbox" } },
-          { path: "chat", element: <ChatPage />, handle: { title: "Chat" } },
-          {
-            path: "attachments/:id/preview",
-            element: <AttachmentPreviewRoute />,
-            handle: { title: "Attachment" },
-          },
-          {
-            path: "usage",
-            element: <DashboardPage />,
-            handle: { title: "Usage" },
-          },
-          {
-            path: "fleet",
-            element: <FleetPage />,
-            handle: { title: "Fleet" },
-          },
-          {
-            path: "workspaces",
-            element: <WorkspacesPage />,
-            handle: { title: "Workspaces" },
-          },
-          {
-            path: "settings",
-            element: <DesktopSettingsRoute />,
-            handle: { title: "Settings" },
-          },
+          { path: "docs", element: <DocsHomePage /> },
+          { path: "docs/folders/:id", element: <DocFolderRoute /> },
+          { path: "docs/:id", element: <DocRoute /> },
+          { path: "docs/:id/history", element: <DocHistoryRoute /> },
+          // BayClaw-only pages: fleet, the shared environment, the workspace
+          // directory, the agent office, the relation graph, the gallery and
+          // the cockpit.
+          { path: "fleet", element: <FleetPage /> },
+          { path: "env", element: <EnvPage /> },
+          { path: "workspaces", element: <WorkspacesPage /> },
+          { path: "office", element: <OfficePage /> },
+          { path: "graph", element: <GraphPage /> },
+          { path: "gallery", element: <GalleryPage /> },
+          { path: "cockpit", element: <CockpitPage /> },
+          { path: "skills", element: <SkillsPage /> },
+          { path: "skills/:id", element: <SkillDetailPage /> },
+          { path: "apps", element: <AppsPage /> },
+          { path: "apps/:slug", element: <AppDetailPage /> },
+          { path: "agents", element: <DesktopAgentsPage /> },
+          { path: "agents/new", element: <DesktopChooseRuntimePage /> },
+          { path: "agents/new/done/:agentId", element: <AgentCreatedPage /> },
+          { path: "agents/new/manual", element: <ManualCreateAgentPage /> },
+          { path: "agents/new/ai/:sessionId", element: <AiBuilderSessionPage /> },
+          { path: "agents/:id", element: <AgentDetailPage /> },
+          { path: "members/:id", element: <MemberDetailPage /> },
+          { path: "squads", element: <SquadsPage /> },
+          { path: "views", element: <AllViewsPage /> },
+          { path: "squads/:id", element: <SquadDetailPageView /> },
+          { path: "inbox", element: <InboxPage /> },
+          { path: "chat", element: <ChatPage /> },
+          { path: "attachments/:id/preview", element: <AttachmentPreviewRoute /> },
+          { path: "usage", element: <DashboardPage /> },
+          { path: "settings", element: <DesktopSettingsRoute /> },
         ],
       },
     ],

@@ -6,7 +6,7 @@ import {
   cockpitCancellationImpactOptions, cockpitCancellationRunsOptions, cockpitMeetingDetailOptions,
   cockpitMeetingContextPath, EMPTY_COCKPIT_SCOPE, type CockpitPreparationFormDraft,
 } from "@multica/core/cockpit";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@multica/ui/components/ui/select";
@@ -43,7 +43,7 @@ export function CockpitCancellationItems({ wsId, meetingId, value, onChange, dis
         const selected = value.issues.find((choice) => choice.issue_id === item.issue.id);
         const choice: Choice = selected ?? { issue_id: item.issue.id, expected_revision: item.issue_revision, action: "retain", cancel_status: null, due_date: null, target_meeting_id: null };
         const permitted = (action: Choice["action"]) => action === "retain" || action === "cancel" && item.can_cancel && Boolean(item.cancel_status) || action === "change_due_date" && item.can_change_due_date || action === "link_meeting" && item.can_link_meeting;
-        return <li key={item.issue.id} className="space-y-2 py-3"><AppLink target="_blank" rel="noopener noreferrer" className="line-clamp-2 block break-words text-body font-medium text-primary underline" title={item.issue.title} href={paths.issueDetail(item.issue.identifier || item.issue.id)}>{item.issue.identifier} {item.issue.title} {t(($) => $.action_flow.new_tab)}</AppLink>
+        return <li key={item.issue.id} className="space-y-2 py-3"><AppLink target="_blank" rel="noopener noreferrer" className="line-clamp-2 block break-words text-body font-medium text-primary underline" title={item.issue.title} href={paths.issueDetail(issueRouteRef({ id: item.issue.identifier || item.issue.id, identifier: null }))}>{item.issue.identifier} {item.issue.title} {t(($) => $.action_flow.new_tab)}</AppLink>
           <Select value={choice.action} disabled={disabled} items={actions.map((action) => ({ value: action, label: labels[action] }))} onValueChange={(next) => {
             const action = actions.find((action) => action === next); if (!action || !permitted(action)) return;
             update({ ...choice, expected_revision: item.issue_revision, action, cancel_status: action === "cancel" ? item.cancel_status : null,

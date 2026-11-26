@@ -19,9 +19,6 @@ func writeCockpitActionError(w http.ResponseWriter, r *http.Request, err error) 
 	if err == nil {
 		return false
 	}
-	if writeIssueLimitReached(w, err) {
-		return true
-	}
 	status := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, service.ErrCockpitWorkflowInput), errors.Is(err, service.ErrProjectNotFound), errors.Is(err, service.ErrModuleNotFound), errors.Is(err, service.ErrModuleNotInProject), errors.Is(err, service.ErrCockpitCrossProjectPrimary):

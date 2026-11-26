@@ -18,3 +18,23 @@ sql:
           - column: "issue_wakeup.condition"
             go_type: "encoding/json.RawMessage"
             nullable: true
+          - column: "chat_wakeup.condition"
+            go_type: "encoding/json.RawMessage"
+            nullable: true
+  # Commercial (ee/) packages generate their own query code so open-source
+  # packages never compile against it.
+  - engine: "postgresql"
+    queries: "ee/projectfolder/queries.sql"
+    # Same ordered globs as the main package: a plain "migrations/" directory
+    # walk is lexicographic, which puts 9xxx files before 9xx ones.
+    schema:
+      - "migrations/[0-9][0-9][0-9]_*.up.sql"
+      - "migrations/[0-9][0-9][0-9][0-9]_*.up.sql"
+    gen:
+      go:
+        package: "folderdb"
+        out: "ee/projectfolder/folderdb"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_empty_slices: true
+        omit_unused_structs: true

@@ -58,7 +58,7 @@ func (q *Queries) GetCockpitMeetingIssue(ctx context.Context, arg GetCockpitMeet
 }
 
 const getCockpitMeetingTaskIssue = `-- name: GetCockpitMeetingTaskIssue :one
-SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority, i.assignee_type, i.assignee_id, i.creator_type, i.creator_id, i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position, i.due_date, i.created_at, i.updated_at, i.number, i.project_id, i.origin_type, i.origin_id, i.first_executed_at, i.start_date, i.metadata, i.stage, i.properties, i.revision, i.last_activity_at, i.triage_state, i.duplicate_of_issue_id, i.module_id, i.work_item_id, i.directory_name FROM issue i
+SELECT i.id, i.workspace_id, i.title, i.description, i.status, i.priority, i.assignee_type, i.assignee_id, i.creator_type, i.creator_id, i.parent_issue_id, i.acceptance_criteria, i.context_refs, i.position, i.due_date, i.created_at, i.updated_at, i.number, i.project_id, i.origin_type, i.origin_id, i.first_executed_at, i.start_date, i.metadata, i.stage, i.properties, i.revision, i.last_activity_at, i.triage_state, i.duplicate_of_issue_id, i.requester_user_id, i.description_revision, i.module_id, i.work_item_id, i.directory_name FROM issue i
 JOIN cockpit_meeting_issue l ON l.issue_id = i.id AND l.workspace_id = i.workspace_id
 WHERE l.workspace_id = $1::uuid
   AND l.meeting_id = $2::uuid
@@ -106,6 +106,8 @@ func (q *Queries) GetCockpitMeetingTaskIssue(ctx context.Context, arg GetCockpit
 		&i.LastActivityAt,
 		&i.TriageState,
 		&i.DuplicateOfIssueID,
+		&i.RequesterUserID,
+		&i.DescriptionRevision,
 		&i.ModuleID,
 		&i.WorkItemID,
 		&i.DirectoryName,

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cockpitArtifactSourceAttachmentsOptions } from "@multica/core/cockpit";
 import type { Attachment } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { Spinner } from "@multica/ui/components/ui/spinner";
@@ -37,6 +37,6 @@ export function CockpitArtifactFilePicker({ wsId, artifactId, producerIssueId, s
     {data ? <CockpitFlowPaging page={cursors.length} shown={data.items.length} total={data.filtered_total} hasNext={Boolean(data.next_cursor)} busy={query.isFetching || changing}
       onPrevious={() => { if (cursors.length > 1) setCursors(cursors.slice(0, -1)); }} onNext={() => { if (data.next_cursor) setCursors([...cursors, data.next_cursor]); }} />
       : cursors.length > 1 && <Button type="button" variant="outline" size="sm" disabled={query.isFetching} onClick={() => setCursors(cursors.slice(0, -1))}>{t(($) => $.task_flow.previous)}</Button>}
-    <AppLink href={paths.issueDetail(producerIssueId)} target="_blank" rel="noopener noreferrer" className="text-caption text-primary hover:underline">{t(($) => $.artifact_runtime.open_producer)} {t(($) => $.action_flow.new_tab)}</AppLink>
+    <AppLink href={paths.issueDetail(issueRouteRef({ id: producerIssueId, identifier: null }))} target="_blank" rel="noopener noreferrer" className="text-caption text-primary hover:underline">{t(($) => $.artifact_runtime.open_producer)} {t(($) => $.action_flow.new_tab)}</AppLink>
   </section>;
 }

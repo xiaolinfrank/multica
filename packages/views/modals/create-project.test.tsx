@@ -14,6 +14,14 @@ const apiRepoUrl = "https://github.com/multica-ai/api";
 const apiRepoDescription = "API and daemon runtime";
 const webRepoUrl = "https://github.com/multica-ai/web";
 
+vi.mock("@multica/core/auth", () => ({
+  useAuthStore: Object.assign(
+    (selector: (state: { user: { id: string } }) => unknown) =>
+      selector({ user: { id: "user-1" } }),
+    { getState: () => ({ user: { id: "user-1" } }) },
+  ),
+}));
+
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: [] }),
   // The modal now reads the runtime list to gate worktree mode, and
@@ -27,6 +35,12 @@ const createProjectMock = vi.hoisted(() => vi.fn().mockResolvedValue({ id: "p1" 
 vi.hoisted(() => {
   mocks.createProject = createProjectMock;
 });
+
+// The access picker needs the signed-in creator when deriving draft members.
+vi.mock("@multica/core/auth", () => ({
+  useAuthStore: (selector: (state: { user: { id: string } }) => unknown) =>
+    selector({ user: { id: "user-1" } }),
+}));
 
 vi.mock("@multica/core/projects/mutations", () => ({
   useCreateProject: () => ({ mutateAsync: createProjectMock }),
@@ -52,6 +66,16 @@ vi.mock("@multica/core/projects", () => ({
 vi.mock("@multica/core/hooks", () => ({
   useWorkspaceId: () => "workspace-1",
 }));
+
+vi.mock("@multica/core/auth", () => {
+  const state = { user: { id: "user-1" } };
+  return {
+    useAuthStore: Object.assign(
+      (selector: (s: typeof state) => unknown) => selector(state),
+      { getState: () => state },
+    ),
+  };
+});
 
 vi.mock("@multica/core/paths", () => ({
   useCurrentWorkspace: () => ({

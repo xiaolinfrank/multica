@@ -14,19 +14,24 @@ import { pathToFileURL } from "url";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import fixPath from "fix-path";
 import { createElectronBusyInstallPrompt, setupAutoUpdater } from "./updater";
+import { getEffectiveDialogLocale, setAppDialogLocale } from "./dialog-locale";
 import {
   prepareDaemonForUpdateInstall,
   resumeDaemonAfterAbortedUpdateInstall,
   setupDaemonManager,
 } from "./daemon-manager";
 import { setupLocalDirectory } from "./local-directory";
+import { setupThemeFolder } from "./theme-folder";
+import { setupVoiceInput } from "./voice";
 import { configureLinuxFileDialogs } from "./linux-file-dialog";
 import { openExternalSafely, downloadURLSafely } from "./external-url";
 import { openLocalPathSafely } from "./local-path";
 import { installContextMenu } from "./context-menu";
+import { devToolbarPreferencesPath, installDevToolbarToggle } from "./dev-toolbar-toggle";
 import { handleAppShortcut } from "./keyboard-shortcuts";
 import { installNavigationGestures } from "./navigation-gestures";
 import { installNavigationGuard } from "./navigation-guard";
+import { installWindowForegroundEvents, windowForeground } from "./window-foreground";
 import { createRendererWebPreferences } from "./renderer-web-preferences";
 import { getAppVersion } from "./app-version";
 import { loadRuntimeConfig } from "./runtime-config-loader";
@@ -42,6 +47,7 @@ import {
   type RendererRecoveryWindow,
 } from "./renderer-recovery";
 import { createBestEffortDevLog } from "./dev-log";
+import { ignoreBrokenStdio } from "./stdio-guard";
 import { appendMissingPathDirs } from "./path-fallback";
 import {
   writeFreezeBreadcrumb,
@@ -151,6 +157,9 @@ if (process.platform !== "win32") {
   ]);
 }
 
+// Before anything can log: release builds write to stdout/stderr too.
+ignoreBrokenStdio();
+
 const PROTOCOL = "multica";
 const devLog = is.dev ? createBestEffortDevLog() : undefined;
 
@@ -244,7 +253,7 @@ function handOffToWorkspaceWindow(
 ): boolean {
   if (!source || !mainWindows.has(source)) return false;
   if (!request || typeof request !== "object") return false;
-  const { workspaceSlug: rawSlug, path: rawPath } = request as Record<
+  const { workspaceSlug: rawSlug, path: rawPath, navigate } = request as Record<
     string,
     unknown
   >;
@@ -256,7 +265,11 @@ function handOffToWorkspaceWindow(
   const target = mainWindows.findByWorkspace(workspaceSlug, source);
   if (!target || target.isDestroyed()) return false;
   if (path) {
-    dispatchToMainRenderer(WORKSPACE_OPEN_PATH_CHANNEL, path, target);
+    dispatchToMainRenderer(
+      WORKSPACE_OPEN_PATH_CHANNEL,
+      { path, navigate: navigate === true },
+      target,
+    );
   } else {
     focusWindow(target);
   }
@@ -328,6 +341,16 @@ function handleDeepLink(url: string): void {
       if (id) dispatchToMainRenderer("invite:open", decodeURIComponent(id));
       return;
     }
+
+    // multica://open/issue?url=… and multica://open/chat?url=…
+    if (
+      parsed.hostname === "open" &&
+      (parsed.pathname === "/issue" || parsed.pathname === "/chat")
+    ) {
+      // Keep the source instance in the payload. The authenticated renderer
+      // validates it against runtime config before opening a workspace tab.
+      dispatchToMainRenderer("issue:open", url);
+    }
   } catch {
     // Ignore malformed URLs
   }
@@ -346,7 +369,12 @@ function getSystemLocale(): string {
   return app.getPreferredSystemLanguages()[0] ?? "en";
 }
 
+function getEffectiveLocale(): string {
+  return getEffectiveDialogLocale(getSystemLocale);
+}
+
 function loadRenderer(window: BrowserWindow): void {
+  installWindowForegroundEvents(window);
   const rendererEntry = join(__dirname, "../renderer/index.html");
   const rendererURL =
     is.dev && process.env["ELECTRON_RENDERER_URL"]
@@ -557,8 +585,9 @@ function createMainWindow(saved: WindowState = {}): BrowserWindow {
 
   installRendererRecoveryHandlers(window as unknown as RendererRecoveryWindow, {
     isDev: is.dev,
-    showReloadPrompt: createElectronReloadPrompt((options) =>
-      dialog.showMessageBox(window, options),
+    showReloadPrompt: createElectronReloadPrompt(
+      (options) => dialog.showMessageBox(window, options),
+      getEffectiveLocale,
     ),
     getDiagnosticContext: () => {
       // No `windowUrl`: it is an absolute install path (`/Users/<name>/...`
@@ -605,6 +634,8 @@ function createIssueWindow(context: IssueWindowContext): void {
     minHeight: 520,
     title: context.title,
     titleBarStyle: "hiddenInset",
+    // Center the native controls in the issue page's 48px header, which is
+    // this window's title bar.
     trafficLightPosition: { x: 16, y: 17 },
     show: false,
     autoHideMenuBar: true,
@@ -645,8 +676,9 @@ function createIssueWindow(context: IssueWindowContext): void {
   }
   installRendererRecoveryHandlers(window as unknown as RendererRecoveryWindow, {
     isDev: is.dev,
-    showReloadPrompt: createElectronReloadPrompt((options) =>
-      dialog.showMessageBox(window, options),
+    showReloadPrompt: createElectronReloadPrompt(
+      (options) => dialog.showMessageBox(window, options),
+      getEffectiveLocale,
     ),
     getDiagnosticContext: () => {
       // No `windowUrl`: it is an absolute install path (`/Users/<name>/...`
@@ -749,11 +781,21 @@ if (!gotTheLock) {
   );
   if (coldStartDeepLink) handleDeepLink(coldStartDeepLink);
 
+  // scripts/dev-env.sh starts a managed dev Desktop signed in by handing it
+  // the token a browser login would deliver. An environment variable rather
+  // than argv keeps the token out of other users' `ps`; it is removed before
+  // any child process (the daemon, agent CLIs) can inherit it. Packaged builds
+  // never read it.
+  const devAuthToken = is.dev ? process.env.MULTICA_DEV_AUTH_TOKEN : undefined;
+  delete process.env.MULTICA_DEV_AUTH_TOKEN;
+  if (devAuthToken) dispatchToMainRenderer("auth:token", devAuthToken);
+
   app.whenReady().then(async () => {
     const viteEnv = import.meta.env as ImportMetaEnv & {
       readonly VITE_API_URL?: string;
       readonly VITE_WS_URL?: string;
       readonly VITE_APP_URL?: string;
+      readonly VITE_DEV_TOOLBAR?: string;
     };
 
     runtimeConfigResult = await loadRuntimeConfig({
@@ -860,6 +902,11 @@ if (!gotTheLock) {
     // blocking error and must not silently fall back to the cloud defaults.
     ipcMain.on("runtime-config:get", (event) => {
       event.returnValue = runtimeConfigResult;
+    });
+
+    installDevToolbarToggle({
+      enabled: is.dev && Boolean(viteEnv.VITE_DEV_TOOLBAR),
+      preferencesPath: devToolbarPreferencesPath(app.getPath("userData")),
     });
 
     ipcMain.on(RENDERER_ROUTE_CONTEXT_CHANNEL, (event, context: unknown) => {
@@ -972,6 +1019,10 @@ if (!gotTheLock) {
       );
     });
 
+    ipcMain.handle("window:foreground", (event) =>
+      windowForeground(BrowserWindow.fromWebContents(event.sender)),
+    );
+
     // Main owns foreground detection and item-level dedupe. Every renderer
     // has its own WebSocket and `document.hasFocus()` only describes that one
     // window, so renderer-only gating can emit N duplicate system banners.
@@ -989,9 +1040,7 @@ if (!gotTheLock) {
 
       const payload = parseNativeNotificationPayload(value);
       if (!payload || !Notification.isSupported()) return;
-      const anyWindowFocused = BrowserWindow.getAllWindows().some(
-        (window) => !window.isDestroyed() && window.isFocused(),
-      );
+      const anyWindowFocused = BrowserWindow.getAllWindows().some(windowForeground);
       if (!notificationGate.shouldShow(payload.itemId, anyWindowFocused)) {
         return;
       }
@@ -1013,11 +1062,17 @@ if (!gotTheLock) {
           {
             slug: payload.slug,
             itemId: payload.itemId,
-            issueKey: payload.issueKey,
+            ...(payload.chatSessionId
+              ? { chatSessionId: payload.chatSessionId }
+              : { issueKey: payload.issueKey }),
           },
           mainWindows.findByWorkspace(payload.slug),
         );
       });
+      notification.on("failed", (_event, error) => {
+        console.warn("Native notification delivery failed:", error);
+      });
+      notification.on("show", () => console.info("Native notification displayed"));
       notification.show();
     });
 
@@ -1038,6 +1093,10 @@ if (!gotTheLock) {
       applyUnreadBadge();
     });
 
+    ipcMain.on("locale:set", (_event, rawLocale: unknown) => {
+      setAppDialogLocale(typeof rawLocale === "string" ? rawLocale : null);
+    });
+
     desktopInitialized = true;
     for (const saved of loadWindowSession(windowStateFile())) {
       createMainWindow(saved);
@@ -1055,7 +1114,7 @@ if (!gotTheLock) {
           return parent && !parent.isDestroyed()
             ? dialog.showMessageBox(parent, options)
             : dialog.showMessageBox(options);
-        }),
+        }, getEffectiveLocale),
       },
     });
     setupDaemonManager(
@@ -1063,6 +1122,8 @@ if (!gotTheLock) {
       () => mainWindows.all(),
     );
     setupLocalDirectory(() => mainWindows.mostRecent());
+    setupThemeFolder();
+    setupVoiceInput();
 
     // Registered after the updater and daemon gates, so a quit they hold
     // (busy daemon, pending install) leaves the session writable; only the

@@ -552,7 +552,7 @@ export default function SkillsPage() {
 
   const createDialog = createMethod && (
     <CreateSkillDialog
-      initialMethod={createMethod}
+      method={createMethod}
       onClose={() => setCreateMethod(null)}
       onCreated={handleCreated}
     />

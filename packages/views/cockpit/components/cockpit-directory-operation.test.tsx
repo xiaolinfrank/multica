@@ -9,7 +9,7 @@ import { CockpitDirectoryRetry } from "./cockpit-directory-retry";
 import { WS, MEETING, OP, ROOT, HASH, operation, preview, receipt, summary, step, directoryId } from "./meeting-directory-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a>, useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }) }));
 vi.mock("../../common/local-path-link", () => ({ LocalPathLink: ({ path }: { path: string }) => <span>{path}</span> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {

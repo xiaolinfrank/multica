@@ -14,7 +14,8 @@
     "upload_image": "Envoyer une image",
     "emoji_label": "Emoji",
     "more_emojis": "Plus d'emojis…",
-    "emoji_loading": "Chargement…"
+    "emoji_loading": "Chargement…",
+    "text_icon": "Icône texte"
   },
   "avatar_crop": {
     "title": "Modifier l'avatar",
@@ -28,6 +29,14 @@
     "uploading": "Envoi…",
     "loading": "Chargement…",
     "load_failed": "Impossible de charger l'image"
+  },
+  "text_avatar": {
+    "title": "Icône texte",
+    "preview": "Aperçu",
+    "text_label": "Texte",
+    "text_hint": "Jusqu'à 2 caractères (lettres, chiffres ou caractères CJK). Les caractères supplémentaires sont tronqués.",
+    "color_label": "Couleur",
+    "render_failed": "Impossible de créer l’icône. Veuillez réessayer."
   },
   "color_picker": {
     "saturation": "Saturation et luminosité",
@@ -50,12 +59,12 @@
     "days_ago": "il y a {{count}} j"
   },
   "lark_bind": {
-    "page_title": "Associer votre compte Lark",
-    "redeeming": "Validation du jeton d'association…",
+    "page_title": "Associer votre compte Feishu / Lark",
+    "redeeming": "Association de votre compte...",
     "needs_auth_description": "Connectez-vous à BayClaw pour terminer l'association. Le jeton contenu dans le lien associe votre compte Lark à cet utilisateur BayClaw : vous devez donc être connecté au préalable.",
     "sign_in": "Se connecter",
-    "done_title": "Association effectuée.",
-    "done_description": "Votre prochain message au bot dans Lark ira directement à l'agent. Vous pouvez fermer cet onglet.",
+    "done_title": "Compte associé",
+    "done_description": "Votre prochain message au bot dans Feishu / Lark ira directement à l'agent. Vous pouvez fermer cet onglet.",
     "error_title": "Impossible de terminer l'association",
     "error_admin_hint": "Si le problème persiste, demandez à l'administrateur de l'espace de travail de renvoyer le lien d'association depuis Lark.",
     "error_missing_token": "Le lien ne contient pas de jeton d'association. Demandez au bot d'en envoyer un nouveau dans Lark.",
@@ -69,7 +78,7 @@
     "redeeming": "Association de votre compte…",
     "needs_auth_description": "Connectez-vous à BayClaw pour terminer l'association. Le jeton contenu dans le lien associe votre compte Slack à cet utilisateur BayClaw : vous devez donc être connecté au préalable.",
     "sign_in": "Se connecter",
-    "done_title": "Association effectuée.",
+    "done_title": "Compte associé",
     "done_description": "Votre prochain message au bot dans Slack ira directement à l'agent. Vous pouvez fermer cet onglet.",
     "error_title": "Impossible de terminer l'association",
     "error_admin_hint": "Si le problème persiste, écrivez de nouveau au bot dans Slack pour obtenir un lien récent.",
@@ -84,7 +93,7 @@
     "redeeming": "Association de votre compte…",
     "needs_auth_description": "Connectez-vous à BayClaw pour terminer l'association. Le jeton contenu dans le lien associe votre compte DingTalk à cet utilisateur BayClaw : vous devez donc être connecté au préalable.",
     "sign_in": "Se connecter",
-    "done_title": "Association effectuée.",
+    "done_title": "Compte associé",
     "done_description": "Votre prochain message au bot dans DingTalk ira directement à l'agent. Vous pouvez fermer cet onglet.",
     "error_title": "Impossible de terminer l'association",
     "error_admin_hint": "Si le problème persiste, écrivez de nouveau au bot dans DingTalk pour obtenir un lien récent.",
@@ -99,7 +108,7 @@
     "redeeming": "Association de votre compte…",
     "needs_auth_description": "Connectez-vous à BayClaw pour terminer l'association. Le jeton contenu dans le lien associe votre compte Telegram à cet utilisateur BayClaw : vous devez donc être connecté au préalable.",
     "sign_in": "Se connecter",
-    "done_title": "Association effectuée.",
+    "done_title": "Compte associé",
     "done_description": "Votre prochain message au bot dans Telegram ira directement à l'agent. Vous pouvez fermer cet onglet.",
     "error_title": "Impossible de terminer l'association",
     "error_admin_hint": "Si le problème persiste, écrivez de nouveau au bot dans Telegram pour obtenir un lien récent.",
@@ -118,8 +127,8 @@
     "redeeming": "Association de votre compte…",
     "needs_auth_description": "Connectez-vous à BayClaw pour terminer l'association. Le jeton contenu dans le lien associe votre identité WeCom à cet utilisateur BayClaw : vous devez donc être connecté au préalable.",
     "sign_in": "Se connecter",
-    "done_title": "Association effectuée.",
-    "done_description": "Votre prochain message au bot intelligent dans WeCom ira directement à l'agent. Vous pouvez fermer cet onglet.",
+    "done_title": "Compte associé",
+    "done_description": "Votre prochain message au bot dans WeCom ira directement à l'agent. Vous pouvez fermer cet onglet.",
     "error_title": "Impossible de terminer l'association",
     "error_admin_hint": "Si le problème persiste, écrivez de nouveau au bot dans WeCom pour obtenir un lien récent.",
     "error_missing_token": "Le lien ne contient pas de jeton. Écrivez de nouveau au bot dans WeCom pour en obtenir un nouveau.",

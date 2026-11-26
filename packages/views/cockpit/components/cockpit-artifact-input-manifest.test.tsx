@@ -11,7 +11,7 @@ import enCockpit from "../../locales/en/cockpit.json";
 const otherIssue = "b5000000-0000-4000-8000-000000000001";
 const otherVersion = "b5000000-0000-4000-8000-000000000002";
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getCockpitIssueInputManifest: vi.fn(), getCockpitInputManifestVersions: vi.fn(), getCockpitInputManifestVersion: vi.fn(), searchIssues: vi.fn() } }));
 function metadata(issueId: string): CockpitInputManifestVersionMetadata {
   return { workspaceId: INPUT_WS, issueId, id: issueId === otherIssue ? otherVersion : INPUT_VERSION, versionNumber: issueId === otherIssue ? 2 : 1, commandKey: INPUT_VERSION, manifestHash: "a".repeat(64), itemTotal: 4, requiredTotal: 3, createdBy: INPUT_MEMBER, createdByName: "Owner", createdAt: INPUT_TIME, hasNote: false };

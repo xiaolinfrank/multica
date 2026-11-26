@@ -7,7 +7,7 @@ import type { CockpitPreparationOperationHeader } from "@multica/core/types";
 import { CockpitPreparationHistory } from "./cockpit-preparation-history";
 import enCockpit from "../../locales/en/cockpit.json";
 
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
 vi.mock("../../navigation", () => ({
   useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("meeting=meeting-1&meeting_view=details&track=bio") }),
   AppLink: ({ children, href, ...props }: React.ComponentProps<"a">) => <a href={href} {...props}>{children}</a>,

@@ -13,7 +13,7 @@ import enIssues from "../../locales/en/issues.json";
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
   getCockpitWorkOverview: vi.fn(), getCockpitOverviewAttention: vi.fn(), getCockpitOverviewExecution: vi.fn(), getCockpitOverviewMeetings: vi.fn(), searchProjects: vi.fn(),
 } }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ href, children, newTabTitle: _title, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { newTabTitle?: string }) => <a href={href} {...props}>{children}</a> }));
 
 const viewKey = cockpitScopeViewKey("ws-1", EMPTY_COCKPIT_SCOPE);

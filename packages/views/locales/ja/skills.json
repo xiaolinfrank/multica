@@ -1,14 +1,8 @@
 {
   "page": {
+    "search": "スキルを検索",
     "title": "スキル",
-    "tagline": "このワークスペースのどのエージェントでも使用できる指示です。",
-    "learn_more": "詳しく見る →",
     "new_skill": "新規スキル",
-    "tabs": {
-      "workspace": "ワークスペース",
-      "runtime": "ランタイムスキル"
-    },
-    "search_placeholder": "スキルを検索…",
     "scopes": {
       "all": {
         "label": "すべてのスキル",
@@ -27,10 +21,6 @@
         "description": "あなたが作成したスキル"
       }
     },
-    "empty": {
-      "title": "まだスキルがありません",
-      "description": "skill を作成またはインポートします。"
-    },
     "no_matches": {
       "title": "一致なし",
       "with_query": "「{{query}}」に一致するスキルがありません{{filterSuffix}}。",
@@ -38,18 +28,28 @@
       "filter_only": "このフィルターに一致するスキルがありません。",
       "try_different": " 別の検索語を試してください。"
     },
-    "intro_banner": {
-      "title": "ワークスペースと共有されます。",
-      "body": "誰でもスキルを作成したり、URL やローカルフォルダからインポートしたり、ローカルランタイムからコピーしたりでき、すべてのエージェントが使用できます。",
-      "highlight": "ローカルランタイムのスキルは、ここにコピーするまで非公開のままです。"
-    },
     "list_error": {
       "title": "スキルを読み込めませんでした",
       "fallback": "スキル一覧の取得中に問題が発生しました。",
       "retry": "再試行"
     },
     "supporting_data_warning": "一部のワークスペースデータを読み込めませんでした。作成者の表示、ランタイム名、編集権限が不完全に見える場合があります。",
-    "search": "スキルを検索"
+    "tagline": "このワークスペースのどのエージェントでも使用できる指示です。",
+    "learn_more": "詳しく見る →",
+    "tabs": {
+      "workspace": "ワークスペース",
+      "runtime": "ランタイムスキル"
+    },
+    "search_placeholder": "スキルを検索…",
+    "empty": {
+      "title": "まだスキルがありません",
+      "description": "skill を作成またはインポートします。"
+    },
+    "intro_banner": {
+      "title": "ワークスペースと共有されます。",
+      "body": "誰でもスキルを作成したり、URL やローカルフォルダからインポートしたり、ローカルランタイムからコピーしたりでき、すべてのエージェントが使用できます。",
+      "highlight": "ローカルランタイムのスキルは、ここにコピーするまで非公開のままです。"
+    }
   },
   "table": {
     "name": "名前",
@@ -214,6 +214,7 @@
       "permissions_owner": "このスキルを編集・削除できます。変更は次回のエージェント実行から反映されます。",
       "permissions_locked_creator": "作成者（{{name}}）またはワークスペース管理者のみがこのスキルを編集できます。",
       "permissions_locked": "作成者またはワークスペース管理者のみがこのスキルを編集できます。",
+      "character_count_other": "{{count}} 文字",
       "character_count": "{{count}} 文字",
       "properties_hint": "これらの項目は SKILL.md のフロントマターと同期します。",
       "used_by_other": "{{count}} 個のエージェントが使用中",
@@ -286,15 +287,9 @@
     }
   },
   "create": {
-    "back": "戻る",
-    "back_aria": "方式の選択に戻る",
     "close": "閉じる",
     "close_aria": "閉じる",
     "method": {
-      "chooser": {
-        "title": "新規スキル",
-        "desc": "スキルを追加する方法を選択してください。"
-      },
       "manual": {
         "title": "手動で作成",
         "desc": "空の SKILL.md から作成します。"
@@ -310,6 +305,10 @@
       "runtime": {
         "title": "ランタイムからコピー",
         "desc": "ローカルランタイムにあるスキルをワークスペースに昇格します。"
+      },
+      "chooser": {
+        "title": "新規スキル",
+        "desc": "スキルを追加する方法を選択してください。"
       }
     },
     "manual": {
@@ -340,7 +339,19 @@
       "cancel": "キャンセル",
       "import": "インポート",
       "importing": "インポート中…",
-      "toast_imported": "スキルをインポートしました"
+      "toast_imported": "スキルをインポートしました",
+      "select_all": "すべて選択",
+      "import_count": "{{count}} 件をインポート",
+      "done": "完了",
+      "stop": "現在の処理後に停止",
+      "unreadable": "skill を読み取れません。フォルダーを再選択してください。",
+      "uncertain": "結果を確認できません。再試行前に一覧を更新して確認してください。同名の項目がある場合はロックされます。",
+      "check_results": "結果を確認",
+      "retry_ready": "更新した一覧に見つかりません。再試行できます。",
+      "uncertain_manual": "結果が不確実で、アーカイブ内のスキル名を確認できません。再インポート前に一覧を手動で確認してください。",
+      "check_failed": "一覧を検証できませんでした。結果が不確実な項目はロックされたままです。再確認するか、一覧を手動で確認してください。",
+      "workspace_changed": "ワークスペースが変わったため、残りのインポートを停止しました。この画面を閉じ、目的のワークスペースで開き直してください。",
+      "summary": "成功: {{success}} · 失敗または未確認: {{failed}}"
     },
     "url": {
       "url_label": "スキル URL",
@@ -354,7 +365,9 @@
       "fallback_error": "インポートに失敗しました",
       "cancel": "キャンセル",
       "toast_imported": "スキルをインポートしました"
-    }
+    },
+    "back": "戻る",
+    "back_aria": "方式の選択に戻る"
   },
   "runtime_import": {
     "runtime_label": "ランタイム",
@@ -381,8 +394,6 @@
     "toast_imported": "スキルをインポートしました",
     "toast_import_failed": "スキルをインポートできませんでした",
     "select_all": "すべて選択（{{count}}）",
-    "bulk_ready": "{{count}} 個のスキルを選択中",
-    "bulk_import_button": "{{count}} 個のスキルをインポート",
     "bulk_progress": "インポート中 {{completed}} / {{total}}…",
     "bulk_cancel_button": "キャンセル",
     "bulk_complete_hint": "インポートが完了しました。",
@@ -394,7 +405,6 @@
     "bulk_summary_skipped": "スキップ",
     "bulk_summary_failed": "失敗",
     "conflict_single_title": "同じ名前のスキルがすでに存在します",
-    "conflict_bulk_title": "{{count}} 個のスキルに判断が必要です",
     "conflict_hint": "既存のワークスペーススキルを上書きするか、新しい名前でインポートするか、スキップするかを選択してください。",
     "conflict_locked_creator": "このスキルは {{creator}} が作成しました。ローカルインポートで上書きできるのは作成者だけです。変更が必要な場合は、スキル詳細ページで編集してください。",
     "conflict_locked": "ローカルインポートでこのスキルを上書きできるのは作成者だけです。変更が必要な場合は、スキル詳細ページで編集してください。",
@@ -405,15 +415,18 @@
     "conflict_overwrite_all": "すべて上書き",
     "conflict_skip_all": "すべてスキップ",
     "conflict_rename_label": "新しいスキル名",
-    "conflict_footer": "{{count}} 件の競合判断が残っています。",
     "conflict_apply_button": "決定を適用",
     "conflict_missing_resolution": "この競合の処理方法を選択してください。",
     "conflict_name_still_exists": "その名前はすでに存在します。別の名前を選択するか、スキップしてください。",
+    "bulk_ready_other": "{{count}} 個のスキルを選択中",
+    "bulk_import_button_other": "{{count}} 個のスキルをインポート",
+    "conflict_bulk_title_other": "{{count}} 個のスキルに判断が必要です",
+    "conflict_footer_other": "{{count}} 件の競合判断が残っています。",
+    "bulk_ready": "{{count}} 個のスキルを選択中",
+    "bulk_import_button": "{{count}} 個のスキルをインポート",
+    "conflict_bulk_title": "{{count}} 個のスキルに判断が必要です",
+    "conflict_footer": "{{count}} 件の競合判断が残っています。",
     "no_skills_hint": "このランタイムには、まだ検出可能なローカルスキルがありません。"
-  },
-  "runtime_browse": {
-    "hint": "接続中の各ランタイムのマシンにインストールされているスキルです（例: ~/.claude/skills、~/.codex/skills）。閲覧のみ — このワークスペースに追加するには、新規スキル → ランタイムから を使用してください。",
-    "refresh": "更新"
   },
   "file_tree": {
     "no_files": "ファイルなし",
@@ -458,5 +471,9 @@
       "role_fullstack": "フルスタック",
       "copy_to_workspace": "ワークスペースにコピー"
     }
+  },
+  "runtime_browse": {
+    "hint": "接続中の各ランタイムのマシンにインストールされているスキルです（例: ~/.claude/skills、~/.codex/skills）。閲覧のみ — このワークスペースに追加するには、新規スキル → ランタイムから を使用してください。",
+    "refresh": "更新"
   }
 }

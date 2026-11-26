@@ -7,7 +7,7 @@ import { CockpitRunInputManifest } from "./cockpit-run-input-manifest";
 import { INPUT_ID, INPUT_MEETING, INPUT_MEMBER, INPUT_REFERENCE, INPUT_TIME, INPUT_VERSION, INPUT_WS } from "./input-test-fixtures";
 import enCockpit from "../../locales/en/cockpit.json";
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("@multica/core/auth", async (original) => {
   const actual = await original<typeof import("@multica/core/auth")>();
   const state = { user: { id: "b1000000-0000-4000-8000-000000000006" } };

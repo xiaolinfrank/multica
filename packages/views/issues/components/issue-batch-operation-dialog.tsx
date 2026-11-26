@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { issueOperationAllowed, issueUpdateOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
 import type { Issue, IssueBatchReceipt, IssueOperationName, UpdateIssueRequest } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { cockpitActorLabelOptions } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
@@ -91,7 +91,7 @@ export function IssueBatchOperationDialog({ wsId, intent, issues, pending, resul
         <ul className="max-h-[45vh] space-y-3 overflow-y-auto rounded-lg border p-3">{rows.map((id) => {
           const issue = issues.find((item) => item.id === id);
           const observation = { basis: policy.byIssue.get(id), pending: policy.pendingIds.has(id), error: policy.errorIds.has(id), retry: () => { void policy.refetch(); } };
-          return <li key={id} className="space-y-2 border-b pb-3 last:border-0 last:pb-0"><AppLink href={paths.issueDetail(id)} target="_blank" rel="noopener noreferrer" className="block line-clamp-2 break-words text-caption text-primary underline underline-offset-4">{issue ? `${issue.identifier} · ${issue.title}` : id} {t(($) => $.operation_basis.new_tab)}</AppLink>
+          return <li key={id} className="space-y-2 border-b pb-3 last:border-0 last:pb-0"><AppLink href={paths.issueDetail(issueRouteRef({ id: id, identifier: null }))} target="_blank" rel="noopener noreferrer" className="block line-clamp-2 break-words text-caption text-primary underline underline-offset-4">{issue ? `${issue.identifier} · ${issue.title}` : id} {t(($) => $.operation_basis.new_tab)}</AppLink>
             {allowed.includes(id) ? <p className="text-caption text-muted-foreground">{t(($) => $.operation_basis.available)}</p> : <IssueOperationRestriction observation={observation} operation={operation} />}
           </li>;
         })}</ul>

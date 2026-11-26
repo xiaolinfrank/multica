@@ -84,5 +84,5 @@ function InputRunHistory({ issueId, identifier, title, onClose }: { issueId: str
   if (query.isPending || query.isError) return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent><DialogHeader><DialogTitle>{t(($) => $.input_materials.run_history)}</DialogTitle></DialogHeader>
     {query.isError ? <CockpitFlowError onRetry={() => void query.refetch()} /> : <p role="status" className="text-caption">{t(($) => $.workflow.loading)}</p>}
   </DialogContent></Dialog>;
-  return <IssueRunsDialog open onOpenChange={(open) => { if (!open) onClose(); }} issueId={issueId} identifier={identifier} issueTitle={title} tasks={query.data ?? []} />;
+  return <IssueRunsDialog open onOpenChange={(open) => { if (!open) onClose(); }} issueId={issueId} identifier={identifier} issueTitle={title} />;
 }

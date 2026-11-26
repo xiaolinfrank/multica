@@ -60,6 +60,7 @@ interface ConfigState {
   // deployment without shared storage — and empty must mean "offer the
   // clipboard", never "guess a host".
   collabSpaceHost: string;
+  webhookPayloadConditionsSupported: boolean;
   // Whether POST /api/issues atomically persists custom-property values.
   // Older servers silently drop the field, so absent must fail closed.
   issueCreatePropertiesSupported: boolean;
@@ -67,6 +68,10 @@ interface ConfigState {
   // deleted the replies too, so absent must fail closed: the client then
   // promises nothing about replies and uses the legacy delete route.
   commentDeleteKeepRepliesSupported: boolean;
+  // Whether the server serves the community theme store. Absent on older
+  // servers and off when the operator turned it off: no Browse entry, no
+  // store requests.
+  themeStoreEnabled: boolean;
   setCollabSpaceHost: (host?: string) => void;
   setCdnConfig: (config: { cdnDomain: string; cdnSigned?: boolean }) => void;
   setAttachmentPublicUrl: (url?: string) => void;
@@ -91,8 +96,10 @@ interface ConfigState {
   setDefaultIssueAssigneeNode: (node?: string) => void;
   setLocalWorktreeSupported: (supported?: boolean) => void;
   setAgentConversationStartersSupported: (supported?: boolean) => void;
+  setWebhookPayloadConditionsSupported: (supported?: boolean) => void;
   setIssueCreatePropertiesSupported: (supported?: boolean) => void;
   setCommentDeleteKeepRepliesSupported: (supported?: boolean) => void;
+  setThemeStoreEnabled: (enabled?: boolean) => void;
 }
 
 export const configStore = createStore<ConfigState>((set) => ({
@@ -117,8 +124,10 @@ export const configStore = createStore<ConfigState>((set) => ({
   defaultIssueAssigneeNode: "",
   localWorktreeSupported: false,
   agentConversationStartersSupported: false,
+  webhookPayloadConditionsSupported: false,
   issueCreatePropertiesSupported: false,
   commentDeleteKeepRepliesSupported: false,
+  themeStoreEnabled: false,
   setCdnConfig: ({ cdnDomain, cdnSigned = false }) => set({ cdnDomain, cdnSigned }),
   setAttachmentPublicUrl: (url = "") => set({ attachmentPublicUrl: url }),
   setAuthConfig: ({
@@ -149,10 +158,13 @@ export const configStore = createStore<ConfigState>((set) => ({
     set({ localWorktreeSupported: supported === true }),
   setAgentConversationStartersSupported: (supported = false) =>
     set({ agentConversationStartersSupported: supported === true }),
+  setWebhookPayloadConditionsSupported: (supported = false) =>
+    set({ webhookPayloadConditionsSupported: supported === true }),
   setIssueCreatePropertiesSupported: (supported = false) =>
     set({ issueCreatePropertiesSupported: supported === true }),
   setCommentDeleteKeepRepliesSupported: (supported = false) =>
     set({ commentDeleteKeepRepliesSupported: supported === true }),
+  setThemeStoreEnabled: (enabled = false) => set({ themeStoreEnabled: enabled === true }),
   setCollabSpaceHost: (host = "") => set({ collabSpaceHost: host }),
 }));
 

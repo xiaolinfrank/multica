@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
 import { cockpitRunInputManifestOptions } from "@multica/core/cockpit";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@multica/ui/components/ui/dialog";
 import { useT } from "../../i18n";
@@ -34,7 +34,7 @@ export function CockpitRunInputManifest({ wsId, runId, runtimeId }: { wsId: stri
         {!value.runtimeSupported && <div className="space-y-2 text-caption"><p>{t(($) => $.input_materials.manifest_runtime_upgrade)}</p>{runtimeId && <AppLink target="_blank" rel="noopener noreferrer" className="text-primary underline" href={paths.runtimeDetail(runtimeId)}>{t(($) => $.input_materials.manifest_open_runtime)} {t(($) => $.action_flow.new_tab)}</AppLink>}</div>}
         {value.errorCode && <CockpitInputProblem codes={[value.errorCode]} />}
         <CockpitInputManifestItems key={value.manifestVersion.id} wsId={wsId} version={value.manifestVersion} onInspect={(inputId, versionId) => setInspected({ inputId, versionId })} />
-        {value.issueId && <AppLink href={paths.issueDetail(value.issueId)} target="_blank" rel="noopener noreferrer" className="text-caption text-primary underline">{t(($) => $.input_materials.manifest_open_issue)} {t(($) => $.action_flow.new_tab)}</AppLink>}
+        {value.issueId && <AppLink href={paths.issueDetail(issueRouteRef({ id: value.issueId, identifier: null }))} target="_blank" rel="noopener noreferrer" className="text-caption text-primary underline">{t(($) => $.input_materials.manifest_open_issue)} {t(($) => $.action_flow.new_tab)}</AppLink>}
       </>}
     <Button type="button" variant="ghost" size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>{t(($) => $.input_materials.refresh_version)}</Button>
     <Dialog open={Boolean(inspected)} onOpenChange={(open) => { if (!open) setInspected(null); }}><DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle>{t(($) => $.input_materials.material_detail)}</DialogTitle></DialogHeader>

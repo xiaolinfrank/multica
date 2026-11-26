@@ -7,6 +7,8 @@ import { memberListOptions, agentListOptions } from "@multica/core/workspace/que
 import { useWorkspaceId } from "@multica/core/hooks";
 import { pinAgentByName } from "@multica/core/agents";
 import { useConfigStore } from "@multica/core/config";
+import { useAuthStore } from "@multica/core/auth";
+import { canChangeProjectLead, useProjectAccessManagerId } from "@multica/core/projects/access";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
 import type { Project, UpdateProjectRequest } from "@multica/core/types";
@@ -26,6 +28,10 @@ export function ProjectLeadPicker({ project, handleUpdate, renderTrigger, align 
   const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
   const pinnedAgentName = useConfigStore((s) => s.defaultIssueAssigneeAgentName);
+  const userId = useAuthStore((s) => s.user?.id);
+  const role = members.find((m) => m.user_id === userId)?.role;
+  const managerId = useProjectAccessManagerId(wsId, project, userId, role);
+  const canManage = canChangeProjectLead(project, userId, role, managerId);
 
   const [leadOpen, setLeadOpen] = useState(false);
   const [leadFilter, setLeadFilter] = useState("");
@@ -42,8 +48,8 @@ export function ProjectLeadPicker({ project, handleUpdate, renderTrigger, align 
   const leadName = leadId && leadType ? getActorName(leadType, leadId) : null;
 
   return (
-    <Popover open={leadOpen} onOpenChange={(v) => { setLeadOpen(v); if (!v) setLeadFilter(""); }}>
-      <PopoverTrigger render={renderTrigger(leadName)} />
+    <Popover open={leadOpen && canManage} onOpenChange={(v) => { setLeadOpen(v); if (!v) setLeadFilter(""); }}>
+      <PopoverTrigger disabled={!canManage} render={renderTrigger(leadName)} />
       <PopoverContent align={align} className="w-52 p-0">
         <div className="px-2 py-1.5 border-b">
           <input

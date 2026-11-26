@@ -15,10 +15,10 @@ import {
   CommandGroup,
   CommandItem,
 } from "@multica/ui/components/ui/command";
+import { Spinner } from "@multica/ui/components/ui/spinner";
 import { StatusIcon } from "../issues/components/status-icon";
 import { useT } from "../i18n";
 import { Button } from "@multica/ui/components/ui/button";
-import { Spinner } from "@multica/ui/components/ui/spinner";
 
 /** Issues offered before the user types, under a heading. */
 export interface IssuePickerSuggestionGroup {
@@ -30,13 +30,26 @@ export interface IssuePickerSuggestionGroup {
 interface IssuePickerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   title: string;
   description: string;
   excludeIds: string[];
+  /**
+   * A promise keeps the picker open (and its row marked busy) until the write
+   * settles, so a failure is reported here instead of being dropped with the
+   * unmounting modal. A void return closes the picker, or leaves it open when
+   * `closeOnSelect` is false.
+   */
   onSelect: (issue: Issue, signal: AbortSignal) => void | Promise<void>;
   contextKey?: string;
   disabled?: boolean;
   notice?: React.ReactNode;
+  /** Closes the dialog after a void-returning `onSelect`. */
+  closeOnSelect?: boolean;
+  /** A caller-owned error, shown in place of the picker's own. */
+  error?: string;
+  /** A caller-owned in-flight write; disables rows and marks the picked one. */
+  pending?: boolean;
   /** Shown while the query is empty; groups without issues are skipped. */
   suggestions?: IssuePickerSuggestionGroup[];
   /** Drops issues from results and suggestions alike; excludeIds always applies. */
@@ -46,11 +59,15 @@ interface IssuePickerModalProps {
 export function IssuePickerModal({
   open,
   onOpenChange,
+  onOpenChangeComplete,
   title,
   description,
   excludeIds,
   onSelect,
   suggestions,
+  closeOnSelect = true,
+  error,
+  pending = false,
   isSelectable,
   contextKey,
   disabled = false,
@@ -63,13 +80,21 @@ export function IssuePickerModal({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Issue[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [selecting, setSelecting] = useState(false); const [error, setError] = useState(""); const [searchFailed, setSearchFailed] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selectError, setSelectError] = useState("");
+  const [searchFailed, setSearchFailed] = useState(false);
   const commandIdentity = JSON.stringify([wsId, contextKey ?? title]);
-  const current = useRef<string | null>(commandIdentity); current.current = commandIdentity;
+  const current = useRef<string | null>(commandIdentity);
+  current.current = commandIdentity;
   const lock = useRef(false);
   const selectionAbort = useRef<AbortController | null>(null);
+  // The row whose write is in flight, so a picker that stays open on select
+  // shows where the click landed until the caller closes it.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const abortRef = useRef<AbortController>(undefined);
+  const busy = pending || selecting;
+  const shownError = error ?? selectError;
   const selectable = useCallback(
     (issue: Issue) => !excludeIds.includes(issue.id) && (isSelectable?.(issue) ?? true),
     [excludeIds, isSelectable],
@@ -79,17 +104,31 @@ export function IssuePickerModal({
     .filter((group) => group.issues.length > 0);
 
   useEffect(() => {
-    current.current = commandIdentity; lock.current = false; setSelecting(false); setError("");
-    return () => { if (current.current === commandIdentity) current.current = null; selectionAbort.current?.abort(); abortRef.current?.abort(); if (debounceRef.current) clearTimeout(debounceRef.current); };
+    current.current = commandIdentity;
+    lock.current = false;
+    setSelecting(false);
+    setSelectError("");
+    return () => {
+      if (current.current === commandIdentity) current.current = null;
+      selectionAbort.current?.abort();
+      abortRef.current?.abort();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [commandIdentity]);
 
   useEffect(() => {
     if (!open) {
-      selectionAbort.current?.abort(); lock.current = false; setSelecting(false);
+      selectionAbort.current?.abort();
+      lock.current = false;
+      setSelecting(false);
       setQuery("");
       setResults([]);
       setIsLoading(false);
-      setError(""); setSearchFailed(false);
+      setSelectError("");
+      setSearchFailed(false);
+      setSelectedId(null);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (abortRef.current) abortRef.current.abort();
     }
   }, [open]);
 
@@ -135,18 +174,32 @@ export function IssuePickerModal({
     <CommandItem
       key={issue.id}
       value={issue.id}
-      disabled={disabled || selecting}
+      disabled={disabled || busy}
       onSelect={async () => {
-        if (lock.current || disabled) return;
-        const captured = commandIdentity; lock.current = true; setSelecting(true); setError("");
-        const controller = new AbortController(); selectionAbort.current = controller;
+        if (lock.current || disabled || pending) return;
+        const captured = commandIdentity;
+        lock.current = true;
+        setSelecting(true);
+        setSelectError("");
+        setSelectedId(issue.id);
+        const controller = new AbortController();
+        selectionAbort.current = controller;
         try {
           await onSelect(issue, controller.signal);
-          if (!controller.signal.aborted && current.current === captured) onOpenChange(false);
+          if (!controller.signal.aborted && current.current === captured && closeOnSelect) {
+            onOpenChange(false);
+          }
         } catch (cause) {
-          if (!controller.signal.aborted && current.current === captured) setError(cause instanceof Error ? cause.message : issueT(($) => $.detail.update_failed));
+          if (!controller.signal.aborted && current.current === captured) {
+            setSelectError(
+              cause instanceof Error ? cause.message : issueT(($) => $.detail.update_failed),
+            );
+          }
         } finally {
-          if (!controller.signal.aborted && current.current === captured) { lock.current = false; setSelecting(false); }
+          if (!controller.signal.aborted && current.current === captured) {
+            lock.current = false;
+            setSelecting(false);
+          }
         }
       }}
     >
@@ -159,6 +212,7 @@ export function IssuePickerModal({
       />
       <span className="text-muted-foreground shrink-0">{issue.identifier}</span>
       <span className="truncate">{issue.title}</span>
+      {busy && selectedId === issue.id && <Spinner className="ml-auto size-3.5 shrink-0 text-muted-foreground" />}
     </CommandItem>
   );
 
@@ -166,6 +220,15 @@ export function IssuePickerModal({
     <CommandDialog
       open={open}
       onOpenChange={(value) => { if (!lock.current) onOpenChange(value); }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          setQuery("");
+          setResults([]);
+          setIsLoading(false);
+          setSelectedId(null);
+        }
+        onOpenChangeComplete?.(nextOpen);
+      }}
       title={title}
       description={description}
     >
@@ -173,7 +236,7 @@ export function IssuePickerModal({
         <CommandInput
           placeholder={t(($) => $.issue_picker.search_placeholder)}
           value={query}
-          disabled={selecting}
+          disabled={busy}
           onValueChange={(v) => {
             setQuery(v);
             search(v);
@@ -181,9 +244,9 @@ export function IssuePickerModal({
         />
         {notice && <div className="border-b px-3 py-2">{notice}</div>}
         {selecting && <div role="status" className="flex items-center gap-2 px-3 py-2 text-caption"><Spinner />{issueT(($) => $.operation_basis.applying)}</div>}
-        {error && <p role="alert" className="px-3 py-2 text-caption text-destructive">{error}</p>}
+        {shownError && <p role="alert" className="px-3 py-2 text-caption text-destructive">{shownError}</p>}
         {searchFailed && <div role="alert" className="space-y-2 px-3 py-2 text-caption"><p>{issueT(($) => $.operation_basis.search_failed)}</p><Button type="button" size="sm" variant="outline" onClick={() => search(query)}>{issueT(($) => $.operation_basis.retry)}</Button></div>}
-        <CommandList>
+        <CommandList aria-busy={busy || undefined}>
           {isLoading && (
             <div className="py-6 text-center text-body text-muted-foreground">
               {t(($) => $.issue_picker.searching)}

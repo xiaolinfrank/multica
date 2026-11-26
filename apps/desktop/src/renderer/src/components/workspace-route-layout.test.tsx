@@ -93,6 +93,14 @@ vi.mock("@multica/views/layout", () => ({
   WorkspacePresencePrefetch: () => null,
 }));
 
+vi.mock("./document-title-sync", () => ({
+  DocumentTitleSync: () => null,
+}));
+
+vi.mock("@multica/views/voice", () => ({
+  VoiceWorkspaceWords: () => null,
+}));
+
 // The point of this whole test: assert the desktop layout does NOT mount the
 // SourceBackfillModal. The stub increments a counter when rendered, so any
 // re-mount of the survey — here or via a shared layout — fails the suite.

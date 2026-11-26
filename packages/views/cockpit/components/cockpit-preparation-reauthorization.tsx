@@ -13,7 +13,7 @@ import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { useLocale, useT } from "../../i18n";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { AppLink } from "../../navigation";
 import { useStatusLabel } from "../../issues/utils/status-label";
 import { CockpitFlowError } from "./cockpit-task-flow";
@@ -97,7 +97,7 @@ export function CockpitPreparationImpactComparison({ wsId, previous, current, pr
     {value && <><p className="break-words">{value.issue.identifier} {value.issue.title}</p><p>{status(value.issue.status)} · {value.issue.assignee_name || value.issue.assignee_id || t(($) => $.workflow.unassigned)}</p><p>{t(($) => $.task_flow.due_date)}: {value.issue.due_date || t(($) => $.common.unset)}</p>
       <p>{t(($) => $.meeting_preparation.impact_counts, { ordinary: value.ordinary_wakeup_count, system: value.system_rule_count, queued: value.unstarted_wakeup_run_count })}</p>
       <p>{t(($) => $.meeting_disposition.active_runs, { count: value.active_run_count })}</p>
-      {value.evaluates_parent_rules && <div className="space-y-1"><p>{t(($) => $.meeting_preparation.parent_rules)}</p>{value.parent_issue_id && <AppLink target="_blank" rel="noopener noreferrer" href={paths.issueDetail(value.parent_issue_id)} className="text-primary underline">{t(($) => $.meeting_preparation.open_parent)} {t(($) => $.action_flow.new_tab)}</AppLink>}</div>}
+      {value.evaluates_parent_rules && <div className="space-y-1"><p>{t(($) => $.meeting_preparation.parent_rules)}</p>{value.parent_issue_id && <AppLink target="_blank" rel="noopener noreferrer" href={paths.issueDetail(issueRouteRef({ id: value.parent_issue_id, identifier: null }))} className="text-primary underline">{t(($) => $.meeting_preparation.open_parent)} {t(($) => $.action_flow.new_tab)}</AppLink>}</div>}
     </>}
     {run && <div className="space-y-1 break-words"><p>{run.agent_name || run.agent_id}</p><p>{runStatus(run.status)}</p><p className="text-muted-foreground">{t(($) => $.meeting_disposition.stop_hint)}</p><CockpitPreparationRun wsId={wsId} runId={run.id} issueId={run.issue_id} /></div>}
     {scope && <dl className="space-y-1 break-words"><div><dt className="text-muted-foreground">{t(($) => $.meeting_lifecycle.node)}</dt><dd>{scope.node_title || scope.node_id || t(($) => $.common.unset)}</dd></div><div><dt className="text-muted-foreground">{t(($) => $.binding.project)}</dt><dd>{scope.project_title || scope.project_id || t(($) => $.common.unset)}</dd></div><div><dt className="text-muted-foreground">{t(($) => $.binding.module)}</dt><dd>{scope.module_title || scope.module_id || t(($) => $.common.unset)}</dd></div></dl>}

@@ -23,7 +23,7 @@ import type { CockpitPlanTaskCount } from "@multica/core/types/cockpit-read";
 import { useLocale, useT } from "../i18n";
 import { formatDateOnly } from "@multica/core/issues/date";
 import type { CockpitNodePatch } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { useNavigation } from "../navigation";
 import { buildPlanRows, planModules, planNodeKind, type PlanRow } from "./plan-rows";
 import { planRowRenameTarget, usePlanRowRename } from "./use-plan-row-rename";
@@ -573,7 +573,7 @@ function IssueRows({ wsId, nodeId, depth, listHref }: {
         <div key={task.id} role="row" aria-level={depth + 2} className="flex items-center gap-1 border-b border-border/40 px-2 py-0.5 text-micro">
           <span style={{ paddingLeft: (depth + 1) * 14 + 8 }} className="inline-block size-3" aria-hidden />
           <button type="button" className="truncate text-left text-muted-foreground hover:text-foreground"
-            onClick={() => navigation.push(paths.issueDetail(task.id))}>
+            onClick={() => navigation.push(paths.issueDetail(issueRouteRef({ id: task.id, identifier: null })))}>
             {task.identifier} {task.title}
           </button>
           {/* The task projection carries due_date but no start date, so the

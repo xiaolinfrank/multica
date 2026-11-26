@@ -14,10 +14,14 @@ import { useT } from "../i18n";
 import { IssueOperationRestriction } from "../issues/components/issue-operation-restriction";
 
 export function SetParentIssueModal({
+  open = true,
   onClose,
+  onOpenChangeComplete,
   data,
 }: {
+  open?: boolean;
   onClose: () => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   data: Record<string, unknown> | null;
 }) {
   const { t } = useT("modals");
@@ -39,12 +43,16 @@ export function SetParentIssueModal({
 
   const excludeIds = [issueId, ...children.map((c) => c.id)];
 
+  // The picker closes as soon as an issue is picked, unmounting this modal, so
+  // the toasts follow the request's promise rather than per-call callbacks.
+
   return (
     <IssuePickerModal
-      open
+      open={open}
       onOpenChange={(v) => {
         if (!v) onClose();
       }}
+      onOpenChangeComplete={onOpenChangeComplete}
       title={t(($) => $.set_parent.title)}
       description={t(($) => $.set_parent.description)}
       excludeIds={excludeIds}

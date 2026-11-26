@@ -44,15 +44,16 @@ export default function ProjectsPage() {
 
   const sorted = useMemo(() => {
     if (!data) return [];
-    // Same lifecycle rank web's STATUS_ORDER gives each known status;
-    // off-enum server values rank last (web's map lookup instead falls
-    // through to the title tie-break). localeCompare matches web and the
-    // project picker's ordering of these same titles.
+    // Archived projects stay out of the list. The rest keep web's ordering:
+    // same lifecycle rank STATUS_ORDER gives each known status; off-enum
+    // server values rank last (web's map lookup instead falls through to the
+    // title tie-break). localeCompare matches web and the project picker's
+    // ordering of these same titles.
     const statusRank = (s: string) => {
       const i = PROJECT_STATUSES.indexOf(s as ProjectStatus);
       return i === -1 ? PROJECT_STATUSES.length : i;
     };
-    return [...data].sort((a, b) => {
+    return data.filter((p) => !p.archived_at).sort((a, b) => {
       const byStatus = statusRank(a.status) - statusRank(b.status);
       if (byStatus !== 0) return byStatus;
       return a.title.localeCompare(b.title);

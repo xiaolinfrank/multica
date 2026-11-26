@@ -5,7 +5,7 @@ import type { CockpitMeetingIssueLink } from "@multica/core/types";
 import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitMeetingIssueLinks } from "./cockpit-meeting-issue-links";
 
-vi.mock("@multica/core/paths", () => ({
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id, 
   useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }),
 }));
 vi.mock("../../navigation", () => ({

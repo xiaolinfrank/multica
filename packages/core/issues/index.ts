@@ -23,3 +23,4 @@ export * from "./pending-creations";
 export * from "./wakeups";
 export * from "./operation-basis";
 export * from "./batch-receipt";
+export * from "./sub-issue-create";

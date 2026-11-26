@@ -4,8 +4,6 @@ Product contracts the runtime brief does not fully encode.
 
 - [PR linking](#pr-linking)
 - [Reading a linked PR's real state](#reading-a-linked-prs-real-state)
-- [Modules: grouping issues inside a project](#modules-grouping-issues-inside-a-project)
-- [Work items: the plan tree's third level](#work-items-the-plan-trees-third-level)
 - [Custom properties: typed workflow state](#custom-properties-typed-workflow-state)
 - [Status changes have server side effects](#status-changes-have-server-side-effects)
 - [Who else is running right now](#who-else-is-running-right-now)
@@ -13,7 +11,7 @@ Product contracts the runtime brief does not fully encode.
 - [Charts and files in a comment](#charts-and-files-in-a-comment)
 - [Incorrect to correct](#incorrect-to-correct)
 
-To attach a local file to an existing issue description, use `multica issue update <id> --attachment <local-path>`. The CLI appends the file's Markdown reference to the end of the description; to replace an image, also use `--description-file` to remove the old reference. Do not put local filesystem paths in the description.
+To attach a local file to an existing issue description, use `multica issue update <id> --attachment <local-path>`. The CLI appends the file's Markdown reference to the end of the description; to replace an image, also remove the old reference with `multica issue edit-description <id> --old <old reference> --new ""`. Do not put local filesystem paths in the description.
 
 ## PR linking
 
@@ -33,6 +31,16 @@ Related to MUL-123   (body only)              # no link
 
 While a PR is open, its automatic links follow the live title, branch, and
 body: removing the key drops the link. After merge or close, existing links stay.
+
+For one issue delivered through PRs opened one after another, pass
+`--pr-auto-complete off` to `issue create` or `issue update <id>` before the
+first merge. The override keeps only this issue's status; other issues still
+follow the workspace's PR merge rule. Restore it with `--pr-auto-complete on`
+before the final PR merges, or leave it off and move the issue to `in_review`
+yourself. Turning it on takes effect at the next PR event. Inspect the setting
+with `issue pull-requests <id>` (JSON: `auto_complete.issue_disabled`). If an
+older server creates the issue but rejects the follow-up override, use the
+reported issue ID with `issue update`; do not retry `issue create`.
 
 ### Default for code-changing issue work
 
@@ -97,8 +105,10 @@ a draft?" is `state == "draft"`; coarse CI status is `checks_conclusion`.
 If the command returns no linked PRs after a PR was opened, check the syntax
 first: the key must be in the PR title or branch, or right after a closing
 keyword in the body — a bare body mention does not count. When the syntax is the
-problem, editing the title re-runs the scan. If a person removed
-the PR from the issue, it stays removed until someone links it again.
+problem, editing the title re-runs the scan. Otherwise link the synced PR with
+`multica issue pull-requests link <issue-id> <pr-url>`; that also restores a PR
+someone removed (removed PRs stay off until relinked). `unlink <issue-id> <pr>`
+(URL, number, or id) removes one and keeps it removed.
 
 If the key is already written correctly and the list is still empty, stop editing
 the PR blind: another no-op edit cannot fix an integration that never received the
@@ -143,42 +153,33 @@ while `has_more` is true, pass `next_cursor` to `--cursor`. Views and their
 "me" conditions resolve against the runtime owner, so a member's private view
 is only visible when that member owns the runtime.
 
-Issues can be filed into a project's modules; the `module_id` contract,
-sub-issue inheritance, filtering and grouping are in
-[modules.md](modules.md).
+When asked to set up or change a view, write it yourself instead of
+describing the settings for the user to click through. A view written here is
+the same view the app saves: it appears in the owner's sidebar and stays
+editable in the app.
 
-## Work items: the plan tree's third level
+```bash
+multica view create --name "Open bugs" --label Bug --status done,cancelled --negate status --view-mode list
+multica view update "Open bugs" --priority urgent,high --visibility workspace
+multica view duplicate "Open bugs" --name "Urgent bugs" --priority urgent
+multica view delete "Urgent bugs"
+```
 
-A work item is the node below a module in the cockpit plan tree, and the most
-specific place an issue can be filed. `multica issue create --work-item` and
-`multica issue update --work-item` take a UUID, a UUID prefix, or the node's
-plan code; the work item supplies the module and project, so
-`--module`/`--project` may be omitted, and naming a conflicting one is
-rejected. `--work-item ""` unfiles an issue, and moving it to another module
-without naming a work item clears it. A sub-issue may not leave its parent's
-work item (`child_work_item_mismatch`). Filtering and grouping mirror the
-module contract — see
-[modules.md](modules.md#work-items-the-third-level-under-a-module).
-
-## Delivery folder
-
-An issue in a project with a `collab_path` gets a delivery folder named
-`<identifier><title up to 40 characters>` (`FOS-123注册路径设计`), allocated on
-first need (agent claim, or a person opening it), never on a list read, at
-`<collab_path>/<module_directory>/<work_item_directory>/<issue_directory>` —
-dropping levels the issue has none of; sub-issues sit beside their parent.
-
-`multica issue get` shows `directory_name` and `delivery_path` (the table has a
-`DIRECTORY` column). `GET /api/issues/{id}/directory` reports `ok`, `missing`,
-`unallocated`, `no_collab_path`, `root_unavailable` or `invalid` without
-writing; `POST /api/issues/{id}/directory/ensure` allocates and creates it.
-Moving an issue moves its subtree's folders too: `directory_sync:"sync"`
-(default) answers 409 `running_agent_tasks` while an agent works in the folder,
-`"defer"` leaves it for later, `"force"` moves it anyway. A missing source
-folder is not an error; an existing destination is never overwritten, and a
-person may point the issue at an existing folder with
-`multica issue update <id> --directory-name "<folder>"` — pointer only, no
-files move; machine credentials get 403.
+- Filter flags take names (status, label, project, member, agent) and resolve
+  them before writing; `--property` takes the `issue list --property` forms,
+  `--negate <filter>` makes a filter "is not". Layout flags (`--view-mode`,
+  `--grouping`, `--sort`, ...) are in `multica view create --help`.
+- `--scope` (`workspace` default, `my`, or a project via `--project <name>`)
+  is fixed at creation. Views start private and owned by the runtime owner.
+- `update` changes only what its flags name; a list flag replaces that
+  filter and `--status ""` clears it. A view using the app's advanced
+  condition tree refuses filter flags: pass `--clear-filters`, or
+  `--definition-file` with JSON edited from `view get`.
+- `--dry-run` prints the request unsaved. After saving, check the result with
+  `view issues`. "Changed since it was read" saved nothing: re-run; a stale
+  `view get` export is refused too, so export again and redo the edits. A
+  permission refusal means the runtime owner neither owns the view nor is an
+  admin: report it rather than duplicating the view to work around it.
 
 ## Custom properties: typed workflow state
 
@@ -339,6 +340,17 @@ archived statuses remain readable via an explicit status filter.
 
 ## Who else is running right now
 
+The issue sidebar's **Include sub-issues** checkbox uses
+`GET /api/issues/{id}/task-runs?scope=subtree` to show the current issue and
+every descendant at any depth. This is full, uncapped execution history with
+per-run usage and owning issue labels, never ancestors or siblings. It drives
+the sidebar totals, status indicators, spend chart, and complete Runs timeline.
+The Runs dialog inherits the sidebar scope when opened and provides its own
+checkbox beside the issue title. Changing it updates only the dialog; reopening
+the dialog inherits the sidebar selection again.
+The default endpoint still returns only the current issue. The subtree scope
+is separate from the active-only family coordination read below.
+
 Nothing about concurrent runs is pushed into your prompt: the answer changes
 while a turn is running, and most turns never need it. Ask the server on the
 turns that do — before opening a PR against code a sibling issue also touches:
@@ -371,9 +383,10 @@ to coordinate with.
 
 ## Sub-issues and stages
 
-Whether to split an issue at all, `todo` vs `backlog` children, serial chains,
-stages and their parent wakeups live in `references/sub-issues.md`. Read it
-before creating a sub-issue.
+Whether to split an issue at all, `todo` vs `backlog` children, ordering them
+with stages, and the parent wakeups stages drive live in
+`references/sub-issues.md`. Read it before creating a sub-issue. Making one
+issue wait for another (`--blocked-by`) lives in `references/dependencies.md`.
 
 ## Charts and files in a comment
 
@@ -389,6 +402,11 @@ Where content goes decides how it shows:
   a file card that opens in the viewer, **HTML included**: an uploaded
   `report.html` is a deliverable to open, not an inline chart. Use it for
   something the reader keeps or downloads.
+- **An attached image at a specific spot** — reference the attached path in
+  the body, e.g. `![Option A](./a.png)` with `--attachment ./a.png` in the same
+  call. The CLI rewrites that link to the uploaded file before posting, so the
+  image shows right there instead of at the end. Code spans and blocks are left
+  alone.
 
 For HTML that follows light / dark mode, style it with `var(--background)`,
 `var(--foreground)`, `var(--muted)`, `var(--muted-foreground)`, `var(--border)`,
@@ -441,7 +459,7 @@ multica issue wakeup create <issue> --until-issue <other-issue-id> --until-issue
 - `--until-status KEY` — this issue's status is that key (built-in or one of the workspace's statuses).
 - `--until-pr checks` — a linked pull request's checks finished, passing or failing, on its current head. `--until-pr merged` — a linked pull request merged. `--until-pr conflicts` — an open linked GitHub pull request has merge conflicts on its current head, for example after another PR merged into its base; with `--mode continuous` it fires again each time a resolved conflict comes back or a new head is still conflicting. With several linked pull requests, any one satisfies it. These conditions inspect only PRs linked directly to this issue; they do not inherit a parent issue's PRs. Checks and conflicts also require server-side GitHub snapshots; conflicts are not detected on Forgejo, Gitea or GitLab pull requests. A missing link or snapshot is recorded in the rule's `last_error` and retried automatically rather than rejecting the rule.
 - `--until-children-done` — every sub-issue, staged or not, is closed (`done` or `cancelled`). With `--stage N` it waits only for staged sub-issues up to stage N, and stage N must have at least one. A parent with no sub-issues never fires. The parent's assignee already gets the sub-issue wakeup described under Stages in `references/sub-issues.md`; do not add this condition for the same wake.
-- `--until-issue ISSUE` — another issue in this workspace (identifier or UUID) reaches `--until-issue-state`: `done` (default), `ended` (done or cancelled), `in_review`, or `blocked`.
+- `--until-issue ISSUE` — another issue in this workspace (identifier or UUID) reaches `--until-issue-state`: `done` (default), `ended` (done or cancelled), `in_review`, or `blocked`. This is how to wait on another issue; `--event` rules only see events on the issue they are registered on. Register it on the issue whose run should wake: a squad leader waiting on a sub-issue registers it on the squad's issue, so the run keeps the squad context.
 - The same form also accepts `--until-assignee member|agent|squad:ID`, `--until-label LABEL_ID`, and `--until-property PROPERTY_ID=VALUE` (VALUE may be JSON). `multica issue wakeup create --help` lists them.
 - `wakeup create <issue> --kind at --after 10m --instruction-file ./instruction.md` schedules one run. Alternatively use `--at <RFC3339>`.
 - `wakeup create <issue> --kind every --every 1h --instruction-file ./instruction.md` schedules a repeating check. Or use `--kind cron --cron '0 * * * *' --timezone Asia/Shanghai`.
@@ -479,21 +497,3 @@ without a person in between, and with `rate` when it has already started 12 runs
 in the past hour. A paused rule stays off until someone turns it back on. Still
 avoid mutually triggering continuous comment subscriptions; when waiting for a
 person's reply, filter that member explicitly.
-
-## Operation basis and batch receipts
-
-Before a protected edit, read `POST /api/issues/operation-basis` with 1–100 unique
-`issue_ids` in the current workspace. It explains field restrictions and provides
-at most three real destinations. `unavailable`/`unknown` never means unrestricted;
-normal primary ownership differs from permanently retained production history.
-
-Batch update remains per-item; batch delete remains one atomic transaction for
-its loaded targets. Both retain their old HTTP status and `updated`/`deleted`
-count, and add `requested_ids`, `results`, `unconfirmed_ids`, `transaction_mode`
-and `transaction_outcome`, including in error bodies. `applied` confirms commit;
-`rejected` did not commit; `not_attempted` was not tried; `not_applied` with
-`batch_rolled_back` was tried but rolled back. Unknown commit IDs have no invented
-result. Optional `expected_revisions` maps requested UUIDs to positive revisions
-checked in the transaction. This is not durable command idempotency: never
-blindly replay a partial or unknown batch, and never equate Issue done with a
-formal artifact or acceptance decision.

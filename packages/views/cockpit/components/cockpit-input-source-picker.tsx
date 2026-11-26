@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cockpitArtifactsOptions, cockpitArtifactVersionsOptions, cockpitInputAttachmentsOptions, cockpitArtifactPath, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
 import type { CockpitInputFormDraft } from "@multica/core/cockpit";
 import type { Issue } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
 import { useLocale, useT } from "../../i18n";
@@ -70,7 +70,7 @@ function AttachmentSourcePicker({ wsId, disabled, onSelect }: { wsId: string; di
   const query = useQuery({ ...cockpitInputAttachmentsOptions(wsId, issue?.id || "", { q, pageSize: 25, cursor: cursors.at(-1) || undefined }), enabled: Boolean(issue && !changing) });
   if (!issue) return <CockpitIssueChoice wsId={wsId} selected={null} disabled={disabled} onSelect={(value) => { setIssue(value); setSearch(""); setCursors([""]); }} />;
   return <div className="space-y-3"><Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setIssue(null)}>{t(($) => $.input_materials.choose_other_issue)}</Button>
-    <AppLink href={paths.issueDetail(issue.identifier || issue.id)} target="_blank" rel="noopener noreferrer" className="block break-words text-caption text-primary underline">{issue.identifier} {issue.title} · {t(($) => $.action_flow.new_tab)}</AppLink>
+    <AppLink href={paths.issueDetail(issueRouteRef({ id: issue.identifier || issue.id, identifier: null }))} target="_blank" rel="noopener noreferrer" className="block break-words text-caption text-primary underline">{issue.identifier} {issue.title} · {t(($) => $.action_flow.new_tab)}</AppLink>
     <label className="block space-y-1 text-caption">{t(($) => $.input_materials.search_attachments)}<Input value={search} placeholder={t(($) => $.input_materials.name_prefix)} disabled={disabled} type="search" autoComplete="off" onChange={(event) => { setSearch(event.target.value); setCursors([""]); }} /></label>
     {query.isPending || changing ? <p role="status" className="text-caption">{t(($) => $.workflow.loading)}</p> : query.isError || !query.data || query.data.issueId !== issue.id || query.data.q !== q ? <CockpitInputPageFailure onRetry={() => void query.refetch()} onFirstPage={cursors.length > 1 ? () => setCursors([""]) : undefined} /> : <>
       <CockpitInputProblem codes={query.data.blockedReasons} />

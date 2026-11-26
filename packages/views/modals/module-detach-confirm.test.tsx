@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render as renderDOM, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api } from "@multica/core/api";
+import type { Issue } from "@multica/core/types";
 import { issueOperationPageFixture, operationIssueFixture } from "../issues/operation-basis-test-fixture";
 import enIssues from "../locales/en/issues.json";
 import enCockpit from "../locales/en/cockpit.json";
@@ -38,7 +39,7 @@ vi.mock("../i18n", () => ({
 describe("ModuleDetachConfirmModal", () => {
   beforeEach(() => {
     mockUpdate.mockClear();
-    mockUpdate.mockImplementation(async (id, body) => ({ ...operationIssueFixture(id), ...body }));
+    mockUpdate.mockImplementation(async (id, body) => ({ ...operationIssueFixture(id), ...body }) as Issue);
     vi.mocked(api.getIssueOperationBasis).mockImplementation(async (ws, ids) => issueOperationPageFixture(ws, ids));
     toastError.mockClear();
   });

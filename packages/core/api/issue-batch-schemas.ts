@@ -3,10 +3,43 @@ import type { IssueBatchReceipt } from "../types/issue-batch";
 import { parseWithFallback } from "./schema";
 
 const id = z.string().min(1);
-const result = z.object({
-  issue_id: id, outcome: z.enum(["applied", "rejected", "not_attempted", "not_applied"]),
-  revision: z.number().int().positive().optional(), changed: z.boolean().optional(), code: id.optional(),
-}).refine((row) => row.outcome === "applied" || Boolean(row.code));
+// Accepts both the fork's canonical receipt outcomes and upstream's per-item
+// batch outcomes ("updated" / "unchanged" / "deleted" / "skipped"), normalizing
+// them into the canonical receipt shape so clients and CLI stay aligned.
+const wireOutcome = z.enum([
+  "applied",
+  "rejected",
+  "not_attempted",
+  "not_applied",
+  "updated",
+  "unchanged",
+  "deleted",
+  "skipped",
+]);
+const result = z
+  .object({
+    issue_id: id,
+    outcome: wireOutcome,
+    revision: z.number().int().positive().optional(),
+    changed: z.boolean().optional(),
+    code: id.optional(),
+  })
+  .transform((row) => {
+    if (row.outcome === "updated") {
+      return { ...row, outcome: "applied" as const, changed: row.changed ?? true };
+    }
+    if (row.outcome === "unchanged") {
+      return { ...row, outcome: "applied" as const, changed: row.changed ?? false };
+    }
+    if (row.outcome === "deleted") {
+      return { ...row, outcome: "applied" as const };
+    }
+    if (row.outcome === "skipped") {
+      return { ...row, outcome: "rejected" as const, code: row.code ?? "skipped" };
+    }
+    return row;
+  })
+  .refine((row) => row.outcome === "applied" || Boolean(row.code));
 export const IssueBatchReceiptSchema = z.object({
   workspace_id: id, requested_ids: z.array(id).min(1),
   transaction_mode: z.enum(["per_item", "atomic"]),

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@multica/core/api";
 import { issueDetailOptions } from "@multica/core/issues/queries";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import {
   clearCockpitActionCommand, cockpitMeetingActionOptions, cockpitPrimaryNodeOptions, cockpitMinutesVersionOptions, rememberCockpitActionCommand,
   useCockpitActionCommandStore, useCreateCockpitMeetingAction, useResolveCockpitMeetingAction, useReviseCockpitMeetingAction, useUpdateCockpitMeetingAction, CockpitUnconfirmedWriteError,
@@ -280,7 +280,7 @@ function ActionForm({ wsId, workflow, action, userId, readOnly, onDone, onBusyCh
           : <CockpitIssueChoice wsId={wsId} selected={selected} onSelect={(issue) => changeForm({ issueId: issue.id })} disabled={busy || !authorized} />}
         {form.issueId && !lockedCommand && (selectedQuery.isError || (!selectedQuery.isPending && !selected) || primary.isError || (!primary.isPending && !primary.data)) && <CockpitFlowError onRetry={() => { void selectedQuery.refetch(); void primary.refetch(); }} />}
         {(lockedCommand?.body.issue_id || form.issueId) && <div className="flex flex-wrap gap-x-4 gap-y-1">
-          <ActionRepairLink href={paths.issueDetail(lockedCommand?.body.issue_id || selected?.identifier || form.issueId)}>{t(($) => $.action_flow.open_issue_materials)}</ActionRepairLink>
+          <ActionRepairLink href={paths.issueDetail(issueRouteRef({ id: lockedCommand?.body.issue_id || selected?.identifier || form.issueId, identifier: null }))}>{t(($) => $.action_flow.open_issue_materials)}</ActionRepairLink>
           {!lockedCommand && primary.data?.node_id && primary.data.issue_id === form.issueId && <ActionRepairLink href={cockpitObjectPath(paths.cockpit(), { kind: "node", id: primary.data.node_id, view: "details" }, routeScope)}>{t(($) => $.action_flow.open_primary)}</ActionRepairLink>}
         </div>}
         {reuseConflict && <p role="alert" className="text-caption text-destructive">{t(($) => $.meeting_actions.reuse_conflict)}</p>}

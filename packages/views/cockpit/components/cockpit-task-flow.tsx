@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cockpitActionIssueSearchOptions, COCKPIT_TASK_PAGE_SIZE } from "@multica/core/cockpit";
 import type { CockpitTask, Issue } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { isIssueStatusCategory } from "@multica/core/issue-statuses";
 import { Button } from "@multica/ui/components/ui/button";
 import { Input } from "@multica/ui/components/ui/input";
@@ -43,7 +43,7 @@ export function CockpitTaskRows({ wsId, items, trailing }: { wsId: string; items
   const label = useStatusLabel(wsId);
   const { t } = useT("cockpit");
   return <ul className="max-h-[45vh] overflow-y-auto overscroll-contain divide-y divide-border">{items.map((issue) => <li key={issue.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 py-3">
-    <AppLink href={paths.issueDetail(issue.identifier || issue.id)} newTabTitle={issue.title} title={`${issue.identifier} ${issue.title}`}
+    <AppLink href={paths.issueDetail(issueRouteRef({ id: issue.identifier || issue.id, identifier: null }))} newTabTitle={issue.title} title={`${issue.identifier} ${issue.title}`}
       aria-label={`${issue.identifier} ${issue.title}`} className="line-clamp-2 min-w-0 break-words text-body hover:underline">
       <span className="mr-2 font-mono text-caption text-muted-foreground">{issue.identifier}</span>{issue.title || t(($) => $.issue_detail.untitled)}</AppLink>
     <span className="inline-flex min-w-0 max-w-32 items-center gap-1.5 text-caption"><StatusIcon status={issue.status}

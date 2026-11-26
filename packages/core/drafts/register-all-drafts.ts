@@ -23,6 +23,7 @@ import "../agents/manual-draft-store";
 import "../cockpit/minutes-draft-store";
 import "../cockpit/reviewer-handoff-draft-store";
 import "../cockpit/action-command-store";
+import "../docs/draft-store";
 import { registerDraftCleanup } from "./cleanup-registry";
 
 // Retired: drafts for a running turn now live in the thread's reply draft.

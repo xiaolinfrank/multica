@@ -38,7 +38,7 @@ import {
 } from "@multica/ui/components/ui/select";
 import { Eye, Crosshair, Undo2, X, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
 import { useTimeAgo } from "../../i18n/use-time-ago";
@@ -249,7 +249,7 @@ function ChangeRow({
         </span>
         {change.source_issue && (
           <AppLink
-            href={paths.issueDetail(change.source_issue.id)}
+            href={paths.issueDetail(issueRouteRef({ id: change.source_issue.id, identifier: null }))}
             target="_blank"
             rel="noopener noreferrer"
             className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -367,7 +367,7 @@ function DecidedRow({ change }: { change: CockpitPendingChange }) {
       </span>
       {change.source_issue && (
         <AppLink
-          href={paths.issueDetail(change.source_issue.id)}
+          href={paths.issueDetail(issueRouteRef({ id: change.source_issue.id, identifier: null }))}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 font-mono text-micro text-muted-foreground hover:bg-accent hover:text-accent-foreground"

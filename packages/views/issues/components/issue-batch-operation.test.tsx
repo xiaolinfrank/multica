@@ -22,12 +22,25 @@ vi.mock("@multica/core/auth", () => {
   );
   return { useAuthStore };
 });
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/${session.wsId}/issues/${id}`, cockpit: () => `/${session.wsId}/cockpit` }) }));
-vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
+vi.mock("@multica/core/permissions", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/permissions")>()),
+  useIsGuest: () => false,
+}));
+vi.mock("@multica/core/paths", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@multica/core/paths")>()),
+  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/${session.wsId}/issues/${id}`, cockpit: () => `/${session.wsId}/cockpit` }),
+}));
+vi.mock("../../navigation", () => ({
+  AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a>,
+  useNavigation: () => ({ getShareableUrl: (path: string) => `https://app.example${path}` }),
+}));
 vi.mock("@multica/core/api", async (original) => ({ ...await original<typeof import("@multica/core/api")>(), api: { getIssueOperationBasis: vi.fn(), listIssueStatuses: vi.fn(), batchUpdateIssues: vi.fn(), batchDeleteIssues: vi.fn() } }));
+vi.mock("./pickers/batch-label-picker", () => ({ BatchLabelPicker: () => null }));
+vi.mock("../../projects/components/project-picker", () => ({ ProjectPicker: () => null }));
 vi.mock("./pickers", () => ({
   StatusPicker: ({ onUpdate }: { onUpdate: (body: Partial<UpdateIssueRequest>) => void }) => <button onClick={() => onUpdate({ status: "done" })}>Choose Done</button>,
-  PriorityPicker: () => null, AssigneePicker: () => null,
+  PriorityPicker: () => null, AssigneePicker: () => null, AssigneePickerPanel: () => null,
+  DueDatePicker: () => null, StartDatePicker: () => null,
   EMPTY_ISSUE_SCOPE: { project_id: null, module_id: null, work_item_id: null },
   IssueScopePicker: ({ onUpdate }: { onUpdate: (next: { project_id: string | null; module_id: string | null; work_item_id: string | null }) => void }) => (
     <button onClick={() => onUpdate({ project_id: "p-2", module_id: "m-2", work_item_id: "wi-2" })}>Choose Scope B</button>

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core";
 import { api } from "@multica/core/api";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { agentWorkspacesOptions, workspaceKeys } from "@multica/core/workspace";
 import { useDeleteIssue } from "@multica/core/issues/mutations";
 import type { AgentWorkspace } from "@multica/core/types";
@@ -161,7 +161,7 @@ function IssueGroupRow({ wsId, group }: { wsId: string; group: IssueGroup }) {
         </span>
         {group.issueId ? (
           <AppLink
-            href={paths.issueDetail(group.issueId)}
+            href={paths.issueDetail(issueRouteRef({ id: group.issueId, identifier: null }))}
             className="shrink-0 text-caption font-medium text-brand hover:underline"
           >
             {t(($) => $.row.open_issue)}

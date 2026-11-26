@@ -12,7 +12,7 @@ import { CockpitPage } from "./cockpit-entry";
 const route = vi.hoisted(() => ({ params: new URLSearchParams(), wsId: "ws-1", artifactsAvailable: true, push: vi.fn() }));
 const board = vi.hoisted(() => vi.fn());
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => route.wsId }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/acme/cockpit" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/acme/cockpit" }) }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getCockpitContext: vi.fn(), listCockpitChangePage: vi.fn().mockResolvedValue({ items: [], counts: { pending: 0, decided: 0 }, total: 0, next_cursor: null }) } }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/acme/cockpit", searchParams: route.params, push: route.push }),
   AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));

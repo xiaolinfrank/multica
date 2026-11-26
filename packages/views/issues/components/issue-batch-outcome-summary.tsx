@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useIssueOperationBasis } from "@multica/core/issues";
 import type { Issue, IssueBatchReceipt, IssueOperationName } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { Button } from "@multica/ui/components/ui/button";
 import { AppLink } from "../../navigation";
@@ -56,7 +56,7 @@ export function IssueBatchOutcomeSummary({ wsId, submittedIds, receipt, issues =
       const observation = { basis: policy.byIssue.get(id), pending: policy.pendingIds.has(id), error: policy.errorIds.has(id), retry: () => { void policy.refetch(); onRefresh?.(); } };
       return <li key={id} className="space-y-2 border-b pb-3 last:border-0 last:pb-0">
         {operation === "delete" && applied ? <p className="line-clamp-2 break-words text-caption">{issue ? `${issue.identifier} · ${issue.title}` : id}</p>
-          : <AppLink href={paths.issueDetail(id)} target="_blank" rel="noopener noreferrer" className="block line-clamp-2 break-words text-caption text-primary underline underline-offset-4">{issue ? `${issue.identifier} · ${issue.title}` : id} {t(($) => $.operation_basis.new_tab)}</AppLink>}
+          : <AppLink href={paths.issueDetail(issueRouteRef({ id: id, identifier: null }))} target="_blank" rel="noopener noreferrer" className="block line-clamp-2 break-words text-caption text-primary underline underline-offset-4">{issue ? `${issue.identifier} · ${issue.title}` : id} {t(($) => $.operation_basis.new_tab)}</AppLink>}
         <p className="text-caption font-medium">{outcomeLabel(id)}</p>
         {row?.outcome === "rejected" && row.code && <p className="text-caption">{receiptReason(row.code)}</p>}
         {!applied && <IssueOperationRestriction observation={observation} operation={operation} />}

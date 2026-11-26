@@ -334,9 +334,6 @@ func (h *Handler) cockpitWorkflowResponse(r *http.Request, cc cockpitContext, me
 
 func (h *Handler) writeCockpitWorkflowResult(w http.ResponseWriter, r *http.Request, cc cockpitContext, meetingID pgtype.UUID, action string, err error, references ...cockpitWorkflowReceiptRef) {
 	if err != nil {
-		if writeIssueLimitReached(w, err) {
-			return
-		}
 		status := http.StatusInternalServerError
 		switch {
 		case errors.Is(err, service.ErrCockpitWorkflowInput), errors.Is(err, service.ErrProjectNotFound), errors.Is(err, service.ErrModuleNotFound), errors.Is(err, service.ErrModuleNotInProject):

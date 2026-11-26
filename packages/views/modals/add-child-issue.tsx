@@ -15,10 +15,14 @@ import { IssuePickerModal } from "./issue-picker-modal";
 import { useT } from "../i18n";
 
 export function AddChildIssueModal({
+  open = true,
   onClose,
+  onOpenChangeComplete,
   data,
 }: {
+  open?: boolean;
   onClose: () => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   data: Record<string, unknown> | null;
 }) {
   const { t } = useT("modals");
@@ -46,12 +50,15 @@ export function AddChildIssueModal({
     ...children.map((c) => c.id),
   ];
 
+  // The picker closes as soon as an issue is picked, unmounting this modal, so
+  // the toasts follow the request's promise rather than per-call callbacks.
   return (
     <IssuePickerModal
-      open
+      open={open}
       onOpenChange={(v) => {
         if (!v) onClose();
       }}
+      onOpenChangeComplete={onOpenChangeComplete}
       title={t(($) => $.add_child.title)}
       description={t(($) => $.add_child.description)}
       excludeIds={excludeIds}

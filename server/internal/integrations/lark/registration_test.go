@@ -60,15 +60,6 @@ func (f *registrationFake) stubBegin(resp map[string]any) {
 	})
 }
 
-// rewriteHandler replaces /oauth/v1/app/registration with a fresh
-// handler — used to install a poll script after Begin has been
-// exercised.
-func (f *registrationFake) rewriteHandler(h http.HandlerFunc) {
-	f.mux = http.NewServeMux()
-	f.mux.HandleFunc(registrationEndpoint, h)
-	f.srv.Config.Handler = f.mux
-}
-
 func TestRegistrationClient_Begin_HappyPath(t *testing.T) {
 	fake := newRegistrationFake(t)
 	fake.stubBegin(map[string]any{

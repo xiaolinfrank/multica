@@ -81,6 +81,7 @@ export type TableSystemColumnKey =
   | "created_at"
   | "updated_at"
   | "child_progress"
+  | "pull_requests"
   | "creator";
 export type TableColumnKey = TableSystemColumnKey | `property:${string}`;
 export interface TableColumnConfig {
@@ -112,6 +113,7 @@ export const TABLE_SYSTEM_COLUMNS: readonly TableSystemColumnKey[] = [
   "created_at",
   "updated_at",
   "child_progress",
+  "pull_requests",
   "creator",
 ];
 
@@ -181,6 +183,7 @@ export interface CardProperties {
   project: boolean;
   childProgress: boolean;
   labels: boolean;
+  pullRequests: boolean;
 }
 
 export interface ActorFilterValue {
@@ -207,6 +210,8 @@ export interface FilterSnapshot {
   advancedFilter: AdvancedFilterGroup | null;
   /** Only issues an agent is running on right now. */
   agentRunningFilter: boolean;
+  /** Only issues without running or queued agent work. */
+  agentIdleFilter: boolean;
   /** Only issues with an agent result the viewer has not seen yet. */
   unreadFilter: boolean;
 }
@@ -315,6 +320,7 @@ export const CARD_PROPERTY_OPTIONS: { key: keyof CardProperties; label: string }
   { key: "project", label: "Project" },
   { key: "labels", label: "Labels" },
   { key: "childProgress", label: "Sub-issue progress" },
+  { key: "pullRequests", label: "Pull requests" },
 ];
 
 export const DEFAULT_CARD_PROPERTIES: Readonly<CardProperties> = {
@@ -326,6 +332,7 @@ export const DEFAULT_CARD_PROPERTIES: Readonly<CardProperties> = {
   project: true,
   childProgress: true,
   labels: false,
+  pullRequests: false,
 };
 
 export const DEFAULT_HIDDEN_STATUSES: readonly IssueStatus[] = [
@@ -419,6 +426,7 @@ export interface IssueViewState {
   // agent task in `running` status. Saved into views and persisted like the
   // other filters.
   agentRunningFilter: boolean;
+  agentIdleFilter: boolean;
   // When true, the list only shows the viewer's unread issues (the sidebar's
   // unread dot). Saved into views; resolved per viewer.
   unreadFilter: boolean;
@@ -503,6 +511,7 @@ export interface IssueViewState {
    *  something simple mode cannot say (`simpleFromAdvancedFilter`). */
   exitAdvancedFilter: () => void;
   toggleAgentRunningFilter: () => void;
+  toggleAgentIdleFilter: () => void;
   toggleUnreadFilter: () => void;
   hideStatus: (status: IssueStatus) => void;
   showStatus: (status: IssueStatus) => void;
@@ -562,6 +571,7 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
   advancedFilter: null,
   dateFilter: null,
   agentRunningFilter: false,
+  agentIdleFilter: false,
   unreadFilter: false,
   sortBy: "updated_at",
   sortDirection: "desc",
@@ -723,7 +733,9 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
       return simple ? { ...simple, advancedFilter: null } : state;
     }),
   toggleAgentRunningFilter: () =>
-    set((state) => ({ agentRunningFilter: !state.agentRunningFilter })),
+    set((state) => ({ agentRunningFilter: !state.agentRunningFilter, agentIdleFilter: false })),
+  toggleAgentIdleFilter: () =>
+    set((state) => ({ agentIdleFilter: !state.agentIdleFilter, agentRunningFilter: false })),
   toggleUnreadFilter: () =>
     set((state) => ({ unreadFilter: !state.unreadFilter })),
   hideStatus: (status) =>
@@ -754,6 +766,7 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
       advancedFilter: null,
       dateFilter: null,
       agentRunningFilter: false,
+      agentIdleFilter: false,
       unreadFilter: false,
     }),
   resetFiltersTo: (snapshot) => set({ ...snapshot }),
@@ -939,6 +952,7 @@ export const viewStorePersistOptions = (name: string) => ({
     propertyFilters: state.propertyFilters,
     advancedFilter: state.advancedFilter,
     agentRunningFilter: state.agentRunningFilter,
+    agentIdleFilter: state.agentIdleFilter,
     unreadFilter: state.unreadFilter,
     sortBy: state.sortBy,
     sortDirection: state.sortDirection,
@@ -1082,6 +1096,8 @@ export function mergeViewStatePersisted<T extends IssueViewState>(
     agentRunningFilter: p.agentRunningFilter === undefined
       ? current.agentRunningFilter
       : p.agentRunningFilter === true,
+    agentIdleFilter: (p.agentRunningFilter ?? current.agentRunningFilter) !== true &&
+      (p.agentIdleFilter === undefined ? current.agentIdleFilter : p.agentIdleFilter === true),
     unreadFilter: p.unreadFilter === undefined
       ? current.unreadFilter
       : p.unreadFilter === true,

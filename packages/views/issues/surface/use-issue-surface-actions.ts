@@ -72,40 +72,49 @@ export function useIssueSurfaceActions({
       options?: IssueSurfaceMutationOptions,
     ) => {
       const submit = (patch: Partial<UpdateIssueRequest>) => {
-        updateIssueMutation.mutate(
-          { id: issueId, ...patch },
-          {
-            onSuccess: (issue) => options?.onSuccess?.(issue),
-            onError: (err) => {
-              if (isCockpitRunningTasksError(err)) {
-                // Surface-level inline edits (table cells, board cards, module
-                // row drops) don't mount their own dialog, so the surface opens
-                // RunningTasksDialog to offer "sync now / defer". Callers that
-                // already host the dialog (useIssueActions) opt out via flag.
-                if (!options?.handlesDirectoryConflict) {
-                  setDirectoryConflict({
-                    tasks: err.runningTasks,
-                    retry: (mode) => {
-                      setDirectoryConflict(null);
-                      submit({ ...updates, directory_sync: mode });
-                    },
-                  });
-                }
-              } else {
-                toast.error(
-                  errorCode(err) === "revision_conflict"
-                    ? tIssues(($) => $.revision.conflict)
-                    : err instanceof Error && err.message
-                    ? err.message
-                    : (options?.errorMessage ??
-                        t(($) => $.detail.toast_move_issue_failed)),
-                );
-              }
-              options?.onError?.(err);
+        let handledConflict = false;
+        const handleDirectoryConflict = (err: unknown): boolean => {
+          if (!isCockpitRunningTasksError(err)) return false;
+          // Surface-level inline edits (table cells, board cards, module
+          // row drops) don't mount their own dialog, so the surface opens
+          // RunningTasksDialog to offer "sync now / defer". Callers that
+          // already host the dialog (useIssueActions) opt out via flag.
+          if (!options?.handlesDirectoryConflict && !handledConflict) {
+            handledConflict = true;
+            setDirectoryConflict({
+              tasks: err.runningTasks,
+              retry: (mode) => {
+                setDirectoryConflict(null);
+                submit({ ...updates, directory_sync: mode });
+              },
+            });
+          }
+          return true;
+        };
+        // Keep UI callbacks observer-scoped; error feedback belongs to the request.
+        void updateIssueMutation
+          .mutateAsync(
+            { id: issueId, ...patch },
+            {
+              onSuccess: (issue) => options?.onSuccess?.(issue),
+              onError: (err) => {
+                handleDirectoryConflict(err);
+                options?.onError?.(err);
+              },
+              onSettled: () => options?.onSettled?.(),
             },
-            onSettled: () => options?.onSettled?.(),
-          },
-        );
+          )
+          .catch((err: unknown) => {
+            if (handleDirectoryConflict(err)) return;
+            toast.error(
+              errorCode(err) === "revision_conflict"
+                ? tIssues(($) => $.revision.conflict)
+                : err instanceof Error && err.message
+                ? err.message
+                : (options?.errorMessage ??
+                    t(($) => $.detail.toast_move_issue_failed)),
+            );
+          });
       };
       submit(updates);
     },

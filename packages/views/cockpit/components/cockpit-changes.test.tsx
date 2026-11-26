@@ -17,7 +17,7 @@ import { cockpitPlanFixture } from "./cockpit-read-test-fixture";
 import { CockpitChanges } from "./cockpit-changes";
 vi.mock("@multica/core/api", () => ({ api: { listCockpitChangePage: vi.fn(), getCockpitChangePreview: vi.fn(), applyReviewedCockpitChange: vi.fn(), rejectCockpitChange: vi.fn(), withdrawCockpitChange: vi.fn(), createCockpitChange: vi.fn(), getCockpitNodeIndex: vi.fn(), getCockpitPlan: vi.fn() } }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams() }), AppLink: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 const task: CockpitNode = {
   id: "task", cockpit_id: "cp", code: "historic-18", parent_id: null, name: "Review task",

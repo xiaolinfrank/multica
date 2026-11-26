@@ -104,11 +104,19 @@ func (b *issueBatchResponder) finish() {
 	var fields map[string]any
 	_ = json.Unmarshal(payload, &fields)
 	for key, value := range fields {
+		// A handler that already published its own per-issue results keeps
+		// them: those rows carry the identifier, message and run outcome the
+		// batch API documents. The receipt only fills in what is missing.
+		if _, exists := body[key]; exists {
+			continue
+		}
 		body[key] = value
 	}
 	if b.receipt.TransactionMode == "atomic" {
-		body["deleted"] = applied
-	} else {
+		if _, ok := body["deleted"]; !ok {
+			body["deleted"] = applied
+		}
+	} else if _, ok := body["updated"]; !ok {
 		body["updated"] = applied
 	}
 	for key, values := range b.headers {

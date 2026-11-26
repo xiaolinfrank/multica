@@ -10,7 +10,7 @@ import { lifecycleFixture, lifecycleResultFixture } from "./meeting-lifecycle-te
 import enCockpit from "../../locales/en/cockpit.json";
 
 const navigation = vi.hoisted(() => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("meeting=meeting-1&meeting_view=agenda"), push: vi.fn() }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ useNavigation: () => navigation, AppLink: ({ children, href, ...props }: React.ComponentProps<"a">) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { recordCockpitOccurrence: vi.fn(), confirmCockpitMaterials: vi.fn(), getCockpitLifecycleCommands: vi.fn(), getCockpitLifecycleCommand: vi.fn() } }));
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });

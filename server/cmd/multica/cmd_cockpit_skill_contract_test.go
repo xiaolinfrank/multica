@@ -10,7 +10,12 @@ import (
 )
 
 func TestCockpitSkillExamplesResolveToRegisteredCommands(t *testing.T) {
+	// TestMain moves the process into a scratch home, so the package directory
+	// has to be resolved from the directory the binary started in.
 	root := filepath.Join("..", "..", "internal", "service", "builtin_skills", "multica-cockpit")
+	if testLaunchDir != "" {
+		root = filepath.Join(testLaunchDir, root)
+	}
 	examples := 0
 	err := filepath.WalkDir(root, func(name string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() || filepath.Ext(name) != ".md" {

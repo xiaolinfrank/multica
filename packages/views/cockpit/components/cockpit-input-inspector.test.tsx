@@ -17,7 +17,7 @@ const unrelatedReads = vi.hoisted(() => ({
   getCockpitAgendaInputReferences: vi.fn(),
 }));
 vi.mock("../../navigation", () => ({ useNavigation: () => navigation, AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
   ...unrelatedReads,
   verifyCockpitInputVersion: vi.fn(), getCockpitInput: vi.fn(), getCockpitInputVersion: vi.fn(), getCockpitInputCapabilities: vi.fn(),

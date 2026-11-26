@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { FolderKanban } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { formatProjectTitle, sortByCode } from "@multica/core/projects/coded-title";
+import { isProjectArchived, selectableProjects } from "@multica/core/projects";
 import { useWorkspaceId } from "@multica/core/hooks";
 import type { UpdateIssueRequest } from "@multica/core/types";
 import { ProjectIcon } from "./project-icon";
+import { ArchivedProjectTag } from "./project-archive";
 import {
   PropertyPicker,
   PickerItem,
@@ -20,6 +22,7 @@ import { useT } from "../../i18n";
 export function ProjectPicker({
   projectId,
   onUpdate,
+  trigger: customTrigger,
   triggerRender,
   tooltip,
   align = "start",
@@ -30,8 +33,11 @@ export function ProjectPicker({
   readOnly = false,
   restriction,
 }: {
-  projectId: string | null;
+  /** `undefined` for a selection whose issues sit in different projects: no row is checked. */
+  projectId: string | null | undefined;
   onUpdate: (updates: Partial<UpdateIssueRequest>) => void;
+  /** Trigger content in place of the current project. */
+  trigger?: React.ReactNode;
   triggerRender?: React.ReactElement;
   /** Hover tooltip naming the property; hidden while the picker is open. */
   tooltip?: React.ReactNode;
@@ -53,7 +59,6 @@ export function ProjectPicker({
   const { t } = useT("projects");
   const wsId = useWorkspaceId();
   const { data: projects = [] } = useQuery(projectListOptions(wsId));
-  const orderedProjects = useMemo(() => sortByCode(projects), [projects]);
   const current = projects.find((p) => p.id === projectId);
   const currentLabel = formatProjectTitle(current);
   const [filter, setFilter] = useState("");
@@ -70,7 +75,7 @@ export function ProjectPicker({
   // Client-side filter: match code, title, combined "code title", plus pinyin
   // so Chinese project names are reachable by latin input (e.g. "sjtmh" → "数据透明化").
   const query = filter.trim().toLowerCase();
-  const filtered = orderedProjects.filter((p) => {
+  const filtered = sortByCode(selectableProjects(projects, projectId)).filter((p) => {
     if (!query) return true;
     const label = formatProjectTitle(p).toLowerCase();
     return (
@@ -101,7 +106,7 @@ export function ProjectPicker({
         triggerRender={resolvedTriggerRender}
         tooltip={tooltip}
         trigger={
-          current ? (
+          customTrigger ?? (current ? (
             <>
               <ProjectIcon project={current} size="sm" />
               <span className="truncate">{currentLabel}</span>
@@ -111,7 +116,7 @@ export function ProjectPicker({
               <FolderKanban className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               <span className="truncate">{t(($) => $.picker.no_project)}</span>
             </>
-          )
+          ))
         }
       >
         {!readOnly && <>{/* "No project" — always the first row, search active or not, and the
@@ -119,7 +124,7 @@ export function ProjectPicker({
             the unassigned row in the assignee picker. */}
         <PickerItem
           emptyValue
-          selected={!projectId}
+          selected={projectId === null}
           onClick={() => {
             onUpdate({ project_id: null });
             setOpen(false);
@@ -143,6 +148,7 @@ export function ProjectPicker({
             >
               <ProjectIcon project={p} size="sm" />
               <span className="truncate">{itemLabel}</span>
+              {isProjectArchived(p) && <ArchivedProjectTag />}
             </PickerItem>
           );
         })}

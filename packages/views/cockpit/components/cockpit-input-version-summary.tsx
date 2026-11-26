@@ -2,7 +2,7 @@
 
 import type { CockpitInputVersionMetadata } from "@multica/core/types/cockpit-input";
 import { cockpitArtifactPath, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { formatBytes } from "../../common/format-bytes";
 import { useLocale, useT } from "../../i18n";
 import { AppLink } from "../../navigation";
@@ -53,7 +53,7 @@ export function CockpitInputVersionSource({ version }: { version: CockpitInputVe
       {version.submittedBy.actorType === "agent" && <div><dt className="text-muted-foreground">{t(($) => $.input_materials.authorized_by)}</dt><dd>{version.submittedBy.authorizingUserName || t(($) => $.common.unset)}</dd></div>}
       {version.filename && <div><dt className="text-muted-foreground">{t(($) => $.input_materials.filename)}</dt><dd>{version.filename}</dd></div>}
       {source.issue && <div><dt className="text-muted-foreground">{t(($) => $.input_materials.file_source_issue)}</dt><dd>
-        <AppLink href={paths.issueDetail(source.issue.id)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+        <AppLink href={paths.issueDetail(issueRouteRef({ id: source.issue.id, identifier: null }))} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
           {source.issue.identifier} {source.issue.title} {t(($) => $.action_flow.new_tab)}
         </AppLink>
       </dd></div>}

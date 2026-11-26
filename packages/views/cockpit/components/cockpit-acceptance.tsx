@@ -9,7 +9,7 @@ import {
 } from "@multica/core/cockpit";
 import type { CockpitAcceptanceHeader, CockpitArtifactReview } from "@multica/core/types";
 import { ApiError } from "@multica/core/api";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Textarea } from "@multica/ui/components/ui/textarea";
@@ -147,8 +147,8 @@ function AcceptanceReviewerHistory({ wsId, nodeId }: { wsId: string; nodeId: str
     {open && <>{page ? <CockpitFlowPaging page={cursors.length} shown={page.items.length} total={page.total} hasNext={Boolean(page.next_cursor)} busy={query.isFetching} onPrevious={() => setCursors((old) => old.slice(0, -1))} onNext={() => { if (page.next_cursor) setCursors([...cursors, page.next_cursor]); }} />
       : cursors.length > 1 && <Button size="sm" variant="outline" onClick={() => setCursors([""])}>{t(($) => $.task_flow.first_page)}</Button>}
       {query.isPending ? <Spinner /> : query.isError || !page ? <CockpitFlowError onRetry={() => void query.refetch()} /> : <ul className="max-h-80 space-y-3 overflow-y-auto">{page.items.map((item) => <li key={item.id} className="space-y-2 rounded-lg bg-muted/40 p-3 text-caption"><p className="break-all">{item.from_reviewer_name || item.from_reviewer_id} → {item.to_reviewer_name || item.to_reviewer_id}</p><div className="flex flex-wrap gap-3">
-        <AppLink href={paths.issueDetail(item.from_review_issue_id)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t(($) => $.artifact_runtime.previous_review_task)}</AppLink>
-        <AppLink href={paths.issueDetail(item.to_review_issue_id)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t(($) => $.artifact_runtime.current_review_task)}</AppLink></div>
+        <AppLink href={paths.issueDetail(issueRouteRef({ id: item.from_review_issue_id, identifier: null }))} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t(($) => $.artifact_runtime.previous_review_task)}</AppLink>
+        <AppLink href={paths.issueDetail(issueRouteRef({ id: item.to_review_issue_id, identifier: null }))} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t(($) => $.artifact_runtime.current_review_task)}</AppLink></div>
         <p className="whitespace-pre-wrap break-words">{item.reason}</p><p className="break-all text-micro text-muted-foreground">{item.created_by_name || item.created_by} · <time dateTime={item.created_at}>{item.created_at}</time></p></li>)}</ul>}</>}
   </section>;
 }

@@ -9,7 +9,7 @@ import { isCockpitDefinitiveCommandRejection,
   rebaseCockpitArtifactSubmissionDraft, useSubmitCockpitArtifactVersion, type CockpitScope,
 } from "@multica/core/cockpit";
 import type { CockpitArtifactHeader } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Textarea } from "@multica/ui/components/ui/textarea";
 import { Spinner } from "@multica/ui/components/ui/spinner";
@@ -76,7 +76,7 @@ export function CockpitArtifactSubmitForm({ wsId, artifact, scope, disabled }: {
       </div>
       {artifact.file_capture_available !== true && !draft.pending && <div role="status" className="space-y-2 rounded-lg bg-muted p-3 text-caption"><p>{t(($) => $.artifact_runtime.private_storage_required)}</p>
         {artifact.file_capture_unavailable_reason && artifact.file_capture_unavailable_reason !== "private_storage_required" && <CockpitArtifactAvailabilityReason reason={artifact.file_capture_unavailable_reason} />}
-        <AppLink href={paths.issueDetail(artifact.producer_issue.id)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t(($) => $.artifact_runtime.open_producer)} {t(($) => $.action_flow.new_tab)}</AppLink></div>}
+        <AppLink href={paths.issueDetail(issueRouteRef({ id: artifact.producer_issue.id, identifier: null }))} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{t(($) => $.artifact_runtime.open_producer)} {t(($) => $.action_flow.new_tab)}</AppLink></div>}
       {draft.kind === "text" ? <label className="block space-y-2 text-caption"><span>{t(($) => $.artifacts.version_text)}</span><Textarea rows={10} value={draft.text} disabled={disabled || Boolean(draft.pending)}
         onChange={(event) => updateCockpitArtifactSubmissionDraft(key, context, { text: event.target.value })} /></label>
         : <><CockpitArtifactFilePicker key={producerId} wsId={wsId} artifactId={artifact.id} producerIssueId={producerId} selectedId={draft.attachmentId} selected={selectedFile.data ?? null}

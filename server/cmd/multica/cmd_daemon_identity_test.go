@@ -93,7 +93,13 @@ func serveHealthAsPID(t *testing.T, profile string, reports map[string]any, pid 
 	if err != nil {
 		t.Skipf("health port %d for profile %q is busy on this machine: %v", port, profile, err)
 	}
-	stub := &stubDaemon{port: port}
+	return serveStubDaemon(t, ln, reports, pid)
+}
+
+// serveStubDaemon serves the stub daemon on ln, which the stub then owns.
+func serveStubDaemon(t *testing.T, ln net.Listener, reports map[string]any, pid int) *stubDaemon {
+	t.Helper()
+	stub := &stubDaemon{port: ln.Addr().(*net.TCPAddr).Port}
 
 	body := map[string]any{"status": "running", "pid": pid, "uptime": "1h0m0s", "cli_version": "v0.4.23"}
 	for k, v := range reports {
@@ -328,6 +334,23 @@ func TestDaemonStatusShowsWhoManagesTheDaemon(t *testing.T) {
 			t.Errorf("stdout = %q, a standalone daemon must not grow a Managed by row", out)
 		}
 	})
+}
+
+func TestDaemonStatusRendersStartingPIDPlainly(t *testing.T) {
+	clearDaemonTaskEnv(t)
+	const profile = "starting-pid-test"
+	mkProfiles(t, profile)
+	serveHealthAsPID(t, profile, map[string]any{"status": "starting", "profile": profile}, 1531839)
+
+	out, err := captureStdout(t, func() error {
+		return runDaemonStatus(daemonStatusCmdFor(t, profile, ""), nil)
+	})
+	if err != nil {
+		t.Fatalf("runDaemonStatus: %v", err)
+	}
+	if want := "Daemon [starting-pid-test]: starting (pid 1531839)\n"; out != want {
+		t.Fatalf("daemon status output = %q, want %q", out, want)
+	}
 }
 
 // Inside a daemon-managed task the health port is injected by the host daemon

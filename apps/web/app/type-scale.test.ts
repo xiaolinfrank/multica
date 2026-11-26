@@ -75,9 +75,11 @@ const replacedDefaults = ["xs", "sm", "base", "lg", "xl", "2xl", "3xl"];
 const bannedPatterns = [
   {
     label: "arbitrary pixel size",
+    // The marketing site's device mockups are pixel-specified artwork rather
+    // than product UI text, so they follow their own drawing grid.
     regex: /\btext-\[\d+(?:\.\d+)?px\]/g,
     hint: "use a scale step (text-micro … text-display)",
-    appliesTo: () => true,
+    appliesTo: (rel: string) => !isMarketing(rel),
   },
   {
     label: "arbitrary relative size",
@@ -169,8 +171,10 @@ describe("type scale", () => {
   const tokens = readFileSync(resolve(repoRoot, "packages/ui/styles/tokens.css"), "utf8");
 
   it.each(SCALE)("defines --text-%s with a paired line-height", (name, size, lineHeight) => {
-    expect(tokens).toContain(`--text-${name}: ${size}px;`);
-    expect(tokens).toContain(`--text-${name}--line-height: ${lineHeight}px;`);
+    // Every step is multiplied by the Appearance font size, so the declared
+    // value is a calc whose base is the scale entry.
+    expect(tokens).toContain(`--text-${name}: calc(${size}px * var(--font-scale, 1));`);
+    expect(tokens).toContain(`--text-${name}--line-height: calc(${lineHeight}px * var(--font-scale, 1));`);
   });
 
   it("steps ascend in size and never tighten line-height going up", () => {

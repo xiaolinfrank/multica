@@ -368,7 +368,7 @@ func TestGCDecisionIssueResult_PersistentWorkspacePolicy(t *testing.T) {
 			Status:    status,
 			UpdatedAt: time.Now().Add(-30 * 24 * time.Hour), // far past GCTTL
 		}
-		if action := d.gcDecisionIssueResult(taskDir, meta, result); action != gcActionSkip {
+		if action, _ := d.gcDecisionIssueResult(taskDir, meta, result); action != gcActionSkip {
 			t.Fatalf("status %q closed 30 days ago: expected gcActionSkip (workspace persists with its issue), got %d", status, action)
 		}
 	}
@@ -376,7 +376,7 @@ func TestGCDecisionIssueResult_PersistentWorkspacePolicy(t *testing.T) {
 	// The counterpart the policy does keep: a deleted issue (Found=false) still
 	// falls through to the mtime-gated orphan path rather than persisting forever.
 	deleted := IssueGCCheckResult{ID: issueID, Found: false}
-	if action := d.gcDecisionIssueResult(taskDir, meta, deleted); action != gcActionSkip {
+	if action, _ := d.gcDecisionIssueResult(taskDir, meta, deleted); action != gcActionSkip {
 		t.Fatalf("deleted issue with a fresh directory: expected gcActionSkip from orphanByMTime, got %d", action)
 	}
 }
@@ -1321,8 +1321,7 @@ func TestShouldCleanTaskDir_CompletedTaskTTLPreservesActiveEnv(t *testing.T) {
 		Kind: execenv.GCKindIssue, IssueID: issueID, WorkspaceID: "ws1",
 		CompletedAt: time.Now().Add(-2 * time.Hour),
 	})
-	d.markActiveEnvRoot(taskDir)
-	defer d.unmarkActiveEnvRoot(taskDir)
+	defer d.markActiveEnvRoot(taskDir)()
 
 	if action := d.shouldCleanTaskDir(context.Background(), taskDir); action != gcActionSkip {
 		t.Fatalf("expected active env to remain despite completed-task TTL, got %d", action)
@@ -1412,8 +1411,7 @@ func TestShouldCleanTaskDir_ActiveEnvRootSkipsArtifactCleanup(t *testing.T) {
 		CompletedAt: time.Now().Add(-24 * time.Hour),
 	})
 
-	d.markActiveEnvRoot(taskDir)
-	defer d.unmarkActiveEnvRoot(taskDir)
+	defer d.markActiveEnvRoot(taskDir)()
 
 	if action := d.shouldCleanTaskDir(context.Background(), taskDir); action != gcActionSkip {
 		t.Fatalf("expected gcActionSkip while task is active, got %d", action)
@@ -1440,8 +1438,7 @@ func TestShouldCleanTaskDir_ActiveEnvRootSkipsFullCleanup(t *testing.T) {
 		CompletedAt:   time.Now().Add(-30 * 24 * time.Hour),
 	})
 
-	d.markActiveEnvRoot(taskDir)
-	defer d.unmarkActiveEnvRoot(taskDir)
+	defer d.markActiveEnvRoot(taskDir)()
 
 	if action := d.shouldCleanTaskDir(context.Background(), taskDir); action != gcActionSkip {
 		t.Fatalf("expected gcActionSkip on active env root with a would-clean signal, got %d", action)
@@ -1466,8 +1463,7 @@ func TestShouldCleanTaskDir_ActiveEnvRootSkipsOrphan404(t *testing.T) {
 		CompletedAt: time.Now(),
 	})
 
-	d.markActiveEnvRoot(taskDir)
-	defer d.unmarkActiveEnvRoot(taskDir)
+	defer d.markActiveEnvRoot(taskDir)()
 
 	if action := d.shouldCleanTaskDir(context.Background(), taskDir); action != gcActionSkip {
 		t.Fatalf("expected gcActionSkip on active env root with 404 issue, got %d", action)
@@ -1481,8 +1477,7 @@ func TestShouldCleanTaskDir_ActiveEnvRootSkipsNoMetaOrphan(t *testing.T) {
 	d.cfg.GCOrphanTTL = 0
 	taskDir := createTaskDir(t, d.cfg.WorkspacesRoot, "ws1", "active-no-meta", nil)
 
-	d.markActiveEnvRoot(taskDir)
-	defer d.unmarkActiveEnvRoot(taskDir)
+	defer d.markActiveEnvRoot(taskDir)()
 
 	if action := d.shouldCleanTaskDir(context.Background(), taskDir); action != gcActionSkip {
 		t.Fatalf("expected gcActionSkip on active env root with no-meta orphan, got %d", action)
@@ -1785,16 +1780,16 @@ func TestActiveEnvRootRefcount(t *testing.T) {
 	if d.isActiveEnvRoot(root) {
 		t.Fatal("expected inactive before mark")
 	}
-	d.markActiveEnvRoot(root)
-	d.markActiveEnvRoot(root) // second mark from reuse path
+	releaseFirst := d.markActiveEnvRoot(root)
+	releaseSecond := d.markActiveEnvRoot(root) // second mark from reuse path
 	if !d.isActiveEnvRoot(root) {
 		t.Fatal("expected active after mark")
 	}
-	d.unmarkActiveEnvRoot(root)
+	releaseFirst()
 	if !d.isActiveEnvRoot(root) {
 		t.Fatal("expected still active after one unmark")
 	}
-	d.unmarkActiveEnvRoot(root)
+	releaseSecond()
 	if d.isActiveEnvRoot(root) {
 		t.Fatal("expected inactive after both unmarks")
 	}
@@ -1806,11 +1801,11 @@ func TestReserveEnvRootForGCIsExclusive(t *testing.T) {
 	d := newGCTestDaemon(t, http.NewServeMux())
 	root := "/tmp/fake/gc-reservation"
 
-	d.markActiveEnvRoot(root)
+	releaseActive := d.markActiveEnvRoot(root)
 	if _, ok := d.reserveEnvRootForGC(root); ok {
 		t.Fatal("GC reservation must fail while a task is active")
 	}
-	d.unmarkActiveEnvRoot(root)
+	releaseActive()
 
 	release, ok := d.reserveEnvRootForGC(root)
 	if !ok {
@@ -2099,7 +2094,7 @@ func TestCleanupNewRepoMaintenanceLocksPreservesPreexistingFiles(t *testing.T) {
 	if err := os.WriteFile(preexisting, []byte("existing"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	before := snapshotRepoMaintenanceLocks(barePath)
+	before := snapshotRepoMaintenanceArtifacts(barePath)
 
 	created := []string{
 		filepath.Join(barePath, "refs", "remotes", "origin", "main.lock"),
@@ -2123,7 +2118,7 @@ func TestCleanupNewRepoMaintenanceLocksPreservesPreexistingFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	d.cleanupNewRepoMaintenanceLocks(barePath, before)
+	d.cleanupNewRepoMaintenanceArtifacts(barePath, before)
 	for _, path := range created {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("new maintenance lock %s survived, stat error = %v", path, err)
@@ -2136,7 +2131,7 @@ func TestCleanupNewRepoMaintenanceLocksPreservesPreexistingFiles(t *testing.T) {
 	}
 }
 
-func TestPruneWorktreePreemptionCleansLocksBeforeTaskStarts(t *testing.T) {
+func TestPruneWorktreePreemptionCleansGitArtifactsBeforeTaskStarts(t *testing.T) {
 	if _, err := os.Stat("/bin/sh"); err != nil {
 		t.Skipf("requires a POSIX shell: %v", err)
 	}
@@ -2159,14 +2154,21 @@ func TestPruneWorktreePreemptionCleansLocksBeforeTaskStarts(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	packDir := filepath.Join(barePath, "objects", "pack")
+	newPack := filepath.Join(packDir, "tmp_pack_new")
+	existingPack := filepath.Join(packDir, "tmp_pack_existing")
+	if err := os.WriteFile(existingPack, []byte("existing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	startedPath := filepath.Join(t.TempDir(), "maintenance-started")
 	binDir := t.TempDir()
 	fakeGit := filepath.Join(binDir, "git")
 	script := `#!/bin/sh
-if [ "$3" = "reflog" ] && [ "$4" = "expire" ]; then
+if [ "$3" = "gc" ]; then
   : > "$2/refs/remotes/origin/main.lock"
-  : > "$MULTICA_TEST_MAINTENANCE_STARTED"
+  : > "$2/objects/pack/tmp_pack_new"
   trap 'exit 143' TERM INT
+  : > "$MULTICA_TEST_MAINTENANCE_STARTED"
   while :; do sleep 1; done
 fi
 exec "$MULTICA_TEST_REAL_GIT" "$@"
@@ -2206,6 +2208,12 @@ exec "$MULTICA_TEST_REAL_GIT" "$@"
 	}
 	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
 		t.Fatalf("maintenance lock survived real task preemption, stat error = %v", err)
+	}
+	if _, err := os.Stat(newPack); !os.IsNotExist(err) {
+		t.Fatalf("new temporary pack survived task preemption, stat error = %v", err)
+	}
+	if contents, err := os.ReadFile(existingPack); err != nil || string(contents) != "existing" {
+		t.Fatalf("pre-existing temporary pack was changed: contents = %q, error = %v", contents, err)
 	}
 	if err := cache.Fetch(barePath); err != nil {
 		t.Fatalf("fetch did not recover after preempted maintenance cleanup: %v", err)
@@ -2594,17 +2602,8 @@ func TestShouldCleanTaskDir_ChatHardDeletedFreshMtime(t *testing.T) {
 	}
 }
 
-// TestShouldCleanTaskDir_ChatActiveResistsOldMtime is the explicit acceptance
-// criterion #2: an active chat session whose workdir is older than
-// GCOrphanTTL must NOT be reclaimed. The only path to clean an active
-// session's workdir is for the user to archive or hard-delete the session.
-//
-// #6782 narrowed this from "the GC does nothing" to "the GC never removes the
-// directory": a session idle past GCArtifactTTL now gives back the regenerable
-// codex-home/.sandbox-bin cache, which the next message re-provisions. The
-// acceptance criterion is unchanged — the session's own data survives — so
-// this asserts the surviving contents rather than the bare action value.
-// TestManagedArtifact_IdleActiveChatReclaimsSandboxBin covers the carve-out.
+// An unarchived chat keeps its workdir even after the orphan TTL.
+// Artifact cleanup can reclaim regenerable caches while preserving its data.
 func TestShouldCleanTaskDir_ChatActiveResistsOldMtime(t *testing.T) {
 	t.Parallel()
 	chatID := "ffffffff-ffff-ffff-ffff-ffffffffff01"
@@ -2679,6 +2678,12 @@ func TestGCMetaForTask(t *testing.T) {
 			task: Task{ID: "t4", WorkspaceID: "ws", QuickCreatePrompt: "do the thing"},
 			want: execenv.GCKindQuickCreate,
 			idOK: func(m execenv.GCMeta) bool { return m.TaskID == "t4" },
+		},
+		{
+			name: "doc discussion task",
+			task: Task{ID: "t6", WorkspaceID: "ws", DocID: "d1"},
+			want: execenv.GCKindDoc,
+			idOK: func(m execenv.GCMeta) bool { return m.DocID == "d1" },
 		},
 		{
 			name: "chat wins over issue when both set (defensive ordering)",

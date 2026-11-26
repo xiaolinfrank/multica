@@ -1,5 +1,6 @@
 import { cloneElement, type ReactElement, type ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { configStore } from "@multica/core/config";
 import enLayout from "../locales/en/layout.json";
@@ -56,10 +57,12 @@ vi.mock("@multica/ui/components/ui/dropdown-menu", async () => {
     DropdownMenuItem: ({
       children,
       render,
+      onClick,
     }: {
       children: ReactNode;
       render?: ReactElement;
-    }) => (render ? cloneElement(render, undefined, children) : <>{children}</>),
+      onClick?: () => void;
+    }) => (render ? cloneElement(render, { onClick } as object, children) : <>{children}</>),
     DropdownMenuGroup: ({ children }: { children: ReactNode }) => (
       <GroupContext.Provider value={true}>{children}</GroupContext.Provider>
     ),
@@ -76,12 +79,20 @@ vi.mock("@multica/ui/components/ui/dropdown-menu", async () => {
   };
 });
 
+let qc: QueryClient;
+
+function render(ui: ReactElement) {
+  return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
 beforeEach(() => {
   i18nState.language = "en";
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 
 afterEach(() => {
   configStore.getState().setServerVersion("");
+  qc.clear();
 });
 
 describe("HelpLauncher", () => {

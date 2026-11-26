@@ -53,51 +53,106 @@ function usePrefetchPlan(wsId: string, projectId: string) {
   };
 }
 
+export interface IssueInTree {
+  /** `null` when no expanded row lists the issue. */
+  issueId: string | null;
+  /** The sidebar sources of the expanded rows that list or keep it. */
+  sources: readonly string[];
+}
+
+const NOT_IN_TREE: IssueInTree = { issueId: null, sources: [] };
+
+function hasPrefix(key: readonly unknown[], prefix: readonly unknown[]): boolean {
+  return prefix.every((part, i) => key[i] === part);
+}
+
 /**
- * The id of the issue an expanded row lists or keeps under `ref` — its UUID,
- * or an identifier like `MUL-123` matched case-insensitively as the server
- * does — or `null` when no expanded row lists it.
+ * Whether a cache entry can change `useIssueInTree`'s answer: a sidebar list,
+ * or the detail of an issue a list keeps.
  */
-export function useIssueIdInTree(wsId: string, ref: string | null): string | null {
+function readsIntoTree(wsId: string, key: readonly unknown[]): boolean {
+  if (hasPrefix(key, issueKeys.sidebarAll(wsId))) return true;
+  const detail = issueKeys.detail(wsId, "");
+  if (key.length !== detail.length || !hasPrefix(key, detail.slice(0, -1))) return false;
+  const id = key[detail.length - 1];
+  return Object.values(useSidebarKeptStore.getState().held).some((held) => held.id === id);
+}
+
+/**
+ * Where the expanded rows list or keep the issue under `ref` — its UUID, or
+ * an identifier like `MUL-123` matched case-insensitively as the server does.
+ */
+export function useIssueInTree(wsId: string, ref: string | null): IssueInTree {
   const qc = useQueryClient();
   const cache = qc.getQueryCache();
   const subscribe = useCallback(
     (onChange: () => void) => {
-      const unsubscribeCache = cache.subscribe(onChange);
+      const unsubscribeCache = cache.subscribe((event) => {
+        if (readsIntoTree(wsId, event.query.queryKey)) onChange();
+      });
       const unsubscribeKept = useSidebarKeptStore.subscribe(onChange);
       return () => {
         unsubscribeCache();
         unsubscribeKept();
       };
     },
-    [cache],
+    [cache, wsId],
   );
-  return useSyncExternalStore(subscribe, () => {
-    if (!ref) return null;
+  const snapshot = useSyncExternalStore(subscribe, () => {
+    if (!ref) return "";
     const identifier = ref.toUpperCase();
     const matches = (issue: Issue) => issue.id === ref || issue.identifier.toUpperCase() === identifier;
+    const sourceAt = issueKeys.sidebarAll(wsId).length;
     const shown = (queryKey: readonly unknown[]) =>
       cache.findAll({ queryKey }).filter((query) => query.getObserversCount() > 0);
+    let issueId: string | null = null;
+    const sources = new Set<string>();
     for (const query of shown(issueKeys.sidebarAll(wsId))) {
       const issue = (query.state.data as ListIssuesResponse | undefined)?.issues?.find(matches);
-      if (issue) return issue.id;
+      if (!issue) continue;
+      issueId = issue.id;
+      sources.add(String(query.queryKey[sourceAt]));
     }
     // A shown list keeps the open issue its query dropped (`useKeptActiveItem`).
     for (const [list, held] of Object.entries(useSidebarKeptStore.getState().held)) {
       const issue = qc.getQueryData<Issue>(issueKeys.detail(wsId, held.id));
-      if (issue && matches(issue) && shown([...issueKeys.sidebarAll(wsId), list]).length > 0) return issue.id;
+      if (!issue || !matches(issue) || shown([...issueKeys.sidebarAll(wsId), list]).length === 0) continue;
+      issueId = issue.id;
+      sources.add(list);
     }
-    return null;
+    return issueId ? [issueId, ...sources].join("\n") : "";
   });
+  return useMemo(() => {
+    if (!snapshot) return NOT_IN_TREE;
+    const [issueId, ...sources] = snapshot.split("\n");
+    return { issueId: issueId!, sources };
+  }, [snapshot]);
+}
+
+/**
+ * The id of the issue an expanded row lists or keeps under `ref` — its UUID,
+ * or an identifier like `MUL-123` matched case-insensitively as the server
+ * does — or `null` when no expanded row lists it.
+ */
+export function useIssueIdInTree(wsId: string, ref: string | null): string | null {
+  return useIssueInTree(wsId, ref).issueId;
 }
 
 interface ProjectsSectionProps {
   wsId: string;
   pathname: string;
   /** Already filtered and ordered by the section's settings. */
-  projects: Project[];
+  projects: readonly Project[];
   totalProjects: number;
   plainRowsLit: boolean;
+  /**
+   * Upstream's issue-list tree narrows and highlights rows through these; the
+   * fork's plan tree derives the same state from `?node=` and the route, so
+   * they are accepted but unused.
+   */
+  activeIssueId?: string | null;
+  litSource?: string | null;
+  locatedSource?: string | null;
 }
 
 export function ProjectsSection({

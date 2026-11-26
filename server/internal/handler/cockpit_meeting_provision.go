@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/middleware"
+	"github.com/multica-ai/multica/server/internal/projectaccess"
 	"github.com/multica-ai/multica/server/internal/service"
 	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -528,7 +529,7 @@ func (h *Handler) openMeetingTask(
 	}
 
 	prefix := h.getIssuePrefix(ctx, cc.workspaceID)
-	fillCreated := h.newStatusCategoryFiller(ctx, cc.workspaceID)
+	fillCreated := h.newStatusCategoryFiller(ctx, cc.workspaceID, projectaccess.Hidden{}, nil)
 	// The work item is the task's own filing, not a second relation: a task
 	// opened for a meeting filed at a work item belongs to it the same way a
 	// task created there by hand does. A board whose archive node is not an L3

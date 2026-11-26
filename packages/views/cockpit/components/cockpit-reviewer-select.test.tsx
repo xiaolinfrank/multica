@@ -6,7 +6,7 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
 import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitReviewerSelect } from "./cockpit-reviewer-select";
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ settings: () => "/ws/settings" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ settings: () => "/ws/settings" }) }));
 vi.mock("@multica/core/api", () => ({ api: { searchCockpitScopeMembers: vi.fn() } }));
 vi.mock("../../navigation", () => ({ AppLink: ({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href}>{children}</a> }));
 const people = [{ id: "reviewer-a", title: "Alex", email: "alex.a@example.test", avatar_url: "", role: "member" }, { id: "reviewer-b", title: "Alex", email: "alex.b@example.test", avatar_url: "", role: "member" }];

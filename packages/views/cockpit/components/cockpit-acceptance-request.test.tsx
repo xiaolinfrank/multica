@@ -12,7 +12,7 @@ import { CockpitAcceptanceRequestForm } from "./cockpit-acceptance-request";
 const navigation = vi.hoisted(() => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("node=node-1&node_view=acceptance"), push: vi.fn() }));
 vi.mock("../../navigation", () => ({ useNavigation: () => navigation,
   AppLink: ({ href, children, ...rest }: React.ComponentProps<"a">) => <a href={href} {...rest}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
 vi.mock("./cockpit-reviewer-select", () => ({ CockpitReviewerSelect: ({ value, onChange, disabled }: { value: string; onChange: (id: string) => void; disabled: boolean }) =>
   <label>Reviewer<select aria-label="Reviewer" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}><option value="" /><option value="reviewer-1">Reviewer</option></select></label> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {

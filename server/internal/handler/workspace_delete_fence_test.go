@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/testutil"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -71,6 +72,9 @@ func TestTaskWriteFence_BlocksOnWorkspaceLockAlone(t *testing.T) {
 	}
 	ctx := context.Background()
 	f := newWorkspaceDeletePathFixture(t, "fenceonly")
+	// A bound agent ignores a stale runtime hint. With no binding, the hint
+	// remains the write's target, so this still isolates the runtime's fence.
+	unboundAgent := testutil.New(testPool, f.neighbourID, testUserID).Agent(t, "fence-runtime-only", "")
 
 	holder, err := testPool.Begin(ctx)
 	if err != nil {
@@ -106,9 +110,10 @@ func TestTaskWriteFence_BlocksOnWorkspaceLockAlone(t *testing.T) {
 	}
 
 	blockedEnqueue("enqueue via the victim's agent", f.victimAgent, f.neighbourRuntime, "")
-	blockedEnqueue("enqueue via the victim's runtime", f.neighbourAgent, f.victimRuntime, f.neighbourIssue)
 	// Issue-backed tasks require the Agent and Issue to share a workspace.
 	blockedEnqueue("enqueue via the victim's issue", f.victimAgent, f.neighbourRuntime, f.victimIssue)
+	// An agent bound to no workspace at all is fenced by the teardown too.
+	blockedEnqueue("enqueue via an unbound agent's runtime", unboundAgent, f.victimRuntime, f.neighbourIssue)
 
 	// Reassignment onto the victim's runtime is fenced too.
 	reassign, err := testPool.Begin(ctx)
@@ -328,21 +333,24 @@ VALUES ($1, $2, 'member', $3, $4) RETURNING id
 		}
 	}
 
+	// Use unbound agents paired with the other workspace's runtime so each
+	// enqueue locks both workspaces in mirrored roles without violating the
+	// same-workspace agent/issue invariant.
+	unboundVictimAgent := testutil.New(testPool, f.victimID, testUserID).Agent(t, "lock-order-unbound-victim", "")
+	unboundNeighbourAgent := testutil.New(testPool, f.neighbourID, testUserID).Agent(t, "lock-order-unbound-neighbour", "")
 	var wg sync.WaitGroup
 	errs := make([]error, 2*rounds)
 	for i := 0; i < rounds; i++ {
 		wg.Add(2)
-		// Owners drawn from both workspaces, in mirrored roles. Keep each
-		// runtime matched to its agent: enqueue now rejects stale bindings.
 		go func(i int) {
 			defer wg.Done()
 			errs[2*i] = enqueueViaRealQuery(ctx, testHandler.Queries,
-				f.victimAgent, f.victimRuntime, neighbourIssues[i])
+				unboundVictimAgent, f.neighbourRuntime, victimIssues[i])
 		}(i)
 		go func(i int) {
 			defer wg.Done()
 			errs[2*i+1] = enqueueViaRealQuery(ctx, testHandler.Queries,
-				f.neighbourAgent, f.neighbourRuntime, victimIssues[i])
+				unboundNeighbourAgent, f.victimRuntime, neighbourIssues[i])
 		}(i)
 	}
 	wg.Wait()
@@ -361,7 +369,7 @@ VALUES ($1, $2, 'member', $3, $4) RETURNING id
 	if _, err := testPool.Exec(ctx, `
 DELETE FROM agent_task_queue
 WHERE (agent_id = $1 AND runtime_id = $2) OR (agent_id = $3 AND runtime_id = $4)
-`, f.victimAgent, f.victimRuntime, f.neighbourAgent, f.neighbourRuntime); err != nil {
+`, unboundVictimAgent, f.neighbourRuntime, unboundNeighbourAgent, f.victimRuntime); err != nil {
 		t.Fatalf("clean up: %v", err)
 	}
 }

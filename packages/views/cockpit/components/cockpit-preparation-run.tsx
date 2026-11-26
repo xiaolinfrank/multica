@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { taskDetailOptions } from "@multica/core/agents";
 import { ApiError } from "@multica/core/api";
 import { taskMessagesOptions } from "@multica/core/chat/queries";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
@@ -32,7 +32,7 @@ export function CockpitPreparationRun({ wsId, runId, issueId, context = "prepara
   const query = useQuery({ ...taskDetailOptions(wsId, runId), enabled: open, staleTime: 0 });
   const task = query.data; const matches = task?.id === runId && (!issueId || task.issue_id === issueId);
   const messages = useQuery({ ...taskMessagesOptions(runId), enabled: open && transcriptOpen && Boolean(matches), staleTime: 0, retry: false });
-  const issueHref = issueId ? paths.issueDetail(issueId) : undefined;
+  const issueHref = issueId ? paths.issueDetail(issueRouteRef({ id: issueId, identifier: null })) : undefined;
   const title = context === "execution" ? t(($) => $.input_materials.run_created) : context === "source" ? t(($) => $.input_materials.source_run) : t(($) => $.meeting_preparation.open_run);
   return <><Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setTranscriptOpen(false); }}><DialogTrigger render={<Button variant="outline" size="sm" />}>{title}</DialogTrigger>
     <DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
@@ -42,7 +42,7 @@ export function CockpitPreparationRun({ wsId, runId, issueId, context = "prepara
         {task.input_manifest_version_id && <CockpitRunInputManifest wsId={wsId} runId={runId} runtimeId={task.runtime_id} />}
         <details className="text-caption text-muted-foreground"><summary className="cursor-pointer">{t(($) => $.artifact_runtime.diagnostics)}</summary><p className="break-all">{runId}</p></details>
       </div>}
-      {issueId && <AppLink target="_blank" rel="noopener noreferrer" className="text-caption text-primary underline" href={paths.issueDetail(issueId)}>{t(($) => $.meeting_preparation.open_issue)} {t(($) => $.action_flow.new_tab)}</AppLink>}
+      {issueId && <AppLink target="_blank" rel="noopener noreferrer" className="text-caption text-primary underline" href={paths.issueDetail(issueRouteRef({ id: issueId, identifier: null }))}>{t(($) => $.meeting_preparation.open_issue)} {t(($) => $.action_flow.new_tab)}</AppLink>}
     </DialogContent>
   </Dialog>
     {open && transcriptOpen && task && matches && <AgentTranscriptDialog open onOpenChange={setTranscriptOpen} task={task} agentName="" items={buildTimeline(messages.data ?? [])} isLive={task.status === "running"}

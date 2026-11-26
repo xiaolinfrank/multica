@@ -16,7 +16,7 @@ import type { Issue, IssueAssigneeType, IssueStatus, UpdateIssueRequest, IssueBa
 import { useUpdateIssue, useBatchUpdateIssues } from "@multica/core/issues/mutations";
 import { useIssueOperationBasis, issueUpdateOperationAllowed, issueOperationAllowed, issueBatchAppliedIds, issueBatchComplete, issueBatchErrorReceipt } from "@multica/core/issues";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { errorCode } from "@multica/core/api";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -96,10 +96,14 @@ interface RunConfirmData {
  * single-issue promotion out of backlog.
  */
 export function RunConfirmModal({
+  open = true,
   onClose,
+  onOpenChangeComplete,
   data,
 }: {
+  open?: boolean;
   onClose: () => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   data: Record<string, unknown> | null;
 }) {
   const { t } = useT("modals");
@@ -201,8 +205,7 @@ export function RunConfirmModal({
         if (typeof d.onBatchResult === "function") d.onBatchResult(receipt, submittedIds);
         // A partial batch stays open on the outcome summary (the applied writes
         // are real, the rest stay selected for a retry) and never calls
-        // onApplied — the caller must not treat it as a completed handoff. The
-        // count warning below is upstream's signal for the same event.
+        // onApplied — the caller must not treat it as a completed handoff.
         if (!issueBatchComplete(receipt)) {
           toast.warning(
             tIssues(($) => $.batch.update_partial, {
@@ -284,7 +287,11 @@ export function RunConfirmModal({
   );
 
   return (
-    <Dialog open onOpenChange={(v) => { if (!v && !submitting) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => { if (!v && !submitting) onClose(); }}
+      onOpenChangeComplete={onOpenChangeComplete}
+    >
       {/* Wider than the primitive's sm:max-w-sm: the two actions are long
           phrases, not "Cancel"/"Save". In French they measure ~435px with the
           send-shortcut keycaps against the 352px the default leaves, so the
@@ -310,7 +317,7 @@ export function RunConfirmModal({
           observation={{ basis: policy.byIssue.get(id), pending: policy.pendingIds.has(id), error: policy.errorIds.has(id), retry: () => void policy.refetch() }} />)}
         {(revisionDrift || failure?.identity === identity) && <div role="alert" className="space-y-2 text-caption">
           <p>{revisionDrift ? tIssues(($) => $.revision.conflict) : failure?.message}</p>
-          {issueIds.length === 1 && <AppLink href={paths.issueDetail(issueIds[0]!)} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+          {issueIds.length === 1 && <AppLink href={paths.issueDetail(issueRouteRef({ id: issueIds[0]!, identifier: null }))} target="_blank" rel="noopener noreferrer" className="text-primary underline">
             {tIssues(($) => $.operation_basis.open_record)} {tIssues(($) => $.operation_basis.new_tab)}
           </AppLink>}
         </div>}
@@ -337,7 +344,6 @@ export function RunConfirmModal({
                     shortcut={sendShortcut}
                     decorative
                     className="ml-1"
-                    keyClassName="border-background/30 bg-background/15 text-primary-foreground shadow-none"
                   />
                 ) : null}
               </>

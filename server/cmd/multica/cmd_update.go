@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	updateDownloadTimeout   time.Duration = cli.DefaultUpdateDownloadTimeout
-	resolveSelfExecForUpdate              = selfexec.Resolve
+	updateDownloadTimeout    time.Duration = cli.DefaultUpdateDownloadTimeout
+	resolveSelfExecForUpdate               = selfexec.Resolve
 )
 
 var updateCmd = &cobra.Command{

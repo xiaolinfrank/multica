@@ -7,7 +7,10 @@ import (
 	"testing"
 
 	"github.com/multica-ai/multica/server/internal/auth"
+	"github.com/multica-ai/multica/server/internal/featureflags"
+	"github.com/multica-ai/multica/server/internal/storage"
 	"github.com/multica-ai/multica/server/internal/testutil"
+	"github.com/multica-ai/multica/server/internal/themestore"
 )
 
 func TestGetConfigReportsCdnSignedMode(t *testing.T) {
@@ -48,6 +51,13 @@ func TestGetConfigReportsCdnSignedMode(t *testing.T) {
 	}
 	if cfg.CdnDomain != "cdn.example.com" {
 		t.Fatalf("cdn_domain: want cdn.example.com alongside cdn_signed, got %q", cfg.CdnDomain)
+	}
+	t.Setenv("LOCAL_UPLOAD_DIR", t.TempDir())
+	t.Setenv("LOCAL_UPLOAD_BASE_URL", "https://local.example.test")
+	testHandler.CFSigner = nil
+	testHandler.Storage = storage.NewLocalStorageFromEnv()
+	if cfg := fetch(); !cfg.CdnSigned || cfg.CdnDomain != "local.example.test" {
+		t.Fatalf("local storage must declare private downloads even with a base URL: %+v", cfg)
 	}
 }
 
@@ -513,6 +523,9 @@ func TestGetConfigExposesFrontendFeatureFlags(t *testing.T) {
 	if cfg.FeatureFlags["plugins_v1"] {
 		t.Fatalf("plugins_v1: want false by default, got true")
 	}
+	if !cfg.FeatureFlags["dashboard_history_365d"] {
+		t.Fatal("dashboard_history_365d: want true by default")
+	}
 	for _, retired := range []string{"private_plugins_v1", "remote_mcp_plugins_v1"} {
 		if _, published := cfg.FeatureFlags[retired]; published {
 			t.Fatalf("retired Plugin sub-flag %q must not be published", retired)
@@ -645,6 +658,9 @@ func TestGetConfigDeclaresAgentConversationStartersSupport(t *testing.T) {
 	if !cfg.AgentConversationStartersSupported {
 		t.Fatal("this build persists conversation_starters but does not advertise the contract")
 	}
+	if !cfg.WebhookPayloadConditionsSupported {
+		t.Fatal("this build must declare webhook payload condition support")
+	}
 	var raw map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
 		t.Fatalf("decode raw config: %v", err)
@@ -674,6 +690,18 @@ func TestGetConfigDeclaresIssueCreatePropertiesSupport(t *testing.T) {
 	}
 	if _, ok := raw["issue_create_properties_supported"]; !ok {
 		t.Fatal("issue_create_properties_supported missing from the JSON body")
+	}
+}
+
+func TestGetConfigDeclaresIssueBatchOpsSupport(t *testing.T) {
+	w := httptest.NewRecorder()
+	testHandler.GetConfig(w, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	var raw map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if raw["issue_batch_ops_supported"] != true {
+		t.Fatalf("issue_batch_ops_supported = %v; clients gate dry runs on it", raw["issue_batch_ops_supported"])
 	}
 }
 
@@ -755,5 +783,48 @@ func TestCollabSpaceHostFromEnvKeepsOnlyTheHost(t *testing.T) {
 		if got := collabSpaceHostFromEnv(); got != tc.want {
 			t.Errorf("collabSpaceHostFromEnv(%q) = %q, want %q", tc.raw, got, tc.want)
 		}
+	}
+}
+
+func TestGetConfigReportsTheThemeStore(t *testing.T) {
+	orig := testHandler.ThemeStore
+	t.Cleanup(func() { testHandler.ThemeStore = orig })
+
+	fetch := func() map[string]json.RawMessage {
+		t.Helper()
+		w := httptest.NewRecorder()
+		testHandler.GetConfig(w, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+		var cfg map[string]json.RawMessage
+		if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
+			t.Fatalf("decode config: %v", err)
+		}
+		return cfg
+	}
+
+	testHandler.ThemeStore = nil
+	if _, ok := fetch()["theme_store_enabled"]; ok {
+		t.Fatal("theme_store_enabled must be omitted when the store is off")
+	}
+	store, err := themestore.New(themestore.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testHandler.ThemeStore = store
+	if raw := fetch()["theme_store_enabled"]; string(raw) != "true" {
+		t.Fatalf("theme_store_enabled: want true, got %s", raw)
+	}
+}
+
+func TestGetConfigDashboardHistory365dFlagCanBeTurnedOff(t *testing.T) {
+	h := &Handler{}
+	withFeatureFlag(t, h, featureflags.DashboardHistory365d, false)
+	w := httptest.NewRecorder()
+	h.GetConfig(w, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	var cfg AppConfig
+	if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
+		t.Fatalf("decode config: %v", err)
+	}
+	if enabled, published := cfg.FeatureFlags["dashboard_history_365d"]; !published || enabled {
+		t.Fatalf("dashboard_history_365d: want published false when turned off, got published=%v enabled=%v", published, enabled)
 	}
 }

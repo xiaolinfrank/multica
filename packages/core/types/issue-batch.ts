@@ -1,3 +1,5 @@
+import type { BatchIssueLabelOps, BatchIssuePropertyOps } from "./api";
+
 export type IssueBatchOutcome = "applied" | "rejected" | "not_attempted" | "not_applied";
 export interface IssueBatchResult {
   issue_id: string;
@@ -20,4 +22,6 @@ export interface IssueBatchReceipt {
 }
 export interface IssueBatchWriteOptions {
   expected_revisions?: Record<string, number>;
+  labels?: BatchIssueLabelOps;
+  properties?: BatchIssuePropertyOps;
 }

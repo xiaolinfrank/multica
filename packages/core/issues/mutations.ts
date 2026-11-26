@@ -1,4 +1,4 @@
-import { normalizeStatusPatch } from "./status-category";
+import { issueBehavesAs, normalizeStatusPatch } from "./status-category";
 import {
   hashKey,
   useMutation,
@@ -19,6 +19,8 @@ import {
   cancelInboxLists,
   isInboxListRequestInFlight,
   onInboxInvalidate,
+  onInboxIssuesDeleted,
+  onInboxSummaryInvalidate,
 } from "../inbox/ws-updaters";
 import {
   applyIssueChange,
@@ -42,6 +44,7 @@ import { refreshSubscribedIssues } from "./subscribed";
 import { getCurrentWsId } from "../platform/workspace-storage";
 import { useRecentContextStore } from "../chat/recent-context-store";
 import { useRecentIssuesStore } from "./stores";
+import { useStarPromptStore } from "../star-prompt";
 import type { InboxItem, Issue, IssueReaction, IssueBatchReceipt } from "../types";
 import type {
   CreateCommentSubIssueManualRequest,
@@ -50,15 +53,20 @@ import type {
   ListIssuesResponse,
   MoveIssueRequest,
   UpdateIssueRequest,
+  BatchIssueLabelOps,
+  BatchIssuePropertyOps,
 } from "../types";
 import type { TimelineEntry, IssueSubscriber, Reaction } from "../types";
 import { sortTimelineEntriesAsc } from "./timeline-sort";
 import { applyCommentDeletion, removeCommentSubtree } from "./comment-deletion";
 import { configStore } from "../config";
 import {
+  addReactionToList,
   onIssueAuxiliaryRevision,
   invalidateIssueOwnerProjections,
+  patchIssueReactions,
   reconcileIssueFullSnapshotRevision,
+  removeReactionFromList,
 } from "./ws-updaters";
 
 // Shared mutation variable types — used by both mutation hooks and
@@ -221,6 +229,8 @@ export function useUpdateIssue() {
         directory_sync: _directorySync,
         description: _description,
         description_base: _descriptionBase,
+        blocked_by: _blockedBy,
+        remove_blocked_by: _removeBlockedBy,
         title_base: _titleBase,
         expected_revision: _expectedRevision,
         ...patch
@@ -342,6 +352,8 @@ export function useUpdateIssue() {
         enter_workflow_step: _enterWorkflowStep,
         duplicate_of_issue_id: _duplicateOfIssueId,
         description_base: _descriptionBase,
+        blocked_by: _blockedBy,
+        remove_blocked_by: _removeBlockedBy,
         move_intent: _moveIntent,
         id: _id,
         ...intent
@@ -378,6 +390,18 @@ export function useUpdateIssue() {
       );
       // The server has committed — safe to flush any drift it reported now.
       invalidateStaleListKeys(qc, reconcile.staleKeys);
+      if (
+        vars.status !== undefined &&
+        serverIssue.assignee_type === "agent" &&
+        serverIssue.assignee_id &&
+        issueBehavesAs(serverIssue, "done")
+      ) {
+        useStarPromptStore.getState().reportAgentIssueDone({
+          wsId,
+          agentId: serverIssue.assignee_id,
+          issueId: serverIssue.id,
+        });
+      }
     },
     onSettled: (_data, err, vars, ctx) => {
       settleInboxAfterIssueWrite(qc, wsId, ctx?.inboxWrite, err !== null);
@@ -475,6 +499,10 @@ export function useDeleteIssue() {
     onSuccess: (_data, id, ctx) => {
       useRecentContextStore.getState().forgetContext(wsId, { type: "issue", id });
       cleanupDeletedIssueCaches(qc, wsId, id, ctx?.metadata);
+      // The deleting client's own inbox rows go with the issue; the WS echo
+      // (`issue:deleted` → `onInboxIssueDeleted`) is the backstop, not the
+      // plan — a dropped socket would leave ghost rows that 404 on click.
+      void onInboxIssuesDeleted(qc, wsId, [id]);
     },
     onSettled: (_data, err, id, ctx) => {
       invalidateIssueBatchViews(qc, wsId);
@@ -489,6 +517,8 @@ export type BatchUpdateIssuesInput = {
   ids: string[];
   updates: UpdateIssueRequest;
   expected_revisions?: Record<string, number>;
+  labels?: BatchIssueLabelOps;
+  properties?: BatchIssuePropertyOps;
 };
 export type BatchDeleteIssuesInput = {
   ids: string[];
@@ -524,8 +554,14 @@ export function useBatchUpdateIssues() {
   };
   return useMutation({
     mutationKey: issueWriteMutationKey(wsId),
-    mutationFn: ({ ids, updates, expected_revisions }: BatchUpdateIssuesInput) =>
-      api.batchUpdateIssues(wsId, ids, updates, { expected_revisions }),
+    mutationFn: ({
+      ids,
+      updates,
+      labels,
+      properties,
+      expected_revisions,
+    }: BatchUpdateIssuesInput) =>
+      api.batchUpdateIssues(wsId, ids, updates, { labels, properties, expected_revisions }),
     onMutate: async ({ ids, updates }) => {
       // Fork: snapshot deleted-issue cache metadata so the parent/child caches
       // this batch touches can be re-invalidated precisely on settle.
@@ -540,6 +576,8 @@ export function useBatchUpdateIssues() {
         enter_workflow_step: _enterWorkflowStep,
         description: _description,
         description_base: _descriptionBase,
+        blocked_by: _blockedBy,
+        remove_blocked_by: _removeBlockedBy,
         ...patch
       } = updates;
       await qc.cancelQueries({ queryKey: issueKeys.list(wsId) });
@@ -677,6 +715,14 @@ export function useBatchUpdateIssues() {
       // refreshed below, plus the specific keys the coordinator flagged as
       // drifted — the surgical replacement for the old blanket "invalidate
       // myAll on project move" safety net (MUL-3669 / #4548).
+      // Label and property writes are not patched optimistically; the
+      // realtime events usually land first, and this catches a dropped socket.
+      if (vars.labels || vars.properties) {
+        qc.invalidateQueries({ queryKey: issueKeys.list(wsId) });
+        qc.invalidateQueries({ queryKey: issueKeys.myAll(wsId) });
+        qc.invalidateQueries({ queryKey: issueKeys.flatAll(wsId) });
+        for (const id of vars.ids) qc.invalidateQueries({ queryKey: issueKeys.detail(wsId, id) });
+      }
       invalidateIssueDerivatives(qc, wsId, {
         statusOrProjectChanged:
           vars.updates.status !== undefined ||
@@ -720,9 +766,19 @@ export function useBatchDeleteIssues() {
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   const acknowledge = (receipt: IssueBatchReceipt | null, metadata?: Map<string, ReturnType<typeof collectDeletedIssueCacheMetadata>>) => {
-    for (const id of issueBatchAppliedIds(receipt)) {
+    const applied = issueBatchAppliedIds(receipt);
+    for (const id of applied) {
       useRecentContextStore.getState().forgetContext(wsId, { type: "issue", id });
       cleanupDeletedIssueCaches(qc, wsId, id, metadata?.get(id));
+    }
+    // Same inbox ownership as the single delete: prune this client's rows for
+    // the issues the server confirmed instead of waiting for the echoes.
+    void onInboxIssuesDeleted(qc, wsId, applied);
+    if (receipt && applied.length < receipt.requested_ids.length) {
+      // The server skipped part of the batch, so which rows survived is
+      // unknowable client-side — re-read the inbox instead of pruning by id.
+      void onInboxInvalidate(qc, wsId);
+      void onInboxSummaryInvalidate(qc);
     }
   };
   return useMutation({
@@ -1037,11 +1093,15 @@ export function useToggleIssueReaction(issueId: string) {
       }
       return api.addIssueReaction(issueId, emoji);
     },
-    onSuccess: (reaction) => {
-      onIssueAuxiliaryRevision(qc, wsId, issueId, reaction?.issue_revision);
+    onSuccess: (reaction, { existing }) => {
+      if (reaction) {
+        patchIssueReactions(qc, wsId, issueId, addReactionToList(reaction), reaction.issue_revision);
+      } else if (existing) {
+        patchIssueReactions(qc, wsId, issueId, removeReactionFromList(existing));
+      }
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: issueKeys.reactions(issueId) });
+    onError: () => {
+      qc.invalidateQueries({ queryKey: issueKeys.detail(wsId, issueId), exact: true });
     },
   });
 }
@@ -1091,12 +1151,19 @@ export function useToggleIssueSubscriber(issueId: string) {
         qc.setQueryData<IssueSubscriber[]>(
           issueKeys.subscribers(issueId),
           (old) => {
+            // An explicit subscribe rewrites an existing row's reason to
+            // manual. The delivery tier is the server's to report, so it is
+            // dropped until onSettled refetches it.
             if (
               old?.some(
                 (s) => s.user_id === userId && s.user_type === userType,
               )
             )
-              return old;
+              return old.map((s) =>
+                s.user_id === userId && s.user_type === userType
+                  ? { ...s, reason: "manual" as const, delivery: undefined }
+                  : s,
+              );
             return [...(old ?? []), temp];
           },
         );

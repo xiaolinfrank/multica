@@ -1,6 +1,6 @@
 "use client";
 import type { CockpitWorkflowIssue } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { useQuery } from "@tanstack/react-query";
 import { cockpitActorLabelOptions } from "@multica/core/cockpit";
 import { isBuiltInIssueStatus } from "@multica/core/issue-statuses";
@@ -16,7 +16,7 @@ export function WorkflowIssueLink({ wsId, issue, newTab = false }: { wsId: strin
   const statusKey = issue.status;
   const status = isBuiltInIssueStatus(statusKey) ? issueT(($) => $.status[statusKey]) : statusKey;
   const assignee = issue.assignee_id && issue.assignee_type ? issue.assignee_name || assigneeQuery.data || issue.assignee_id : t(($) => $.workflow.unassigned);
-  return <div className="space-y-1"><AppLink href={paths.issueDetail(issue.identifier || issue.id)} newTabTitle={issue.title}
+  return <div className="space-y-1"><AppLink href={paths.issueDetail(issueRouteRef({ id: issue.identifier || issue.id, identifier: null }))} newTabTitle={issue.title}
     target={newTab ? "_blank" : undefined} rel={newTab ? "noreferrer" : undefined}
     className="inline-flex max-w-full items-start gap-2 text-caption hover:underline">
     <StatusIcon status={issue.status} className="mt-0.5 size-3.5 shrink-0" />

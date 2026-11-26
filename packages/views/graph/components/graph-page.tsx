@@ -11,7 +11,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import { issueGraphOptions } from "@multica/core/graph/queries";
@@ -316,7 +316,7 @@ export function GraphPage(props: { projectId?: string | null }) {
 
   const openIssue = useCallback(
     (id: string) => {
-      if (wsPaths) navigation.push(wsPaths.issueDetail(id));
+      if (wsPaths) navigation.push(wsPaths.issueDetail(issueRouteRef({ id: id, identifier: null })));
     },
     [navigation, wsPaths],
   );

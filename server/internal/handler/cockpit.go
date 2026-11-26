@@ -548,7 +548,7 @@ func (h *Handler) resolveCockpitIssue(ctx context.Context, ref, workspaceID stri
 	if ref == "" || workspaceID == "" {
 		return db.Issue{}, false
 	}
-	if issue, ok := h.resolveIssueByIdentifier(ctx, ref, workspaceID); ok {
+	if issue, ok, _ := h.resolveIssueByIdentifier(ctx, ref, workspaceID); ok {
 		return issue, true
 	}
 	issueUUID, err := util.ParseUUID(ref)

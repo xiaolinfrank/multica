@@ -189,7 +189,6 @@ describe("Table grouped by project", () => {
       listMembers: async () => [],
       listAgents: async () => [],
       listSquads: async () => [],
-      getAssigneeFrequency: async () => [],
       listIssueStatuses: async () => ({ statuses: [] }),
       listProjects: async () => ({
         projects: [

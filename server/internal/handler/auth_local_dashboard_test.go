@@ -32,7 +32,7 @@ func freshLocalDashboardHandler(t *testing.T) (*Handler, *testutil.Fixture) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = testPool.Exec(context.Background(), "DROP SCHEMA "+quoted+" CASCADE") })
-	for _, table := range []string{"user", "workspace", "member", "issue_status", "single_owner_account", "personal_access_token", "task_token", "daemon_token"} {
+	for _, table := range []string{"user", "workspace", "member", "issue_status", "single_owner_account", "personal_access_token", "task_token", "daemon_token", "cloud_agent_connection"} {
 		name := pgx.Identifier{table}.Sanitize()
 		if _, err := testPool.Exec(t.Context(), "CREATE TABLE "+quoted+"."+name+" (LIKE "+name+" INCLUDING ALL)"); err != nil {
 			t.Fatal(err)

@@ -20,13 +20,13 @@ describe("paths.workspace() shape", () => {
       ["agents", "agents"],
       ["newAgent", "agents/new"],
       ["newAgentManual", "agents/new/manual"],
-      ["newAgentAi", "agents/new/ai"],
       ["chat", "chat"],
       ["squads", "squads"],
       ["inbox", "inbox"],
       ["myIssues", "my-issues"],
       ["runtimes", "runtimes"],
       ["skills", "skills"],
+      ["apps", "apps"],
       ["settings", "settings"],
       // Fork routes. They live in the same WORKSPACE_ROUTE_SEGMENTS set, so
       // they need the same drift guard as the upstream ones.

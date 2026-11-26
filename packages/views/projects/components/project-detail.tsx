@@ -30,7 +30,7 @@ import { useActorName } from "@multica/core/workspace/hooks";
 import { pinAgentByName } from "@multica/core/agents";
 import { useConfigStore } from "@multica/core/config";
 import { PROJECT_STATUS_ORDER, PROJECT_STATUS_CONFIG, PROJECT_PRIORITY_ORDER } from "@multica/core/projects/config";
-import { getProjectIssueMetrics } from "./project-issue-metrics";
+import { getProjectProgress } from "./project-issue-metrics";
 import { ActorAvatar } from "../../common/actor-avatar";
 import { ActionShortcutKeycaps } from "../../common/shortcut-keycaps";
 import { AppLink, currentPath, useNavigation } from "../../navigation";
@@ -41,7 +41,6 @@ import { CollabPathProperty } from "./collab-path";
 import { ProjectStartDatePicker } from "./project-start-date-picker";
 import { ProjectDueDatePicker } from "./project-due-date-picker";
 import { ProjectWorkflowControl } from "../../workflows/project-workflow-row";
-import { ProjectWorkflowMenuHost } from "../../workflows/project-workflow-menu";
 import { IssueSurface } from "../../issues/surface/issue-surface";
 import { PlanTree } from "../../plan-tree/plan-tree";
 import { planNodeKind } from "../../plan-tree/plan-rows";
@@ -154,7 +153,7 @@ function ProjectWorkflowPropRow({ project }: { project: Project }) {
   const { t } = useT("issues");
   return (
     <PropRow label={t(($) => $.workflows.project.label)}>
-      <ProjectWorkflowControl project={project} />
+      <ProjectWorkflowControl project={project} onOpen={() => undefined} />
     </PropRow>
   );
 }
@@ -522,7 +521,11 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
     );
   }
 
-  const issueMetrics = getProjectIssueMetrics(project);
+  const progress = getProjectProgress(project);
+  const issueMetrics = {
+    totalCount: progress.scope,
+    completedCount: progress.completed,
+  };
   const statusCfg = PROJECT_STATUS_CONFIG[project.status];
 
   const sidebarContent = (
@@ -895,8 +898,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             }
             createDefaults={createDefaults}
             renderHeader={({ controller }) => (
-              <ProjectWorkflowMenuHost project={project}>
-                {(workflowSubmenu) => (
+              <>
                   <IssueViewHeader
                     controller={controller}
                     base={{ kind: "project", project }}
@@ -926,12 +928,6 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                             <Blocks className="h-3.5 w-3.5" />
                             {t(($) => $.module.manage_title)}
                           </DropdownMenuItem>
-                        )}
-                        {workflowSubmenu && (
-                          <>
-                            <DropdownMenuSeparator />
-                            {workflowSubmenu}
-                          </>
                         )}
                         {canDelete && (
                           <>
@@ -1101,8 +1097,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                       </>
                     }
                   />
-                )}
-              </ProjectWorkflowMenuHost>
+              </>
             )}
           />
           </div>

@@ -27,7 +27,7 @@ export interface IssueSurfaceActions {
     updates: Partial<UpdateIssueRequest>,
     options?: IssueSurfaceMutationOptions,
   ) => void;
-  /** Resolves with how many issues the server wrote; it skips the ones its per-issue guards refuse. */
+  /** Resolves with the server's per-issue results; it skips the ones its per-issue guards refuse. */
   batchUpdate: (
     issueIds: string[],
     updates: Partial<UpdateIssueRequest>,

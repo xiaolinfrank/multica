@@ -19,12 +19,15 @@ import { useT } from "../../i18n";
 import { PanelBody, PanelHeader, PanelLink, PanelList, PanelSection, isPathWithin } from "../panel-nav";
 import { PinnedSection, usePanelPins } from "./pinned-section";
 import { useKeptActiveItem } from "./sidebar-tree";
-import { ProjectsSection, useIssueIdInTree } from "./work-tree";
-import { ViewsSection } from "./views-section";
+import { ProjectsSection, useIssueInTree } from "./work-tree";
+import { ViewsSection, sidebarViewItemSource } from "./views-section";
+import { useIssueViewActions } from "../../issue-views/use-view-actions";
 
 const EMPTY_PROJECTS: Project[] = [];
 /** The Projects section's key in the kept-rows store, apart from every sidebar source. */
 const PROJECTS_LIST = "projects";
+/** Pinned rows' place in the clicked-issue record, apart from every sidebar source. */
+const PINS_LIST = "pins";
 
 /**
  * The `{id}` of a `{base}/{id}` route — for `/issues/{id}`, a UUID or an
@@ -63,6 +66,7 @@ export function KeptRowsRelease() {
 
 export function WorkPanel() {
   const { t } = useT("layout");
+  const viewActions = useIssueViewActions();
   const p = useWorkspacePaths();
   const { pathname } = useNavigation();
   const wsId = useCurrentWorkspace()?.id;
@@ -79,28 +83,33 @@ export function WorkPanel() {
     enabled: false,
   });
   // A tree row takes the highlight from "All issues" while it lists the issue.
-  const treeIssueId = useIssueIdInTree(wsId ?? "", issueSegment);
+  const inTree = useIssueInTree(wsId ?? "", issueSegment);
   // The tree and a UUID route name the issue before the page has loaded it;
   // waiting for the load would light "All issues" first.
   const currentIssueId = issueSegment
-    ? (currentIssue?.id ?? treeIssueId ?? (isIssueUuid(issueSegment) ? issueSegment : null))
+    ? (currentIssue?.id ?? inTree.issueId ?? (isIssueUuid(issueSegment) ? issueSegment : null))
     : null;
-  // An issue can sit in Pinned and in the tree at once. The row that was
-  // clicked keeps the highlight; arriving any other way (search, a link, a
-  // shortcut) lights the pin.
-  const [clickedIssue, setClickedIssue] = useState<{ segment: string; fromPins: boolean } | null>(null);
-  const treeClaimsIssue =
-    !!clickedIssue &&
-    !clickedIssue.fromPins &&
+  // An issue can sit in Pinned and in several lists at once, but lights in
+  // one place: the list it was clicked in. Arriving any other way (search, a
+  // link, a shortcut) lights the pin, else the first list that shows it.
+  const [clickedIssue, setClickedIssue] = useState<{ segment: string; list: string | null } | null>(null);
+  const clickedList =
+    clickedIssue &&
     !!currentIssueId &&
-    (clickedIssue.segment === currentIssueId || clickedIssue.segment === currentIssue?.identifier);
+    (clickedIssue.segment === currentIssueId || clickedIssue.segment === currentIssue?.identifier)
+      ? clickedIssue.list
+      : undefined;
+  const treeClaimsIssue = clickedList !== undefined && clickedList !== PINS_LIST;
   const pins = usePanelPins(wsId, userId, pathname, treeClaimsIssue ? null : currentIssueId);
   const rememberClickedIssue = (event: React.MouseEvent) => {
     const link = (event.target as HTMLElement).closest("a[href]");
     if (!link) return;
     const path = new URL(link.getAttribute("href") ?? "", window.location.href).pathname;
-    const segment = routeSegment(path, p.issues());
-    setClickedIssue(segment ? { segment, fromPins: !!link.closest("[data-pinned-section]") } : null);
+    const list = link.closest("[data-pinned-section]")
+      ? PINS_LIST
+      : (link.closest("[data-sidebar-list]")?.getAttribute("data-sidebar-list") ?? null);
+    const segment = link.getAttribute("data-issue-id") || routeSegment(path, p.issues());
+    setClickedIssue(segment ? { segment, list } : null);
   };
   // A lit pin already marks the issue; opening its project would only push
   // the rest of the panel down.
@@ -123,8 +132,20 @@ export function WorkPanel() {
     const revealed = projects.find((project) => project.id === revealProjectId);
     return revealed && !keptProjects.includes(revealed) ? [...keptProjects, revealed] : [...keptProjects];
   }, [projects, keptProjects, revealProjectId]);
-  const issueLitInTree = treeIssueId !== null;
   const plainRowsLit = !pins.isActivePinnedRoute;
+  const listOrder = viewActions.sidebar.items.map(sidebarViewItemSource);
+  const litSource =
+    !plainRowsLit || !currentIssueId
+      ? null
+      : clickedList && inTree.sources.includes(clickedList)
+        ? clickedList
+        : (listOrder.find((source) => inTree.sources.includes(source)) ?? inTree.sources[0] ?? null);
+  const issueLitInTree = litSource !== null;
+  const issueInAllIssues =
+    plainRowsLit &&
+    !!currentIssueId &&
+    !currentIssue?.project_id &&
+    litSource === null;
 
   return (
     <>
@@ -164,7 +185,10 @@ export function WorkPanel() {
               pathname={pathname}
               plainRowsLit={plainRowsLit}
               issueLitInTree={issueLitInTree}
-              activeIssueId={plainRowsLit ? currentIssueId : null}
+              issueInAllIssues={issueInAllIssues}
+              activeIssueId={currentIssueId}
+              litSource={litSource}
+              actions={viewActions}
             />
           )}
 

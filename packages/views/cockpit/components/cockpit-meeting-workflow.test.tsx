@@ -22,7 +22,7 @@ vi.mock("@multica/core/api", async (importOriginal) => ({
     getIssue: vi.fn(), searchIssues: vi.fn(), listCockpitMeetingActions: vi.fn(), listIssueStatuses: vi.fn(), searchCockpitAssignees: vi.fn(), searchCockpitScopeMembers: vi.fn(), getCockpitContext: vi.fn(), searchCockpitScopes: vi.fn(),
   },
 }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}`, projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}`, settings: () => "/ws/settings" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id, useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}`, projects: () => "/ws/projects", projectDetail: (id: string) => `/ws/projects/${id}`, settings: () => "/ws/settings" }) }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ searchParams: new URLSearchParams() }), AppLink: ({ href, target, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} target={target}>{children}</a> }));
 vi.mock("../../issues/components/status-icon", () => ({ StatusIcon: () => <span /> }));
 vi.mock("@multica/core/workspace/hooks", () => ({ useActorName: () => ({ getActorName: (_type: string, id: string) => id === "reviewer-1" ? "Human Reviewer" : "Minutes Writer" }) }));

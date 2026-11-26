@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cockpitMeetingPreparationPath, cockpitMeetingDirectoryPath, cockpitLifecycleCommandOptions, cockpitLifecycleCommandsOptions, cockpitMeetingAgendaDraftKey, useCockpitMeetingAgendaDraftStore, setCockpitMeetingFormDraft, clearCockpitMeetingFormDraft, type CockpitMeetingFormDraft } from "@multica/core/cockpit";
 import type { CockpitMeetingLifecycleHeader, CockpitOccurrenceTransition, CockpitOccurrenceView, CockpitLifecycleCommandDetail } from "@multica/core/types";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button, buttonVariants } from "@multica/ui/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@multica/ui/components/ui/dialog";
 import { Input } from "@multica/ui/components/ui/input";
@@ -169,7 +169,7 @@ function MeetingCommandResult({ detail }: { detail: CockpitLifecycleCommandDetai
   const locale = useLocale();
   const { t } = useT("cockpit"); const paths = useWorkspacePaths(); const navigation = useNavigation(); const occurrenceLabel = useMeetingOccurrenceLabel();
   const receipt = detail.receipt;
-  const targetHref = receipt.issue_id ? paths.issueDetail(receipt.issue_id) : null;
+  const targetHref = receipt.issue_id ? paths.issueDetail(issueRouteRef({ id: receipt.issue_id, identifier: null })) : null;
   const targetLabel = receipt.issue_id;
   return <div className="space-y-3 text-caption">
     {receipt.occurrence && <div className="space-y-1"><p>{occurrenceLabel(receipt.occurrence.state)}</p>{receipt.occurrence.ended_at ? <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_ended, { time: displayTime(receipt.occurrence.ended_at, locale) })}</p> : receipt.occurrence.started_confirmed_at && <p className="text-muted-foreground">{t(($) => $.meeting_lifecycle.confirmed_started, { time: displayTime(receipt.occurrence.started_confirmed_at, locale) })}</p>}</div>}

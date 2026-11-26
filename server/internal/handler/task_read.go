@@ -44,7 +44,21 @@ func (h *Handler) loadTaskForRead(w http.ResponseWriter, r *http.Request) (db.Ag
 			return fail(err)
 		}
 		if uuidToString(session.CreatorID) != userID {
-			writeError(w, http.StatusForbidden, "not your task")
+			// A chat transcript belongs to its creator alone; to anyone else it
+			// does not exist rather than being merely forbidden.
+			writeError(w, http.StatusNotFound, "task not found")
+			return db.AgentTaskQueue{}, "", false
+		}
+	} else if task.DocID.Valid {
+		// A doc discussion run has no project to gate it; its transcript follows
+		// the agent's own visibility and reads as missing otherwise (MUL-9933).
+		agent, err := h.Queries.GetAgentInWorkspace(r.Context(), db.GetAgentInWorkspaceParams{ID: task.AgentID, WorkspaceID: workspace})
+		if err != nil {
+			return fail(err)
+		}
+		actorType, actorID := h.resolveActor(r, userID, workspaceID)
+		if !h.canAccessPrivateAgent(r.Context(), agent, actorType, actorID, workspaceID) {
+			writeError(w, http.StatusNotFound, "task not found")
 			return db.AgentTaskQueue{}, "", false
 		}
 	} else {
@@ -69,6 +83,11 @@ func (h *Handler) loadTaskForRead(w http.ResponseWriter, r *http.Request) (db.Ag
 				return db.AgentTaskQueue{}, "", false
 			}
 		}
+	}
+	// A run whose issue sits in a private project the caller cannot see does not
+	// exist for them (MUL-8472).
+	if !h.requireTaskVisible(w, r, workspaceID, task, http.StatusNotFound, "task not found") {
+		return db.AgentTaskQueue{}, "", false
 	}
 	return task, workspaceID, true
 }

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { FolderTree } from "lucide-react";
-import { CalendarClock, CalendarDays, ChevronRight, FolderOpen, GitBranch, Maximize2, Minimize2, MoreHorizontal, Pencil, Search, X as XIcon, UserMinus } from "@multica/ui/icons";
+import { CalendarClock, CalendarDays, ChevronRight, FolderOpen, GitBranch, Maximize2, Minimize2, MoreHorizontal, Pencil, Search, X as XIcon, User, UserMinus } from "@multica/ui/icons";
 
 /**
  * GitHub mark — lucide-react v1 dropped brand icons, so we inline the
@@ -37,10 +37,11 @@ import { memberListOptions, agentListOptions } from "@multica/core/workspace/que
 import { useActorName } from "@multica/core/workspace/hooks";
 import { pinAgentByName } from "@multica/core/agents";
 import { useConfigStore } from "@multica/core/config";
-import type { ProjectStatus, ProjectPriority } from "@multica/core/types";
+import type { ProjectStatus, ProjectPriority, ProjectVisibility } from "@multica/core/types";
 import { cn } from "@multica/ui/lib/utils";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@multica/ui/components/ui/dialog";
+import { Collapsible, CollapsibleContent } from "@multica/ui/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,6 +65,8 @@ import {
 } from "../projects/components/labels";
 import { ProjectStartDatePicker } from "../projects/components/project-start-date-picker";
 import { ProjectDueDatePicker } from "../projects/components/project-due-date-picker";
+import { ProjectAccessDraftPicker } from "../projects/components/project-access";
+import { usePaidFeatureErrorMessage } from "../billing";
 import { PillButton } from "../common/pill-button";
 import {
   CollabPathInput,
@@ -87,7 +90,8 @@ import {
 } from "@multica/core/runtimes";
 import type { LocalDirectoryExecutionMode } from "@multica/core/types";
 import { normalizeCollabPath, type CollabPathError } from "@multica/core/projects/collab-path";
-import { LocalDirectoryModeOptions } from "../projects/components/local-directory-mode-dialog";
+import { LocalDirectoryModeOptions } from "../projects/components/local-directory-mode-options";
+import { getProjectFoldersExtension, useProjectFolders } from "../extensions";
 
 /**
  * Builds the resource_ref for a local directory attached during project
@@ -148,7 +152,17 @@ function RepoUrlText({
   );
 }
 
-export function CreateProjectModal({ onClose }: { onClose: () => void }) {
+export function CreateProjectModal({
+  open = true,
+  onClose,
+  onOpenChangeComplete,
+  data,
+}: {
+  open?: boolean;
+  onClose: () => void;
+  onOpenChangeComplete?: (open: boolean) => void;
+  data?: Record<string, unknown> | null;
+}) {
   const { t } = useT("modals");
   // The execution-mode copy lives in the projects namespace alongside the
   // resource panel's, so both entry points describe the choice identically.
@@ -181,6 +195,8 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   const [collabPath, setCollabPath] = useState<string>(draft.collabPath ?? "");
   const [collabPathError, setCollabPathError] = useState<CollabPathError | null>(null);
   const [collabPathOpen, setCollabPathOpen] = useState(false);
+  const [visibility, setVisibility] = useState<ProjectVisibility>(draft.visibility ?? "workspace");
+  const [memberIds, setMemberIds] = useState<string[]>(draft.memberIds ?? []);
   // Dates are collapsed into the ⋯ overflow by default (progressive
   // disclosure, mirroring create-issue); these flip a pill inline + open.
   const [startDatePickerOpen, setStartDatePickerOpen] = useState(false);
@@ -325,6 +341,11 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   };
 
   const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const folders = useProjectFolders(wsId);
+  const FolderField = getProjectFoldersExtension()?.CreateProjectField;
+  const [folderId, setFolderId] = useState<string | null>(
+    typeof data?.folderId === "string" ? data.folderId : null,
+  );
 
   // Sync field changes to draft store
   const updateTitle = (v: string) => { setTitle(v); setDraft({ title: v }); };
@@ -345,6 +366,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
 
   const [leadOpen, setLeadOpen] = useState(false);
   const [leadFilter, setLeadFilter] = useState("");
+  const moreOptionsRef = useRef<HTMLButtonElement>(null);
 
   const leadQuery = leadFilter.toLowerCase();
   const filteredMembers = members.filter((m) => m.name.toLowerCase().includes(leadQuery) || matchesPinyin(m.name, leadQuery));
@@ -357,8 +379,11 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
 
   const leadLabel =
     leadType && leadId ? getActorName(leadType, leadId) : t(($) => $.create_project.lead);
+  const hasLead = !!(leadType && leadId);
+  const hasSource = sourceMode === "local" ? !!selectedLocalPath : selectedRepos.length > 0;
 
   const createProject = useCreateProject();
+  const paidFeatureError = usePaidFeatureErrorMessage();
 
   // Every selected repo's branch, not just the one in the add field. A branch
   // edited on an already-selected row goes through setRepoRef and used to
@@ -432,16 +457,21 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
         ...(workflowId ? { workflow_id: workflowId } : {}),
         // Server attaches these in the same transaction as the project.
         resources,
+        ...(visibility === "private" ? { visibility, member_ids: memberIds } : {}),
       });
+      if (folderId && folders.canFile) folders.moveProject(project.id, folderId);
       clearDraft();
       onClose();
       toast.success(t(($) => $.create_project.toast_created));
       router.push(wsPaths.projectDetail(project.id));
     } catch (err) {
       toast.error(
-        err instanceof Error && err.message
-          ? err.message
-          : t(($) => $.create_project.toast_failed),
+        paidFeatureError(
+          err,
+          err instanceof Error && err.message
+            ? err.message
+            : t(($) => $.create_project.toast_failed),
+        ),
       );
     } finally {
       setSubmitting(false);
@@ -500,13 +530,17 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => { if (!v) onClose(); }}
+      onOpenChangeComplete={onOpenChangeComplete}
+    >
       <DialogContent
         showCloseButton={false}
         className={cn(
           "p-0 gap-0 flex flex-col overflow-hidden",
           "!top-1/2 !left-1/2 !-translate-x-1/2",
-          "!transition-all !duration-300 !ease-out",
+          "[transition-property:width,max-width,height] [transition-duration:200ms] [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] motion-reduce:[transition-duration:0ms]",
           isExpanded
             ? "!max-w-4xl !w-full !h-5/6 !-translate-y-1/2"
             : "!max-w-2xl !w-full !h-96 !-translate-y-1/2",
@@ -528,6 +562,11 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                     type="button"
                     onClick={() => setIsExpanded(!isExpanded)}
                     className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
+                    aria-label={
+                      isExpanded
+                        ? t(($) => $.common.collapse_tooltip)
+                        : t(($) => $.common.expand_tooltip)
+                    }
                   >
                     {isExpanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
                   </button>
@@ -546,6 +585,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                     type="button"
                     onClick={onClose}
                     className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
+                    aria-label={t(($) => $.common.close)}
                   >
                     <XIcon className="size-4" />
                   </button>
@@ -603,12 +643,8 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
           </p>
         </div>
 
-        {/* Property toolbar — mirrors the create-issue footer: a wrapping pill
-            row whose low-frequency fields (start/due date) collapse into a ⋯
-            overflow, with the primary action in a separate bar below.
-            Repos lives here alongside the property pills for now. Once we
-            support more resource types (Linear / Notion / Figma / Slack), pull
-            them out into a dedicated Resources strip above this footer. */}
+        {/* Optional properties appear inline once selected; their pickers
+            open from ⋯ with the inline pill as the anchor. */}
         <div className="flex items-center gap-1.5 px-4 py-2 shrink-0 flex-wrap">
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -649,6 +685,10 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
           </DropdownMenu>
 
           <WorkflowPill value={workflowId} onChange={setWorkflowId} />
+          {FolderField && <FolderField value={folderId} onChange={setFolderId} />}
+          {<ProjectAccessDraftPicker visibility={visibility} memberIds={memberIds} members={members}
+            leadId={leadType === "member" ? leadId : undefined}
+            onChange={(value, ids) => { setVisibility(value); setMemberIds(ids); setDraft({ visibility: value, memberIds: ids }); }} />}
 
           <Popover
             open={leadOpen}
@@ -657,21 +697,26 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
               if (!v) setLeadFilter("");
             }}
           >
-            <PopoverTrigger
-              render={
-                <PillButton>
-                  {leadType && leadId ? (
-                    <>
-                      <ActorAvatar actorType={leadType} actorId={leadId} size="sm" showStatusDot />
-                      <span className="truncate">{leadLabel}</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">{t(($) => $.create_project.lead)}</span>
-                  )}
-                </PillButton>
-              }
-            />
-            <PopoverContent align="start" className="w-52 p-0">
+            {(hasLead || leadOpen) && (
+              <PopoverTrigger
+                render={
+                  <PillButton>
+                    {leadType && leadId ? (
+                      <>
+                        <ActorAvatar actorType={leadType} actorId={leadId} size="sm" showStatusDot />
+                        <span className="truncate">{leadLabel}</span>
+                      </>
+                    ) : (
+                      <>
+                        <User className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="text-muted-foreground">{t(($) => $.create_project.lead)}</span>
+                      </>
+                    )}
+                  </PillButton>
+                }
+              />
+            )}
+            <PopoverContent align="start" className="w-52 p-0" finalFocus={hasLead ? undefined : moreOptionsRef}>
               <div className="px-2 py-1.5 border-b">
                 <input
                   type="text"
@@ -807,32 +852,34 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
               if (!v) setRepoSearch("");
             }}
           >
-            <PopoverTrigger
-              render={
-                <PillButton>
-                  {sourceMode === "local" ? (
-                    <>
-                      <FolderOpen className="size-3" />
-                      <span className="max-w-[12rem] truncate">
-                        {selectedLocalPath
-                          ? selectedLocalLabel ?? selectedLocalPath
-                          : t(($) => $.create_project.source_pill_local)}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <GithubIcon className="size-3" />
-                      <span>
-                        {selectedRepos.length === 0
-                          ? t(($) => $.create_project.repos_pill)
-                          : t(($) => $.create_project.repos_pill_count, { count: selectedRepos.length })}
-                      </span>
-                    </>
-                  )}
-                </PillButton>
-              }
-            />
-            <PopoverContent side="top" align="start" className="w-72 p-2 space-y-2">
+            {(hasSource || repoPopoverOpen) && (
+              <PopoverTrigger
+                render={
+                  <PillButton>
+                    {sourceMode === "local" ? (
+                      <>
+                        <FolderOpen className="size-3" />
+                        <span className="max-w-[12rem] truncate">
+                          {selectedLocalPath
+                            ? selectedLocalLabel ?? selectedLocalPath
+                            : t(($) => $.create_project.source_pill_local)}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <GithubIcon className="size-3" />
+                        <span>
+                          {selectedRepos.length === 0
+                            ? t(($) => $.create_project.repos_pill)
+                            : t(($) => $.create_project.repos_pill_count, { count: selectedRepos.length })}
+                        </span>
+                      </>
+                    )}
+                  </PillButton>
+                }
+              />
+            )}
+            <PopoverContent side="top" align="start" className="w-72 p-2 space-y-2" finalFocus={hasSource ? undefined : moreOptionsRef}>
               {/* Source mode is binary — repo OR local directory, never both.
                   Local option is desktop-only because a local_directory
                   resource has to be pinned to a daemon_id, which doesn't
@@ -949,13 +996,15 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                         read as one field, and the default branch is the right
                         answer often enough that this must not look like a
                         second required step. */}
-                    {customRepoUrl.trim() && (
-                      <GithubRefField
-                        id="create-project-repo-ref"
-                        value={customRepoRef}
-                        onChange={setCustomRepoRef}
-                      />
-                    )}
+                    <Collapsible open={Boolean(customRepoUrl.trim())}>
+                      <CollapsibleContent>
+                        <GithubRefField
+                          id="create-project-repo-ref"
+                          value={customRepoRef}
+                          onChange={setCustomRepoRef}
+                        />
+                      </CollapsibleContent>
+                    </Collapsible>
                   </form>
                   {selectedRepos.length > 0 && (
                     <div className="space-y-1 pt-1 border-t">
@@ -998,6 +1047,9 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                                 if (editingRefFor === url) setEditingRefFor(null);
                               }}
                               className="shrink-0 text-muted-foreground hover:text-foreground"
+                              aria-label={t(($) => $.create_project.repos_remove_aria, {
+                                repo: githubShortLabel(url),
+                              })}
                             >
                               <XIcon className="size-3" />
                             </button>
@@ -1070,7 +1122,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
                                 size="sm"
                                 variant="ghost"
                                 // Sized to its (short) label so the wider
-                                // "Change directory…" beside it fits whole.
+                                // "Change folder..." beside it fits whole.
                                 className="h-6 shrink-0 text-caption"
                               >
                                 {effectiveLocalMode === "worktree" ? (
@@ -1144,18 +1196,30 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
           </Popover>
 
           {/* Overflow — always the last child so it stays at the end of the
-              wrap flow. Only rendered while a date is still collapsible; when
-              both are set there is nothing left to add. */}
-          {(!startDate || !dueDate || !collabPath) && (
+              wrap flow. Only rendered while a property is still collapsible;
+              when all are set there is nothing left to add. */}
+          {(!hasLead || !hasSource || !startDate || !dueDate || !collabPath) && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <PillButton aria-label={t(($) => $.create_project.more_options_aria)}>
+                  <PillButton ref={moreOptionsRef} aria-label={t(($) => $.create_project.more_options_aria)}>
                     <MoreHorizontal className="size-3.5" />
                   </PillButton>
                 }
               />
               <DropdownMenuContent align="start" className="w-auto">
+                {!hasLead && (
+                  <DropdownMenuItem onClick={() => setLeadOpen(true)}>
+                    <User className="size-3.5" />
+                    {t(($) => $.create_project.lead)}
+                  </DropdownMenuItem>
+                )}
+                {!hasSource && (
+                  <DropdownMenuItem onClick={() => setRepoPopoverOpen(true)}>
+                    {sourceMode === "local" ? <FolderOpen className="size-3.5" /> : <GithubIcon className="size-3.5" />}
+                    {sourceMode === "local" ? t(($) => $.create_project.source_pill_local) : t(($) => $.create_project.repos_pill)}
+                  </DropdownMenuItem>
+                )}
                 {!dueDate && (
                   <DropdownMenuItem onClick={() => setDueDatePickerOpen(true)}>
                     <CalendarDays className="h-3.5 w-3.5" />

@@ -5,7 +5,7 @@ import { CockpitMeetingSchema } from "@multica/core/api/schemas";
 import type { CockpitMeetingCard } from "@multica/core/types";
 import { CockpitMeetingCards } from "./cockpit-meeting-cards";
 import enCockpit from "../../locales/en/cockpit.json";
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
 vi.mock("../../navigation", () => ({ useNavigation: () => ({ searchParams: new URLSearchParams("from=2026-10-01&to=2026-10-31") }), AppLink: ({ children, newTabTitle: _newTabTitle, ...props }: React.ComponentProps<"a"> & { newTabTitle?: string }) => <a {...props}>{children}</a> }));
 const meeting = (patch: Partial<CockpitMeetingCard>): CockpitMeetingCard => ({ ...CockpitMeetingSchema.parse({ id: "meeting-1", title: "Delivery review", status: "Ended", meet_date: "2020-01-01" }), issue_count: 0, node_count: 0, workflow_enabled: false, workflow_stage: "not_enabled", display_excerpt: "", ...patch });
 it("separates a custom ended note from authoritative unconfirmed occurrence and links directly to the confirmation workbench", () => {

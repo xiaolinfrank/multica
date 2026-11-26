@@ -18,7 +18,7 @@ vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof im
   getCockpitMinutesVersion: vi.fn(), listCockpitMeetingActions: vi.fn(), getCockpitMeetingAction: vi.fn(), resolveCockpitMeetingAction: vi.fn(), updateCockpitMeetingAction: vi.fn(), createCockpitMeetingAction: vi.fn(),
   searchIssues: vi.fn(), getIssue: vi.fn(), getCockpitPrimaryNode: vi.fn(), listIssueStatuses: vi.fn(), searchCockpitAssignees: vi.fn(),
 } }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("./cockpit-assignee-picker", () => ({ CockpitAssigneePicker: () => <button type="button">Assignee picker</button> }));
 const nodePicker = vi.hoisted(() => ({ options: [{ node_id: "node-1", code: "01.01.01", label: "01.01.01 Large L3", project_id: "project-1", module_id: "module-1" }], isPending: false, isFetching: false, isError: false, refetch: vi.fn() }));
 vi.mock("./cockpit-node-issue-picker", () => {

@@ -24,7 +24,9 @@
     "resources": "Resources",
     "lead": "Lead",
     "no_resources": "No resources attached.",
-    "add_resource": "Add resource"
+    "add_resource": "Add resource",
+    "add_description": "Add a description",
+    "progress": "Progress"
   },
   "form": {
     "icon_emoji": "Icon (emoji)",
@@ -72,5 +74,9 @@
   "runs": {
     "working": "Working",
     "count": "Runs · {{count}}"
-  }
+  },
+  "collab_space": "Collaboration space",
+  "collab_space_copied": "Collaboration space path copied",
+  "collab_space_copy_aria": "Collaboration space, {path}. Copy path",
+  "collab_space_path_placeholder": "/Volumes/share/folder"
 }

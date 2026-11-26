@@ -91,7 +91,7 @@ describe("TelegramBindPage", () => {
     renderPage("tok123");
 
     await waitFor(() => expect(mockRedeemToken).toHaveBeenCalledWith("tok123"));
-    await waitFor(() => expect(screen.getByText(/you're linked/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/account linked/i)).toBeInTheDocument());
   });
 
   it("redeems a one-time token exactly once under StrictMode", async () => {
@@ -111,7 +111,7 @@ describe("TelegramBindPage", () => {
       { wrapper: I18nWrapper },
     );
 
-    await waitFor(() => expect(screen.getByText(/you're linked/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/account linked/i)).toBeInTheDocument());
     expect(mockRedeemToken).toHaveBeenCalledTimes(1);
   });
 

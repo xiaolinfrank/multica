@@ -118,7 +118,9 @@ func TestIssueBatchReceiptExpectedRevisionAndAtomicDelete(t *testing.T) {
 		t.Fatalf("delete omitted locked revision: %+v", reply)
 	}
 	f.call(t, f.h.BatchDeleteIssues, http.MethodPost, "/batch-delete", map[string]any{"issue_ids": []string{a, b}, "expected_revisions": map[string]int64{a: revision}}).Want(200).JSON(&reply)
-	if reply.Deleted != 2 || len(reply.Results) != 2 || reply.Results[0].Outcome != "applied" || reply.Results[1].Outcome != "applied" || reply.TransactionOutcome != "committed" {
+	// A committed batch reports each target with the per-issue outcome the batch
+	// API documents, and the receipt confirms the transaction as committed.
+	if reply.Deleted != 2 || len(reply.Results) != 2 || reply.Results[0].Outcome != "deleted" || reply.Results[1].Outcome != "deleted" || reply.TransactionOutcome != "committed" {
 		t.Fatalf("committed deletion not confirmed: %+v", reply)
 	}
 	if n := dbfx.Count(t, "SELECT count(*) FROM issue WHERE id IN ($1,$2)", a, b); n != 0 {

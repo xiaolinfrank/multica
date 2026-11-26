@@ -2,7 +2,7 @@
 
 import type { ContainerOperationBasis, IssueOperationBasis, IssueOperationField, IssueOperationName, IssueOperationTarget } from "@multica/core/types";
 import { cockpitArtifactPath, cockpitObjectPath, cockpitIssueInputManifestPath, EMPTY_COCKPIT_SCOPE } from "@multica/core/cockpit";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { AppLink } from "../../navigation";
 import { useT } from "../../i18n";
@@ -46,7 +46,7 @@ function useReasonLabel() {
 function OperationTargets({ targets }: { targets: IssueOperationTarget[] }) {
   const paths = useWorkspacePaths(); const { t } = useT("issues");
   return <ul className="space-y-1">{targets.map((target, index) => {
-    const href = target.kind === "issue" && target.issue_id ? target.view === "inputs" && target.version_id ? cockpitIssueInputManifestPath(paths.issueDetail(target.issue_id), new URLSearchParams(), target.version_id) : paths.issueDetail(target.issue_id)
+    const href = target.kind === "issue" && target.issue_id ? target.view === "inputs" && target.version_id ? cockpitIssueInputManifestPath(paths.issueDetail(issueRouteRef({ id: target.issue_id, identifier: null })), new URLSearchParams(), target.version_id) : paths.issueDetail(issueRouteRef({ id: target.issue_id, identifier: null }))
       : target.kind === "artifact" && target.artifact_id ? cockpitArtifactPath(paths.cockpit(), target.artifact_id, EMPTY_COCKPIT_SCOPE)
       : target.kind === "artifact_version" && target.artifact_id && target.version_id ? cockpitArtifactPath(paths.cockpit(), target.artifact_id, EMPTY_COCKPIT_SCOPE, target.version_id)
         : target.kind === "acceptance_request" && target.node_id && target.request_id ? cockpitObjectPath(paths.cockpit(), { kind: "node", id: target.node_id, view: "acceptance", requestId: target.request_id })

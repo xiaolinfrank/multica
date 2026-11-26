@@ -1,7 +1,7 @@
 "use client";
 
 import type { BatchScopeParentConflict } from "@multica/core/issues/batch";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import {
   Dialog,
@@ -47,7 +47,7 @@ export function IssueBatchScopeConflictDialog({
               className="space-y-1 border-b pb-2.5 last:border-0 last:pb-0"
             >
               <AppLink
-                href={paths.issueDetail(issue.id)}
+                href={paths.issueDetail(issueRouteRef({ id: issue.id, identifier: null }))}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block line-clamp-2 break-words text-caption font-medium text-primary underline underline-offset-4"
@@ -60,7 +60,7 @@ export function IssueBatchScopeConflictDialog({
               <p className="text-caption text-muted-foreground">
                 {t(($) => $.batch.scope_conflict_parent_label)}{" "}
                 <AppLink
-                  href={paths.issueDetail(parentId)}
+                  href={paths.issueDetail(issueRouteRef({ id: parentId, identifier: null }))}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="break-words text-primary underline underline-offset-4"

@@ -15,7 +15,7 @@ import enCockpit from "../../locales/en/cockpit.json";
 
 const navigation = vi.hoisted(() => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("artifact=artifact-1&version=version-1"), push: vi.fn() }));
 vi.mock("../../navigation", () => ({ useNavigation: () => navigation, AppLink: ({ children, href, newTabTitle: _newTabTitle, ...props }: React.ComponentProps<"a"> & { newTabTitle?: string }) => <a href={href} {...props}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("./cockpit-workflow-issue-link", () => ({ WorkflowIssueLink: ({ issue }: { issue: { title: string } }) => <p>{issue.title}</p> }));
 vi.mock("./cockpit-reviewer-select", () => ({ CockpitReviewerSelect: ({ value, label, onChange, disabled }: { value: string; label: string; onChange: (id: string) => void; disabled: boolean }) => <label>{label}<select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}><option value="" /><option value="reviewer-2">Second reviewer</option></select></label> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {

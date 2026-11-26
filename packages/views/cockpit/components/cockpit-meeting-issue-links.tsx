@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import type { CockpitMeetingIssueLink, Issue } from "@multica/core/types";
 import { cockpitMeetingHasDirectReference, COCKPIT_MEETING_ISSUE_ROLES, CockpitUnconfirmedWriteError, isCockpitMeetingIssueRole } from "@multica/core/cockpit";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
 import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@multica/ui/components/ui/popover";
@@ -146,7 +146,7 @@ export function CockpitMeetingIssueLinks({ wsId, links, onLink, onUnlink, onSave
         {links.map((link) => (
           <li key={link.issue_id} className="space-y-1.5 rounded-md border border-border p-2">
             <div className="flex items-start gap-1.5">
-              <AppLink href={paths.issueDetail(link.issue_identifier || link.issue_id)}
+              <AppLink href={paths.issueDetail(issueRouteRef({ id: link.issue_identifier || link.issue_id, identifier: null }))}
                 newTabTitle={link.issue_title} className="flex min-w-0 flex-1 items-start gap-1.5 text-caption hover:underline">
                 <StatusIcon status={link.issue_status} className="mt-0.5 size-3.5 shrink-0" />
                 <span className="line-clamp-2 min-w-0 break-words" title={link.issue_title}><span className="mr-1.5 font-mono text-muted-foreground">{link.issue_identifier || link.issue_id}</span>{" "}{link.issue_title}</span>

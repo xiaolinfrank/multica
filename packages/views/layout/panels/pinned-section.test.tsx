@@ -72,7 +72,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-query")>()),
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
     if (queryKey[0] === "pins") return { data: state.pins };
-    if (queryKey[0] === "issue") return state.detail;
+    if (queryKey[0] === "issue" || queryKey[0] === "project") return state.detail;
     return { isPending: true, isError: false, data: undefined, error: null };
   },
   // The sidebar context menu reads per-issue operation basis through
@@ -129,9 +129,9 @@ describe("PinnedSection", () => {
       data: { id: "issue-1", identifier: "MUL-123", title: "Keep this pin", status: "todo" },
       error: null,
     };
-    // The issue route rewrites the pin's UUID URL to the identifier form.
     renderWithI18n(<Harness pathname="/acme/issues/MUL-123" currentIssueId="issue-1" />);
     const row = (await screen.findByText("Keep this pin")).closest("a");
+    expect(row).toHaveAttribute("href", "/acme/issues/MUL-123");
     expect(row).toHaveAttribute("aria-current", "page");
     expect(screen.queryByText("MUL-123 Keep this pin")).toBeNull();
     expect(activePinnedRoute).toBe(true);
@@ -161,12 +161,12 @@ describe("PinnedSection", () => {
       error: null,
     };
     renderWithI18n(<Harness pathname="/acme/issues/MUL-6" currentIssueId="issue-6" />);
-    const lastPin = () => document.querySelector('a[href="/acme/issues/issue-6"]');
+    const lastPin = () => document.querySelectorAll("a")[5] ?? null;
 
     expect(lastPin()).toBeNull();
     expect(activePinnedRoute).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show 1 more…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more..." }));
     expect(lastPin()).toHaveAttribute("aria-current", "page");
     expect(activePinnedRoute).toBe(true);
 
@@ -187,9 +187,61 @@ describe("PinnedSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Pinned" }));
     expect(useSidebarTreeStore.getState().pinnedCollapsed).toBe(true);
-    expect(screen.queryByText("Keep this pin")).toBeNull();
     expect(screen.getByRole("button", { name: "Pinned" })).toHaveAttribute("aria-expanded", "false");
     expect(activePinnedRoute).toBe(false);
+    await waitFor(() => expect(screen.queryByText("Keep this pin")).toBeNull());
+  });
+
+  it("shows a pinned project's chosen icon, keeping the folder when it has none", async () => {
+    state.pins = [{ ...pin(1), item_type: "project", item_id: "project-1" }];
+    state.detail = { isPending: false, isError: false, data: { title: "Rocket launch", icon: "🚀" }, error: null };
+    const { unmount } = renderWithI18n(<Harness pathname="/acme/issues" />);
+    const iconSlot = async () => (await screen.findByText("Rocket launch")).closest("a")!.previousElementSibling;
+    expect(await iconSlot()).toHaveTextContent("🚀");
+    expect((await iconSlot())?.matches("svg")).toBe(false);
+    unmount();
+
+    state.detail = { isPending: false, isError: false, data: { title: "Rocket launch", icon: null }, error: null };
+    renderWithI18n(<Harness pathname="/acme/issues" />);
+    expect(await iconSlot()).not.toHaveTextContent("🚀");
+    expect((await iconSlot())?.matches("svg")).toBe(true);
+  });
+
+  it("marks a pinned private project with a lock", async () => {
+    state.pins = [{ ...pin(1), item_type: "project", item_id: "project-1" }];
+    state.detail = { isPending: false, isError: false, data: { title: "Fundraise", icon: null, visibility: "private" }, error: null };
+    const { unmount } = renderWithI18n(<Harness pathname="/acme/issues" />);
+    const lock = await screen.findByRole("img", { name: "Visible to project members only" });
+    expect(lock.closest("a")).toHaveTextContent("Fundraise");
+    unmount();
+
+    state.detail = { isPending: false, isError: false, data: { title: "Fundraise", icon: null, visibility: "workspace" }, error: null };
+    renderWithI18n(<Harness pathname="/acme/issues" />);
+    await screen.findByText("Fundraise");
+    expect(screen.queryByRole("img", { name: "Visible to project members only" })).toBeNull();
+  });
+
+  // dnd-kit stops the release's click at the document without cancelling
+  // it. Where React listens below the document (Desktop), it never sees that
+  // click, so the row must not wait for it before opening on the next one.
+  it("does not open the pin released at the end of a drag, and opens it on the next click", async () => {
+    state.detail = {
+      isPending: false,
+      isError: false,
+      data: { identifier: "MUL-123", title: "Keep this pin", status: "todo" },
+      error: null,
+    };
+    renderWithI18n(<Harness pathname="/acme/issues" />);
+    const row = (await screen.findByText("Keep this pin")).closest("a")!;
+    const pointer = { isPrimary: true, button: 0, clientX: 30, clientY: 100 };
+    fireEvent.pointerDown(row, pointer);
+    fireEvent.pointerMove(document, { ...pointer, clientY: 110 });
+    fireEvent.pointerUp(document, { ...pointer, clientY: 110 });
+
+    expect(fireEvent.click(row)).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(fireEvent.click(row)).toBe(true);
   });
 
   it("renders nothing without pins", () => {

@@ -126,6 +126,7 @@ export function ProjectPropertiesSection({
  * copy affordance.
  */
 function CollabPathRow({ path }: { path: string }) {
+  const { t } = useT("projects");
   const { colorScheme } = useColorScheme();
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -158,11 +159,11 @@ function CollabPathRow({ path }: { path: string }) {
       accessibilityRole="button"
       accessibilityLabel={
         copied
-          ? "Collaboration space path copied"
-          : `Collaboration space, ${path}. Copy path`
+          ? t("collab_space_copied")
+          : t("collab_space_copy_aria", { path })
       }
     >
-      <Text className="text-sm text-muted-foreground">Collaboration space</Text>
+      <Text className="text-sm text-muted-foreground">{t("collab_space")}</Text>
       <View className="flex-row items-start gap-2">
         <Ionicons
           name="folder-outline"

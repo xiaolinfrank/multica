@@ -6,7 +6,7 @@ import { api, ApiError } from "@multica/core/api";
 import { CockpitPreparationRun } from "./cockpit-preparation-run";
 import enCockpit from "../../locales/en/cockpit.json";
 
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, href, ...props }: React.ComponentProps<"a">) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getTask: vi.fn() } }));
 beforeEach(() => vi.clearAllMocks());

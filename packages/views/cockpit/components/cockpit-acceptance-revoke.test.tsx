@@ -22,7 +22,7 @@ const enCockpitRevoke = { ...enCockpit, acceptance: { ...enCockpit.acceptance,
 
 const navigation = vi.hoisted(() => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams("node=node-1&node_view=acceptance"), push: vi.fn() }));
 vi.mock("../../navigation", () => ({ useNavigation: () => navigation, AppLink: ({ href, children, ...props }: React.ComponentProps<"a">) => <a href={href} {...props}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("./cockpit-workflow-issue-link", () => ({ WorkflowIssueLink: ({ issue }: { issue: { title: string } }) => <p>{issue.title}</p> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: {
   getCockpitAcceptance: vi.fn(), getCockpitAcceptanceCriteria: vi.fn(), getCockpitAcceptanceRequest: vi.fn(), revokeCockpitAcceptanceApproval: vi.fn(),

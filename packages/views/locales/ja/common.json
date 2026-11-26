@@ -1,8 +1,9 @@
 {
-  "agent_process": {
-    "steps_other": "ステップ {{count}}個",
-    "tool_result_named": "{{tool}} の結果: ",
-    "tool_result_unnamed": "結果: "
+  "daemon_setup": {
+    "loading": "接続設定を読み込み中...",
+    "error": "接続設定を読み込めませんでした。ネットワーク接続を確認してください。自動的に再試行します。",
+    "unknown": "サーバーの接続設定を確認できません。管理者にサーバーの更新を依頼してください。",
+    "incomplete": "接続設定が不完全です。管理者にサーバーの公開 URL の設定を依頼してください。"
   },
   "avatar_upload": {
     "change": "アバターを変更",
@@ -13,7 +14,8 @@
     "upload_image": "画像をアップロード",
     "emoji_label": "絵文字",
     "more_emojis": "他の絵文字…",
-    "emoji_loading": "読み込み中…"
+    "emoji_loading": "読み込み中…",
+    "text_icon": "文字アイコン"
   },
   "avatar_crop": {
     "title": "アバターを編集",
@@ -28,6 +30,14 @@
     "loading": "読み込み中…",
     "load_failed": "画像を読み込めませんでした"
   },
+  "text_avatar": {
+    "title": "文字アイコン",
+    "preview": "プレビュー",
+    "text_label": "文字",
+    "text_hint": "最大 2 文字（英字・数字・漢字など）。超過分は切り捨てられます。",
+    "color_label": "色",
+    "render_failed": "アイコンを作成できませんでした。もう一度お試しください。"
+  },
   "color_picker": {
     "saturation": "彩度と明度",
     "hue": "色相",
@@ -40,6 +50,7 @@
   "cancel": "キャンセル",
   "delete": "削除",
   "confirm": "確認",
+  "more_actions": "その他の操作",
   "loading": "読み込み中...",
   "time": {
     "just_now": "たった今",
@@ -48,12 +59,12 @@
     "days_ago": "{{count}}日前"
   },
   "lark_bind": {
-    "page_title": "Lark アカウントを連携",
-    "redeeming": "バインディングトークンを使用しています…",
+    "page_title": "Feishu / Lark アカウントを連携",
+    "redeeming": "アカウントを連携しています...",
     "needs_auth_description": "連携を完了するには BayClaw にログインしてください。リンク内のトークンが Lark アカウントを現在の BayClaw ユーザーに紐付けるため、先にログインが必要です。",
     "sign_in": "ログイン",
-    "done_title": "連携が完了しました。",
-    "done_description": "次回 Lark でボットに送ったメッセージは、そのままエージェントに届きます。このタブは閉じても問題ありません。",
+    "done_title": "アカウントを連携しました",
+    "done_description": "次回 Feishu / Lark でボットに送ったメッセージは、そのままエージェントに届きます。このタブは閉じて構いません。",
     "error_title": "連携を完了できませんでした",
     "error_admin_hint": "問題が続く場合は、ワークスペース管理者に Lark から連携リンクを再送してもらってください。",
     "error_missing_token": "リンクにバインディングトークンが含まれていません。Lark のボットに新しいリンクを送ってもらってください。",
@@ -67,7 +78,7 @@
     "redeeming": "アカウントを連携しています…",
     "needs_auth_description": "連携を完了するには BayClaw にサインインしてください。リンク内のトークンが、あなたの Slack アカウントをこの BayClaw ユーザーに紐付けるため、先にログインが必要です。",
     "sign_in": "サインイン",
-    "done_title": "連携が完了しました。",
+    "done_title": "アカウントを連携しました",
     "done_description": "次に Slack でボットへ送るメッセージは、そのままエージェントに届きます。このタブは閉じて構いません。",
     "error_title": "連携を完了できませんでした",
     "error_admin_hint": "繰り返し発生する場合は、Slack でボットにもう一度メッセージを送って新しいリンクを取得してください。",
@@ -82,7 +93,7 @@
     "redeeming": "アカウントを連携しています…",
     "needs_auth_description": "連携を完了するには BayClaw にサインインしてください。リンク内のトークンが、あなたの DingTalk アカウントをこの BayClaw ユーザーに紐付けるため、先にログインが必要です。",
     "sign_in": "サインイン",
-    "done_title": "連携が完了しました。",
+    "done_title": "アカウントを連携しました",
     "done_description": "次に DingTalk でボットへ送るメッセージは、そのままエージェントに届きます。このタブは閉じて構いません。",
     "error_title": "連携を完了できませんでした",
     "error_admin_hint": "繰り返し発生する場合は、DingTalk でボットにもう一度メッセージを送って新しいリンクを取得してください。",
@@ -97,7 +108,7 @@
     "redeeming": "アカウントをリンクしています…",
     "needs_auth_description": "リンクを完了するには BayClaw にサインインしてください。リンク内のトークンはあなたの Telegram アカウントをこの BayClaw ユーザーに紐付けるため、先にログインが必要です。",
     "sign_in": "サインイン",
-    "done_title": "リンクが完了しました。",
+    "done_title": "アカウントをリンクしました",
     "done_description": "Telegram でボットに送る次のメッセージは、そのままエージェントに届きます。このタブは閉じて構いません。",
     "error_title": "リンクを完了できませんでした",
     "error_admin_hint": "問題が続く場合は、Telegram でボットに再度メッセージを送り、新しいリンクを取得してください。",
@@ -116,8 +127,8 @@
     "redeeming": "アカウントをリンク中…",
     "needs_auth_description": "リンクを完了するには BayClaw にサインインしてください。トークンは WeCom の ID を、サインイン中の BayClaw ユーザーに紐付けます。",
     "sign_in": "サインイン",
-    "done_title": "リンクされました。",
-    "done_description": "次回 WeCom でスマートボットに送るメッセージはそのままエージェントに届きます。このタブは閉じて構いません。",
+    "done_title": "アカウントをリンクしました",
+    "done_description": "次回 WeCom でボットに送ったメッセージは、そのままエージェントに届きます。このタブは閉じて構いません。",
     "error_title": "リンクを完了できませんでした",
     "error_admin_hint": "繰り返し失敗する場合は、WeCom でボットに再度メッセージを送って新しいリンクを取得してください。",
     "error_missing_token": "リンクにトークンがありません。WeCom でボットに再度メッセージを送って新しいリンクを取得してください。",
@@ -134,6 +145,11 @@
   "navigation": {
     "open_in_new_tab": "新しいタブで開く"
   },
+  "agent_process": {
+    "steps_other": "ステップ {{count}}個",
+    "tool_result_named": "{{tool}} の結果: ",
+    "tool_result_unnamed": "結果: "
+  },
   "local_path": {
     "action_open": "ファイルマネージャーで開く",
     "action_copy": "このパスをコピー",
@@ -145,12 +161,5 @@
     "toast_copy_failed": "パスをコピーできませんでした",
     "toast_not_found": "このマシンからそのパスに到達できません。共有ボリュームがマウントされていない可能性があります。パスはクリップボードにあります。",
     "toast_failed": "そのパスを開けませんでした"
-  },
-  "daemon_setup": {
-    "loading": "接続設定を読み込み中...",
-    "error": "接続設定を読み込めませんでした。ネットワーク接続を確認してください。自動的に再試行します。",
-    "unknown": "サーバーの接続設定を確認できません。管理者にサーバーの更新を依頼してください。",
-    "incomplete": "接続設定が不完全です。管理者にサーバーの公開 URL の設定を依頼してください。"
-  },
-  "more_actions": "その他の操作"
+  }
 }

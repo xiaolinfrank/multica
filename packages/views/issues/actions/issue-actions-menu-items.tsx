@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  AppWindow,
   ArrowDown,
   ArrowUp,
   Calendar,
@@ -13,9 +14,12 @@ import {
   CircleEqual,
   Download,
   ExternalLink,
+  Flag,
   FolderOpen,
   Hash,
   Link2,
+  LocateFixed,
+  Monitor,
   Network,
   Pin,
   PinOff,
@@ -23,18 +27,21 @@ import {
   Plus,
   Square,
   Trash2,
+  Type,
   Unlink,
   UserMinus,
+  Zap,
 } from "@multica/ui/icons";
 import { useIssueDeletion } from "@multica/core/issues/use-issue-deletion";
+import { useIsGuest } from "@multica/core/permissions";
 import type { AgentTask, Issue } from "@multica/core/types";
+import { quickActionListOptions } from "@multica/core/quick-actions";
 import {
   issueOperationAllowed,
   issueStatusOperationAllowed,
   resolveWorkdirCopyTarget,
 } from "@multica/core/issues";
-import { todayDateOnly, addDaysDateOnly } from "@multica/core/issues/date";
-import { api } from "@multica/core/api";
+import { todayDateOnly, addDaysDateOnly, formatDateOnly } from "@multica/core/issues/date";
 import { agentTaskSnapshotOptions } from "@multica/core/agents";
 import {
   PRIORITY_DISPLAY_ORDER,
@@ -48,61 +55,28 @@ import { stepHandsOff, workflowAllowsStatus, workflowStep } from "@multica/core/
 import { useModalStore } from "@multica/core/modals";
 import { useIssueStatusOptions } from "../utils/status-options";
 import { useStatusLabel } from "../utils/status-label";
-import { issueKeys } from "@multica/core/issues/queries";
+import { issueTasksOptions } from "@multica/core/issues/queries";
 import { StatusIcon } from "../components/status-icon";
 import { PriorityIcon } from "../components/priority-icon";
 import { selectIssueTasks } from "../surface/activity";
 import { AssigneePickerPanel } from "../components/pickers";
-import {
-  DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuSeparator,
-} from "@multica/ui/components/ui/dropdown-menu";
-import {
-  ContextMenuItem,
-  ContextMenuSub,
-  ContextMenuSubTrigger,
-  ContextMenuSubContent,
-  ContextMenuSeparator,
-} from "@multica/ui/components/ui/context-menu";
+import { useQuickActionRunner } from "../hooks/use-quick-action-runner";
 import { copyText } from "@multica/ui/lib/clipboard";
+import {
+  contextPrimitives,
+  dropdownPrimitives,
+  type MenuPrimitives,
+} from "../../common/menu-primitives";
 import type { UseIssueActionsResult } from "./use-issue-actions";
 import { InboxRestoreMenuItem } from "./inbox-restore";
 import { PluginHookMenuItems, PluginModalMenuItems } from "../../plugins";
-import { useT } from "../../i18n";
-import { IssueOperationRestriction, type IssueOperationObservation } from "../components/issue-operation-restriction";
+import { useLocale, useT } from "../../i18n";
+import {
+  IssueOperationRestriction,
+  type IssueOperationObservation,
+} from "../components/issue-operation-restriction";
 
-// Both Dropdown and Context menu wrappers expose an API-compatible surface
-// (variant, inset, onClick, etc.). We bundle the primitives we need into a
-// single object so `IssueActionsMenuItems` can render the same JSX for both.
-export interface MenuPrimitives {
-  Item: typeof DropdownMenuItem;
-  Sub: typeof DropdownMenuSub;
-  SubTrigger: typeof DropdownMenuSubTrigger;
-  SubContent: typeof DropdownMenuSubContent;
-  Separator: typeof DropdownMenuSeparator;
-}
-
-export const dropdownPrimitives: MenuPrimitives = {
-  Item: DropdownMenuItem,
-  Sub: DropdownMenuSub,
-  SubTrigger: DropdownMenuSubTrigger,
-  SubContent: DropdownMenuSubContent,
-  Separator: DropdownMenuSeparator,
-};
-
-// Context primitives are API-compatible with Dropdown primitives, but their
-// TypeScript identities differ. Cast once here and call it a day — this is the
-// single bridge between the two primitive sets.
-export const contextPrimitives: MenuPrimitives = {
-  Item: ContextMenuItem as unknown as typeof DropdownMenuItem,
-  Sub: ContextMenuSub as unknown as typeof DropdownMenuSub,
-  SubTrigger: ContextMenuSubTrigger as unknown as typeof DropdownMenuSubTrigger,
-  SubContent: ContextMenuSubContent as unknown as typeof DropdownMenuSubContent,
-  Separator: ContextMenuSeparator as unknown as typeof DropdownMenuSeparator,
-};
+export { contextPrimitives, dropdownPrimitives, type MenuPrimitives };
 
 interface IssueActionsMenuItemsProps {
   issue: Issue;
@@ -125,16 +99,17 @@ interface IssueActionsMenuItemsProps {
   /** The reader's archived inbox notification for this issue; adds "Restore to inbox". */
   archivedInboxItemId?: string;
   /** `sidebar` is the trimmed menu for sidebar rows, where only the title is
-   *  visible: it names the issue in a header, shows current values beside
-   *  Status / Priority / Assignee, and keeps only triage and navigation
+   *  visible: it names the issue in a header and keeps only triage and navigation
    *  entries — in the full menu's order, so the shared entries sit where
    *  users already expect them. */
   variant?: "full" | "sidebar";
   /** Sidebar variant: asks the parent to confirm stopping a running task. */
   onStopRun?: (task: AgentTask) => void;
+  /** Adds "Show in sidebar", for the page the issue is open on. */
+  onShowInSidebar?: () => void;
   /** Single-owner / fleet operation policy for this issue, fetched lazily
    *  while the menu is open; gates the destructive and assignment entries. */
-  observation: IssueOperationObservation;
+  observation?: IssueOperationObservation;
 }
 
 export function IssueActionsMenuItems({
@@ -147,11 +122,17 @@ export function IssueActionsMenuItems({
   archivedInboxItemId,
   variant = "full",
   onStopRun,
+  onShowInSidebar,
   observation,
 }: IssueActionsMenuItemsProps) {
   const { t } = useT("issues");
+  const locale = useLocale();
+  const formatDate = (date: string) => formatDateOnly(date, { month: "short", day: "numeric" }, locale);
   const wsId = useWorkspaceId();
-  const { canDelete } = useIssueDeletion(wsId);
+  const { canDelete, offersDelete } = useIssueDeletion(wsId);
+  // A guest (MUL-9420) changes nothing about an issue: the menu keeps only
+  // what the server lets it do — open, pin, copy, mark read.
+  const guest = useIsGuest(wsId);
   const sidebar = variant === "sidebar";
   const statusLabel = useStatusLabel(wsId);
   // Only the statuses the issue's workflow allows; entering a step that hands
@@ -161,7 +142,7 @@ export function IssueActionsMenuItems({
   const setStatus = (status: string) => {
     // Fork gate: a single-owner / fleet policy can forbid leaving a category.
     const next = statusOptions.find((option) => option.key === status);
-    if (next && !issueStatusOperationAllowed(observation.basis, next.category)) return;
+    if (observation && next && !issueStatusOperationAllowed(observation.basis, next.category)) return;
     if (workflow && status !== issue.status && stepHandsOff(workflowStep(workflow, status))) {
       openModal("issue-workflow-handoff", { issueId: issue.id, identifier: issue.identifier, status });
       return;
@@ -176,16 +157,22 @@ export function IssueActionsMenuItems({
     isPinned,
     updateField,
     openInNewTab,
+    openInNewWindow,
+    openInDesktop,
     togglePin,
     copyLink,
-    exportIssue,
+    copyTitleAsLink,
     openCreateSubIssue,
     openRename,
     openSetParent,
     removeParent,
     openAddChild,
     openMarkDuplicate,
+    openAddBlocker,
+    openAddBlocking,
     openDeleteConfirm,
+    exportIssue,
+    exporting,
   } = actions;
 
   // Subscribe to the issue's task list so the cache is warm by the time the
@@ -197,10 +184,8 @@ export function IssueActionsMenuItems({
   // The query shares its key with ExecutionLogSection, so navigating from
   // the issue detail page is a free cache hit.
   const { data: tasks } = useQuery({
-    queryKey: issueKeys.tasks(issue.id),
-    queryFn: () => api.listTasksByIssue(issue.id),
-    staleTime: 30_000,
-    enabled: !sidebar,
+    ...issueTasksOptions(issue.id),
+    enabled: !sidebar && !guest,
   });
   const workdirCopyTarget = useMemo(
     () => resolveWorkdirCopyTarget(tasks),
@@ -256,7 +241,7 @@ export function IssueActionsMenuItems({
           </div>
           <P.Separator />
         </>
-      ) : (
+      ) : guest ? null : (
         <>
           {/* Rename leads the menu: it is the only entry that changes what the
               issue *is* rather than a property of it, and on list/board rows
@@ -272,177 +257,191 @@ export function IssueActionsMenuItems({
             <Plus className="h-3.5 w-3.5" />
             {t(($) => $.actions.create_sub_issue)}
           </P.Item>
+          <QuickActionsSub issueId={issue.id} primitives={P} />
 
           <P.Separator />
         </>
       )}
 
-      {/* Status */}
-      <P.Sub>
-        <P.SubTrigger>
-          <StatusIcon
-            status={issue.status}
-            category={categoryOf(issue.status)}
-            color={colorOf(issue.status)}
-            icon={iconOf(issue.status)}
-            className="h-3.5 w-3.5"
-          />
-          <ItemLabel
-            label={t(($) => $.actions.status)}
-            value={sidebar ? statusLabel(issue.status) : undefined}
-          />
-        </P.SubTrigger>
-        <P.SubContent>
-          <div className="max-w-72 px-2 py-2"><IssueOperationRestriction observation={observation} operation="status" /></div>
-          {/* Catalog-driven, like the picker and the filter: every entry point
-              that can change a status must offer the same set, or a custom
-              status is unreachable from the board's right-click menu. One flat
-              list in canonical category order. (MUL-6243) */}
-          {statusOptions.map((option) => (
-            <P.Item
-              key={option.key}
-              disabled={!issueStatusOperationAllowed(observation.basis, option.category)}
-              onClick={() => setStatus(option.key)}
-            >
+      {!guest && (
+        <>
+          {/* Status */}
+          <P.Sub>
+            <P.SubTrigger>
               <StatusIcon
-                status={option.key}
-                category={option.category}
-                color={option.color}
-                icon={option.icon}
+                status={issue.status}
+                category={categoryOf(issue.status)}
+                color={colorOf(issue.status)}
+                icon={iconOf(issue.status)}
                 className="h-3.5 w-3.5"
               />
-              {option.label}
-              {issue.status === option.key && (
-                <Check className="ml-auto size-3.5 text-muted-foreground" />
-              )}
-            </P.Item>
-          ))}
-        </P.SubContent>
-      </P.Sub>
-
-      {/* Priority */}
-      <P.Sub>
-        <P.SubTrigger>
-          <PriorityIcon priority={issue.priority} />
-          <ItemLabel
-            label={t(($) => $.actions.priority)}
-            value={sidebar ? t(($) => $.priority[issue.priority]) : undefined}
-          />
-        </P.SubTrigger>
-        <P.SubContent>
-          {PRIORITY_DISPLAY_ORDER.map((p) => (
-            <P.Item key={p} onClick={() => updateField({ priority: p })}>
-              <span
-                className={`inline-flex items-center gap-1 rounded-xs px-1.5 py-0.5 text-caption font-medium ${PRIORITY_CONFIG[p].badgeBg} ${PRIORITY_CONFIG[p].badgeText}`}
-              >
-                <PriorityIcon priority={p} className="h-3 w-3" inheritColor />
-                {t(($) => $.priority[p])}
-              </span>
-              {issue.priority === p && (
-                <Check className="ml-auto size-3.5 text-muted-foreground" />
-              )}
-            </P.Item>
-          ))}
-        </P.SubContent>
-      </P.Sub>
-
-      {/* Assignee — two entry points, both kept on purpose:
-          - surfaces that own an anchored popover (dropdown, full context
-            menu) pass `onOpenAssignee`, which opens the shared
-            AssigneePicker with its operation restrictions (readOnly +
-            restriction notice);
-          - the sidebar tree passes none, so it gets the inline picker
-            submenu, whose list is the shared panel (members + agents + squads
-            with search). (MUL-2157) */}
-      {onOpenAssignee ? (
-        <P.Item onClick={onOpenAssignee}>
-          <UserMinus className="h-3.5 w-3.5" />
-          <ItemLabel
-            label={t(($) => $.actions.assignee)}
-            value={sidebar ? <AssigneeName issue={issue} /> : undefined}
-          />
-        </P.Item>
-      ) : (
-        <P.Sub>
-          <P.SubTrigger>
-            <UserMinus className="h-3.5 w-3.5" />
-            <ItemLabel
-              label={t(($) => $.actions.assignee)}
-              value={sidebar ? <AssigneeName issue={issue} /> : undefined}
-            />
-          </P.SubTrigger>
-          <P.SubContent className="w-64 p-0">
-            <SubmenuPanel>
-              <AssigneePickerPanel
-                assigneeType={issue.assignee_type}
-                assigneeId={issue.assignee_id}
-                onUpdate={updateField}
-                onPicked={onClose}
+              <ItemLabel
+                label={t(($) => $.actions.status)}
+                value={statusLabel(issue.status)}
               />
-            </SubmenuPanel>
-          </P.SubContent>
-        </P.Sub>
-      )}
-
-      {!sidebar && (
-        <>
-          {/* Start date */}
-          <P.Sub>
-            <P.SubTrigger>
-              <CalendarClock className="h-3.5 w-3.5" />
-              {t(($) => $.actions.start_date)}
             </P.SubTrigger>
             <P.SubContent>
-              <P.Item onClick={() => updateField({ start_date: todayDateOnly() })}>
-                {t(($) => $.actions.start_today)}
-              </P.Item>
-              <P.Item onClick={() => updateField({ start_date: addDaysDateOnly(1) })}>
-                {t(($) => $.actions.start_tomorrow)}
-              </P.Item>
-              <P.Item onClick={() => updateField({ start_date: addDaysDateOnly(7) })}>
-                {t(($) => $.actions.start_next_week)}
-              </P.Item>
-              {issue.start_date && (
-                <>
-                  <P.Separator />
-                  <P.Item onClick={() => updateField({ start_date: null })}>
-                    {t(($) => $.actions.start_clear)}
-                  </P.Item>
-                </>
+              {observation && (
+                <div className="max-w-72 px-2 py-2">
+                  <IssueOperationRestriction observation={observation} operation="status" />
+                </div>
               )}
+              {/* The same set as the status picker: every entry point that can
+                  change a status must offer it, or a custom status is unreachable
+                  from the board's right-click menu. (MUL-6243) */}
+              {statusOptions.map((option) => (
+                <P.Item
+                  key={option.key}
+                  disabled={observation ? !issueStatusOperationAllowed(observation.basis, option.category) : false}
+                  onClick={() => setStatus(option.key)}
+                >
+                  <StatusIcon
+                    status={option.key}
+                    category={option.category}
+                    color={option.color}
+                    icon={option.icon}
+                    className="h-3.5 w-3.5"
+                  />
+                  {option.label}
+                  {issue.status === option.key && (
+                    <Check className="ml-auto size-3.5 text-muted-foreground" />
+                  )}
+                </P.Item>
+              ))}
             </P.SubContent>
           </P.Sub>
 
-          {/* Due date */}
+          {/* Priority */}
           <P.Sub>
             <P.SubTrigger>
-              <Calendar className="h-3.5 w-3.5" />
-              {t(($) => $.actions.due_date)}
+              <PriorityIcon priority={issue.priority} />
+              <ItemLabel
+                label={t(($) => $.actions.priority)}
+                value={t(($) => $.priority[issue.priority])}
+              />
             </P.SubTrigger>
             <P.SubContent>
-              <P.Item onClick={() => updateField({ due_date: todayDateOnly() })}>
-                {t(($) => $.actions.due_today)}
-              </P.Item>
-              <P.Item onClick={() => updateField({ due_date: addDaysDateOnly(1) })}>
-                {t(($) => $.actions.due_tomorrow)}
-              </P.Item>
-              <P.Item onClick={() => updateField({ due_date: addDaysDateOnly(7) })}>
-                {t(($) => $.actions.due_next_week)}
-              </P.Item>
-              {issue.due_date && (
-                <>
-                  <P.Separator />
-                  <P.Item onClick={() => updateField({ due_date: null })}>
-                    {t(($) => $.actions.due_clear)}
-                  </P.Item>
-                </>
-              )}
+              {PRIORITY_DISPLAY_ORDER.map((p) => (
+                <P.Item key={p} onClick={() => updateField({ priority: p })}>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-xs px-1.5 py-0.5 text-caption font-medium ${PRIORITY_CONFIG[p].badgeBg} ${PRIORITY_CONFIG[p].badgeText}`}
+                  >
+                    <PriorityIcon priority={p} className="h-3 w-3" inheritColor />
+                    {t(($) => $.priority[p])}
+                  </span>
+                  {issue.priority === p && (
+                    <Check className="ml-auto size-3.5 text-muted-foreground" />
+                  )}
+                </P.Item>
+              ))}
             </P.SubContent>
           </P.Sub>
+
+          {/* Assignee — a submenu like Status and Priority, filled with the
+              shared assignee picker's own list (members + agents + squads, with
+              search and permission checks) rather than menu items of its own, so
+              every entry point offers the same choices. (MUL-2157) */}
+          {/* Surfaces that own an anchored picker popover (dropdown, full
+              context menu) pass `onOpenAssignee`, which opens the shared
+              AssigneePicker with its operation restrictions. The sidebar tree
+              passes nothing and keeps the inline submenu. (MUL-2157) */}
+          {onOpenAssignee ? (
+            <P.Item onClick={onOpenAssignee}>
+              <UserMinus className="h-3.5 w-3.5" />
+              <ItemLabel
+                label={t(($) => $.actions.assignee)}
+                value={<AssigneeName issue={issue} />}
+              />
+            </P.Item>
+          ) : (
+            <P.Sub>
+              <P.SubTrigger>
+                <UserMinus className="h-3.5 w-3.5" />
+                <ItemLabel
+                  label={t(($) => $.actions.assignee)}
+                  value={<AssigneeName issue={issue} />}
+                />
+              </P.SubTrigger>
+              <P.SubContent className="w-64 p-0">
+                <SubmenuPanel>
+                  <AssigneePickerPanel
+                    assigneeType={issue.assignee_type}
+                    assigneeId={issue.assignee_id}
+                    onUpdate={updateField}
+                    onPicked={onClose}
+                  />
+                </SubmenuPanel>
+              </P.SubContent>
+            </P.Sub>
+          )}
+
+          {!sidebar && (
+            <>
+              {/* Start date */}
+              <P.Sub>
+                <P.SubTrigger>
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  <ItemLabel
+                    label={t(($) => $.actions.start_date)}
+                    value={issue.start_date ? formatDate(issue.start_date) : undefined}
+                  />
+                </P.SubTrigger>
+                <P.SubContent>
+                  <P.Item onClick={() => updateField({ start_date: todayDateOnly() })}>
+                    {t(($) => $.actions.start_today)}
+                  </P.Item>
+                  <P.Item onClick={() => updateField({ start_date: addDaysDateOnly(1) })}>
+                    {t(($) => $.actions.start_tomorrow)}
+                  </P.Item>
+                  <P.Item onClick={() => updateField({ start_date: addDaysDateOnly(7) })}>
+                    {t(($) => $.actions.start_next_week)}
+                  </P.Item>
+                  {issue.start_date && (
+                    <>
+                      <P.Separator />
+                      <P.Item onClick={() => updateField({ start_date: null })}>
+                        {t(($) => $.actions.start_clear)}
+                      </P.Item>
+                    </>
+                  )}
+                </P.SubContent>
+              </P.Sub>
+
+              {/* Due date */}
+              <P.Sub>
+                <P.SubTrigger>
+                  <Calendar className="h-3.5 w-3.5" />
+                  <ItemLabel
+                    label={t(($) => $.actions.due_date)}
+                    value={issue.due_date ? formatDate(issue.due_date) : undefined}
+                  />
+                </P.SubTrigger>
+                <P.SubContent>
+                  <P.Item onClick={() => updateField({ due_date: todayDateOnly() })}>
+                    {t(($) => $.actions.due_today)}
+                  </P.Item>
+                  <P.Item onClick={() => updateField({ due_date: addDaysDateOnly(1) })}>
+                    {t(($) => $.actions.due_tomorrow)}
+                  </P.Item>
+                  <P.Item onClick={() => updateField({ due_date: addDaysDateOnly(7) })}>
+                    {t(($) => $.actions.due_next_week)}
+                  </P.Item>
+                  {issue.due_date && (
+                    <>
+                      <P.Separator />
+                      <P.Item onClick={() => updateField({ due_date: null })}>
+                        {t(($) => $.actions.due_clear)}
+                      </P.Item>
+                    </>
+                  )}
+                </P.SubContent>
+              </P.Sub>
+            </>
+          )}
+
+          <P.Separator />
         </>
       )}
-
-      <P.Separator />
 
       {/* Leads the "do something with this issue itself" group: the only
           discoverable way to open an issue elsewhere for users who don't know
@@ -451,6 +450,18 @@ export function IssueActionsMenuItems({
         <ExternalLink className="h-3.5 w-3.5" />
         {t(($) => $.actions.open_in_new_tab)}
       </P.Item>
+      {openInNewWindow && (
+        <P.Item onClick={openInNewWindow}>
+          <AppWindow className="h-3.5 w-3.5" />
+          {t(($) => $.actions.open_in_new_window)}
+        </P.Item>
+      )}
+      {openInDesktop && (
+        <P.Item onClick={openInDesktop}>
+          <Monitor className="h-3.5 w-3.5" />
+          {t(($) => $.web.open_in_desktop)}
+        </P.Item>
+      )}
       <P.Item onClick={togglePin}>
         {isPinned ? (
           <PinOff className="h-3.5 w-3.5" />
@@ -459,6 +470,12 @@ export function IssueActionsMenuItems({
         )}
         {isPinned ? t(($) => $.actions.unpin_from_sidebar) : t(($) => $.actions.pin_to_sidebar)}
       </P.Item>
+      {onShowInSidebar && (
+        <P.Item onClick={onShowInSidebar}>
+          <LocateFixed className="h-3.5 w-3.5" />
+          {t(($) => $.actions.locate_in_sidebar)}
+        </P.Item>
+      )}
       {archivedInboxItemId && <InboxRestoreMenuItem itemId={archivedInboxItemId} Item={P.Item} />}
       {sidebar &&
         (unread ? (
@@ -476,15 +493,20 @@ export function IssueActionsMenuItems({
         <Link2 className="h-3.5 w-3.5" />
         {t(($) => $.actions.copy_link)}
       </P.Item>
-      {/* The fork's CSV export; upstream's sidebar trim keeps only the
-          identifier copy there. */}
-      {!sidebar && (
-        <P.Item onClick={exportIssue}>
+      <P.Item onClick={copyTitleAsLink}>
+        <Type className="h-3.5 w-3.5" />
+        {t(($) => $.actions.copy_title_as_link)}
+      </P.Item>
+      {/* The fork's Markdown handoff export; the sidebar trim keeps only the
+          identifier copy there, and guests stay on read-only copy actions. */}
+      {!sidebar && !guest && (
+        <P.Item onClick={exportIssue} disabled={exporting}>
           <Download className="h-3.5 w-3.5" />
           {t(($) => $.actions.export)}
         </P.Item>
       )}
-      {sidebar ? (
+      {/* A guest cannot read an issue's runs, so it has no workdir to copy. */}
+      {sidebar || guest ? (
         <P.Item onClick={copyIdentifier}>
           <Hash className="h-3.5 w-3.5" />
           {t(($) => $.actions.copy_identifier)}
@@ -498,7 +520,7 @@ export function IssueActionsMenuItems({
         </P.Item>
       )}
 
-      {sidebar ? (
+      {guest ? null : sidebar ? (
         onStopRun && <StopRunItems issueId={issue.id} primitives={P} onStopRun={onStopRun} />
       ) : (
         <>
@@ -507,7 +529,7 @@ export function IssueActionsMenuItems({
           {/* Relationship actions live under "Relations" — a semantically
               explicit label (unlike the old "More") so the first level tells
               you what the submenu does. Holds parent/sub-issue links today,
-              and will grow (blocks, duplicates, related) as we add more
+              blockers and duplicates, and will grow (related) as we add more
               relation types. */}
           <P.Sub>
             <P.SubTrigger>
@@ -515,12 +537,12 @@ export function IssueActionsMenuItems({
               {t(($) => $.actions.relations)}
             </P.SubTrigger>
             <P.SubContent>
-              <P.Item onClick={openSetParent} disabled={!issueOperationAllowed(observation.basis, "parent")}>
+              <P.Item onClick={openSetParent} disabled={observation ? !issueOperationAllowed(observation.basis, "parent") : false}>
                 <ArrowUp className="h-3.5 w-3.5" />
                 {t(($) => $.actions.set_parent_issue)}
               </P.Item>
               {issue.parent_issue_id && (
-                <P.Item onClick={removeParent} disabled={!issueOperationAllowed(observation.basis, "parent")}>
+                <P.Item onClick={removeParent} disabled={observation ? !issueOperationAllowed(observation.basis, "parent") : false}>
                   <Unlink className="h-3.5 w-3.5" />
                   {t(($) => $.actions.remove_parent_issue)}
                 </P.Item>
@@ -529,17 +551,29 @@ export function IssueActionsMenuItems({
                 <ArrowDown className="h-3.5 w-3.5" />
                 {t(($) => $.actions.add_sub_issue)}
               </P.Item>
+              <P.Item onClick={openAddBlocker}>
+                <Flag className="h-3.5 w-3.5" />
+                {t(($) => $.actions.add_blocker)}
+              </P.Item>
+              <P.Item onClick={openAddBlocking}>
+                <Flag className="h-3.5 w-3.5" />
+                {t(($) => $.actions.add_blocking)}
+              </P.Item>
               {/* Marking a duplicate cancels the issue. (MUL-7420) */}
               {workflowAllowsStatus(workflow, "cancelled") && (
                 <P.Item
                   onClick={openMarkDuplicate}
-                  disabled={!issueStatusOperationAllowed(observation.basis, "closed")}
+                  disabled={observation ? !issueStatusOperationAllowed(observation.basis, "closed") : false}
                 >
                   <CircleEqual className="h-3.5 w-3.5" />
                   {t(($) => $.actions.mark_duplicate)}
                 </P.Item>
               )}
-              <div className="max-w-72 px-2 py-2"><IssueOperationRestriction observation={observation} operation="parent" /></div>
+              {observation && (
+                <div className="max-w-72 px-2 py-2">
+                  <IssueOperationRestriction observation={observation} operation="parent" />
+                </div>
+              )}
             </P.SubContent>
           </P.Sub>
 
@@ -554,17 +588,21 @@ export function IssueActionsMenuItems({
               person chose it, never on the plugin's own initiative. */}
           <PluginModalMenuItems issueId={issue.id} Item={P.Item} />
 
-          <P.Separator />
+          {offersDelete && (
+            <>
+              <P.Separator />
 
-          <P.Item
-            disabled={!canDelete(issue)}
-            title={!canDelete(issue) ? t(($) => $.batch.delete_restricted) : undefined}
-            variant="destructive"
-            onClick={() => openDeleteConfirm({ onDeletedFallbackPath })}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {t(($) => $.actions.delete_issue)}
-          </P.Item>
+              <P.Item
+                disabled={!canDelete(issue)}
+                title={!canDelete(issue) ? t(($) => $.batch.delete_restricted) : undefined}
+                variant="destructive"
+                onClick={() => openDeleteConfirm({ onDeletedFallbackPath })}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t(($) => $.actions.delete_issue)}
+              </P.Item>
+            </>
+          )}
         </>
       )}
     </>
@@ -586,7 +624,7 @@ function ItemLabel({ label, value }: { label: string; value?: ReactNode }) {
 /** Hosts a search box and list inside a submenu. The menu's typeahead and
  *  arrow-key navigation would otherwise take the keys typed into the search
  *  box; Escape and Tab still reach the menu so it can close. */
-function SubmenuPanel({ children }: { children: ReactNode }) {
+export function SubmenuPanel({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div
@@ -610,6 +648,42 @@ function AssigneeName({ issue }: { issue: Issue }) {
   const { getActorName } = useActorName();
   if (!issue.assignee_type || !issue.assignee_id) return <>{t(($) => $.actions.unassigned)}</>;
   return <>{getActorName(issue.assignee_type, issue.assignee_id)}</>;
+}
+
+/** The workspace's quick actions, run against this issue on pick — the same
+ *  catalog the issue sidebar and the command palette offer. Renders nothing
+ *  when the workspace has none. */
+function QuickActionsSub({ issueId, primitives: P }: { issueId: string; primitives: MenuPrimitives }) {
+  const { t } = useT("issues");
+  const wsId = useWorkspaceId();
+  const { data } = useQuery(quickActionListOptions(wsId));
+  const quickActions = useMemo(
+    () => (data ?? []).filter((action) => action.status === "active"),
+    [data],
+  );
+  const run = useQuickActionRunner(issueId);
+  if (quickActions.length === 0) return null;
+  return (
+    <P.Sub>
+      <P.SubTrigger>
+        <Zap className="h-3.5 w-3.5" />
+        {t(($) => $.actions.quick_actions)}
+      </P.SubTrigger>
+      <P.SubContent className="max-w-80">
+        {quickActions.map((action) => (
+          <P.Item key={action.id} onClick={() => void run(action)}>
+            <Zap className="h-3.5 w-3.5" />
+            <span className="min-w-0 flex-1 truncate">{action.name}</span>
+            {action.target_name && (
+              <span className="max-w-28 truncate pl-3 text-caption text-muted-foreground">
+                {action.target_name}
+              </span>
+            )}
+          </P.Item>
+        ))}
+      </P.SubContent>
+    </P.Sub>
+  );
 }
 
 const NO_TASKS: AgentTask[] = [];

@@ -1,19 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertCircle,
+  Archive,
   Copy,
   ExternalLink,
   RotateCcw,
   Settings2,
   Square,
-  Trash2,
 } from "@multica/ui/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Agent } from "@multica/core/types";
 import type { AgentPresenceDetail } from "@multica/core/agents";
+import { isArchivableAgent, isMikaAgent } from "@multica/core/onboarding";
 import { api } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
@@ -48,6 +49,10 @@ interface AgentRowActionsProps {
   // this agent's config as a template. A href rather than a callback so the
   // menu item is a real link (modifier-click opens it in a new tab).
   duplicateHref: string;
+  /** Items for the top of the menu, for actions only one surface offers. */
+  leading?: ReactNode;
+  /** For rows that open the menu only on right-click. */
+  triggerHidden?: boolean;
 }
 
 /**
@@ -61,6 +66,8 @@ export function AgentRowActions({
   presence,
   canManage,
   duplicateHref,
+  leading,
+  triggerHidden,
 }: AgentRowActionsProps) {
   const { t } = useT("agents");
   const { t: tCommon } = useT("common");
@@ -82,11 +89,7 @@ export function AgentRowActions({
   // branches.
   const showStop = canManage && !isArchived && hasActiveWork;
   const showDuplicate = !isArchived; // any workspace member can duplicate
-  // Multica's built-in agents cannot be archived — the server refuses it, and
-  // the workspace's entry point runs through one. Hide the action rather than
-  // let it fail with a toast.
-  const isSystemAgent = !!agent.system_key;
-  const showArchive = canManage && !isArchived && !isSystemAgent;
+  const showArchive = canManage && !isArchived && isArchivableAgent(agent);
   const showRestore = canManage && isArchived;
 
   const invalidateAgents = () => {
@@ -129,7 +132,17 @@ export function AgentRowActions({
 
   return (
     <>
-      <CollectionRowMenu label={t(($) => $.row.actions_aria)} contentClassName="w-auto">
+      <CollectionRowMenu
+        label={t(($) => $.row.actions_aria)}
+        contentClassName="w-auto"
+        triggerHidden={triggerHidden}
+      >
+        {leading && (
+          <>
+            {leading}
+            <DropdownMenuSeparator />
+          </>
+        )}
         {/* Same shape as every other entity row menu: an explicit CTA is a
             foreground open executed through the adapter (an anchor-based
             item would depend on native activation surviving the menu
@@ -182,7 +195,7 @@ export function AgentRowActions({
               variant="destructive"
               onClick={() => setConfirmArchive(true)}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Archive className="h-3.5 w-3.5" />
               {t(($) => $.row_actions.archive)}
             </DropdownMenuItem>
           </>
@@ -242,6 +255,7 @@ export function AgentRowActions({
                   </AlertDialogTitle>
                   <AlertDialogDescription>
                     {t(($) => $.row_actions.archive_dialog_description)}
+                    {isMikaAgent(agent) && t(($) => $.row_actions.archive_dialog_mika_note)}
                   </AlertDialogDescription>
                 </div>
               </div>

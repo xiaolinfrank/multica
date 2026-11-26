@@ -12,7 +12,7 @@ import enIssues from "../../locales/en/issues.json";
 
 const navigation = { pathname: `/ws/issues/${INPUT_ID}`, searchParams: new URLSearchParams() };
 vi.mock("../../navigation", () => ({ useNavigation: () => navigation, AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../issues/components/issue-runs-dialog", () => ({ IssueRunsDialog: ({ onOpenChange }: { onOpenChange: (open: boolean) => void }) => <div role="dialog" aria-label="Execution history"><button onClick={() => onOpenChange(false)}>Close history</button></div> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { rerunIssue: vi.fn(), getIssueOperationBasis: vi.fn(), getCockpitInputManifestItems: vi.fn(), listTasksByIssue: vi.fn() } }));
 const header: CockpitInputManifestHeader = { workspaceId: INPUT_WS, revision: 1, canEdit: true, blockedReasons: [], counts: { total: 0, required: 0, availableRequired: 0, unknownRequired: 0, unavailableRequired: 0 },
@@ -48,7 +48,7 @@ describe("explicit new run with fixed inputs", () => {
       expect(screen.getByText(enCockpit.input_materials.run_result_unknown)).toBeVisible();
       fireEvent.click(screen.getByRole("button", { name: enCockpit.input_materials.run_history }));
       await screen.findByRole("dialog", { name: "Execution history" });
-      expect(api.listTasksByIssue).toHaveBeenCalledWith(INPUT_ID);
+      expect(api.listTasksByIssue).toHaveBeenCalledWith(INPUT_ID, false, { view: "timeline" });
       expect(api.rerunIssue).toHaveBeenCalledTimes(1);
       fireEvent.click(screen.getByRole("button", { name: "Close history" }));
       const additional = screen.getByRole("button", { name: enCockpit.input_materials.run_authorize_another }); await waitFor(() => expect(additional).toBeEnabled()); fireEvent.click(additional);

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { Issue } from "../../types";
 import {
@@ -277,5 +278,17 @@ describe("filing membership (S4 self-check)", () => {
     expect(listFilterDependsOn(undefined, { project_id: "p1" }, dims)).toBe(true);
     // A title-only edit still depends on nothing.
     expect(listFilterDependsOn(undefined, { module_id: "m1" }, issueChangedDims({ title: "x" }, base))).toBe(false);
+  });
+});
+
+describe("created by user membership", () => {
+  const filter = { created_by_user_id: "me" };
+  it("uses the persisted requester and distinguishes absent from null", () => {
+    expect(issueMatchesListFilter(makeIssue(), "created", filter)).toBe(true);
+    expect(issueMatchesListFilter(makeIssue({ creator_type: "agent", requester_id: "me" }), "created", filter)).toBe(true);
+    expect(issueMatchesListFilter(makeIssue({ creator_type: "agent", requester_id: "bob" }), "created", filter)).toBe(false);
+    expect(issueMatchesListFilter(makeIssue({ creator_type: "agent", requester_id: null }), "created", filter)).toBe(false);
+    expect(issueMatchesListFilter(makeIssue({ creator_type: "agent" }), "created", filter)).toBe("unknown");
+    expect(issueMatchesListFilter({ requester_id: null }, "created", filter)).toBe("unknown");
   });
 });

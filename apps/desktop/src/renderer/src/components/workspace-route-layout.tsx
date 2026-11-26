@@ -11,7 +11,9 @@ import { isWorkspaceDeletePending } from "@multica/core/workspace/pending-delete
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceSeen } from "@multica/views/workspace/use-workspace-seen";
 import { WorkspacePresencePrefetch } from "@multica/views/layout";
+import { VoiceWorkspaceWords } from "@multica/views/voice";
 import { useTabStore } from "@/stores/tab-store";
+import { DocumentTitleSync } from "./document-title-sync";
 
 /**
  * Which mounted layout instance currently owns the platform workspace
@@ -165,7 +167,9 @@ export function WorkspaceRouteLayout() {
 
   return (
     <WorkspaceSlugProvider slug={workspaceSlug}>
+      <DocumentTitleSync />
       <WorkspacePresencePrefetch />
+      <VoiceWorkspaceWords />
       <Outlet />
       {/* SourceBackfillModal ("How did you hear about us?") is deliberately
        *  NOT mounted. BayClaw is an internal platform with no acquisition

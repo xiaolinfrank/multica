@@ -6,7 +6,7 @@ import { I18nProvider } from "@multica/core/i18n/react";
 import { api } from "@multica/core/api";
 import enCockpit from "../../locales/en/cockpit.json";
 import { CockpitVersions } from "./cockpit-versions";
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit" }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, ...props }: React.ComponentProps<"a">) => <a {...props}>{children}</a> }));
 vi.mock("@multica/core/api", () => ({ api: { listCockpitSnapshotPage: vi.fn(), listCockpitSnapshots: vi.fn(), getCockpitSnapshotDiff: vi.fn(), createCockpitSnapshot: vi.fn(), deleteCockpitSnapshot: vi.fn(), restoreCockpitSnapshot: vi.fn() } }));
 const snapshots = Array.from({ length: 27 }, (_, index) => ({ id: `snapshot-${index + 1}`, label: `Checkpoint ${index + 1}`, trigger_kind: "manual", node_count: 10, created_by_type: "member", created_by_label: "Person", created_at: "2026-10-10T00:00:00Z" }));

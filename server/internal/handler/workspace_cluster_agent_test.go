@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/internal/middleware"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -523,6 +524,8 @@ func TestDaemonRegister_TriggersClusterGenericAgentForSharedClaude(t *testing.T)
 			{"name": "Claude (probe-http-node)", "type": "claude", "version": "1.0.0", "status": "online"},
 		},
 	}, wsID, "cluster-probe-daemon")
+	// Bind the daemon token to the pre-seeded shared runner's owner (MUL-8154).
+	req = req.WithContext(middleware.WithDaemonTokenOwnerID(req.Context(), runnerID))
 	testHandler.DaemonRegister(w, req)
 	if w.Code != 200 {
 		t.Fatalf("DaemonRegister: expected 200, got %d: %s", w.Code, w.Body.String())

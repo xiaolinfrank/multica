@@ -79,7 +79,7 @@ describe("WecomBindPage", () => {
     mockRedeemToken.mockResolvedValue({ workspace_id: "ws1", installation_id: "inst1", wecom_user_id: "T_x" });
     renderPage("tok123");
     await waitFor(() => expect(mockRedeemToken).toHaveBeenCalledWith("tok123"));
-    await waitFor(() => expect(screen.getByText(/you're linked/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/account linked/i)).toBeInTheDocument());
   });
 
   it("sign-in navigates with ?next= carrying the token (not ?redirect=)", () => {

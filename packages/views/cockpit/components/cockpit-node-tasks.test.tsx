@@ -28,7 +28,7 @@ vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof im
   getIssueOperationBasis: vi.fn(async (_ws: string, ids: string[]) => issueOperationPageFixture("ws-1", ids)),
 } }));
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ cockpit: () => "/ws/cockpit", issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({
   AppLink: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
   useNavigation: () => ({ pathname: "/ws/cockpit", searchParams: new URLSearchParams(), push: vi.fn() }),

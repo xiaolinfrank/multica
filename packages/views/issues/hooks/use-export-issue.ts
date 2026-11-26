@@ -6,7 +6,7 @@ import { zipSync, strToU8 } from "fflate";
 import type { Issue, IssueProperty } from "@multica/core/types";
 import { api } from "@multica/core/api";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { useWorkspacePaths } from "@multica/core/paths";
+import { issueRouteRef, useWorkspacePaths } from "@multica/core/paths";
 import { useActorName } from "@multica/core/workspace/hooks";
 import {
   childIssuesOptions,
@@ -359,7 +359,7 @@ export function useExportIssue(issue: Issue | null): {
         propertyDefinitions: propertyDefinitions ?? [],
         actorName: (type, id) => getActorName(type, id),
         url: navigation.getShareableUrl(
-          paths.issueDetail(detail.identifier || issueId),
+          paths.issueDetail(issueRouteRef({ id: detail.identifier || issueId, identifier: null })),
         ),
         exportedAt: new Date().toISOString(),
       });

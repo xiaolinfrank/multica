@@ -33,6 +33,7 @@ import {
 import { IssueMentionCard } from "../../issues/components/issue-mention-card";
 import { ProjectMentionCard } from "../../projects/components/project-mention-card";
 import { getPreviewKind } from "../utils/preview";
+import { DocMentionCard } from "../../docs/components/doc-mention-card";
 
 export function MentionView({ node }: NodeViewProps) {
   const { type, id, label } = node.attrs;
@@ -65,6 +66,18 @@ export function MentionView({ node }: NodeViewProps) {
 
   if (type === "file") {
     return <FileMentionChip id={id} label={label ?? id} />;
+  }
+
+  if (type === "doc") {
+    return (
+      <NodeViewWrapper
+        as="span"
+        className="inline"
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      >
+        <DocMentionCard docId={id} fallbackLabel={label} />
+      </NodeViewWrapper>
+    );
   }
 
   return (

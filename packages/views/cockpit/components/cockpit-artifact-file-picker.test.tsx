@@ -7,7 +7,7 @@ import type { CockpitArtifactSourceAttachment } from "@multica/core/types";
 import { CockpitArtifactFilePicker } from "./cockpit-artifact-file-picker";
 import enCockpit from "../../locales/en/cockpit.json";
 
-vi.mock("@multica/core/paths", () => ({ useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
+vi.mock("@multica/core/paths", () => ({ issueRouteRef: (issue: { id: string; identifier?: string | null }) => issue.identifier || issue.id,  useWorkspacePaths: () => ({ issueDetail: (id: string) => `/ws/issues/${id}` }) }));
 vi.mock("../../navigation", () => ({ AppLink: ({ children, href, ...props }: React.ComponentProps<"a">) => <a href={href} {...props}>{children}</a> }));
 vi.mock("@multica/core/api", async (original) => ({ ...(await original<typeof import("@multica/core/api")>()), api: { getCockpitArtifactSourceAttachments: vi.fn() } }));
 const uploaded: CockpitArtifactSourceAttachment = { id: "file-1", source_issue_id: "producer-2", filename: "revised-report.pdf", content_type: "application/pdf", size_bytes: 64, created_at: "2026-10-11T01:00:00Z" };

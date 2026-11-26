@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/multica-ai/multica/server/internal/logger"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/util"
 )
@@ -372,7 +373,8 @@ func (h *Handler) InitiateWorkspaceOp(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusTooManyRequests, "too many in-flight workspace ops; retry shortly")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to enqueue workspace op: "+err.Error())
+		slog.Error("enqueue workspace op failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to enqueue workspace op")
 		return
 	}
 	// Best-effort nudge: wake the daemon now so it pulls this op on an immediate
@@ -395,7 +397,8 @@ func (h *Handler) GetWorkspaceOpRequest(w http.ResponseWriter, r *http.Request) 
 	requestID := chi.URLParam(r, "requestId")
 	req, err := h.WorkspaceOpStore.Get(r.Context(), requestID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load request: "+err.Error())
+		slog.Error("load workspace op request failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load request")
 		return
 	}
 	// Bind to the caller's workspace so a request_id can't be polled cross-tenant.
@@ -419,7 +422,8 @@ func (h *Handler) ReportWorkspaceOpResult(w http.ResponseWriter, r *http.Request
 	// harmless no-op rather than clobbering the stored result.
 	existing, err := h.WorkspaceOpStore.Get(r.Context(), requestID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load request: "+err.Error())
+		slog.Error("load workspace op request failed", append(logger.RequestAttrs(r), "error", err)...)
+		writeError(w, http.StatusInternalServerError, "failed to load request")
 		return
 	}
 	if existing == nil || existing.RuntimeID != runtimeID {

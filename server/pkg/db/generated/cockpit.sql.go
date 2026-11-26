@@ -1740,7 +1740,7 @@ func (q *Queries) GetOpenCockpitPendingChangeByNodeField(ctx context.Context, ar
 }
 
 const getProjectForCockpitBinding = `-- name: GetProjectForCockpitBinding :one
-SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id, creator_type, creator_id, collab_path FROM project WHERE id = $1 AND workspace_id = $2 FOR SHARE
+SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority, start_date, due_date, workflow_id, creator_type, creator_id, visibility, archived_at, archived_by_type, archived_by_id, folder_id, collab_path FROM project WHERE id = $1 AND workspace_id = $2 FOR SHARE
 `
 
 type GetProjectForCockpitBindingParams struct {
@@ -1768,6 +1768,11 @@ func (q *Queries) GetProjectForCockpitBinding(ctx context.Context, arg GetProjec
 		&i.WorkflowID,
 		&i.CreatorType,
 		&i.CreatorID,
+		&i.Visibility,
+		&i.ArchivedAt,
+		&i.ArchivedByType,
+		&i.ArchivedByID,
+		&i.FolderID,
 		&i.CollabPath,
 	)
 	return i, err
