@@ -177,3 +177,21 @@ describe("IssueViewHeader setup of a new view", () => {
     expect(screen.queryByTestId("view-setup-bar")).toBeNull();
   });
 });
+
+describe("IssueViewHeader new issue button", () => {
+  it("renders the built-in New issue icon button by default", () => {
+    renderHeader("workspace", "header-new-issue-default");
+    expect(screen.getByRole("button", { name: "New issue" })).toBeInTheDocument();
+  });
+
+  it("omits the built-in New issue icon button when hideNewIssue is set", () => {
+    renderWithI18n(
+      <NavigationProvider value={adapterFor("/acme/issues")}>
+        <ViewStoreProvider store={getIssueSurfaceViewStore("header-new-issue-hidden")}>
+          <IssueViewHeader controller={controller} base={{ kind: "workspace" }} hideNewIssue />
+        </ViewStoreProvider>
+      </NavigationProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "New issue" })).toBeNull();
+  });
+});

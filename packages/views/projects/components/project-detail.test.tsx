@@ -311,11 +311,13 @@ vi.mock("../../issue-views/view-header", () => ({
   IssueViewHeader: ({
     baseMenu,
     trailing,
+    hideNewIssue,
   }: {
     baseMenu?: React.ReactNode;
     trailing?: React.ReactNode;
+    hideNewIssue?: boolean;
   }) => (
-    <header>
+    <header data-hide-new-issue={hideNewIssue ? "true" : "false"}>
       {baseMenu}
       {trailing}
     </header>
@@ -636,6 +638,13 @@ describe("ProjectDetail module filtering", () => {
       project_id: PROJECT.id,
       module_id: "module-1",
     });
+  });
+
+  it("hides the shared header New issue icon so the project bar renders a single create-issue button", () => {
+    renderProjectDetail();
+
+    expect(screen.getByRole("banner")).toHaveAttribute("data-hide-new-issue", "true");
+    expect(screen.getAllByRole("button", { name: /new issue/i })).toHaveLength(1);
   });
 });
 

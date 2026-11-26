@@ -32,6 +32,7 @@ import { useConfigStore } from "@multica/core/config";
 import { PROJECT_STATUS_ORDER, PROJECT_STATUS_CONFIG, PROJECT_PRIORITY_ORDER } from "@multica/core/projects/config";
 import { getProjectIssueMetrics } from "./project-issue-metrics";
 import { ActorAvatar } from "../../common/actor-avatar";
+import { ActionShortcutKeycaps } from "../../common/shortcut-keycaps";
 import { AppLink, currentPath, useNavigation } from "../../navigation";
 import { TitleEditor, ContentEditor, type ContentEditorRef } from "../../editor";
 import { PriorityIcon } from "../../issues/components/priority-icon";
@@ -899,6 +900,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                   <IssueViewHeader
                     controller={controller}
                     base={{ kind: "project", project }}
+                    hideNewIssue
                     baseMenu={
                       <>
                         <DropdownMenuItem onClick={() => {
@@ -998,21 +1000,27 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                             the same defaults the surface hands its own create
                             button; the issue title no longer carries a module's
                             number (S6: numbering lives in the picker only). */}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="px-2 sm:px-2.5"
-                          aria-label={t(($) => $.detail.new_issue_button)}
-                          onClick={() =>
-                            openCreateIssueWithPreference({
-                              project_id: projectId,
-                              ...(createDefaults ?? {}),
-                            })
-                          }
+                        <TooltipHint
+                          label={t(($) => $.detail.new_issue_button)}
+                          shortcut={<ActionShortcutKeycaps action="createIssue" />}
+                          side="bottom"
                         >
-                          <Plus className="h-3.5 w-3.5 sm:mr-1" />
-                          <span className="hidden sm:inline">{t(($) => $.detail.new_issue_button)}</span>
-                        </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="px-2 sm:px-2.5"
+                            aria-label={t(($) => $.detail.new_issue_button)}
+                            onClick={() =>
+                              openCreateIssueWithPreference({
+                                project_id: projectId,
+                                ...(createDefaults ?? {}),
+                              })
+                            }
+                          >
+                            <Plus className="h-3.5 w-3.5 sm:mr-1" />
+                            <span className="hidden sm:inline">{t(($) => $.detail.new_issue_button)}</span>
+                          </Button>
+                        </TooltipHint>
                         <Button
                           size="sm"
                           variant="outline"

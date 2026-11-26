@@ -128,6 +128,7 @@ export function IssueViewHeader({
   base,
   baseMenu,
   trailing,
+  hideNewIssue = false,
 }: {
   controller: IssueSurfaceController;
   base: IssueViewHeaderBase;
@@ -135,6 +136,10 @@ export function IssueViewHeader({
   baseMenu?: ReactNode;
   /** Layout toggles at the far end, e.g. the project's properties panel. */
   trailing?: ReactNode;
+  /** Omit the built-in New Issue icon when the caller renders its own create
+   *  button in `trailing` (the project page groups New Issue beside Create
+   *  module and Create work item). */
+  hideNewIssue?: boolean;
 }) {
   const { t } = useT("issues");
   const wsId = useWorkspaceId();
@@ -553,15 +558,17 @@ export function IssueViewHeader({
             onTableFacetChange={controller.setActiveTableFacet}
             iconOnly
           />
-          <IconButton
-            label={t(($) => $.views.new_issue)}
-            shortcut={<ActionShortcutKeycaps action="createIssue" />}
-            tooltipSide="bottom"
-            className="text-muted-foreground"
-            onClick={() => controller.openCreateIssue()}
-          >
-            <SquarePen />
-          </IconButton>
+          {!hideNewIssue && (
+            <IconButton
+              label={t(($) => $.views.new_issue)}
+              shortcut={<ActionShortcutKeycaps action="createIssue" />}
+              tooltipSide="bottom"
+              className="text-muted-foreground"
+              onClick={() => controller.openCreateIssue()}
+            >
+              <SquarePen />
+            </IconButton>
+          )}
           {trailing && (
             <>
               <Separator orientation="vertical" className="ml-1 data-vertical:h-4 data-vertical:self-center" />
