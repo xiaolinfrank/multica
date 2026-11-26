@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { configStore } from "@multica/core/config";
 import { renderWithI18n } from "../test/i18n";
-import { LocalPathLink } from "./local-path-link";
+import { DESKTOP_SHELL_HANDOFF_TIMEOUT_MS, LocalPathLink } from "./local-path-link";
 
 const mocks = vi.hoisted(() => ({
   copyText: vi.fn(),
@@ -17,6 +17,9 @@ vi.mock("sonner", () => ({
 }));
 
 const PATH = "/Volumes/人机协作空间/AI医药联合创新平台/01高质量数据集";
+
+/** A UNC path naming a server the deployment did not configure. */
+const UNTRUSTED_UNC = "\\\\evil.example.com\\pwn\\share";
 
 const MAC_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
@@ -109,69 +112,172 @@ describe("LocalPathLink in a browser", () => {
 
 describe("LocalPathLink in a browser with shared storage configured", () => {
   const HOST = "10.0.0.50";
-  const EXPECTED_SMB = `smb://${HOST}/${encodeURIComponent("人机协作空间")}/${encodeURIComponent("AI医药联合创新平台")}/${encodeURIComponent("01高质量数据集")}`;
+  const EXPECTED_SHELL_URL = `bayclaw-open://open?path=${encodeURIComponent(PATH)}`;
+  const EXPECTED_UNC =
+    "\\\\10.0.0.50\\人机协作空间\\AI医药联合创新平台\\01高质量数据集";
 
   beforeEach(() => {
     configStore.getState().setCollabSpaceHost(HOST);
+    // Every path here waits on the handoff timer, so the clock has to be ours.
+    vi.useFakeTimers();
   });
 
-  // The point of the whole smb:// route: a browser cannot open a local
-  // directory, but it can hand the OS a URL naming the same directory on the
-  // file server it actually lives on, and macOS routes that to Finder.
-  it("hands macOS an smb:// URL for the same directory", async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (document as unknown as { visibilityState?: unknown })
+      .visibilityState;
+  });
+
+  /** Click without waiting on userEvent's own delays: against a faked clock it
+   *  cannot advance them, and everything the component does happens after the
+   *  handler returns anyway. */
+  function clickPath(path: string) {
+    fireEvent.click(screen.getByRole("button", { name: path }));
+  }
+
+  // The point of the whole handoff: a browser cannot open a local directory,
+  // and no smb:// route knows whether the reader's shell is installed. A custom
+  // scheme the local shell registered is the one address that opens the folder
+  // natively — with a blur as the only proof it was taken.
+  it("fires the desktop shell URL and treats blur as the shell taking over", async () => {
     const { hrefs } = captureOSHandoff();
-    const user = userEvent.setup();
     renderWithI18n(<LocalPathLink path={PATH} />);
 
-    await user.click(screen.getByRole("button", { name: PATH }));
+    clickPath(PATH);
+    expect(hrefs).toEqual([EXPECTED_SHELL_URL]);
 
-    expect(hrefs).toEqual([EXPECTED_SMB]);
-    expect(mocks.toastSuccess).toHaveBeenCalledWith(
-      "Opening in Finder — the path is on your clipboard too, in case it doesn't",
-    );
-  });
-
-  // Whether the OS took the URL is not observable, so a click that opened
-  // nothing must still leave the reader something to act on.
-  it("still puts the path on the clipboard as a safety net", async () => {
-    captureOSHandoff();
-    const user = userEvent.setup();
-    renderWithI18n(<LocalPathLink path={PATH} />);
-
-    await user.click(screen.getByRole("button", { name: PATH }));
+    window.dispatchEvent(new Event("blur"));
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(mocks.copyText).toHaveBeenCalledWith(PATH);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Opening in BayClaw Desktop Shell...",
+    );
+
+    // The timer must have been cleaned up with the listeners; otherwise a stale
+    // install-guidance toast would land on top of an opened window.
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS + 100);
+    expect(mocks.toastSuccess).toHaveBeenCalledTimes(1);
+    expect(mocks.toastError).not.toHaveBeenCalled();
   });
 
-  // Windows registers no smb: handler, so the clipboard is the end of the
-  // line — but the copied value now works when pasted, which the POSIX path
-  // from somebody else's Mac never did.
-  it("copies the UNC form for a Windows reader, not the stored path", async () => {
-    setUserAgent(WINDOWS_UA);
+  // Some shells come forward without blurring the page; a hidden document is
+  // the same signal.
+  it("treats a hidden document as the shell taking over", async () => {
     const { hrefs } = captureOSHandoff();
-    const user = userEvent.setup();
     renderWithI18n(<LocalPathLink path={PATH} />);
 
-    await user.click(screen.getByRole("button", { name: PATH }));
+    clickPath(PATH);
 
-    expect(mocks.copyText).toHaveBeenCalledWith(
-      "\\\\10.0.0.50\\人机协作空间\\AI医药联合创新平台\\01高质量数据集",
-    );
-    expect(hrefs).toEqual([]);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(hrefs).toEqual([EXPECTED_SHELL_URL]);
     expect(mocks.toastSuccess).toHaveBeenCalledWith(
-      "Network path copied — paste it into the File Explorer address bar",
+      "Opening in BayClaw Desktop Shell...",
     );
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS + 100);
+    expect(mocks.toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  // A `visibilitychange` that leaves the page visible must not settle the
+  // attempt — that would swallow the install guidance on a tab switch.
+  it("ignores a visibility change that keeps the page visible", async () => {
+    captureOSHandoff();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    clickPath(PATH);
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS);
+    expect(mocks.toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  // Unregistered schemes are declined silently — the OS never reports back. So
+  // a wait that expires is the only evidence the shell is missing, and the
+  // reader still needs a working address on the clipboard.
+  it("copies the POSIX path with install guidance when macOS has no shell", async () => {
+    const { hrefs } = captureOSHandoff();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    clickPath(PATH);
+    expect(hrefs).toEqual([EXPECTED_SHELL_URL]);
+    expect(mocks.copyText).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS);
+
+    expect(mocks.copyText).toHaveBeenCalledWith(PATH);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Path copied — press ⇧⌘G in Finder to paste, or install BayClaw Desktop Shell for one-click opening",
+    );
+  });
+
+  // Windows has no Finder, and a POSIX path pasted there resolves against the
+  // current drive. The UNC form is the one its file manager accepts.
+  it("copies the UNC path with install guidance when Windows has no shell", async () => {
+    setUserAgent(WINDOWS_UA);
+    const { hrefs } = captureOSHandoff();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    clickPath(PATH);
+    expect(hrefs).toEqual([EXPECTED_SHELL_URL]);
+
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS);
+
+    expect(mocks.copyText).toHaveBeenCalledWith(EXPECTED_UNC);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Network path copied — paste it into File Explorer, or install BayClaw Desktop Shell for one-click opening",
+    );
+  });
+
+  it("reports a failed copy instead of promising an install-less fallback", async () => {
+    mocks.copyText.mockResolvedValue(false);
+    captureOSHandoff();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    clickPath(PATH);
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS);
+
+    expect(mocks.toastError).toHaveBeenCalledWith("Couldn't copy the path");
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+  });
+
+  // A double click must not stack listeners or leave a timer behind: the second
+  // attempt supersedes the first, and exactly one fallback runs.
+  it("keeps a single handoff in flight across rapid clicks", async () => {
+    const { hrefs } = captureOSHandoff();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    clickPath(PATH);
+    clickPath(PATH);
+
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS);
+
+    expect(hrefs).toEqual([EXPECTED_SHELL_URL, EXPECTED_SHELL_URL]);
+    expect(mocks.copyText).toHaveBeenCalledTimes(1);
+    expect(mocks.toastSuccess).toHaveBeenCalledTimes(1);
   });
 
   // A Linux mount point is named by whoever wrote the fstab entry, so the
-  // share cannot be derived. Guessing would produce an address that fails in
-  // a way the reader cannot diagnose.
+  // share cannot be derived. Guessing would hand the shell a path it has no
+  // reason to trust, and produce an address that fails undiagnosably.
   it("falls back to the clipboard when the share cannot be identified", async () => {
     const { hrefs } = captureOSHandoff();
-    const user = userEvent.setup();
     renderWithI18n(<LocalPathLink path="/mnt/share/项目" />);
 
-    await user.click(screen.getByRole("button", { name: "/mnt/share/项目" }));
+    clickPath("/mnt/share/项目");
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS);
 
     expect(hrefs).toEqual([]);
     expect(mocks.copyText).toHaveBeenCalledWith("/mnt/share/项目");
@@ -180,20 +286,40 @@ describe("LocalPathLink in a browser with shared storage configured", () => {
     );
   });
 
+  // SECURITY. A UNC path names its own server, and content authors write these.
+  // Launching a scheme that makes the shell authenticate against an arbitrary
+  // host is exactly the one-click credential prompt the whitelist exists to
+  // prevent, so the handoff is never attempted.
+  it("never hands an untrusted UNC host to the shell", async () => {
+    const { hrefs } = captureOSHandoff();
+    renderWithI18n(<LocalPathLink path={UNTRUSTED_UNC} />);
+
+    clickPath(UNTRUSTED_UNC);
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS);
+
+    expect(hrefs).toEqual([]);
+    expect(mocks.copyText).toHaveBeenCalledWith(UNTRUSTED_UNC);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "Path copied — press ⇧⌘G in Finder and paste it",
+    );
+  });
+
   // The desktop bridge opens the real local mount; routing it through the file
   // server instead would be a slower path to the same folder, and would fail
   // on a machine that reaches the mount but not the server.
-  it("prefers the desktop bridge over the smb:// route", async () => {
+  it("prefers the desktop bridge over the protocol handoff", async () => {
     const openLocalPath = vi.fn().mockResolvedValue({ ok: true, action: "opened" });
     installDesktopBridge(openLocalPath);
     const { hrefs } = captureOSHandoff();
-    const user = userEvent.setup();
     renderWithI18n(<LocalPathLink path={PATH} />);
 
-    await user.click(screen.getByRole("button", { name: PATH }));
+    clickPath(PATH);
+    await vi.advanceTimersByTimeAsync(DESKTOP_SHELL_HANDOFF_TIMEOUT_MS);
 
     expect(openLocalPath).toHaveBeenCalledWith(PATH);
     expect(hrefs).toEqual([]);
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    expect(mocks.copyText).not.toHaveBeenCalled();
   });
 });
 
@@ -230,6 +356,25 @@ describe("LocalPathLink in the desktop shell", () => {
     );
   });
 
+  // The shell refuses a host its own whitelist does not know. That is a
+  // security decision, not a transient failure, and the wording has to say so
+  // while leaving the path actionable.
+  it("reports a blocked file server host and leaves the path on the clipboard", async () => {
+    const openLocalPath = vi
+      .fn()
+      .mockResolvedValue({ ok: false, reason: "untrusted_host" });
+    installDesktopBridge(openLocalPath);
+    const user = userEvent.setup();
+    renderWithI18n(<LocalPathLink path={UNTRUSTED_UNC} />);
+
+    await user.click(screen.getByRole("button", { name: UNTRUSTED_UNC }));
+
+    expect(mocks.copyText).toHaveBeenCalledWith(UNTRUSTED_UNC);
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      "Blocked opening an untrusted file server host — the path is on your clipboard",
+    );
+  });
+
   // A desktop build older than this feature runs the same renderer but has no
   // such channel in its preload, so it must take the browser fallback rather
   // than invoke something main never registered.
@@ -242,6 +387,37 @@ describe("LocalPathLink in the desktop shell", () => {
 
     expect(mocks.copyText).toHaveBeenCalledWith(PATH);
     expect(mocks.toastSuccess).toHaveBeenCalled();
+  });
+
+  it("reports a path the shell rejected outright without claiming it opened", async () => {
+    const openLocalPath = vi
+      .fn()
+      .mockResolvedValue({ ok: false, reason: "error", error: "EPERM" });
+    installDesktopBridge(openLocalPath);
+    const user = userEvent.setup();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    await user.click(screen.getByRole("button", { name: PATH }));
+
+    expect(mocks.toastError).toHaveBeenCalledWith("Couldn't open that path");
+    expect(mocks.copyText).not.toHaveBeenCalled();
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+  });
+
+  // An IPC call from a page the shell does not trust is refused by design; the
+  // reader gets the same dead-end wording as any other rejection.
+  it("reports an untrusted origin as a failure", async () => {
+    const openLocalPath = vi
+      .fn()
+      .mockResolvedValue({ ok: false, reason: "untrusted_origin" });
+    installDesktopBridge(openLocalPath);
+    const user = userEvent.setup();
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    await user.click(screen.getByRole("button", { name: PATH }));
+
+    expect(mocks.toastError).toHaveBeenCalledWith("Couldn't open that path");
+    expect(mocks.copyText).not.toHaveBeenCalled();
   });
 });
 
@@ -270,12 +446,25 @@ describe("LocalPathLink rendering", () => {
     );
   });
 
-  it("names the action in the tooltip when the path is fully visible", () => {
+  it("names the copy action in the tooltip when no shell or share can open it", () => {
     renderWithI18n(<LocalPathLink path={PATH} />);
 
     expect(screen.getByRole("button", { name: PATH })).toHaveAttribute(
       "title",
       "Copy this path",
+    );
+  });
+
+  // A share address is a real action even in a plain browser: the shell opens
+  // it, or the click ends with the path copied and install guidance. Calling
+  // that "copy this path" would undersell the click.
+  it("names the open action in the tooltip when a share address exists", () => {
+    configStore.getState().setCollabSpaceHost("10.0.0.50");
+    renderWithI18n(<LocalPathLink path={PATH} />);
+
+    expect(screen.getByRole("button", { name: PATH })).toHaveAttribute(
+      "title",
+      "Open in the file manager",
     );
   });
 

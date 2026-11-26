@@ -10,6 +10,8 @@
     "storybook": "pnpm -C apps/storybook storybook",
     "dev:desktop": "turbo dev --filter=@multica/desktop",
     "dev:desktop:staging": "turbo dev:staging --filter=@multica/desktop",
+    "dev:shell": "pnpm --filter @bayclaw/desktop-shell dev",
+    "build:shell": "pnpm --filter @bayclaw/desktop-shell build",
     "dev:mobile": "pnpm -C apps/mobile dev",
     "dev:mobile:staging": "pnpm -C apps/mobile dev:staging",
     "dev:mobile:prod": "pnpm -C apps/mobile dev:prod",

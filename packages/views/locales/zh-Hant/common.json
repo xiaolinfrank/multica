@@ -144,5 +144,22 @@
   },
   "navigation": {
     "open_in_new_tab": "在新標籤頁開啟"
+  },
+  "local_path": {
+    "action_open": "在檔案管理員中開啟",
+    "action_copy": "複製此路徑",
+    "toast_copied_finder": "已複製路徑 —— 在 Finder 中按 ⇧⌘G 貼上即可開啟",
+    "toast_copied_explorer": "已複製路徑 —— 貼到檔案總管的網址列即可開啟",
+    "toast_copied_generic": "已複製路徑 —— 貼到檔案管理員即可開啟",
+    "toast_opening_finder": "正在用 Finder 開啟 —— 路徑也已複製，萬一沒反應可以貼上",
+    "toast_copied_unc": "已複製網路路徑 —— 貼到檔案總管的網址列即可開啟",
+    "toast_copy_failed": "複製路徑失敗",
+    "toast_not_found": "這台電腦無法存取該路徑，多半是共用儲存空間沒有掛載。路徑已複製到剪貼簿。",
+    "toast_failed": "無法開啟該路徑",
+    "toast_opening_desktop_shell": "正在透過 BayClaw 桌面用戶端開啟目錄…",
+    "toast_shell_not_installed_finder": "路徑已複製，請在 Finder 中按 ⇧⌘G 貼上；安裝 BayClaw 桌面用戶端即可一鍵直達目錄",
+    "toast_shell_not_installed_explorer": "網路路徑已複製，請貼到檔案總管的網址列；安裝 BayClaw 桌面用戶端即可一鍵直達目錄",
+    "toast_shell_not_installed_generic": "路徑已複製，請貼到檔案管理員；安裝 BayClaw 桌面用戶端即可一鍵直達目錄",
+    "toast_untrusted_host": "已攔截非信任的檔案伺服器位址，路徑已複製到剪貼簿"
   }
 }

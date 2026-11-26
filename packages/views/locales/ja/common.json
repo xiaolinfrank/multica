@@ -160,6 +160,11 @@
     "toast_copied_unc": "ネットワークパスをコピーしました — エクスプローラーのアドレスバーに貼り付けてください",
     "toast_copy_failed": "パスをコピーできませんでした",
     "toast_not_found": "このマシンからそのパスに到達できません。共有ボリュームがマウントされていない可能性があります。パスはクリップボードにあります。",
-    "toast_failed": "そのパスを開けませんでした"
+    "toast_failed": "そのパスを開けませんでした",
+    "toast_opening_desktop_shell": "BayClaw デスクトップシェルで開いています…",
+    "toast_shell_not_installed_finder": "パスをコピーしました — Finder で ⇧⌘G を押して貼り付けるか、BayClaw デスクトップシェルをインストールするとワンクリックで開けます",
+    "toast_shell_not_installed_explorer": "ネットワークパスをコピーしました — エクスプローラーのアドレスバーに貼り付けるか、BayClaw デスクトップシェルをインストールするとワンクリックで開けます",
+    "toast_shell_not_installed_generic": "パスをコピーしました — ファイルマネージャーに貼り付けるか、BayClaw デスクトップシェルをインストールするとワンクリックで開けます",
+    "toast_untrusted_host": "信頼されていないファイルサーバーのホストをブロックしました。パスはクリップボードにあります"
   }
 }

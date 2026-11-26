@@ -22,7 +22,13 @@ export type OpenLocalPathResult =
   | { ok: true; action: "opened" | "revealed" }
   | {
       ok: false;
-      reason: "invalid" | "not_found" | "error" | "unsupported";
+      reason:
+        | "invalid"
+        | "not_found"
+        | "error"
+        | "unsupported"
+        | "untrusted_host"
+        | "untrusted_origin";
       error?: string;
     };
 

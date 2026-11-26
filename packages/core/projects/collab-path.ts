@@ -126,9 +126,26 @@ export interface CollabPathAddresses {
   smbUrl: string | null;
   /** Paste-able in the Windows Explorer address bar. */
   uncPath: string | null;
+  /** Custom protocol URL (`bayclaw-open://open?path=...`) handled by the
+   *  BayClaw Desktop Shell. `null` whenever no address above was derived. */
+  desktopShellUrl: string | null;
 }
 
-const NONE: CollabPathAddresses = { smbUrl: null, uncPath: null };
+const NONE: CollabPathAddresses = {
+  smbUrl: null,
+  uncPath: null,
+  desktopShellUrl: null,
+};
+
+/**
+ * The desktop shell resolves the trusted file server itself, from the server
+ * it loaded — so the query string carries the path and nothing else. Echoing a
+ * `host=` back would hand the shell a host chosen by the content author, which
+ * is exactly the trust boundary the addresses below are derived under.
+ */
+function desktopShellUrlFor(path: string): string {
+  return `bayclaw-open://open?path=${encodeURIComponent(path)}`;
+}
 
 const MACOS_MOUNT_ROOT = "/Volumes/";
 
@@ -163,6 +180,7 @@ export function collabPathAddresses(
     return {
       smbUrl: `smb://${uncHost}/${encodeSmbPath(segments.join("/"))}`,
       uncPath: value.replace(/\//g, "\\"),
+      desktopShellUrl: desktopShellUrlFor(value),
     };
   }
 
@@ -174,5 +192,6 @@ export function collabPathAddresses(
   return {
     smbUrl: `smb://${server}/${encodeSmbPath(rest)}`,
     uncPath: `\\\\${server}\\${rest.replace(/\//g, "\\")}`,
+    desktopShellUrl: desktopShellUrlFor(value),
   };
 }

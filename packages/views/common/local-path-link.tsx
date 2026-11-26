@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { FolderOpen } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FolderOpen } from "@multica/ui/icons";
 import { toast } from "sonner";
 import { copyText } from "@multica/ui/lib/clipboard";
 import { cn } from "@multica/ui/lib/utils";
@@ -15,6 +15,14 @@ import {
 import { useT } from "../i18n";
 
 /**
+ * How long a browser waits for the desktop shell to take over after a custom
+ * scheme launch. A registered handler blurs the window within a frame or two;
+ * an unregistered scheme does nothing at all, and the browser reports no error.
+ * Exported so the tests can drive it with fake timers instead of real waiting.
+ */
+export const DESKTOP_SHELL_HANDOFF_TIMEOUT_MS = 1200;
+
+/**
  * A filesystem path the reader can act on.
  *
  * Rendered wherever a path appears: the collaboration space on a project, and
@@ -26,16 +34,13 @@ import { useT } from "../i18n";
  *
  *   Desktop — opens the directory in Finder / Explorer through the preload
  *     bridge. One click, always.
- *   Browser on macOS, shared storage configured — hands an `smb://` URL to the
- *     OS, which is Finder. Also one click. `file://` is blocked outright in
- *     every browser with no permission to grant, but a custom scheme is not:
- *     the same directory addressed through the file server it actually lives on
- *     goes straight to Finder, mounting the share on the way if needed.
- *   Browser on Windows, shared storage configured — copies the UNC form, which
- *     is what Explorer's address bar accepts. Windows registers no `smb:`
- *     handler, so the clipboard is the end of the line there; what changes is
- *     that the copied value works when pasted, instead of being a POSIX path
- *     from someone else's Mac.
+ *   Browser, shared storage configured — hands a `bayclaw-open://` URL to the
+ *     OS, which the BayClaw Desktop Shell registers. A page served over http(s)
+ *     may not navigate to `file://`, but a custom scheme is not blocked: when
+ *     the shell is installed it opens the same directory natively. When it is
+ *     not installed the OS declines silently, so after a short wait the path is
+ *     copied with guidance to install the shell. Either way the reader ends up
+ *     with something that works, in their own OS terms.
  *   Anything else — copies the path and names, in the reader's own OS terms,
  *     where to paste it.
  *
@@ -49,6 +54,18 @@ import { useT } from "../i18n";
 export function useLocalPathActions() {
   const { t } = useT("common");
   const collabSpaceHost = useConfigStore((state) => state.collabSpaceHost);
+
+  // At most one handoff is in flight. A double click cancels the previous
+  // attempt before starting the next, so listeners and timers cannot stack, and
+  // unmounting mid-wait cannot resolve a toast onto a page the reader left.
+  const cancelHandoff = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      cancelHandoff.current?.();
+      cancelHandoff.current = null;
+    },
+    [],
+  );
 
   const copyWithHint = async (path: string) => {
     const ok = await copyText(path);
@@ -68,34 +85,83 @@ export function useLocalPathActions() {
 
   const open = async (path: string) => {
     const addresses = collabPathAddresses(path, collabSpaceHost);
-    if (!canOpenLocalPath()) {
-      const manager = viewerFileManager();
-      if (manager === "finder" && addresses.smbUrl) {
-        handOffToOS(addresses.smbUrl);
-        void copyText(path);
-        toast.success(t(($) => $.local_path.toast_opening_finder));
+
+    if (canOpenLocalPath()) {
+      // Inside the shell the bridge is the whole story: it resolves the mount
+      // and opens it with the full parent hierarchy, which no protocol URL or
+      // file-server address can do as well.
+      cancelHandoff.current?.();
+      cancelHandoff.current = null;
+      const result = await openLocalPath(path);
+      if (result.ok) return;
+      // `not_found` is the unmounted-volume case and `untrusted_host` the one
+      // the shell's own whitelist refused: the value is still correct for the
+      // machine that wrote it, so hand it over rather than dead-ending.
+      if (result.reason === "not_found") {
+        await copyText(path);
+        toast.error(t(($) => $.local_path.toast_not_found));
         return;
       }
-      if (manager === "explorer" && addresses.uncPath) {
-        const ok = await copyText(addresses.uncPath);
-        toast[ok ? "success" : "error"](ok ? t(($) => $.local_path.toast_copied_unc) : t(($) => $.local_path.toast_copy_failed));
+      if (result.reason === "untrusted_host") {
+        await copyText(path);
+        toast.error(t(($) => $.local_path.toast_untrusted_host));
         return;
       }
-      await copyWithHint(path);
+      if (result.reason === "unsupported") {
+        await copyWithHint(path);
+        return;
+      }
+      // `invalid`, `untrusted_origin` and transport errors: the path never
+      // reached a file manager, and copying it would imply otherwise.
+      toast.error(t(($) => $.local_path.toast_failed));
       return;
     }
-    const result = await openLocalPath(path);
-    if (result.ok) return;
-    if (result.reason === "not_found") {
-      await copyText(path);
-      toast.error(t(($) => $.local_path.toast_not_found));
+
+    const manager = viewerFileManager();
+
+    // Non-null exactly when the deployment configured a file server AND the
+    // path names a share on it — the trust decision already happened in
+    // `collabPathAddresses`, so nothing here has to re-derive a host.
+    if (addresses.desktopShellUrl !== null) {
+      // A POSIX path is meaningless in Explorer, so Windows gets the UNC form.
+      const fallbackPath =
+        manager === "explorer" && addresses.uncPath ? addresses.uncPath : path;
+      cancelHandoff.current?.();
+      cancelHandoff.current = startDesktopShellHandoff(
+        addresses.desktopShellUrl,
+        {
+          onOpened: () => {
+            cancelHandoff.current = null;
+            void copyText(fallbackPath);
+            toast.success(
+              t(($) => $.local_path.toast_opening_desktop_shell),
+            );
+          },
+          onTimeout: () => {
+            cancelHandoff.current = null;
+            void (async () => {
+              const ok = await copyText(fallbackPath);
+              if (!ok) {
+                toast.error(t(($) => $.local_path.toast_copy_failed));
+                return;
+              }
+              toast.success(
+                manager === "finder"
+                  ? t(($) => $.local_path.toast_shell_not_installed_finder)
+                  : manager === "explorer"
+                    ? t(($) => $.local_path.toast_shell_not_installed_explorer)
+                    : t(($) => $.local_path.toast_shell_not_installed_generic),
+              );
+            })();
+          },
+        },
+      );
       return;
     }
-    if (result.reason === "unsupported") {
-      await copyWithHint(path);
-      return;
-    }
-    toast.error(t(($) => $.local_path.toast_failed));
+
+    // No file server, a UNC path naming some other server, or a path whose
+    // share cannot be derived: the clipboard is the whole available action.
+    await copyWithHint(path);
   };
 
   const copy = (path: string) => copyWithHint(path);
@@ -132,11 +198,11 @@ export function LocalPathLink({
   // also the conservative one.
   const [canOpen, setCanOpen] = useState(false);
   useEffect(() => {
-    setCanOpen(
-      canOpenLocalPath() ||
-        (viewerFileManager() === "finder" && addresses.smbUrl !== null),
-    );
-  }, [addresses.smbUrl]);
+    // A browser with a share address has an action too: the handoff either
+    // opens the directory in the installed shell or leaves the path on the
+    // clipboard with install guidance.
+    setCanOpen(canOpenLocalPath() || addresses.desktopShellUrl !== null);
+  }, [addresses.desktopShellUrl]);
 
   const actions = useLocalPathActions();
   const handleClick = () => actions.open(path);
@@ -182,6 +248,65 @@ export function LocalPathLink({
       </span>
     </button>
   );
+}
+
+/**
+ * Launch a `bayclaw-open://` URL and watch for the shell taking over.
+ *
+ * The launch itself is not observable: an anchor click either reaches a
+ * registered handler or is declined in silence, with nothing reported back to
+ * script. What IS observable is the window losing focus, which a real shell
+ * causes as it comes forward. So the click is paired with a short wait: `blur`
+ * (or the document becoming hidden) means the shell answered, and silence for
+ * `DESKTOP_SHELL_HANDOFF_TIMEOUT_MS` means it is not installed.
+ *
+ * Returns a cancel function: it settles silently, for a newer click that
+ * supersedes this attempt or an unmount, so no listener or timer is left
+ * behind.
+ */
+function startDesktopShellHandoff(
+  url: string,
+  handlers: { onOpened: () => void; onTimeout: () => void },
+): () => void {
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const cleanup = () => {
+    window.removeEventListener("blur", handleBlur);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+  };
+
+  const settle = (next: () => void) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    next();
+  };
+
+  function handleBlur() {
+    settle(handlers.onOpened);
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === "hidden") settle(handlers.onOpened);
+  }
+
+  // Listeners before the launch: a browser may blur the window during the very
+  // click that starts it, and registering afterwards would miss that.
+  window.addEventListener("blur", handleBlur);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  timer = setTimeout(
+    () => settle(handlers.onTimeout),
+    DESKTOP_SHELL_HANDOFF_TIMEOUT_MS,
+  );
+
+  handOffToOS(url);
+
+  return () => settle(() => {});
 }
 
 /**

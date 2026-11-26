@@ -35,6 +35,7 @@ The monorepo enforces strict package boundaries:
 | `packages/views` | `core/`, `ui/` | `next/*`, `react-router-dom`, store definitions |
 | `apps/web/platform/` | `next/*` | other apps |
 | `apps/desktop/.../platform/` | `react-router-dom`, electron | other apps |
+| `apps/desktop-shell/` | electron, Node built-ins | `@multica/views`, `@multica/core`, `@multica/ui`, React, other apps |
 | `apps/mobile/` | types and pure functions from `@multica/core`, through each module's own subpath | Web/Desktop React pages, stores, and platform implementations, including core barrels that re-export them |
 
 The root `AGENTS.md` is the source for these boundaries and their narrow exceptions; change both together. Lint enforces the `packages/core` row (`packages/core/eslint.config.mjs`) and mobile's core imports (`apps/mobile/eslint.config.js`).

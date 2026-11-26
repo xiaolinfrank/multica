@@ -155,6 +155,11 @@
     "toast_copied_unc": "Chemin réseau copié — collez-le dans la barre d'adresse de l'Explorateur de fichiers",
     "toast_copy_failed": "Impossible de copier le chemin",
     "toast_not_found": "Cette machine n'atteint pas ce chemin. Le volume partagé n'est probablement pas monté — le chemin est dans votre presse-papiers.",
-    "toast_failed": "Impossible d'ouvrir ce chemin"
+    "toast_failed": "Impossible d'ouvrir ce chemin",
+    "toast_opening_desktop_shell": "Ouverture dans BayClaw Desktop Shell…",
+    "toast_shell_not_installed_finder": "Chemin copié — appuyez sur ⇧⌘G dans le Finder pour le coller, ou installez BayClaw Desktop Shell pour l'ouvrir en un clic",
+    "toast_shell_not_installed_explorer": "Chemin réseau copié — collez-le dans l'Explorateur de fichiers, ou installez BayClaw Desktop Shell pour l'ouvrir en un clic",
+    "toast_shell_not_installed_generic": "Chemin copié — collez-le dans votre gestionnaire de fichiers, ou installez BayClaw Desktop Shell pour l'ouvrir en un clic",
+    "toast_untrusted_host": "Ouverture bloquée : hôte de serveur de fichiers non fiable — le chemin est dans votre presse-papiers"
   }
 }

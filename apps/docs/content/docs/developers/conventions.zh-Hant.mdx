@@ -33,6 +33,7 @@ monorepo 的包邊界是硬約束：
 | `packages/views` | `core/`、`ui/` | `next/*`、`react-router-dom`、store 定義 |
 | `apps/web/platform/` | `next/*` | 其他 app |
 | `apps/desktop/.../platform/` | `react-router-dom`、electron | 其他 app |
+| `apps/desktop-shell/` | electron、Node 內建模組 | `@multica/views`、`@multica/core`、`@multica/ui`、React、其他 app |
 | `apps/mobile/` | `@multica/core` 的類型和純函式，透過各模組自己的子路徑匯入 | Web/Desktop 的 React 頁面、store 和平臺實現，以及重新匯出它們的 core barrel |
 
 包邊界及其少數例外以根目錄 `AGENTS.md` 為準，修改時兩處同步。`packages/core` 這一行由 `packages/core/eslint.config.mjs` 透過 lint 強制，mobile 對 core 的匯入由 `apps/mobile/eslint.config.js` 強制。

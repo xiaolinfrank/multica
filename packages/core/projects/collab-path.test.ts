@@ -98,29 +98,49 @@ describe("isAbsoluteCollabPath", () => {
   });
 });
 
+/** The one protocol URL the desktop shell accepts. It carries the path and
+ *  nothing else: the shell resolves the trusted host from the server it loaded,
+ *  so a `host=` echoed back from content would move the trust decision into the
+ *  content author's hands. */
+function shellUrl(path: string): string {
+  return `bayclaw-open://open?path=${encodeURIComponent(path)}`;
+}
+
 describe("collabPathAddresses", () => {
   const HOST = "10.0.0.50";
 
   it("addresses a macOS mount through the configured file server", () => {
-    expect(collabPathAddresses("/Volumes/人机协作空间/项目/模块", HOST)).toEqual({
+    const path = "/Volumes/人机协作空间/项目/模块";
+    expect(collabPathAddresses(path, HOST)).toEqual({
       smbUrl: `smb://${HOST}/${encodeURIComponent("人机协作空间")}/${encodeURIComponent("项目")}/${encodeURIComponent("模块")}`,
       uncPath: "\\\\10.0.0.50\\人机协作空间\\项目\\模块",
+      desktopShellUrl: shellUrl(path),
     });
   });
 
   // macOS writes its own mount URLs percent-encoded, so Finder decodes them
   // back; a raw space would truncate the address instead.
   it("percent-encodes a segment containing a space", () => {
-    const { smbUrl } = collabPathAddresses("/Volumes/AI 平台/报告", HOST);
+    const { smbUrl, desktopShellUrl } = collabPathAddresses(
+      "/Volumes/AI 平台/报告",
+      HOST,
+    );
     expect(smbUrl).toBe(
       `smb://${HOST}/AI%20${encodeURIComponent("平台")}/${encodeURIComponent("报告")}`,
+    );
+    // The protocol payload is a single query value: the space, the slashes and
+    // the CJK all have to survive the round trip through the OS.
+    expect(desktopShellUrl).toBe(
+      "bayclaw-open://open?path=%2FVolumes%2FAI%20%E5%B9%B3%E5%8F%B0%2F%E6%8A%A5%E5%91%8A",
     );
   });
 
   it("keeps a UNC path on the server it names, when that is the configured one", () => {
-    expect(collabPathAddresses("\\\\nas01\\共享\\项目", "NAS01")).toEqual({
+    const path = "\\\\nas01\\共享\\项目";
+    expect(collabPathAddresses(path, "NAS01")).toEqual({
       smbUrl: `smb://nas01/${encodeURIComponent("共享")}/${encodeURIComponent("项目")}`,
       uncPath: "\\\\nas01\\共享\\项目",
+      desktopShellUrl: shellUrl(path),
     });
   });
 
@@ -128,17 +148,19 @@ describe("collabPathAddresses", () => {
   // smb:// click asks the reader's OS to authenticate against whatever host the
   // string names. Honouring a UNC path's own host would turn any comment into a
   // one-click mount of an attacker's server, behind a credential prompt the
-  // reader has every reason to read as their own NAS.
+  // reader has every reason to read as their own NAS. The desktop handoff is
+  // refused for the same reason: no address at all means no protocol launch.
   it("refuses a UNC path naming a host the deployment did not configure", () => {
     expect(
       collabPathAddresses("\\\\evil.example.com\\pwn\\x", HOST),
-    ).toEqual({ smbUrl: null, uncPath: null });
+    ).toEqual({ smbUrl: null, uncPath: null, desktopShellUrl: null });
   });
 
   it("refuses a UNC path when no file server is configured at all", () => {
     expect(collabPathAddresses("\\\\nas01\\共享\\项目", "")).toEqual({
       smbUrl: null,
       uncPath: null,
+      desktopShellUrl: null,
     });
   });
 
@@ -157,6 +179,7 @@ describe("collabPathAddresses", () => {
     expect(collabPathAddresses(path, host)).toEqual({
       smbUrl: null,
       uncPath: null,
+      desktopShellUrl: null,
     });
   });
 });

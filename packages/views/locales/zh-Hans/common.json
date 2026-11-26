@@ -160,6 +160,11 @@
     "toast_copied_unc": "已复制网络路径 —— 粘贴到文件资源管理器的地址栏即可打开",
     "toast_copy_failed": "复制路径失败",
     "toast_not_found": "这台电脑访问不到该路径，多半是共享存储没有挂载。路径已复制到剪贴板。",
-    "toast_failed": "打不开该路径"
+    "toast_failed": "打不开该路径",
+    "toast_opening_desktop_shell": "正在通过 BayClaw 桌面客户端打开目录…",
+    "toast_shell_not_installed_finder": "路径已复制，请在访达中按 ⇧⌘G 粘贴；安装 BayClaw 桌面客户端可一键直达目录",
+    "toast_shell_not_installed_explorer": "网络路径已复制，请粘贴到文件资源管理器地址栏；安装 BayClaw 桌面客户端可一键直达目录",
+    "toast_shell_not_installed_generic": "路径已复制，请粘贴到文件管理器；安装 BayClaw 桌面客户端可一键直达目录",
+    "toast_untrusted_host": "已拦截非信任文件服务器地址，路径已复制到剪贴板"
   }
 }

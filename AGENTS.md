@@ -20,6 +20,7 @@ Multica is a task management platform where people and agents collaborate on iss
 | `packages/views/` | Shared web/desktop pages and business components. No store definitions, `next/*`, or `react-router-dom`; use `NavigationAdapter`, `useNavigation()`, and `<AppLink>`. Lint enforces the store rule outside tests (`packages/views/eslint.config.mjs`). |
 | `apps/web/` | Next.js routes/layouts and web-only UI. Framework APIs stay here; shared navigation adapters live in `apps/web/platform/`. |
 | `apps/desktop/` | Electron and desktop-only UI/state. Application navigation goes through `apps/desktop/src/renderer/src/platform/`. |
+| `apps/desktop-shell/` | Lightweight remote-loading Electron desktop shell (`@bayclaw/desktop-shell`): loads remote HTTPS web UI directly, registers `bayclaw-open://`, and provides native macOS/Windows NAS directory opening without bundling `@multica/views`, React, or daemon binaries. |
 | `apps/mobile/` | Independent Expo/React Native client: owns UI, state, hooks, providers, i18n, build, and release. Shares core types and pure utilities, including platform-independent schemas; runtime imports use the pure module's own subpath, not a barrel that also re-exports hooks or stores (lint-enforced). |
 | `apps/docs/` | Fumadocs documentation site |
 

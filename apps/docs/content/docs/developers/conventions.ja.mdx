@@ -35,6 +35,7 @@ Multica のコードを書く、翻訳を変更する、あるいは中国語の
 | `packages/views` | `core/`, `ui/` | `next/*`, `react-router-dom`, store の定義 |
 | `apps/web/platform/` | `next/*` | 他のアプリ |
 | `apps/desktop/.../platform/` | `react-router-dom`, electron | 他のアプリ |
+| `apps/desktop-shell/` | electron, Node 組み込みモジュール | `@multica/views`, `@multica/core`, `@multica/ui`, React, 他のアプリ |
 | `apps/mobile/` | `@multica/core` の型と純粋関数（各モジュール自身のサブパスから import） | Web/Desktop の React ページ、store、プラットフォーム実装、およびそれらを再エクスポートする core の barrel |
 
 パッケージ境界とその限定的な例外は、ルートの `AGENTS.md` を正とします。変更するときは両方を更新してください。`packages/core` の行は `packages/core/eslint.config.mjs`、mobile の core import は `apps/mobile/eslint.config.js` が lint で強制します。

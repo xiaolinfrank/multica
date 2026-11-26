@@ -1,0 +1,29 @@
+{
+  "name": "@bayclaw/desktop-shell",
+  "productName": "BayClaw",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lightweight remote-loading Electron desktop shell for BayClaw with native macOS/Windows NAS folder opening.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "main": "./dist/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "dev": "pnpm run build && electron .",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "package": "pnpm run build && electron-builder --config electron-builder.yml --publish never",
+    "package:mac": "pnpm run build && electron-builder --mac --config electron-builder.yml --publish never",
+    "package:win": "pnpm run build && electron-builder --win --config electron-builder.yml --publish never"
+  },
+  "devDependencies": {
+    "@multica/eslint-config": "workspace:*",
+    "@multica/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "electron": "catalog:",
+    "electron-builder": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

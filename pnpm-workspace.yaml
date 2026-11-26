@@ -30,6 +30,8 @@ catalog:
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
   cmdk: ^1.1.1
+  electron: ^44.9.3
+  electron-builder: ^26.0.12
   entities: ^6.0.1
   eslint: ^9.0.0
   eslint-plugin-i18next: ^6.1.4

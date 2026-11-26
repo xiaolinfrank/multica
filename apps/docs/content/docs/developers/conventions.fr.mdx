@@ -35,6 +35,7 @@ Le monorepo impose des frontières strictes entre les packages :
 | `packages/views` | `core/`, `ui/` | `next/*`, `react-router-dom`, définitions de stores |
 | `apps/web/platform/` | `next/*` | autres applications |
 | `apps/desktop/.../platform/` | `react-router-dom`, electron | autres applications |
+| `apps/desktop-shell/` | electron, modules natifs Node | `@multica/views`, `@multica/core`, `@multica/ui`, React, autres applications |
 | `apps/mobile/` | types et fonctions pures de `@multica/core`, via le sous-chemin propre à chaque module | pages React, stores et implémentations de plateforme de Web/Desktop, y compris les barrels de core qui les réexportent |
 
 Le fichier `AGENTS.md` à la racine fait foi pour ces frontières et leurs rares exceptions ; modifiez les deux ensemble. Le lint impose la ligne `packages/core` (`packages/core/eslint.config.mjs`) et les imports de core dans mobile (`apps/mobile/eslint.config.js`).

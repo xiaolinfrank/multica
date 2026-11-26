@@ -1,0 +1,31 @@
+appId: ai.bayclaw.shell
+productName: BayClaw
+
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - package.json
+
+protocols:
+  - name: BayClaw Open
+    schemes:
+      - bayclaw-open
+
+mac:
+  target:
+    - dmg
+    - zip
+  minimumSystemVersion: "13.0.0"
+  category: public.app-category.productivity
+  notarize: false
+
+win:
+  target:
+    - nsis
+    - portable
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

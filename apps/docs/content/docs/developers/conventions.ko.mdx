@@ -35,6 +35,7 @@ Multica 코드를 작성하거나, 번역을 변경하거나, 중국어 제품 �
 | `packages/views` | `core/`, `ui/` | `next/*`, `react-router-dom`, store 정의 |
 | `apps/web/platform/` | `next/*` | 다른 앱 |
 | `apps/desktop/.../platform/` | `react-router-dom`, electron | 다른 앱 |
+| `apps/desktop-shell/` | electron, Node 내장 모듈 | `@multica/views`, `@multica/core`, `@multica/ui`, React, 다른 앱 |
 | `apps/mobile/` | `@multica/core`의 유형과 순수 함수(각 모듈 자체의 하위 경로로 import) | Web/Desktop의 React 페이지, store, 플랫폼 구현, 그리고 이를 다시 내보내는 core barrel |
 
 패키지 경계와 그 제한적인 예외는 루트 `AGENTS.md`를 기준으로 합니다. 변경할 때는 두 곳을 함께 수정하세요. `packages/core` 행은 `packages/core/eslint.config.mjs`가, mobile의 core import는 `apps/mobile/eslint.config.js`가 lint로 강제합니다.

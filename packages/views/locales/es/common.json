@@ -144,5 +144,22 @@
     "unknown": "Este servidor no ha confirmado sus ajustes de conexión. Pide a tu administrador que actualice el servidor.",
     "incomplete": "Los ajustes de conexión están incompletos. Pide a tu administrador que configure las URL públicas de este servidor."
   },
-  "more_actions": "Más acciones"
+  "more_actions": "Más acciones",
+  "local_path": {
+    "action_open": "Abrir en el gestor de archivos",
+    "action_copy": "Copiar esta ruta",
+    "toast_copied_finder": "Ruta copiada — pulsa ⇧⌘G en el Finder y pégala",
+    "toast_copied_explorer": "Ruta copiada — pégala en la barra de direcciones del Explorador de archivos",
+    "toast_copied_generic": "Ruta copiada — pégala en tu gestor de archivos",
+    "toast_opening_finder": "Abriendo en el Finder — la ruta también está en tu portapapeles, por si acaso",
+    "toast_copied_unc": "Ruta de red copiada — pégala en la barra de direcciones del Explorador de archivos",
+    "toast_copy_failed": "No se pudo copiar la ruta",
+    "toast_not_found": "Este equipo no puede acceder a esa ruta. Probablemente el volumen compartido no esté montado — la ruta está en tu portapapeles.",
+    "toast_failed": "No se pudo abrir esa ruta",
+    "toast_opening_desktop_shell": "Abriendo en BayClaw Desktop Shell…",
+    "toast_shell_not_installed_finder": "Ruta copiada — pulsa ⇧⌘G en el Finder para pegarla, o instala BayClaw Desktop Shell para abrirla con un clic",
+    "toast_shell_not_installed_explorer": "Ruta de red copiada — pégala en el Explorador de archivos, o instala BayClaw Desktop Shell para abrirla con un clic",
+    "toast_shell_not_installed_generic": "Ruta copiada — pégala en tu gestor de archivos, o instala BayClaw Desktop Shell para abrirla con un clic",
+    "toast_untrusted_host": "Se bloqueó la apertura de un host de archivos no confiable — la ruta está en tu portapapeles"
+  }
 }

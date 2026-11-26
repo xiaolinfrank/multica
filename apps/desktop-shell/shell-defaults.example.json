@@ -1,0 +1,5 @@
+{
+  "serverUrl": "https://bayclaw.example.com",
+  "allowSelfSignedCert": false,
+  "collabSpaceHostOverride": ""
+}
