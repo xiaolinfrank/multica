@@ -147,6 +147,7 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
       });
       if (surfaceActions) {
         surfaceActions.updateIssue(issueId, updates, withConflict({
+          handlesDirectoryConflict: true,
           errorMessage: t(($) => $.detail.update_failed),
           ...options,
         }));

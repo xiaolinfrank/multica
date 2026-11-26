@@ -50,6 +50,7 @@ import { useT } from "../../i18n";
 import { CollectionPageState } from "../../layout/collection-page";
 import { IssueContextMenuProvider } from "../actions";
 import { PendingCreationsStrip } from "../components/pending-creations-strip";
+import { RunningTasksDialog } from "../../plan-tree/running-tasks-dialog";
 import { IssueSurfaceActionsProvider } from "./actions-context";
 import { IssuePeekHost } from "../components/issue-peek";
 import { IssueSurfaceSelectionProvider } from "./selection-context";
@@ -469,6 +470,10 @@ function IssueSurfaceContent({
             }
           />
         )}
+        <RunningTasksDialog
+          conflict={controller.directoryConflict}
+          onDismiss={controller.dismissDirectoryConflict}
+        />
       </ColumnStatusesProvider>
       </IssueSurfaceSelectionProvider>
       </IssueContextMenuProvider>

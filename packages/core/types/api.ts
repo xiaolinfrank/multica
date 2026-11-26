@@ -137,6 +137,8 @@ export interface MoveIssueRequest
     | "parent_issue_id"
     | "project_id"
     | "module_id"
+    | "work_item_id"
+    | "directory_sync"
     | "stop_previous_assignee_runs"
   > {
   before_id: string | null;

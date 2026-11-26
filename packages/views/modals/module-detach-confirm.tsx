@@ -19,7 +19,9 @@ import { useT } from "../i18n";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { issueOperationAllowed, issueUpdateOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
 import { IssueOperationRestriction } from "../issues/components/issue-operation-restriction";
+import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 import { useCockpitCommandContext } from "../cockpit/components/use-cockpit-command-context";
+import { RunningTasksDialog, type RunningTasksConflict } from "../plan-tree/running-tasks-dialog";
 
 /**
  * Confirms the one write that can take a sub-issue out of its parent's module.
@@ -54,9 +56,10 @@ export function ModuleDetachConfirmModal({
   const identity = JSON.stringify([wsId, issueId, updates, invocation.current.generation]);
   const captureContext = useCockpitCommandContext(identity);
   const [error, setError] = useState("");
-  useEffect(() => { setSubmitting(false); setError(""); }, [identity]);
+  const [directoryConflict, setDirectoryConflict] = useState<RunningTasksConflict | null>(null);
+  useEffect(() => { setSubmitting(false); setError(""); setDirectoryConflict(null); }, [identity]);
 
-  const submit = async () => {
+  const submit = async (directorySync?: "force" | "defer") => {
     if (!issueId || submitting || !allowed) return;
     const stillCurrent = captureContext();
     setSubmitting(true);
@@ -66,10 +69,22 @@ export function ModuleDetachConfirmModal({
         id: issueId,
         ...updates,
         parent_issue_id: null,
+        ...(directorySync ? { directory_sync: directorySync } : {}),
       });
       if (stillCurrent()) onClose();
     } catch (err) {
       if (!stillCurrent()) return;
+      if (isCockpitRunningTasksError(err)) {
+        setSubmitting(false);
+        setDirectoryConflict({
+          tasks: err.runningTasks,
+          retry: (mode) => {
+            setDirectoryConflict(null);
+            void submit(mode);
+          },
+        });
+        return;
+      }
       const message =
         errorCode(err) === "revision_conflict"
           ? tIssues(($) => $.revision.conflict)
@@ -82,27 +97,34 @@ export function ModuleDetachConfirmModal({
   };
 
   return (
-    <AlertDialog open onOpenChange={(v) => { if (!v && !submitting) onClose(); }}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t(($) => $.module_detach.title)}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t(($) => $.module_detach.description, { title: issueTitle })}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <IssueOperationRestriction observation={observation} operation={issueOperationAllowed(basis, "parent") ? "scope" : "parent"} />
-        {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={submitting}>
-            {t(($) => $.module_detach.cancel)}
-          </AlertDialogCancel>
-          <AlertDialogAction onClick={submit} disabled={submitting || !allowed}>
-            {submitting
-              ? t(($) => $.module_detach.submitting)
-              : t(($) => $.module_detach.confirm)}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <>
+      <AlertDialog open onOpenChange={(v) => { if (!v && !submitting && !directoryConflict) onClose(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(($) => $.module_detach.title)}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(($) => $.module_detach.description, { title: issueTitle })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <IssueOperationRestriction observation={observation} operation={issueOperationAllowed(basis, "parent") ? "scope" : "parent"} />
+          {error && <p role="alert" className="text-caption text-destructive">{error}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>
+              {t(($) => $.module_detach.cancel)}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => void submit()} disabled={submitting || !allowed}>
+              {submitting
+                ? t(($) => $.module_detach.submitting)
+                : t(($) => $.module_detach.confirm)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <RunningTasksDialog
+        conflict={directoryConflict}
+        onDismiss={() => setDirectoryConflict(null)}
+        pending={submitting}
+      />
+    </>
   );
 }

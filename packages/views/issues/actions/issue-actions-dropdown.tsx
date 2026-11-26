@@ -16,6 +16,7 @@ import {
   dropdownPrimitives,
 } from "./issue-actions-menu-items";
 import { AssigneePicker } from "../components/pickers";
+import { RunningTasksDialog } from "../../plan-tree/running-tasks-dialog";
 
 interface IssueActionsDropdownProps {
   issue: Issue;
@@ -86,6 +87,10 @@ export function IssueActionsDropdown({
           align={align}
         />
       )}
+      <RunningTasksDialog
+        conflict={actions.directoryConflict}
+        onDismiss={actions.dismissDirectoryConflict}
+      />
     </span>
   );
 }

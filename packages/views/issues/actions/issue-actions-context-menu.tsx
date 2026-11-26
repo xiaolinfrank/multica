@@ -28,6 +28,7 @@ import {
 } from "./issue-actions-menu-items";
 import { AssigneePicker } from "../components/pickers";
 import { TerminateTaskConfirmDialog } from "../components/terminate-task-confirm-dialog";
+import { RunningTasksDialog } from "../../plan-tree/running-tasks-dialog";
 import { useT } from "../../i18n";
 
 /**
@@ -201,6 +202,10 @@ function IssueContextMenuSingleton({
           onClose={() => setStopTask(null)}
         />
       )}
+      <RunningTasksDialog
+        conflict={actions.directoryConflict}
+        onDismiss={actions.dismissDirectoryConflict}
+      />
     </>
   );
 }
