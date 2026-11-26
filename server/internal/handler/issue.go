@@ -5487,6 +5487,116 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		batchWorkItemID = workItemUUID
 	}
 
+	// Pre-flight ownership & parent-child consistency validation before mutating
+	// any issue in the batch. A conflict (leaving a child in a different
+	// ownership than its unselected parent, or a module/project mismatch) aborts
+	// the whole batch with zero writes; when both parent and child are in the
+	// batch moving to the same ownership, parents are written first so the
+	// subtree moves cleanly without order-dependent refusals or revision errors.
+	execIssueIDs := req.IssueIDs
+	_, batchTouchedProject := rawUpdates["project_id"]
+	_, batchTouchedModule := rawUpdates["module_id"]
+	_, batchTouchedWorkItem := rawUpdates["work_item_id"]
+	_, batchTouchedParent := rawUpdates["parent_issue_id"]
+	if (batchTouchedProject || batchTouchedModule || batchTouchedWorkItem) && !batchTouchedParent {
+		preflightItems := make([]batchParentFilingIssue, 0, len(req.IssueIDs))
+		parentCache := make(map[pgtype.UUID]db.Issue, len(req.IssueIDs))
+		missingCache := make(map[pgtype.UUID]bool)
+		for _, rawID := range req.IssueIDs {
+			uid, err := util.ParseUUID(rawID)
+			if err != nil {
+				continue
+			}
+			prevIssue, err := h.Queries.GetIssueInWorkspace(r.Context(), db.GetIssueInWorkspaceParams{
+				ID:          uid,
+				WorkspaceID: wsUUID,
+			})
+			if err != nil {
+				continue
+			}
+			parentCache[uid] = prevIssue
+			target, status, msg := resolveBatchIssueTargetFiling(
+				prevIssue, rawUpdates, batchProjectID, batchModuleID, batchWorkItemID, batchModule, batchWorkItem,
+			)
+			if status != 0 {
+				receipt.current = rawID
+				writeError(w, status, msg)
+				return
+			}
+			preflightItems = append(preflightItems, batchParentFilingIssue{
+				ID:            prevIssue.ID,
+				ParentIssueID: prevIssue.ParentIssueID,
+				Current: issueFilingTarget{
+					ProjectID:  prevIssue.ProjectID,
+					ModuleID:   prevIssue.ModuleID,
+					WorkItemID: prevIssue.WorkItemID,
+				},
+				Target: target,
+			})
+		}
+		lookupParent := func(id pgtype.UUID) (pgtype.UUID, issueFilingTarget, bool, error) {
+			if cached, ok := parentCache[id]; ok {
+				return cached.ParentIssueID, issueFilingTarget{
+					ProjectID:  cached.ProjectID,
+					ModuleID:   cached.ModuleID,
+					WorkItemID: cached.WorkItemID,
+				}, true, nil
+			}
+			if missingCache[id] {
+				return pgtype.UUID{}, issueFilingTarget{}, false, nil
+			}
+			parent, err := h.Queries.GetIssueInWorkspace(r.Context(), db.GetIssueInWorkspaceParams{
+				ID:          id,
+				WorkspaceID: wsUUID,
+			})
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					missingCache[id] = true
+					return pgtype.UUID{}, issueFilingTarget{}, false, nil
+				}
+				return pgtype.UUID{}, issueFilingTarget{}, false, err
+			}
+			parentCache[id] = parent
+			return parent.ParentIssueID, issueFilingTarget{
+				ProjectID:  parent.ProjectID,
+				ModuleID:   parent.ModuleID,
+				WorkItemID: parent.WorkItemID,
+			}, true, nil
+		}
+		conflicts, err := checkBatchParentFilingConflicts(preflightItems, lookupParent)
+		if err != nil {
+			slog.Error("batch update issues: validate parent filing", append(logger.RequestAttrs(r), "error", err)...)
+			writeErrorCode(w, http.StatusInternalServerError, "parent_validation_failed", "failed to validate the parent issue")
+			return
+		}
+		if len(conflicts) > 0 {
+			for _, conflict := range conflicts {
+				receipt.results[conflict.IssueID] = service.IssueBatchResult{
+					IssueID: conflict.IssueID,
+					Outcome: "rejected",
+					Code:    conflict.Code,
+				}
+			}
+			code := conflicts[0].Code
+			msg := childModuleMismatchMessage
+			if code == errCodeChildWorkItemMismatch {
+				msg = childWorkItemMismatchMessage
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error":     msg,
+				"code":      code,
+				"conflicts": conflicts,
+			})
+			return
+		}
+		execIssueIDs = orderBatchIssueIDsParentsFirst(req.IssueIDs, preflightItems, func(id pgtype.UUID) (pgtype.UUID, bool) {
+			if cached, ok := parentCache[id]; ok {
+				return cached.ParentIssueID, true
+			}
+			return pgtype.UUID{}, false
+		})
+	}
+
 	updated := 0
 	// One Resolver for the whole batch — a per-issue filler would query the
 	// catalog once per custom-status row. (MUL-6243)
@@ -5495,7 +5605,11 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 	// once after the loop against the final state (MUL-4155), not per child
 	// against a mid-batch snapshot.
 	var changedParents []pgtype.UUID
-	for _, issueID := range req.IssueIDs {
+	// Descendants already refiled by a parent earlier in this same batch. Their
+	// expected revision advances by one so their own iteration succeeds without
+	// a false revision_conflict, and their receipt reports changed=true.
+	refiledInBatch := map[pgtype.UUID]bool{}
+	for _, issueID := range execIssueIDs {
 		receipt.current = issueID
 		issueUUID, err := util.ParseUUID(issueID)
 		if err != nil {
@@ -5722,6 +5836,12 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		err = writeErr
 		if err == nil {
 			prevIssue = lockedPrev
+			for _, child := range refiled {
+				refiledInBatch[child.ID] = true
+				if exp, ok := expected[child.ID]; ok && exp == child.Revision-1 {
+					expected[child.ID] = child.Revision
+				}
+			}
 			// The batch has no per-issue confirmation UI, so a running agent
 			// defers the folder move rather than failing the whole write; the
 			// directory row reports the mismatch and offers to sync.
@@ -5751,6 +5871,11 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err != nil {
+			var parentErr *issueParentFilingError
+			if errors.As(err, &parentErr) {
+				writeErrorCode(w, parentErr.status, parentErr.code, parentErr.message)
+				return
+			}
 			if errors.Is(err, service.ErrIssueParentCycle) {
 				receipt.reject("circular_parent")
 				continue
@@ -5776,7 +5901,7 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		changed := issue.Revision != prevIssue.Revision
+		changed := issue.Revision != prevIssue.Revision || refiledInBatch[issue.ID]
 		receipt.applied(issueID, &issue.Revision, &changed)
 		prefix := h.getIssuePrefix(r.Context(), issue.WorkspaceID)
 		resp := issueToResponse(issue, prefix)
@@ -5788,9 +5913,9 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 			(prevIssue.AssigneeType.String != issue.AssigneeType.String || uuidToString(prevIssue.AssigneeID) != uuidToString(issue.AssigneeID))
 		statusChanged := (req.Updates.Status != nil || params.Status.Valid) && prevIssue.Status != issue.Status
 		priorityChanged := req.Updates.Priority != nil && prevIssue.Priority != issue.Priority
-		projectChanged := req.Updates.ProjectID != nil && uuidToString(prevIssue.ProjectID) != uuidToString(issue.ProjectID)
-		moduleChanged := req.Updates.ModuleID != nil && uuidToString(prevIssue.ModuleID) != uuidToString(issue.ModuleID)
-		workItemChanged := req.Updates.WorkItemID != nil && uuidToString(prevIssue.WorkItemID) != uuidToString(issue.WorkItemID)
+		projectChanged := uuidToString(prevIssue.ProjectID) != uuidToString(issue.ProjectID)
+		moduleChanged := uuidToString(prevIssue.ModuleID) != uuidToString(issue.ModuleID)
+		workItemChanged := uuidToString(prevIssue.WorkItemID) != uuidToString(issue.WorkItemID)
 
 		batchHandoffNote := req.Updates.HandoffNote
 		trigger, willRun := h.IssueService.WillEnqueueRun(r.Context(),

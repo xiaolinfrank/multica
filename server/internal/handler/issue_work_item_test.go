@@ -744,3 +744,86 @@ func TestBatchUpdateChildCannotLeaveParentsWorkItem(t *testing.T) {
 		t.Fatalf("batch move: expected %s, got %s", errCodeChildWorkItemMismatch, w.Body.String())
 	}
 }
+
+func TestBatchUpdateChildMismatchStopsBeforeMutatingStandalone(t *testing.T) {
+	plan := newWorkItemPlan(t, "batch atomic preflight")
+	sibling := newSiblingWorkItem(t, plan)
+
+	_, standalone := createIssueRequest(t, map[string]any{
+		"title":        "standalone " + uuid.NewString(),
+		"status":       "todo",
+		"priority":     "none",
+		"work_item_id": plan.workItem,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, standalone.ID) })
+	_, parent := createIssueRequest(t, map[string]any{
+		"title":        "parent " + uuid.NewString(),
+		"status":       "todo",
+		"priority":     "none",
+		"work_item_id": plan.workItem,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, parent.ID) })
+	_, child := createIssueRequest(t, map[string]any{
+		"title":           "child " + uuid.NewString(),
+		"status":          "todo",
+		"priority":        "none",
+		"parent_issue_id": parent.ID,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, child.ID) })
+
+	w := httptest.NewRecorder()
+	testHandler.BatchUpdateIssues(w, newRequest(http.MethodPost, "/api/issues/batch-update", map[string]any{
+		"issue_ids": []string{standalone.ID, child.ID},
+		"updates":   map[string]any{"work_item_id": sibling},
+	}))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("batch move: expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !containsJSONCode(w.Body.Bytes(), errCodeChildWorkItemMismatch) {
+		t.Fatalf("batch move: expected %s, got %s", errCodeChildWorkItemMismatch, w.Body.String())
+	}
+	var standaloneWorkItem string
+	dbfx.QueryRow(t, `SELECT COALESCE(work_item_id::text, '') FROM issue WHERE id = $1`, standalone.ID).Scan(&standaloneWorkItem)
+	if standaloneWorkItem != plan.workItem {
+		t.Fatalf("standalone issue was mutated before parent conflict stop: got %s, want %s", standaloneWorkItem, plan.workItem)
+	}
+}
+
+func TestBatchUpdateParentAndChildMoveTogetherRegardlessOfOrder(t *testing.T) {
+	plan := newWorkItemPlan(t, "batch parent child together")
+	sibling := newSiblingWorkItem(t, plan)
+
+	_, parent := createIssueRequest(t, map[string]any{
+		"title":        "parent " + uuid.NewString(),
+		"status":       "todo",
+		"priority":     "none",
+		"work_item_id": plan.workItem,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, parent.ID) })
+	_, child := createIssueRequest(t, map[string]any{
+		"title":           "child " + uuid.NewString(),
+		"status":          "todo",
+		"priority":        "none",
+		"parent_issue_id": parent.ID,
+	})
+	t.Cleanup(func() { deleteTestIssue(t, child.ID) })
+
+	var parentRev, childRev int64
+	dbfx.QueryRow(t, `SELECT revision FROM issue WHERE id = $1`, parent.ID).Scan(&parentRev)
+	dbfx.QueryRow(t, `SELECT revision FROM issue WHERE id = $1`, child.ID).Scan(&childRev)
+
+	// Child listed BEFORE parent, with expected_revisions on both.
+	testutil.Call(t, testHandler.BatchUpdateIssues, newRequest(http.MethodPost, "/api/issues/batch-update", map[string]any{
+		"issue_ids":          []string{child.ID, parent.ID},
+		"expected_revisions": map[string]int64{parent.ID: parentRev, child.ID: childRev},
+		"updates":            map[string]any{"project_id": plan.projectID, "module_id": plan.moduleID, "work_item_id": sibling},
+	})).Want(http.StatusOK)
+
+	for name, id := range map[string]string{"parent": parent.ID, "child": child.ID} {
+		var got string
+		dbfx.QueryRow(t, `SELECT COALESCE(work_item_id::text, '') FROM issue WHERE id = $1`, id).Scan(&got)
+		if got != sibling {
+			t.Fatalf("%s work_item_id = %q, want %s", name, got, sibling)
+		}
+	}
+}

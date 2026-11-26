@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, ApiError } from "./client";
-import { IssueBatchUnconfirmedError, parseIssueBatchReceipt } from "./issue-batch-schemas";
-import { issueBatchAppliedIds, issueBatchComplete, issueBatchErrorReceipt } from "../issues/batch-receipt";
+import { IssueBatchUnconfirmedError, parseBatchParentFilingConflict, parseIssueBatchReceipt } from "./issue-batch-schemas";
+import { issueBatchAppliedIds, issueBatchComplete, issueBatchErrorReceipt, issueBatchParentFilingConflict } from "../issues/batch-receipt";
 
 const ids = ["i1", "i2", "i3"];
 const partial = { workspace_id: "ws-1", requested_ids: ids, transaction_mode: "per_item", transaction_outcome: "partial", updated: 1,
@@ -71,5 +71,22 @@ describe("batch result boundaries", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     await client.deleteIssue("ws-1", "i1");
     expect(fetchMock.mock.calls[0]![1].headers["X-Workspace-ID"]).toBe("ws-1");
+  });
+  it("parses parent-filing conflict error payloads and rejects malformed bodies", () => {
+    const err = new ApiError("mismatch", 400, "Bad Request", {
+      code: "child_work_item_mismatch",
+      conflicts: [{ issue_id: "i2", parent_issue_id: "p1", code: "child_work_item_mismatch" }],
+    });
+    expect(issueBatchParentFilingConflict(err)).toEqual({
+      code: "child_work_item_mismatch",
+      conflicts: [{ issue_id: "i2", parent_issue_id: "p1", code: "child_work_item_mismatch" }],
+    });
+    expect(parseBatchParentFilingConflict({ code: "child_module_mismatch" })).toEqual({
+      code: "child_module_mismatch",
+      conflicts: [],
+    });
+    expect(parseBatchParentFilingConflict({ code: "other_error" })).toBeNull();
+    expect(parseBatchParentFilingConflict({ code: "child_module_mismatch", conflicts: [{ issue_id: "" }] })).toBeNull();
+    expect(issueBatchParentFilingConflict(new Error("network"))).toBeNull();
   });
 });

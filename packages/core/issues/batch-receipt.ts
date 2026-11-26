@@ -1,9 +1,16 @@
 import { ApiError } from "../api";
-import { parseIssueBatchReceipt } from "../api/issue-batch-schemas";
+import {
+  parseBatchParentFilingConflict,
+  parseIssueBatchReceipt,
+  type ParsedBatchParentFilingConflict,
+} from "../api/issue-batch-schemas";
 import type { IssueBatchReceipt } from "../types/issue-batch";
 
 export function issueBatchErrorReceipt(error: unknown, wsId: string, ids: readonly string[], operation: "update" | "delete"): IssueBatchReceipt | null {
   return error instanceof ApiError ? parseIssueBatchReceipt(error.body, wsId, ids, operation) : null;
+}
+export function issueBatchParentFilingConflict(error: unknown): ParsedBatchParentFilingConflict | null {
+  return error instanceof ApiError ? parseBatchParentFilingConflict(error.body) : null;
 }
 export function issueBatchAppliedIds(receipt: IssueBatchReceipt | null | undefined): string[] {
   return receipt?.results.filter((row) => row.outcome === "applied").map((row) => row.issue_id) ?? [];

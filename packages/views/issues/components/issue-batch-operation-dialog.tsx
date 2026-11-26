@@ -29,7 +29,11 @@ export function issueBatchOperation(intent: IssueBatchIntent): IssueOperationNam
   if (intent.kind === "delete") return "delete";
   if (intent.updates?.status !== undefined) return "status";
   if (intent.updates?.assignee_type !== undefined || intent.updates?.assignee_id !== undefined) return "assignee";
-  if (intent.updates?.project_id !== undefined || intent.updates?.module_id !== undefined) return "scope";
+  if (
+    intent.updates?.project_id !== undefined ||
+    intent.updates?.module_id !== undefined ||
+    intent.updates?.work_item_id !== undefined
+  ) return "scope";
   if (intent.updates?.parent_issue_id !== undefined) return "parent";
   return "status";
 }
@@ -42,13 +46,26 @@ export function IssueBatchOperationDialog({ wsId, intent, issues, pending, resul
 }) {
   const { t } = useT("issues"); const paths = useWorkspacePaths(); const { categoryOf } = useIssueStatuses(wsId);
   const statusLabel = useStatusLabel(wsId);
+  const operation = issueBatchOperation(intent);
   const assignee = useQuery(cockpitActorLabelOptions(wsId, intent.updates?.assignee_type ?? null, wsId === intent.workspaceId ? intent.updates?.assignee_id ?? null : null));
-  const target = intent.kind === "delete" ? t(($) => $.batch.delete) : intent.updates?.status ? `${t(($) => $.batch.status)} · ${statusLabel(intent.updates.status)}`
-    : intent.updates?.priority ? `${t(($) => $.batch.priority)} · ${priorityLabel(intent.updates.priority, t)}`
-      : `${t(($) => $.batch.assignee)} · ${intent.updates?.assignee_id ? assignee.data || intent.updates.assignee_id : t(($) => $.pickers.assignee.trigger_unassigned)}`;
+  const isClearingScope =
+    operation === "scope" &&
+    !intent.updates?.project_id &&
+    !intent.updates?.module_id &&
+    !intent.updates?.work_item_id;
+  const target = intent.kind === "delete"
+    ? t(($) => $.batch.delete)
+    : intent.updates?.status
+      ? `${t(($) => $.batch.status)} · ${statusLabel(intent.updates.status)}`
+      : intent.updates?.priority
+        ? `${t(($) => $.batch.priority)} · ${priorityLabel(intent.updates.priority, t)}`
+        : operation === "scope"
+          ? isClearingScope
+            ? `${t(($) => $.batch.scope)} · ${t(($) => $.pickers.scope.none)}`
+            : t(($) => $.batch.scope)
+          : `${t(($) => $.batch.assignee)} · ${intent.updates?.assignee_id ? assignee.data || intent.updates.assignee_id : t(($) => $.pickers.assignee.trigger_unassigned)}`;
   const policy = useIssueOperationBasis(wsId, wsId === intent.workspaceId && !result ? intent.ids : []);
   const [confirmedSubset, setConfirmedSubset] = useState<string | null>(null); const [page, setPage] = useState(0);
-  const operation = issueBatchOperation(intent);
   const allowed = intent.ids.filter((id) => {
     const basis = policy.byIssue.get(id);
     return typeof basis?.issue_revision === "number" && (intent.kind === "delete" ? issueOperationAllowed(basis, "delete") : issueUpdateOperationAllowed(basis, intent.updates ?? {}, categoryOf));

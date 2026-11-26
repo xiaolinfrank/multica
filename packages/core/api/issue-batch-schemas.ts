@@ -42,3 +42,35 @@ export function parseIssueBatchReceipt(raw: unknown, wsId: string, ids: readonly
 export class IssueBatchUnconfirmedError extends Error {
   constructor() { super("issue_batch_not_confirmed"); this.name = "IssueBatchUnconfirmedError"; }
 }
+
+const BatchParentFilingConflictItemSchema = z.object({
+  issue_id: id,
+  parent_issue_id: id,
+  code: z.string().optional(),
+});
+
+const BatchParentFilingConflictResponseSchema = z.object({
+  code: z.enum(["child_module_mismatch", "child_work_item_mismatch"]),
+  conflicts: z.array(BatchParentFilingConflictItemSchema).optional(),
+});
+
+export interface ParsedBatchParentFilingConflict {
+  code: "child_module_mismatch" | "child_work_item_mismatch";
+  conflicts: Array<{ issue_id: string; parent_issue_id: string; code?: string }>;
+}
+
+export function parseBatchParentFilingConflict(
+  raw: unknown,
+): ParsedBatchParentFilingConflict | null {
+  const parsed = parseWithFallback<z.infer<typeof BatchParentFilingConflictResponseSchema> | null>(
+    raw,
+    BatchParentFilingConflictResponseSchema,
+    null,
+    { endpoint: "POST /api/issues/batch-update" },
+  );
+  if (!parsed) return null;
+  return {
+    code: parsed.code,
+    conflicts: parsed.conflicts ?? [],
+  };
+}

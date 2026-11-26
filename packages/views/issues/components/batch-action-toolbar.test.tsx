@@ -103,6 +103,22 @@ vi.mock("./pickers", () => ({
       data-mixed={String(Boolean(mixed))}
     />
   ),
+  EMPTY_ISSUE_SCOPE: { project_id: null, module_id: null, work_item_id: null },
+  IssueScopePicker: ({
+    value,
+    mixed,
+  }: {
+    value: { project_id: string | null; module_id: string | null; work_item_id: string | null };
+    mixed?: boolean;
+  }) => (
+    <div
+      data-testid="scope-picker"
+      data-project-id={value.project_id ?? "__null__"}
+      data-module-id={value.module_id ?? "__null__"}
+      data-work-item-id={value.work_item_id ?? "__null__"}
+      data-mixed={String(Boolean(mixed))}
+    />
+  ),
 }));
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
@@ -139,10 +155,28 @@ beforeEach(() => {
 });
 
 describe("BatchActionToolbar picker wiring", () => {
-  it("reflects the shared status / priority / assignee of the selected issues", () => {
+  it("reflects the shared status / priority / assignee / ownership of the selected issues", () => {
     const issues = [
-      makeIssue({ id: "a", status: "in_progress", priority: "high", assignee_type: "member", assignee_id: "u-1" }),
-      makeIssue({ id: "b", status: "in_progress", priority: "high", assignee_type: "member", assignee_id: "u-1" }),
+      makeIssue({
+        id: "a",
+        status: "in_progress",
+        priority: "high",
+        assignee_type: "member",
+        assignee_id: "u-1",
+        project_id: "p-dev",
+        module_id: "m-1",
+        work_item_id: "wi-1",
+      }),
+      makeIssue({
+        id: "b",
+        status: "in_progress",
+        priority: "high",
+        assignee_type: "member",
+        assignee_id: "u-1",
+        project_id: "p-dev",
+        module_id: "m-1",
+        work_item_id: "wi-1",
+      }),
     ];
     selection.selectedIds = new Set(["a", "b"]);
 
@@ -154,12 +188,17 @@ describe("BatchActionToolbar picker wiring", () => {
     expect(assignee).toHaveAttribute("data-assignee-type", "member");
     expect(assignee).toHaveAttribute("data-assignee-id", "u-1");
     expect(assignee).toHaveAttribute("data-mixed", "false");
+    const scope = screen.getByTestId("scope-picker");
+    expect(scope).toHaveAttribute("data-project-id", "p-dev");
+    expect(scope).toHaveAttribute("data-module-id", "m-1");
+    expect(scope).toHaveAttribute("data-work-item-id", "wi-1");
+    expect(scope).toHaveAttribute("data-mixed", "false");
   });
 
   it("falls back to an empty (no-checkmark) state when the selection is mixed", () => {
     const issues = [
-      makeIssue({ id: "a", status: "todo", priority: "none", assignee_type: "member", assignee_id: "u-1" }),
-      makeIssue({ id: "b", status: "done", priority: "urgent", assignee_type: "agent", assignee_id: "ag-1" }),
+      makeIssue({ id: "a", status: "todo", priority: "none", assignee_type: "member", assignee_id: "u-1", project_id: "p-dev", module_id: "m-1" }),
+      makeIssue({ id: "b", status: "done", priority: "urgent", assignee_type: "agent", assignee_id: "ag-1", project_id: "p-design", module_id: "m-2" }),
     ];
     selection.selectedIds = new Set(["a", "b"]);
 
@@ -168,6 +207,7 @@ describe("BatchActionToolbar picker wiring", () => {
     expect(screen.getByTestId("status-picker")).toHaveAttribute("data-status", "__none__");
     expect(screen.getByTestId("priority-picker")).toHaveAttribute("data-priority", "__none__");
     expect(screen.getByTestId("assignee-picker")).toHaveAttribute("data-mixed", "true");
+    expect(screen.getByTestId("scope-picker")).toHaveAttribute("data-mixed", "true");
   });
 
   it("treats an all-unassigned selection as unassigned, not mixed", () => {

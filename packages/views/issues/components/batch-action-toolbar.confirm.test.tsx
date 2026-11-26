@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ApiError } from "@multica/core/api";
 import { buildIssueStatusCatalog } from "@multica/core/issue-statuses";
 import type { Issue, IssueBatchReceipt, UpdateIssueRequest } from "@multica/core/types";
 import { renderWithI18n } from "../../test/i18n";
@@ -104,6 +105,27 @@ vi.mock("./pickers", () => ({
       <button
         data-testid="assign-member"
         onClick={() => onUpdate({ assignee_type: "member", assignee_id: "user-1" })}
+      />
+    </div>
+  ),
+  EMPTY_ISSUE_SCOPE: { project_id: null, module_id: null, work_item_id: null },
+  IssueScopePicker: ({
+    onUpdate,
+  }: {
+    onUpdate: (next: { project_id: string | null; module_id: string | null; work_item_id: string | null }) => void;
+  }) => (
+    <div>
+      <button
+        data-testid="scope-project-b"
+        onClick={() => onUpdate({ project_id: "p-b", module_id: null, work_item_id: null })}
+      />
+      <button
+        data-testid="scope-work-item-b"
+        onClick={() => onUpdate({ project_id: "p-b", module_id: "m-b", work_item_id: "wi-b" })}
+      />
+      <button
+        data-testid="scope-clear"
+        onClick={() => onUpdate({ project_id: null, module_id: null, work_item_id: null })}
       />
     </div>
   ),
@@ -259,5 +281,72 @@ describe("BatchActionToolbar selection after apply (MUL-8179)", () => {
     };
     data.onBatchResult?.(receipt(["a"]));
     expect(selection.clear).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("BatchActionToolbar bulk ownership editing", () => {
+  it("applies ownership changes directly for standalone issues and parent+child pairs", async () => {
+    const parent = makeIssue({ id: "p", identifier: "BIO-1", title: "Parent", project_id: "p-a", module_id: "m-a", work_item_id: "wi-a" });
+    const child = makeIssue({ id: "c", identifier: "BIO-2", title: "Child", parent_issue_id: "p", project_id: "p-a", module_id: "m-a", work_item_id: "wi-a" });
+    selection.selectedIds = new Set(["c", "p"]);
+
+    render([child, parent]);
+    fireEvent.click(screen.getByTestId("scope-work-item-b"));
+
+    expect(batchUpdate).toHaveBeenCalledWith({
+      ids: ["c", "p"],
+      updates: { project_id: "p-b", module_id: "m-b", work_item_id: "wi-b" },
+      expected_revisions: { c: 1, p: 1 },
+    });
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+  });
+
+  it("stops the whole batch and opens a dialog when a selected sub-issue would diverge from its unselected parent", () => {
+    const parent = makeIssue({ id: "p", identifier: "BIO-1", title: "Parent task", project_id: "p-a", module_id: "m-a", work_item_id: "wi-a" });
+    const child = makeIssue({ id: "c", identifier: "BIO-2", title: "Child task", parent_issue_id: "p", project_id: "p-a", module_id: "m-a", work_item_id: "wi-a" });
+    const standalone = makeIssue({ id: "s", identifier: "BIO-3", title: "Standalone task", project_id: "p-a", module_id: "m-a", work_item_id: "wi-a" });
+    selection.selectedIds = new Set(["s", "c"]);
+
+    render([parent, child, standalone]);
+    fireEvent.click(screen.getByTestId("scope-work-item-b"));
+
+    expect(batchUpdate).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Cannot update ownership" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /BIO-2 · Child task/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /BIO-1 · Parent task/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Got it" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("skips the request when the chosen ownership already matches all selected issues", () => {
+    const a = makeIssue({ id: "a", project_id: "p-b", module_id: "m-b", work_item_id: "wi-b" });
+    const b = makeIssue({ id: "b", project_id: "p-b", module_id: "m-b", work_item_id: "wi-b" });
+    selection.selectedIds = new Set(["a", "b"]);
+
+    render([a, b]);
+    fireEvent.click(screen.getByTestId("scope-work-item-b"));
+
+    expect(batchUpdate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens the ownership conflict dialog when the server rejects with child_work_item_mismatch", async () => {
+    const a = makeIssue({ id: "a", identifier: "BIO-10", title: "Concurrent child", project_id: "p-a" });
+    selection.selectedIds = new Set(["a"]);
+    batchUpdate.mockRejectedValueOnce(
+      new ApiError("a sub-issue must stay in its parent's work item", 400, "Bad Request", {
+        code: "child_work_item_mismatch",
+        conflicts: [{ issue_id: "a", parent_issue_id: "parent-99", code: "child_work_item_mismatch" }],
+      }),
+    );
+
+    render([a]);
+    fireEvent.click(screen.getByTestId("scope-work-item-b"));
+
+    await waitFor(() =>
+      expect(screen.getByRole("dialog", { name: "Cannot update ownership" })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: /BIO-10 · Concurrent child/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open parent issue" })).toHaveAttribute("href", "/ws/issues/parent-99");
   });
 });

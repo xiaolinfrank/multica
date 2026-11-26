@@ -71,8 +71,10 @@ export function IssueScopePicker({
   onUpdate,
   disabled = false,
   readOnly = false,
+  mixed = false,
   restriction,
   triggerRender,
+  trigger,
   align = "start",
   open: controlledOpen,
   onOpenChange,
@@ -88,8 +90,12 @@ export function IssueScopePicker({
   /** Read-only: the trigger shows the current value and the menu never
    *  opens — used while a sub-issue's parent fixes the filing. */
   readOnly?: boolean;
+  /** Mixed batch selection: show no pressed state and start collapsed. */
+  mixed?: boolean;
   restriction?: React.ReactNode;
   triggerRender?: React.ReactElement;
+  /** Custom trigger label (e.g. a compact "Ownership" label in batch toolbars). */
+  trigger?: React.ReactNode;
   align?: "start" | "center" | "end";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -126,17 +132,21 @@ export function IssueScopePicker({
     () => sortByCode(constrainedProjectId ? allProjects.filter((project) => project.id === constrainedProjectId) : allProjects),
     [allProjects, constrainedProjectId],
   );
-  const [expandedProject, setExpandedProject] = useState<string | null>(value.project_id ?? constrainedProjectId);
-  const [expandedModule, setExpandedModule] = useState<string | null>(value.module_id ?? constrainedModuleId);
+  const [expandedProject, setExpandedProject] = useState<string | null>(
+    mixed ? constrainedProjectId : (value.project_id ?? constrainedProjectId),
+  );
+  const [expandedModule, setExpandedModule] = useState<string | null>(
+    mixed ? constrainedModuleId : (value.module_id ?? constrainedModuleId),
+  );
   const [text, setText] = useState("");
   const query = text.trim();
 
   // Reopen on the selection: the tree should show where the issue is now.
   useEffect(() => {
     if (!open) return;
-    setExpandedProject(constrainedProjectId ?? value.project_id);
-    setExpandedModule(constrainedModuleId ?? value.module_id);
-  }, [open, value.project_id, value.module_id, constrainedProjectId, constrainedModuleId]);
+    setExpandedProject(mixed ? constrainedProjectId : (constrainedProjectId ?? value.project_id));
+    setExpandedModule(mixed ? constrainedModuleId : (constrainedModuleId ?? value.module_id));
+  }, [open, mixed, value.project_id, value.module_id, constrainedProjectId, constrainedModuleId]);
 
   const { data: modules = [] } = useQuery({
     ...moduleListOptions(wsId, expandedProject ?? undefined),
@@ -348,7 +358,7 @@ export function IssueScopePicker({
             aria-label={accessibleName} />
         )}
       >
-        {label}
+        {trigger ?? label}
       </PopoverTrigger>
       <PopoverContent align={align} className="w-[min(22rem,calc(100vw-2rem))] space-y-2">
         <Input
@@ -409,7 +419,7 @@ export function IssueScopePicker({
                       <button
                         type="button"
                         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-xs px-1 py-1 text-left text-caption hover:bg-accent"
-                        aria-pressed={value.project_id === project.id && value.module_id === constrainedModuleId}
+                        aria-pressed={!mixed && value.project_id === project.id && value.module_id === constrainedModuleId && value.work_item_id === null}
                         title={projectText}
                         onClick={() => commit({ project_id: project.id, module_id: constrainedModuleId, work_item_id: null })}
                       >
@@ -437,7 +447,7 @@ export function IssueScopePicker({
                                 <button
                                   type="button"
                                   className="flex min-w-0 flex-1 items-center gap-1.5 rounded-xs px-1 py-1 text-left text-caption hover:bg-accent"
-                                  aria-pressed={value.module_id === module.id && value.work_item_id === null}
+                                  aria-pressed={!mixed && value.module_id === module.id && value.work_item_id === null}
                                   title={moduleText}
                                   onClick={() => commit({ project_id: module.project_id, module_id: module.id, work_item_id: null })}
                                 >

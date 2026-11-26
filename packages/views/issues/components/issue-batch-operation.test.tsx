@@ -28,6 +28,10 @@ vi.mock("@multica/core/api", async (original) => ({ ...await original<typeof imp
 vi.mock("./pickers", () => ({
   StatusPicker: ({ onUpdate }: { onUpdate: (body: Partial<UpdateIssueRequest>) => void }) => <button onClick={() => onUpdate({ status: "done" })}>Choose Done</button>,
   PriorityPicker: () => null, AssigneePicker: () => null,
+  EMPTY_ISSUE_SCOPE: { project_id: null, module_id: null, work_item_id: null },
+  IssueScopePicker: ({ onUpdate }: { onUpdate: (next: { project_id: string | null; module_id: string | null; work_item_id: string | null }) => void }) => (
+    <button onClick={() => onUpdate({ project_id: "p-2", module_id: "m-2", work_item_id: "wi-2" })}>Choose Scope B</button>
+  ),
 }));
 function issue(id: string): Issue {
   return { id, workspace_id: session.wsId, identifier: `DEL-${id}`, number: 1, title: `Delivery ${id}`, description: null, status: "todo", priority: "none", assignee_type: null, assignee_id: null, creator_type: "member", creator_id: "human", project_id: null, parent_issue_id: null, position: 1, stage: null, start_date: null, due_date: null, metadata: {}, properties: {}, created_at: "2026-10-11T00:00:00Z", updated_at: "2026-10-11T00:00:00Z" };
@@ -95,5 +99,24 @@ describe("batch operation acknowledgement", () => {
     await act(async () => finish(receipt(["a"])));
     expect(screen.queryByRole("region", { name: "Operation results" })).not.toBeInTheDocument();
     expect(newSelection.deselect).not.toHaveBeenCalled(); expect(api.batchUpdateIssues).toHaveBeenCalledTimes(1);
+  });
+  it("stops with the ownership conflict dialog if excluding a blocked parent leaves its child in the submitted subset", async () => {
+    vi.mocked(api.getIssueOperationBasis).mockImplementation(async (wsId, ids) => {
+      const page = issueOperationPageFixture(wsId, ids);
+      const parentRow = page.items.find((item) => item.issue_id === "p");
+      if (parentRow) parentRow.scope = { state: "blocked", reason_codes: ["retained_artifact_scope"] };
+      return page;
+    });
+    const parent: Issue = { ...issue("p"), project_id: "p-1", module_id: "m-1", work_item_id: "wi-1" };
+    const child: Issue = { ...issue("c"), parent_issue_id: "p", project_id: "p-1", module_id: "m-1", work_item_id: "wi-1" };
+    const selected = selection(["p", "c"]);
+    render(wrapper([parent, child], selected));
+    await waitFor(() => expect(api.getIssueOperationBasis).toHaveBeenCalled());
+    await userEvent.click(screen.getByRole("button", { name: "Choose Scope B" }));
+    expect(await screen.findByText("2 selected · 1 available · 1 blocked or unchecked")).toBeVisible();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Only apply to available issues (1)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Apply (1)" }));
+    expect(await screen.findByRole("dialog", { name: "Cannot update ownership" })).toBeVisible();
+    expect(api.batchUpdateIssues).not.toHaveBeenCalled();
   });
 });

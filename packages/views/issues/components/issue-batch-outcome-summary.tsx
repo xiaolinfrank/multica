@@ -36,6 +36,8 @@ export function IssueBatchOutcomeSummary({ wsId, submittedIds, receipt, issues =
       case "retained_history": return t(($) => $.operation_basis.retained_history);
       case "retained_meeting_history": return t(($) => $.operation_basis.retained_meeting);
       case "primary_scope": return t(($) => $.operation_basis.primary_scope);
+      case "child_module_mismatch":
+      case "child_work_item_mismatch": return t(($) => $.batch.scope_conflict_description);
       default: return t(($) => $.operation_basis.rejected_hint);
     }
   };

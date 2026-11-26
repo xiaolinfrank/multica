@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/multica-ai/multica/server/internal/util"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
@@ -137,3 +140,178 @@ type issueParentFilingError struct {
 }
 
 func (e *issueParentFilingError) Error() string { return e.message }
+
+type issueFilingTarget struct {
+	ProjectID  pgtype.UUID
+	ModuleID   pgtype.UUID
+	WorkItemID pgtype.UUID
+}
+
+type batchParentFilingConflict struct {
+	IssueID       string `json:"issue_id"`
+	ParentIssueID string `json:"parent_issue_id"`
+	Code          string `json:"code"`
+}
+
+type batchParentFilingIssue struct {
+	ID            pgtype.UUID
+	ParentIssueID pgtype.UUID
+	Current       issueFilingTarget
+	Target        issueFilingTarget
+}
+
+func resolveBatchIssueTargetFiling(
+	prev db.Issue,
+	rawUpdates map[string]json.RawMessage,
+	batchProjectID, batchModuleID, batchWorkItemID pgtype.UUID,
+	batchModule db.Module,
+	batchWorkItem db.GetCockpitWorkItemScopeRow,
+) (issueFilingTarget, int, string) {
+	target := issueFilingTarget{
+		ProjectID:  prev.ProjectID,
+		ModuleID:   prev.ModuleID,
+		WorkItemID: prev.WorkItemID,
+	}
+	if _, ok := rawUpdates["project_id"]; ok {
+		target.ProjectID = batchProjectID
+	}
+	if _, ok := rawUpdates["module_id"]; ok {
+		if batchModuleID.Valid && batchModule.ProjectID != target.ProjectID {
+			return issueFilingTarget{}, http.StatusBadRequest, "module does not belong to project"
+		}
+		target.ModuleID = batchModuleID
+	} else if _, ok := rawUpdates["project_id"]; ok && target.ProjectID != prev.ProjectID {
+		target.ModuleID = pgtype.UUID{Valid: false}
+	}
+	if _, ok := rawUpdates["work_item_id"]; ok {
+		if batchWorkItemID.Valid {
+			target.WorkItemID = batchWorkItemID
+			target.ModuleID = batchWorkItem.ModuleID
+			target.ProjectID = batchWorkItem.ProjectID
+		} else {
+			target.WorkItemID = pgtype.UUID{Valid: false}
+		}
+	} else if target.ModuleID != prev.ModuleID || target.ProjectID != prev.ProjectID {
+		target.WorkItemID = pgtype.UUID{Valid: false}
+	}
+	return target, 0, ""
+}
+
+// checkBatchParentFilingConflicts validates before any issue is mutated that
+// batch-updating ownership will not leave any sub-issue filed under a different
+// project, module, or work item than its parent. If an ancestor is also moving
+// to the same target ownership in the same batch, the subtree moves together
+// without conflict.
+func checkBatchParentFilingConflicts(
+	items []batchParentFilingIssue,
+	lookupParent func(id pgtype.UUID) (parentID pgtype.UUID, filing issueFilingTarget, ok bool, err error),
+) ([]batchParentFilingConflict, error) {
+	byID := make(map[pgtype.UUID]batchParentFilingIssue, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+
+	var conflicts []batchParentFilingConflict
+	for _, item := range items {
+		if !item.ParentIssueID.Valid || item.Target == item.Current {
+			continue
+		}
+		visited := map[pgtype.UUID]bool{item.ID: true}
+		cur := item.ParentIssueID
+		coveredByBatchAncestor := false
+		var immediateParentFiling issueFilingTarget
+		immediateParentFound := false
+
+		for cur.Valid && !visited[cur] {
+			visited[cur] = true
+			if anc, inBatch := byID[cur]; inBatch {
+				if anc.Target == item.Target {
+					coveredByBatchAncestor = true
+				}
+				break
+			}
+			nextParent, filing, ok, err := lookupParent(cur)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				break
+			}
+			if cur == item.ParentIssueID {
+				immediateParentFiling = filing
+				immediateParentFound = true
+			}
+			cur = nextParent
+		}
+
+		if coveredByBatchAncestor || !immediateParentFound {
+			continue
+		}
+		if item.Target.ProjectID != immediateParentFiling.ProjectID || item.Target.ModuleID != immediateParentFiling.ModuleID {
+			conflicts = append(conflicts, batchParentFilingConflict{
+				IssueID:       util.UUIDToString(item.ID),
+				ParentIssueID: util.UUIDToString(item.ParentIssueID),
+				Code:          errCodeChildModuleMismatch,
+			})
+		} else if item.Target.WorkItemID != immediateParentFiling.WorkItemID {
+			conflicts = append(conflicts, batchParentFilingConflict{
+				IssueID:       util.UUIDToString(item.ID),
+				ParentIssueID: util.UUIDToString(item.ParentIssueID),
+				Code:          errCodeChildWorkItemMismatch,
+			})
+		}
+	}
+	return conflicts, nil
+}
+
+// orderBatchIssueIDsParentsFirst stably orders batch issue IDs so any ancestor
+// present in the batch is updated before its descendants. That lets the parent
+// move carry the subtree first instead of failing the child against the
+// parent's pre-batch filing.
+func orderBatchIssueIDsParentsFirst(
+	ids []string,
+	items []batchParentFilingIssue,
+	lookupParent func(id pgtype.UUID) (pgtype.UUID, bool),
+) []string {
+	if len(ids) <= 1 {
+		return ids
+	}
+	byID := make(map[pgtype.UUID]batchParentFilingIssue, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	depthByID := make(map[string]int, len(ids))
+	for _, raw := range ids {
+		uid, err := util.ParseUUID(raw)
+		if err != nil {
+			continue
+		}
+		item, ok := byID[uid]
+		if !ok || !item.ParentIssueID.Valid {
+			continue
+		}
+		depth := 0
+		visited := map[pgtype.UUID]bool{uid: true}
+		cur := item.ParentIssueID
+		for cur.Valid && !visited[cur] {
+			visited[cur] = true
+			if anc, inBatch := byID[cur]; inBatch {
+				depth++
+				cur = anc.ParentIssueID
+				continue
+			}
+			nextParent, found := lookupParent(cur)
+			if !found {
+				break
+			}
+			cur = nextParent
+		}
+		depthByID[raw] = depth
+	}
+
+	ordered := append([]string(nil), ids...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return depthByID[ordered[i]] < depthByID[ordered[j]]
+	})
+	return ordered
+}

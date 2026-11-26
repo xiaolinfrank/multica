@@ -678,7 +678,11 @@ export function useBatchUpdateIssues() {
       // drifted — the surgical replacement for the old blanket "invalidate
       // myAll on project move" safety net (MUL-3669 / #4548).
       invalidateIssueDerivatives(qc, wsId, {
-        statusOrProjectChanged: vars.updates.status !== undefined || Object.prototype.hasOwnProperty.call(vars.updates, "project_id"),
+        statusOrProjectChanged:
+          vars.updates.status !== undefined ||
+          Object.prototype.hasOwnProperty.call(vars.updates, "project_id") ||
+          Object.prototype.hasOwnProperty.call(vars.updates, "module_id") ||
+          Object.prototype.hasOwnProperty.call(vars.updates, "work_item_id"),
       });
       qc.invalidateQueries({ queryKey: issueKeys.tableAll(wsId) });
       if (ctx) {
@@ -696,6 +700,18 @@ export function useBatchUpdateIssues() {
       const parents = new Set(ctx?.metadata.flatMap((entry) => entry.parentIssueIds) ?? []);
       if (vars.updates.parent_issue_id) parents.add(vars.updates.parent_issue_id);
       for (const parentId of parents) void qc.invalidateQueries({ queryKey: issueKeys.children(wsId, parentId) });
+      const filingTouched = ["project_id", "module_id", "work_item_id", "parent_issue_id"].some((key) =>
+        Object.prototype.hasOwnProperty.call(vars.updates, key),
+      );
+      if (filingTouched) {
+        // Moving parents refiles their descendants on the server, and filing
+        // changes also affect issue delivery directories and cockpit plan counts.
+        void qc.invalidateQueries({ queryKey: issueKeys.childrenByParentsAll(wsId) });
+        for (const id of vars.ids) {
+          void qc.invalidateQueries({ queryKey: issueKeys.children(wsId, id) });
+          void qc.invalidateQueries({ queryKey: directoryKeys.issue(wsId, id) });
+        }
+      }
     },
   });
 }

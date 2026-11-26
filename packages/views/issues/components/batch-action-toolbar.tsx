@@ -9,14 +9,28 @@ import { useIssueDeletion } from "@multica/core/issues/use-issue-deletion";
 import type { Issue, IssueBatchReceipt, UpdateIssueRequest } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useIssueStatuses } from "@multica/core/issue-statuses/hooks";
-import { useIssueOperationBasis, issueUpdateOperationAllowed, issueBatchAppliedIds, issueBatchComplete, issueBatchErrorReceipt } from "@multica/core/issues";
+import { useIssueOperationBasis, issueUpdateOperationAllowed, issueBatchAppliedIds, issueBatchComplete, issueBatchErrorReceipt, issueBatchParentFilingConflict } from "@multica/core/issues";
 import { IssueBatchOperationDialog, type IssueBatchIntent } from "./issue-batch-operation-dialog";
-import { commonIssueFields } from "@multica/core/issues/batch";
+import { IssueBatchScopeConflictDialog } from "./issue-batch-scope-conflict-dialog";
+import {
+  commonIssueFields,
+  findBatchScopeParentConflicts,
+  sameIssueScope,
+  type BatchScopeParentConflict,
+  type CommonIssueScope,
+} from "@multica/core/issues/batch";
 import { sharedWorkflowStatusKeys, useIssueWorkflows } from "@multica/core/issue-workflows";
 import { projectListOptions } from "@multica/core/projects/queries";
 import { useBatchUpdateIssues, useBatchDeleteIssues } from "@multica/core/issues/mutations";
 import { useModalStore } from "@multica/core/modals";
-import { StatusPicker, PriorityPicker, AssigneePicker } from "./pickers";
+import {
+  StatusPicker,
+  PriorityPicker,
+  AssigneePicker,
+  IssueScopePicker,
+  EMPTY_ISSUE_SCOPE,
+  type IssueScopeValue,
+} from "./pickers";
 import { useT } from "../../i18n";
 import { CollectionBatchBar } from "../../layout/collection-list";
 import { useIssueSurfaceActionsOptional } from "../surface/actions-context";
@@ -103,6 +117,8 @@ export function BatchActionToolbar({
   const [statusOpen, setStatusOpen] = useState(false);
   const [priorityOpen, setPriorityOpen] = useState(false);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const [scopeConflict, setScopeConflict] = useState<BatchScopeParentConflict[] | null>(null);
   const [review, setReview] = useState<{ intent: IssueBatchIntent; result?: { receipt: IssueBatchReceipt | null; submittedIds: string[] } } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const command = useRef<string | null>(null); const inFlight = useRef(false);
@@ -110,7 +126,7 @@ export function BatchActionToolbar({
   const selectedNow = useRef(selectedIds); selectedNow.current = selectedIds;
   const workspaceNow = useRef(wsId); workspaceNow.current = wsId;
   useEffect(() => () => { command.current = null; }, []);
-  useEffect(() => { command.current = null; inFlight.current = false; setSubmitting(false); setReview(null); }, [wsId]);
+  useEffect(() => { command.current = null; inFlight.current = false; setSubmitting(false); setReview(null); setScopeConflict(null); }, [wsId]);
   const surfaceActions = useIssueSurfaceActionsOptional();
   const batchUpdate = useBatchUpdateIssues();
   const batchDelete = useBatchDeleteIssues();
@@ -125,13 +141,41 @@ export function BatchActionToolbar({
     setStatusOpen(false);
     setPriorityOpen(false);
     setAssigneeOpen(false);
+    setScopeOpen(false);
   }, [count]);
+
+  const scopeTargetFromUpdates = (updates: Partial<UpdateIssueRequest>): CommonIssueScope | null => {
+    const touchesScope =
+      Object.prototype.hasOwnProperty.call(updates, "project_id") ||
+      Object.prototype.hasOwnProperty.call(updates, "module_id") ||
+      Object.prototype.hasOwnProperty.call(updates, "work_item_id");
+    if (!touchesScope || Object.prototype.hasOwnProperty.call(updates, "parent_issue_id")) return null;
+    return {
+      project_id: updates.project_id ?? null,
+      module_id: updates.module_id ?? null,
+      work_item_id: updates.work_item_id ?? null,
+    };
+  };
 
   const submitIntent = async (intent: IssueBatchIntent, submittedIds: string[], revisions: Record<string, number>) => {
     if (inFlight.current || submittedIds.length === 0 || intent.workspaceId !== wsId || submittedIds.some((id) => !ids.includes(id))) return;
     const capturedWorkspace = wsId, capturedSelection = selectedNow.current;
     command.current = intent.key;
     const updates = intent.updates ?? {};
+    if (intent.kind === "update") {
+      const targetScope = scopeTargetFromUpdates(updates);
+      if (targetScope) {
+        // Re-check the exact submitted subset (e.g. after excluding a blocked
+        // parent in IssueBatchOperationDialog) before mutating any issue.
+        const submittedIssues = selectedIssues.filter((issue) => submittedIds.includes(issue.id));
+        const conflicts = findBatchScopeParentConflicts(submittedIssues, targetScope, issues);
+        if (conflicts.length > 0) {
+          setReview(null);
+          setScopeConflict(conflicts);
+          return;
+        }
+      }
+    }
     if (intent.kind === "update" && (updates.assignee_type === "agent" || updates.assignee_type === "squad") && updates.assignee_id
       && submittedIds.some((id) => selectedIssues.find((issue) => issue.id === id)?.status !== "backlog")) {
       setReview(null);
@@ -164,6 +208,37 @@ export function BatchActionToolbar({
         : surfaceActions ? await surfaceActions.batchUpdate(submittedIds, updates, { expected_revisions: revisions }) : await batchUpdate.mutateAsync({ ids: submittedIds, updates, expected_revisions: revisions });
       acknowledge(receipt);
     } catch (cause) {
+      const parentConflict = intent.kind === "update" ? issueBatchParentFilingConflict(cause) : null;
+      if (parentConflict && stillCurrent()) {
+        const byId = new Map(issues.map((item) => [item.id, item]));
+        const serverConflicts = parentConflict.conflicts.length > 0
+          ? parentConflict.conflicts
+          : selectedIssues
+            .filter((item) => submittedIds.includes(item.id) && Boolean(item.parent_issue_id))
+            .map((item) => ({ issue_id: item.id, parent_issue_id: item.parent_issue_id! }));
+        const mapped: BatchScopeParentConflict[] = serverConflicts.map((item) => {
+          const issue = byId.get(item.issue_id) ?? selectedIssues.find((candidate) => candidate.id === item.issue_id);
+          const fallbackLabel = intent.issueLabels.find((label) => label.id === item.issue_id);
+          return {
+            issue: issue ?? {
+              id: item.issue_id,
+              identifier: fallbackLabel?.identifier ?? "",
+              title: fallbackLabel?.title ?? item.issue_id,
+              parent_issue_id: item.parent_issue_id,
+              project_id: null,
+              module_id: null,
+              work_item_id: null,
+            },
+            parentId: item.parent_issue_id,
+            parent: byId.get(item.parent_issue_id) ?? null,
+          };
+        });
+        if (mapped.length > 0) {
+          setReview(null);
+          setScopeConflict(mapped);
+          return;
+        }
+      }
       acknowledge(issueBatchErrorReceipt(cause, capturedWorkspace, submittedIds, intent.kind));
     } finally {
       if (stillCurrent()) { inFlight.current = false; setSubmitting(false); }
@@ -184,6 +259,20 @@ export function BatchActionToolbar({
   };
   const handleBatchStatus = (updates: Partial<UpdateIssueRequest>) => { if (updates.status) handleBatchUpdate(updates); };
   const handleBatchAssignee = handleBatchUpdate;
+  const handleBatchScope = (next: IssueScopeValue) => {
+    if (loading || ids.length === 0) return;
+    if (common.scope && sameIssueScope(common.scope, next)) return;
+    const conflicts = findBatchScopeParentConflicts(selectedIssues, next, issues);
+    if (conflicts.length > 0) {
+      setScopeConflict(conflicts);
+      return;
+    }
+    handleBatchUpdate({
+      project_id: next.project_id,
+      module_id: next.module_id,
+      work_item_id: next.work_item_id,
+    });
+  };
 
   return (
     <>
@@ -232,6 +321,20 @@ export function BatchActionToolbar({
           align="center"
         />
 
+        {/* Ownership (project / module / work item) */}
+        <IssueScopePicker
+          wsId={wsId}
+          value={common.scope ?? EMPTY_ISSUE_SCOPE}
+          mixed={common.scope === null}
+          disabled={loading}
+          onUpdate={handleBatchScope}
+          open={scopeOpen}
+          onOpenChange={setScopeOpen}
+          triggerRender={<Button variant="ghost" size="sm" disabled={loading} />}
+          trigger={t(($) => $.batch.scope)}
+          align="center"
+        />
+
         {/* Delete — upstream's per-issue delete permission gate, then the
             fork's revision-aware review dialog (it previews the affected
             issues and surfaces revision conflicts), so there is only one
@@ -253,6 +356,13 @@ export function BatchActionToolbar({
         selectionChanged={review.intent.ids.length !== ids.length || review.intent.ids.some((id) => !ids.includes(id))}
         onClose={() => { if (!inFlight.current) { command.current = null; setReview(null); } }}
         onSubmit={(submittedIds, revisions) => { void submitIntent(review.intent, submittedIds, revisions); }} />}
+
+      {scopeConflict && (
+        <IssueBatchScopeConflictDialog
+          conflicts={scopeConflict}
+          onClose={() => setScopeConflict(null)}
+        />
+      )}
     </>
   );
 }
