@@ -3,8 +3,7 @@
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useRegisterCommandBarContext } from "../../search/register-context";
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels";
-import { Boxes } from "lucide-react";
-import { Blocks, Check, ChevronRight, FileQuestion, Link2, Network, PanelLeft, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus, X as XIcon } from "@multica/ui/icons";
+import { Blocks, Check, ChevronRight, FileQuestion, Link2, ListTree, Network, PanelLeft, PanelRight, Pin, PinOff, Plus, Trash2, UserMinus, X as XIcon } from "@multica/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@multica/ui/lib/utils";
 import { copyText } from "@multica/ui/lib/clipboard";
@@ -297,9 +296,13 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
   );
 
   // The plan column folds by hand, and never opens where it would squeeze the
-  // surface into a horizontal scroll.
+  // surface into a horizontal scroll. It starts closed: the global Work sidebar
+  // already carries the project → module → work item tree, so opening a second
+  // one here only duplicated it and squeezed the table. The header toggle
+  // brings it back on demand (non-in-progress projects, long module lists, or
+  // structure editing).
   const narrow = useNarrowLayout();
-  const [planColumnOpen, setPlanColumnOpen] = useState(true);
+  const [planColumnOpen, setPlanColumnOpen] = useState(false);
   const showPlanColumn = planColumnOpen && !narrow;
   // Below the breakpoint the column has no room, so the same tree opens over
   // the page instead of collapsing into a button that does nothing.
@@ -328,6 +331,23 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
       return { module_id: legacyModuleRecord.id };
     }
     return undefined;
+  }, [legacyModuleRecord, planById, planReady, selectedKind, selectedNode]);
+
+  // The module a newly created work item should land in: the selection's own
+  // module when the tree names one, otherwise the degraded module list's live
+  // `?module=`. Null means the create dialog asks for a module itself.
+  const activeModuleId = useMemo(() => {
+    if (planReady && selectedNode) {
+      if (selectedKind === "module") return selectedNode.module_id ?? null;
+      if (selectedKind === "work_item") {
+        return (selectedNode.parent_id
+          ? planById.get(selectedNode.parent_id)?.module_id
+          : null) ?? null;
+      }
+      return null;
+    }
+    if (!planReady && legacyModuleRecord) return legacyModuleRecord.id;
+    return null;
   }, [legacyModuleRecord, planById, planReady, selectedKind, selectedNode]);
 
   // ---- `?module=` → `?node=` (replace, no extra history entry) -------------
@@ -901,7 +921,7 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                         </DropdownMenuItem>
                         {isWorkspaceAdmin && (
                           <DropdownMenuItem onClick={() => setModulesManageOpen(true)}>
-                            <Boxes className="h-3.5 w-3.5" />
+                            <Blocks className="h-3.5 w-3.5" />
                             {t(($) => $.module.manage_title)}
                           </DropdownMenuItem>
                         )}
@@ -1000,15 +1020,57 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
                           aria-label={t(($) => $.module.create.title)}
                           onClick={() => useModalStore.getState().open("create-module", { projectId })}
                         >
-                          <Boxes className="h-3.5 w-3.5 sm:mr-1" />
+                          <Blocks className="h-3.5 w-3.5 sm:mr-1" />
                           <span className="hidden sm:inline">{t(($) => $.module.create.title)}</span>
                         </Button>
+                        {/* Creating a work item needs the reconciled plan to
+                            know which module row it belongs to; until then the
+                            button says why instead of failing on submit. */}
+                        {planUnreconciled ? (
+                          <TooltipHint label={t(($) => $.detail.plan_unreconciled)}>
+                            <span className="inline-flex">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="px-2 sm:px-2.5"
+                                aria-label={t(($) => $.work_item.create.title)}
+                                disabled
+                              >
+                                <ListTree className="h-3.5 w-3.5 sm:mr-1" />
+                                <span className="hidden sm:inline">{t(($) => $.work_item.create.title)}</span>
+                              </Button>
+                            </span>
+                          </TooltipHint>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="px-2 sm:px-2.5"
+                            aria-label={t(($) => $.work_item.create.title)}
+                            onClick={() =>
+                              useModalStore.getState().open("create-work-item", {
+                                projectId,
+                                ...(activeModuleId ? { moduleId: activeModuleId } : {}),
+                              })
+                            }
+                          >
+                            <ListTree className="h-3.5 w-3.5 sm:mr-1" />
+                            <span className="hidden sm:inline">{t(($) => $.work_item.create.title)}</span>
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon-sm"
                           className="text-muted-foreground"
                           title={t(($) => $.detail.graph_tooltip)}
-                          onClick={() => router.push(wsPaths.projectGraph(projectId))}
+                          onClick={() => {
+                            // The graph keeps the reader's place: a selected
+                            // row rides along so the back link returns to it.
+                            const graphHref = nodeParam
+                              ? `${wsPaths.projectGraph(projectId)}?node=${encodeURIComponent(nodeParam)}`
+                              : wsPaths.projectGraph(projectId);
+                            router.push(graphHref);
+                          }}
                         >
                           <Network />
                         </Button>

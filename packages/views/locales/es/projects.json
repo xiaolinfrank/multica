@@ -158,6 +158,17 @@
     "confirm": "Eliminar",
     "cancel": "Cancelar"
   },
+  "work_item": {
+    "create": {
+      "title": "Crear elemento de trabajo",
+      "breadcrumb": "Elemento de trabajo",
+      "title_placeholder": "Nombre del elemento de trabajo",
+      "submit": "Crear elemento de trabajo",
+      "submitting": "Creando...",
+      "toast_created": "Elemento de trabajo creado",
+      "toast_failed": "No se pudo crear el elemento de trabajo"
+    }
+  },
   "picker": {
     "no_project": "Sin proyecto",
     "empty": "Aún no hay proyectos",

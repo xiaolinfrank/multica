@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ReactNode } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
@@ -16,12 +17,15 @@ vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
     issueDetail: (id: string) => `/ws/issues/${id}`,
     cockpit: () => "/ws/cockpit",
+    projectDetail: (id: string) => `/ws/projects/${id}`,
   }),
 }));
 
 // The navigation mock hands out one shared push spy so menu actions can be
-// asserted against it.
+// asserted against it. `searchParams` is mutable so a test can arrive with a
+// deep link (the `?node=` the project task view forwards to the graph).
 const pushMock = vi.hoisted(() => vi.fn());
+const nav = vi.hoisted(() => ({ searchParams: new URLSearchParams() }));
 
 // Same shape as office-page.test.tsx: platform plumbing we do not exercise.
 vi.mock("../../navigation", () => ({
@@ -30,8 +34,11 @@ vi.mock("../../navigation", () => ({
     replace: vi.fn(),
     back: vi.fn(),
     pathname: "/ws/graph",
-    searchParams: new URLSearchParams(),
+    searchParams: nav.searchParams,
   }),
+  AppLink: ({ href, children }: { href: string; children?: ReactNode }) => (
+    <a href={href}>{children}</a>
+  ),
 }));
 
 vi.mock("@multica/core/api", () => ({
@@ -117,6 +124,7 @@ function renderPage(props?: { projectId?: string | null }) {
 describe("GraphPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    nav.searchParams = new URLSearchParams();
     vi.mocked(api.getIssueGraph).mockResolvedValue({ nodes: [], edges: [], meetings: [], executions: [], cockpit_nodes: [] });
     vi.mocked(api.listProjects).mockResolvedValue({ projects: [], total: 0 });
   });
@@ -377,5 +385,43 @@ describe("GraphPage", () => {
     await waitFor(() =>
       expect(screen.getByTestId("graph-counts")).toHaveTextContent("3 issues · 2 executions · 4 links"),
     );
+  });
+
+  it("links back to the project task view when project-scoped", async () => {
+    renderPage({ projectId: "p-1" });
+
+    expect(await screen.findByRole("link", { name: "Back to project" })).toHaveAttribute(
+      "href",
+      "/ws/projects/p-1",
+    );
+  });
+
+  it("keeps the selected node in the project back link", async () => {
+    nav.searchParams = new URLSearchParams("node=plan-item");
+    renderPage({ projectId: "p-1" });
+
+    expect(await screen.findByRole("link", { name: "Back to project" })).toHaveAttribute(
+      "href",
+      "/ws/projects/p-1?node=plan-item",
+    );
+  });
+
+  it("keeps the back link while a slow graph is still loading", () => {
+    // A graph that never resolves must not trap the reader: the way back is
+    // rendered in the loading state too.
+    vi.mocked(api.getIssueGraph).mockReturnValue(new Promise(() => {}));
+    renderPage({ projectId: "p-1" });
+
+    expect(screen.getByRole("link", { name: "Back to project" })).toHaveAttribute(
+      "href",
+      "/ws/projects/p-1",
+    );
+  });
+
+  it("shows no project back link on the workspace graph", async () => {
+    renderPage();
+    await screen.findByTestId("graph-page");
+
+    expect(screen.queryByRole("link", { name: "Back to project" })).not.toBeInTheDocument();
   });
 });

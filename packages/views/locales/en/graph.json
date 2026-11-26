@@ -1,7 +1,8 @@
 {
   "page": {
     "title": "Graph",
-    "subtitle": "How your work relates: issues, meetings, and the runs carrying them out"
+    "subtitle": "How your work relates: issues, meetings, and the runs carrying them out",
+    "back_to_project": "Back to project"
   },
   "toolbar": {
     "search_placeholder": "Search issues…",

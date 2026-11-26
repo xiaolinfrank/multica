@@ -246,6 +246,17 @@
     "toggle_work_items_aria": "Toggle work items in",
     "view_all_work_items": "View all {{n}} in the project"
   },
+  "work_item": {
+    "create": {
+      "title": "Create work item",
+      "breadcrumb": "Work item",
+      "title_placeholder": "Work item name",
+      "submit": "Create work item",
+      "submitting": "Creating...",
+      "toast_created": "Work item created",
+      "toast_failed": "Failed to create work item"
+    }
+  },
   "chip": {
     "fallback_label": "Project"
   },

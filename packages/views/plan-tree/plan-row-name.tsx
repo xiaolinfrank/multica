@@ -67,22 +67,29 @@ export function PlanRowName({
           <span className="size-4 shrink-0" aria-hidden />
         )}
       </span>
-      <button type="button" onClick={onSelect} title={row.node.code} aria-label={t(($) => $.plan_tree.open_row, { code: row.code })}
-        className="shrink-0 rounded-sm px-1 font-mono text-micro text-muted-foreground hover:text-foreground"
-        style={row.kind === "project" && row.node.color ? { color: row.node.color } : undefined}>
-        {row.code}
-      </button>
-      {renaming ? (
-        <InlineName defaultValue={row.name} disabled={locked} onSubmit={onSubmitRename} onCancel={onCancelRename} />
-      ) : (
-        <button type="button" disabled={locked}
-          onDoubleClick={onStartRename}
-          onKeyDown={(e) => { if (e.key === "F2") onStartRename(); }}
-          className={cn("min-w-0 flex-1 truncate text-left", row.kind !== "work_item" && "font-medium")}
-          title={row.name}>
-          {row.name}
+      {/* The address and the name are one selectable object: no dead gap
+          between them that a click would let fall through to the row and fold
+          the branch instead of opening it. */}
+      <span className="flex min-w-0 flex-1 items-center">
+        <button type="button" onClick={onSelect} title={row.node.code} aria-label={t(($) => $.plan_tree.open_row, { code: row.code })}
+          className="shrink-0 cursor-pointer rounded-sm px-1 font-mono text-micro text-muted-foreground hover:text-foreground"
+          style={row.kind === "project" && row.node.color ? { color: row.node.color } : undefined}>
+          {row.code}
         </button>
-      )}
+        {renaming ? (
+          <InlineName defaultValue={row.name} disabled={locked} onSubmit={onSubmitRename} onCancel={onCancelRename} />
+        ) : (
+          // Selection is a read, so it stays available when structure writes
+          // are closed; only the rename triggers are guarded by `locked`.
+          <button type="button" onClick={onSelect}
+            onDoubleClick={() => { if (!locked) onStartRename(); }}
+            onKeyDown={(e) => { if (!locked && e.key === "F2") onStartRename(); }}
+            className={cn("min-w-0 flex-1 cursor-pointer truncate pl-1 text-left hover:text-foreground", row.kind !== "work_item" && "font-medium")}
+            title={row.name}>
+            {row.name}
+          </button>
+        )}
+      </span>
       {trailing}
     </div>
   );

@@ -234,6 +234,17 @@
     "toast_reorder_failed": "Échec de la réorganisation des modules",
     "agent_carry_hint": "Appliqué en passant en création manuelle ; la création par l'agent ignore le module"
   },
+  "work_item": {
+    "create": {
+      "title": "Créer un élément de travail",
+      "breadcrumb": "Élément de travail",
+      "title_placeholder": "Nom de l'élément de travail",
+      "submit": "Créer l'élément de travail",
+      "submitting": "Création...",
+      "toast_created": "Élément de travail créé",
+      "toast_failed": "Échec de la création de l'élément de travail"
+    }
+  },
   "chip": {
     "fallback_label": "Projet"
   },

@@ -245,6 +245,17 @@
     "toggle_work_items_aria": "작업 항목 열기/닫기",
     "view_all_work_items": "프로젝트에서 {{n}}개 모두 보기"
   },
+  "work_item": {
+    "create": {
+      "title": "작업 항목 만들기",
+      "breadcrumb": "작업 항목",
+      "title_placeholder": "작업 항목 이름",
+      "submit": "작업 항목 만들기",
+      "submitting": "만드는 중...",
+      "toast_created": "작업 항목을 만들었습니다",
+      "toast_failed": "작업 항목 만들기에 실패했습니다"
+    }
+  },
   "chip": {
     "fallback_label": "프로젝트"
   },

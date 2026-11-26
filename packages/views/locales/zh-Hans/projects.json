@@ -245,6 +245,17 @@
     "toggle_work_items_aria": "展开或收起工作项",
     "view_all_work_items": "在项目页查看全部（{{n}}）"
   },
+  "work_item": {
+    "create": {
+      "title": "创建工作项",
+      "breadcrumb": "工作项",
+      "title_placeholder": "工作项名称",
+      "submit": "创建工作项",
+      "submitting": "创建中...",
+      "toast_created": "工作项已创建",
+      "toast_failed": "创建工作项失败"
+    }
+  },
   "chip": {
     "fallback_label": "项目"
   },

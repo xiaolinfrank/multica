@@ -19,8 +19,9 @@ import {
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { Toggle } from "@multica/ui/components/ui/toggle";
-import { Filter, RotateCcw, Search } from "lucide-react";
+import { Filter, RotateCcw, Search } from "@multica/ui/icons";
 import { STATUS_CONFIG } from "@multica/core/issues/config/status";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import type { GraphEntity } from "@multica/core/graph/build-graph-model";
 import type { Project } from "@multica/core/types";
 
@@ -244,7 +245,7 @@ export function GraphToolbar(props: GraphToolbarProps) {
                   >
                     <span className="truncate">
                       {p.icon ? `${p.icon} ` : ""}
-                      {p.title}
+                      {formatProjectTitle(p)}
                     </span>
                   </DropdownMenuCheckboxItem>
                 );

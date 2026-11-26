@@ -245,6 +245,17 @@
     "toggle_work_items_aria": "作業項目を開閉",
     "view_all_work_items": "プロジェクトで {{n}} 件すべて表示"
   },
+  "work_item": {
+    "create": {
+      "title": "作業項目を作成",
+      "breadcrumb": "作業項目",
+      "title_placeholder": "作業項目名",
+      "submit": "作業項目を作成",
+      "submitting": "作成中...",
+      "toast_created": "作業項目を作成しました",
+      "toast_failed": "作業項目の作成に失敗しました"
+    }
+  },
   "chip": {
     "fallback_label": "プロジェクト"
   },

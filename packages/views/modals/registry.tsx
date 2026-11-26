@@ -5,6 +5,7 @@ import { useModalStore } from "@multica/core/modals";
 import { CreateIssueDialog } from "./create-issue-dialog";
 import { CreateProjectModal } from "./create-project";
 import { CreateModuleModal } from "./create-module";
+import { CreateWorkItemModal } from "./create-work-item";
 import { EditModuleModal } from "./edit-module";
 import { CreateSquadModal } from "./create-squad";
 import { FeedbackModal } from "./feedback";
@@ -51,6 +52,9 @@ export function ModalRegistry() {
       break;
     case "create-module":
       activeModal = <CreateModuleModal onClose={close} data={data} />;
+      break;
+    case "create-work-item":
+      activeModal = <CreateWorkItemModal onClose={close} data={data} />;
       break;
     case "edit-module":
       activeModal = <EditModuleModal onClose={close} data={data} />;

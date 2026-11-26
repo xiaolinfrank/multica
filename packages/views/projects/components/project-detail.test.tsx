@@ -123,6 +123,7 @@ vi.mock("@multica/core/paths", () => ({
   useWorkspacePaths: () => ({
     projects: () => "/test-workspace/projects",
     projectDetail: (id: string) => "/test-workspace/projects/" + id,
+    projectGraph: (id: string) => "/test-workspace/projects/" + id + "/graph",
   }),
 }));
 
@@ -707,6 +708,66 @@ describe("ProjectDetail module creation", () => {
   });
 });
 
+describe("ProjectDetail work item creation", () => {
+  beforeEach(() => {
+    mocks.plan.current = structuredClone(PLAN);
+  });
+
+  it("opens the create-work-item modal for the project", async () => {
+    renderProjectDetail();
+    await userEvent.click(screen.getByRole("button", { name: "Create work item" }));
+    expect(useModalStore.getState().modal).toBe("create-work-item");
+    expect(useModalStore.getState().data).toEqual({ projectId: PROJECT.id });
+  });
+
+  it("seeds the selected module", async () => {
+    renderProjectDetail("node=plan-module");
+    await userEvent.click(screen.getByRole("button", { name: "Create work item" }));
+    expect(useModalStore.getState().data).toEqual({
+      projectId: PROJECT.id,
+      moduleId: "module-1",
+    });
+  });
+
+  it("seeds the module above the selected work item", async () => {
+    renderProjectDetail("node=plan-item");
+    await userEvent.click(screen.getByRole("button", { name: "Create work item" }));
+    expect(useModalStore.getState().data).toEqual({
+      projectId: PROJECT.id,
+      moduleId: "module-1",
+    });
+  });
+
+  it("disables creation until the plan is reconciled, and says why", () => {
+    mocks.plan.current = {
+      ...structuredClone(PLAN),
+      cockpit: { ...PLAN.cockpit, plan_reconciled_at: null },
+    };
+    renderProjectDetail();
+    expect(screen.getByRole("button", { name: "Create work item" })).toBeDisabled();
+    expect(useModalStore.getState().modal).toBeNull();
+  });
+});
+
+describe("ProjectDetail graph navigation", () => {
+  it("opens the project graph from the header", async () => {
+    renderProjectDetail();
+    await userEvent.click(screen.getByTitle("Open project graph"));
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/test-workspace/projects/project-1/graph",
+    );
+  });
+
+  it("carries the selected node into the graph so the way back keeps it", async () => {
+    mocks.plan.current = structuredClone(PLAN);
+    renderProjectDetail("node=plan-item");
+    await userEvent.click(screen.getByTitle("Open project graph"));
+    expect(mocks.push).toHaveBeenCalledWith(
+      "/test-workspace/projects/project-1/graph?node=plan-item",
+    );
+  });
+});
+
 it("shows the retained-project reason and prevents the delete command", async () => {
   mocks.operationBlocked = true; renderProjectDetail(); await userEvent.click(screen.getByRole("button", { name: "Delete project" }));
   expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled(); expect(mocks.deleteProject).not.toHaveBeenCalled();
@@ -760,6 +821,12 @@ function planRows() {
   });
 }
 
+/** The plan column starts closed (the global Work sidebar already carries the
+ *  tree); a test that inspects its rows opens it from the header first. */
+async function showPlanColumn() {
+  await userEvent.click(screen.getByRole("button", { name: "Show or hide the plan" }));
+}
+
 describe("ProjectDetail plan column", () => {
   beforeEach(() => {
     mocks.plan.current = structuredClone(PLAN);
@@ -769,8 +836,23 @@ describe("ProjectDetail plan column", () => {
     ];
   });
 
-  it("lists the project's plan rows, in plan order, down to the work item", () => {
+  it("hides the plan column by default and opens it from the header toggle", async () => {
     renderProjectDetail();
+
+    // The Work sidebar already shows this tree; the page's copy starts closed
+    // so it does not duplicate the tree and squeeze the table.
+    expect(screen.queryByRole("complementary", { name: "Plan" })).toBeNull();
+    const toggle = screen.getByRole("button", { name: "Show or hide the plan" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("complementary", { name: "Plan" })).toBeInTheDocument();
+  });
+
+  it("lists the project's plan rows, in plan order, down to the work item", async () => {
+    renderProjectDetail();
+    await showPlanColumn();
     expect(planRows().map((row) => row.id)).toEqual([
       "plan-project",
       "plan-module",
@@ -783,10 +865,20 @@ describe("ProjectDetail plan column", () => {
   it("selects a module row into `?node=` and narrows the surface to it", async () => {
     const user = userEvent.setup();
     renderProjectDetail();
+    await showPlanColumn();
     // The row's address is its select affordance (the same one the cockpit
     // tree uses); the name field is the rename target.
     await user.click(screen.getByRole("button", { name: "Open 00.01" }));
     expect(mocks.push).toHaveBeenCalledWith("/test-workspace/projects/project-1?node=plan-module");
+  });
+
+  it("keeps URL filtering, table grouping and the selection chip working while the plan column is hidden", () => {
+    renderProjectDetail("node=plan-module");
+    expect(screen.queryByRole("complementary", { name: "Plan" })).toBeNull();
+    expect(mocks.issueSurface.current?.moduleFilter).toEqual({ module_ids: ["module-1"] });
+    expect(mocks.issueSurface.current?.defaultTableGrouping).toBe("work_item");
+    // The header chip still names the selected row and clears it.
+    expect(screen.getByRole("button", { name: "Show all issues" })).toBeInTheDocument();
   });
 
   it("narrows by module when the URL already names that row", () => {
@@ -818,9 +910,10 @@ describe("ProjectDetail plan column", () => {
 });
 
 describe("ProjectDetail plan parity with the cockpit", () => {
-  it("shows the rows the cockpit's plan tree shows at the same scope", () => {
+  it("shows the rows the cockpit's plan tree shows at the same scope", async () => {
     mocks.plan.current = structuredClone(PLAN);
     renderProjectDetail();
+    await showPlanColumn();
     // Code, name and order — the three things the two views must agree on.
     const fromPage = planRows();
 
@@ -923,6 +1016,7 @@ describe("ProjectDetail before reconciliation", () => {
     ];
     const user = userEvent.setup();
     renderProjectDetail();
+    await showPlanColumn();
 
     // No plan rows: the column is a module list with the reason above it.
     expect(screen.getByRole("status")).toHaveTextContent(/has not been reconciled/);
@@ -968,12 +1062,13 @@ describe("ProjectDetail before reconciliation", () => {
     }
   });
 
-  it("keeps the navigator a name list: no counts, no issue rows to expand", () => {
+  it("keeps the navigator a name list: no counts, no issue rows to expand", async () => {
     mocks.plan.current = {
       ...structuredClone(PLAN),
       task_counts: [{ node_id: "plan-item", primary_total: 3, reference_total: 1, active: 2, done: 1, closed: 0 }],
     };
     renderProjectDetail();
+    await showPlanColumn();
 
     const workItemRow = screen
       .getByRole("complementary", { name: "Plan" })
@@ -985,12 +1080,13 @@ describe("ProjectDetail before reconciliation", () => {
     expect(workItemRow.textContent).not.toMatch(/issue|%/);
   });
 
-  it("falls back to the module list and says the plan cannot be read", () => {
+  it("falls back to the module list and says the plan cannot be read", async () => {
     mocks.planError = true;
     mocks.modules.current = [
       { id: "module-1", workspace_id: "workspace-1", project_id: PROJECT.id, title: "Parser rewrite", description: null, position: 0, created_at: "2026-06-01T00:00:00Z", updated_at: "2026-06-01T00:00:00Z", issue_count: 0, done_count: 0 },
     ];
     renderProjectDetail();
+    await showPlanColumn();
 
     expect(screen.getByRole("status")).toHaveTextContent(/could not be read/);
     expect(screen.getByText("Parser rewrite")).toBeInTheDocument();

@@ -1,7 +1,8 @@
 {
   "page": {
     "title": "그래프",
-    "subtitle": "작업, 회의, 실행이 어떻게 연결되는지 한눈에"
+    "subtitle": "작업, 회의, 실행이 어떻게 연결되는지 한눈에",
+    "back_to_project": "프로젝트로 돌아가기"
   },
   "toolbar": {
     "search_placeholder": "이슈 검색…",

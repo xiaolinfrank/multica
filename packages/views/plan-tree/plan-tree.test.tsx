@@ -469,6 +469,37 @@ describe("PlanTree", () => {
     expect(within(rowOf("work_item")).getByRole("button", { name: enCockpit.plan_tree.more })).toBeInTheDocument();
   });
 
+  it("selects a row from its name as well as its address", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
+    const opened: string[] = [];
+    show({ onSelect: (id) => opened.push(id) });
+    await screen.findAllByRole("row");
+    // The name is the row's widest click target; it used to be click-dead.
+    fireEvent.click(within(rowOf("module")).getByRole("button", { name: "模块一" }));
+    fireEvent.click(within(rowOf("work_item")).getByRole("button", { name: enCockpit.plan_tree.open_row.replace("{{code}}", "01.01.01") }));
+    expect(opened).toEqual(["m1", "w1"]);
+    // Neither click folded the row it selected.
+    expect(rowOf("module")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("selects a row name while structure writes are read-only", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
+    const opened: string[] = [];
+    show({ readOnly: true, onSelect: (id) => opened.push(id) });
+    await screen.findAllByRole("row");
+    // Opening a row is a read: a read-only scope must not make it dead.
+    fireEvent.click(within(rowOf("module")).getByRole("button", { name: "模块一" }));
+    expect(opened).toEqual(["m1"]);
+  });
+
+  it("only starts inline rename from the name when structure writes are open", async () => {
+    apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
+    show({ readOnly: true });
+    await screen.findAllByRole("row");
+    fireEvent.doubleClick(within(rowOf("module")).getByRole("button", { name: "模块一" }));
+    expect(within(rowOf("module")).queryByRole("textbox")).toBeNull();
+  });
+
   it("moves a cursor with the arrow keys and hands the row over on Enter", async () => {
     apiMock.getCockpitPlan.mockResolvedValueOnce(reconciled);
     const opened: string[] = [];

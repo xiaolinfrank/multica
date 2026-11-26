@@ -1,7 +1,8 @@
 {
   "page": {
     "title": "图谱",
-    "subtitle": "工作如何相互关联：任务、会议与工作项的全貌"
+    "subtitle": "工作如何相互关联：任务、会议与工作项的全貌",
+    "back_to_project": "返回任务视图"
   },
   "toolbar": {
     "search_placeholder": "搜索任务…",

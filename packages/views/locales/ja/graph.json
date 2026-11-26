@@ -1,7 +1,8 @@
 {
   "page": {
     "title": "グラフ",
-    "subtitle": "タスク、会議、実行のつながりの全体像"
+    "subtitle": "タスク、会議、実行のつながりの全体像",
+    "back_to_project": "プロジェクトに戻る"
   },
   "toolbar": {
     "search_placeholder": "タスクを検索…",

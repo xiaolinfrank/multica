@@ -158,6 +158,17 @@
     "confirm": "刪除",
     "cancel": "取消"
   },
+  "work_item": {
+    "create": {
+      "title": "建立工作項",
+      "breadcrumb": "工作項",
+      "title_placeholder": "工作項名稱",
+      "submit": "建立工作項",
+      "submitting": "建立中...",
+      "toast_created": "工作項已建立",
+      "toast_failed": "建立工作項失敗"
+    }
+  },
   "picker": {
     "no_project": "無專案",
     "empty": "還沒有專案",

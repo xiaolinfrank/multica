@@ -13,6 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { formatProjectTitle } from "@multica/core/projects/coded-title";
 import { issueGraphOptions } from "@multica/core/graph/queries";
 import {
   buildGraphModel,
@@ -26,7 +27,10 @@ import {
 } from "@multica/core/graph/build-graph-model";
 import type { GraphExecutionNode, GraphModel } from "@multica/core/graph/build-graph-model";
 import { Skeleton } from "@multica/ui/components/ui/skeleton";
-import { useNavigation } from "../../navigation";
+import { buttonVariants } from "@multica/ui/components/ui/button";
+import { ArrowLeft } from "@multica/ui/icons";
+import { cn } from "@multica/ui/lib/utils";
+import { AppLink, useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { GraphCanvas } from "./graph-canvas";
 import { demoGraph } from "./graph-demo";
@@ -107,6 +111,24 @@ function scopeModel(model: GraphModel, collapsedRoots: Set<string>, selectedId: 
   return { model, collapsedCount };
 }
 
+/** The way back from a project-scoped graph. Kept as its own component so the
+ *  loading state can render it before the graph data exists — a slow graph
+ *  must never trap the reader on a blank page. */
+function BackToProjectLink({ href, label }: { href: string; label: string }) {
+  return (
+    <AppLink
+      href={href}
+      className={cn(
+        buttonVariants({ variant: "ghost", size: "sm" }),
+        "-ml-2 h-7 w-fit gap-1.5 px-2 text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <ArrowLeft className="size-3.5" aria-hidden="true" />
+      {label}
+    </AppLink>
+  );
+}
+
 export function GraphPage(props: { projectId?: string | null }) {
   const projectId = props.projectId ?? null;
   const wsId = useWorkspaceId();
@@ -127,6 +149,21 @@ export function GraphPage(props: { projectId?: string | null }) {
     enabled: wsId !== null,
   });
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data]);
+
+  // The project this graph belongs to, and the task-view link that returns to
+  // it — carrying the `?node=` the reader arrived with so the task view
+  // reopens on the same row instead of resetting to the whole project.
+  const currentProject = useMemo(
+    () => (projectId !== null ? projects.find((project) => project.id === projectId) ?? null : null),
+    [projectId, projects],
+  );
+  const returnNode = navigation.searchParams.get("node");
+  const backHref =
+    projectId !== null && wsPaths
+      ? returnNode
+        ? `${wsPaths.projectDetail(projectId)}?node=${encodeURIComponent(returnNode)}`
+        : wsPaths.projectDetail(projectId)
+      : null;
 
   const [projectFilter, setProjectFilter] = useState<Set<string> | null>(null);
   const [statusFilter, setStatusFilter] = useState<Set<string> | null>(null);
@@ -312,6 +349,9 @@ export function GraphPage(props: { projectId?: string | null }) {
   if (!isDemo && (wsId === null || graphQuery.isLoading)) {
     return (
       <div className="flex h-full flex-col gap-4 p-4 md:p-6">
+        {backHref && (
+          <BackToProjectLink href={backHref} label={t(($) => $.page.back_to_project)} />
+        )}
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-10 w-full max-w-md" />
         <Skeleton className="h-full w-full" />
@@ -324,8 +364,18 @@ export function GraphPage(props: { projectId?: string | null }) {
   return (
     <div className="flex h-full flex-col gap-3 p-4 @container md:p-6" data-testid="graph-page">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h1 className="text-title font-semibold text-foreground">{t(($) => $.page.title)}</h1>
+        <div className="min-w-0">
+          {backHref && (
+            <BackToProjectLink href={backHref} label={t(($) => $.page.back_to_project)} />
+          )}
+          <h1 className="flex flex-wrap items-baseline gap-2 text-title font-semibold text-foreground">
+            {t(($) => $.page.title)}
+            {currentProject && (
+              <span className="text-body font-normal text-muted-foreground">
+                {formatProjectTitle(currentProject)}
+              </span>
+            )}
+          </h1>
           <p className="text-caption text-muted-foreground">{t(($) => $.page.subtitle)}</p>
         </div>
         <div className="text-micro text-muted-foreground tabular-nums" data-testid="graph-counts">
