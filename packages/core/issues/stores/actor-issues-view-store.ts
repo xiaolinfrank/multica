@@ -30,11 +30,16 @@ const _actorIssuesViewStore = createStore<ActorIssuesViewState>()(
     }),
     {
       name: basePersist.name,
+      version: basePersist.version,
       storage: basePersist.storage,
       partialize: (state: ActorIssuesViewState) => ({
         ...basePersist.partialize(state),
         scope: state.scope,
       }),
+      // Same shared table-column migration as the my-issues store; its own
+      // `scope` field is preserved by the spread.
+      migrate: (persisted, version) =>
+        basePersist.migrate(persisted, version) as ActorIssuesViewState,
       merge: mergeViewStatePersisted<ActorIssuesViewState>,
     },
   ),

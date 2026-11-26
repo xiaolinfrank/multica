@@ -52,11 +52,16 @@ const _myIssuesViewStore = createStore<MyIssuesViewState>()(
     }),
     {
       name: basePersist.name,
+      version: basePersist.version,
       storage: basePersist.storage,
       partialize: (state: MyIssuesViewState) => ({
         ...basePersist.partialize(state),
         scope: state.scope,
       }),
+      // The shared migration only rewrites `tableColumns`; it spreads the
+      // persisted snapshot, so this store's own `scope` rides along untouched.
+      migrate: (persisted, version) =>
+        basePersist.migrate(persisted, version) as MyIssuesViewState,
       // Reuse the same deep-merge as the base view store so newly added
       // cardProperties toggles inherit defaults for existing users. Without
       // this, the my-issues page renders no labels because the persisted

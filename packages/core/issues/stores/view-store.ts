@@ -117,12 +117,52 @@ export const TABLE_SYSTEM_COLUMNS: readonly TableSystemColumnKey[] = [
 
 export const DEFAULT_TABLE_COLUMNS: readonly TableColumnConfig[] = [
   { key: "title", width: 360 },
+  { key: "work_item", width: 220 },
   { key: "status", width: 150 },
   { key: "priority", width: 130 },
   { key: "assignee", width: 180 },
   { key: "due_date", width: 140 },
   { key: "labels", width: 220 },
 ];
+
+/** The pre-`work_item` default sequence. Used only to recognize an untouched
+ *  legacy snapshot — widths are ignored so a user who resized a column keeps
+ *  those widths through the migration. */
+const LEGACY_TABLE_COLUMN_SEQUENCE: readonly TableColumnKey[] = [
+  "title",
+  "status",
+  "priority",
+  "assignee",
+  "due_date",
+  "labels",
+];
+
+/**
+ * Insert the `work_item` column into a table layout that is still the legacy
+ * six-column default. Any other layout is a customization (hidden, reordered,
+ * extra columns) and is returned untouched — including one that already has
+ * `work_item`, so the migration is idempotent.
+ */
+export function migrateLegacyTableColumnsDefault(
+  tableColumns: TableColumnConfig[] | undefined,
+): TableColumnConfig[] | undefined {
+  if (!Array.isArray(tableColumns)) return tableColumns;
+  if (tableColumns.length !== LEGACY_TABLE_COLUMN_SEQUENCE.length) {
+    return tableColumns;
+  }
+  const untouched = tableColumns.every(
+    (column, index) => column?.key === LEGACY_TABLE_COLUMN_SEQUENCE[index],
+  );
+  if (!untouched) return tableColumns;
+  return [
+    tableColumns[0]!,
+    { key: "work_item", width: 220 },
+    ...tableColumns.slice(1),
+  ];
+}
+
+/** v1: the table default gained the `work_item` column. */
+const VIEW_STATE_VERSION = 1;
 
 export interface IssueDateFilter {
   field: IssueDateField;
@@ -867,6 +907,17 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
 
 export const viewStorePersistOptions = (name: string) => ({
   name,
+  version: VIEW_STATE_VERSION,
+  // v0 -> v1: an untouched legacy table layout gains the `work_item` column.
+  // A customized layout passes through as-is.
+  migrate: (persisted: unknown, version: number) => {
+    const p = (persisted ?? {}) as Partial<IssueViewState>;
+    if (version >= VIEW_STATE_VERSION) return p;
+    const tableColumns = Array.isArray(p.tableColumns)
+      ? migrateLegacyTableColumnsDefault(p.tableColumns)
+      : p.tableColumns;
+    return { ...p, ...(tableColumns ? { tableColumns } : {}) };
+  },
   storage: createJSONStorage(() => createWorkspaceAwareStorage(defaultStorage)),
   partialize: (state: IssueViewState) => ({
     // `dateFilter` is intentionally not persisted: relative presets such

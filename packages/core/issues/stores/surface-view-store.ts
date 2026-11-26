@@ -7,6 +7,7 @@ import { defaultStorage } from "../../platform/storage";
 import {
   DEFAULT_CARD_PROPERTIES,
   DEFAULT_HIDDEN_STATUSES,
+  migrateLegacyTableColumnsDefault,
   type IssueViewState,
   mergeViewStatePersisted,
   viewStorePersistOptions,
@@ -35,7 +36,7 @@ const basePersist = viewStorePersistOptions(ISSUE_SURFACE_VIEW_STORAGE_KEY);
 const surfaceStores = new Map<string, StoreApi<IssueViewState>>();
 const suppressSurfacePersist = new Set<string>();
 
-const SURFACE_DEFAULTS_VERSION = 1;
+const SURFACE_DEFAULTS_VERSION = 2;
 
 function defaultsForSurface(
   surfaceKey: string,
@@ -101,6 +102,18 @@ function persistedIssueViewState(state: IssueViewState): PersistedIssueViewState
   return basePersist.partialize(state);
 }
 
+/** v1 -> v2: the built-in table layout gained the `work_item` column. Only an
+ *  untouched legacy layout moves; anything the user customized (or explicitly
+ *  removed `work_item` from at v2) is left alone. Saved-view surfaces keep
+ *  their authored definition, so the caller skips them. */
+function migrateSurfaceTableColumnsDefault(
+  state: PersistedIssueViewState,
+): PersistedIssueViewState {
+  const tableColumns = migrateLegacyTableColumnsDefault(state.tableColumns);
+  if (tableColumns === state.tableColumns) return state;
+  return { ...state, tableColumns: tableColumns ?? state.tableColumns };
+}
+
 const issueSurfaceViewRegistryStore = createStore<IssueSurfaceViewRegistryState>()(
   persist(
     (set) => ({
@@ -140,15 +153,25 @@ const issueSurfaceViewRegistryStore = createStore<IssueSurfaceViewRegistryState>
       migrate: (persisted, version) => {
         const current = (persisted ?? {}) as Partial<IssueSurfaceViewRegistryState>;
         if (version >= SURFACE_DEFAULTS_VERSION) return current;
+        // Version steps run in order: a v0 snapshot is first brought to v1,
+        // then both v0 and v1 snapshots get the v2 column default.
+        const migrateEntry = (
+          surfaceKey: string,
+          entry: IssueSurfaceViewEntry,
+        ): IssueSurfaceViewEntry => {
+          let state = entry.state;
+          if (version < 1) state = migrateLegacySurfaceState(surfaceKey, state);
+          if (version < 2 && !surfaceKey.startsWith("view:")) {
+            state = migrateSurfaceTableColumnsDefault(state);
+          }
+          return { ...entry, state };
+        };
         return {
           ...current,
           surfaces: Object.fromEntries(
             Object.entries(current.surfaces ?? {}).map(([surfaceKey, entry]) => [
               surfaceKey,
-              {
-                ...entry,
-                state: migrateLegacySurfaceState(surfaceKey, entry.state),
-              },
+              migrateEntry(surfaceKey, entry),
             ]),
           ),
         };

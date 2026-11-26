@@ -173,6 +173,7 @@ describe("issue surface view store registry", () => {
       projectA.getState().tableColumns.map((column) => column.key),
     ).toEqual([
       "title",
+      "work_item",
       "status",
       "priority",
       "assignee",
@@ -354,7 +355,7 @@ describe("issue surface view store registry", () => {
     const parsed = JSON.parse(
       localStorage.getItem(`${ISSUE_SURFACE_VIEW_STORAGE_KEY}:acme`) as string,
     );
-    expect(parsed.version).toBe(1);
+    expect(parsed.version).toBe(2);
 
     getIssueSurfaceViewStore("project:defaulted").getState().setViewMode("board");
     setCurrentWorkspace("beta", "ws_b");
@@ -364,5 +365,109 @@ describe("issue surface view store registry", () => {
     expect(getIssueSurfaceViewStore("project:defaulted").getState().viewMode).toBe(
       "board",
     );
+  });
+});
+
+describe("issue surface table column default migration", () => {
+  // The six-column layout every surface shipped before `work_item` existed.
+  const legacyTableColumns = () => [
+    { key: "title", width: 420 },
+    { key: "status", width: 150 },
+    { key: "priority", width: 130 },
+    { key: "assignee", width: 180 },
+    { key: "due_date", width: 140 },
+    { key: "labels", width: 220 },
+  ];
+  const storeSnapshot = (version: number, surfaces: Record<string, unknown>) =>
+    JSON.stringify({
+      version,
+      state: {
+        surfaces: Object.fromEntries(
+          Object.entries(surfaces).map(([key, state]) => [
+            key,
+            { state, updatedAt: "2026-01-01T00:00:00.000Z" },
+          ]),
+        ),
+      },
+    });
+
+  it("gives a fresh surface the work_item column", async () => {
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+
+    expect(
+      getIssueSurfaceViewStore("project:fresh").getState().tableColumns.map((column) => column.key),
+    ).toEqual([
+      "title",
+      "work_item",
+      "status",
+      "priority",
+      "assignee",
+      "due_date",
+      "labels",
+    ]);
+  });
+
+  it("adds work_item to an untouched v1 layout and keeps resized widths", async () => {
+    localStorage.setItem(
+      `${ISSUE_SURFACE_VIEW_STORAGE_KEY}:acme`,
+      storeSnapshot(1, { "project:table": { tableColumns: legacyTableColumns() } }),
+    );
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+
+    const columns = getIssueSurfaceViewStore("project:table").getState().tableColumns;
+    expect(columns.map((column) => column.key)).toEqual([
+      "title",
+      "work_item",
+      "status",
+      "priority",
+      "assignee",
+      "due_date",
+      "labels",
+    ]);
+    expect(columns[0]).toEqual({ key: "title", width: 420 });
+    expect(columns[1]).toEqual({ key: "work_item", width: 220 });
+  });
+
+  it("leaves a customized layout alone", async () => {
+    const customized = legacyTableColumns().filter((column) => column.key !== "labels");
+    localStorage.setItem(
+      `${ISSUE_SURFACE_VIEW_STORAGE_KEY}:acme`,
+      storeSnapshot(1, { "project:custom": { tableColumns: customized } }),
+    );
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+
+    expect(
+      getIssueSurfaceViewStore("project:custom").getState().tableColumns.map((column) => column.key),
+    ).toEqual(["title", "status", "priority", "assignee", "due_date"]);
+  });
+
+  it("never rewrites a saved view's local copy", async () => {
+    localStorage.setItem(
+      `${ISSUE_SURFACE_VIEW_STORAGE_KEY}:acme`,
+      storeSnapshot(1, { "view:saved": { tableColumns: legacyTableColumns() } }),
+    );
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+
+    expect(
+      getIssueSurfaceViewStore("view:saved").getState().tableColumns.map((column) => column.key),
+    ).toEqual(["title", "status", "priority", "assignee", "due_date", "labels"]);
+  });
+
+  it("does not re-add work_item once a v2 surface removed it", async () => {
+    const withoutWorkItem = legacyTableColumns();
+    localStorage.setItem(
+      `${ISSUE_SURFACE_VIEW_STORAGE_KEY}:acme`,
+      storeSnapshot(2, { "project:kept": { tableColumns: withoutWorkItem } }),
+    );
+    setCurrentWorkspace("acme", "ws_a");
+    await flush();
+
+    expect(
+      getIssueSurfaceViewStore("project:kept").getState().tableColumns.map((column) => column.key),
+    ).not.toContain("work_item");
   });
 });

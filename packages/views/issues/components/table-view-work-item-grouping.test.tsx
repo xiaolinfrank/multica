@@ -332,7 +332,14 @@ describe("Table grouped by work item", () => {
   ) {
     const store = getIssueSurfaceViewStore(surfaceKey);
     store.getState().setTableGrouping(columns === "grouped" ? "work_item" : "none");
-    if (columns === "column" || options.withWorkItemColumn) store.getState().toggleTableColumn("work_item");
+    // The work-item column ships in the default layout; only add it when a
+    // future change hides it again.
+    if (
+      (columns === "column" || options.withWorkItemColumn) &&
+      !store.getState().tableColumns.some((column) => column.key === "work_item")
+    ) {
+      store.getState().toggleTableColumn("work_item");
+    }
     renderWithI18n(
       <QueryClientProvider client={queryClient}>
         <ViewStoreProvider store={store}>
