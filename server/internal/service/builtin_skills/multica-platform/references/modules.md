@@ -86,6 +86,13 @@ filing authority: it is nullable, and when set it always agrees with
   as `child_module_mismatch` one level down. Detach the issue from its parent
   in the same write to move it elsewhere.
 - Creating or moving a parent carries its whole subtree, work items included.
+- Batch ownership edits (`project_id`, `module_id`, or `work_item_id`) run a
+  pre-flight parent-child check before any write: if any sub-issue would end up
+  with different ownership from its parent, the whole batch stops with zero
+  writes and returns HTTP 400 (`child_module_mismatch` or
+  `child_work_item_mismatch`, `conflicts`, `transaction_outcome: "not_started"`).
+  When a parent and its sub-issues are edited together, parents apply first so
+  the subtree refiles cleanly regardless of request order.
 - A work item owns a folder named after its address and title
   (`work_item_directory`). Creating one creates the folder when the project has
   a collaboration space; renaming or renumbering it renames the folder, and
