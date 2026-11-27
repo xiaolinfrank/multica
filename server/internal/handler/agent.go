@@ -501,14 +501,16 @@ type AgentTaskResponse struct {
 	WorkItemID        string  `json:"work_item_id,omitempty"`
 	WorkItemTitle     string  `json:"work_item_title,omitempty"`
 	WorkItemDirectory *string `json:"work_item_directory,omitempty"`
-	// IssueDirectory is the task's own delivery folder name, allocated at
-	// claim time. With it the brief states one fixed path; without it the
-	// brief says why it cannot.
-	IssueDirectory   *string               `json:"issue_directory,omitempty"`
-	ProjectResources []ProjectResourceData `json:"project_resources,omitempty"` // resources attached to the project
-	CreatedAt        string                `json:"created_at"`
-	PriorSessionID   string                `json:"prior_session_id,omitempty"` // session ID from a previous task on same issue
-	PriorWorkDir     string                `json:"prior_work_dir,omitempty"`   // work_dir from a previous task on same issue
+	// DeliveryDirectory is the one absolute folder an issue task writes into:
+	// its meeting's folder, or the folder it is filed under. Without it the
+	// brief says it cannot name one. DeliveryDirectorySource is "meeting" or
+	// "filing": an agent never creates a missing meeting folder.
+	DeliveryDirectory       string                `json:"delivery_directory,omitempty"`
+	DeliveryDirectorySource string                `json:"delivery_directory_source,omitempty"`
+	ProjectResources        []ProjectResourceData `json:"project_resources,omitempty"` // resources attached to the project
+	CreatedAt               string                `json:"created_at"`
+	PriorSessionID          string                `json:"prior_session_id,omitempty"` // session ID from a previous task on same issue
+	PriorWorkDir            string                `json:"prior_work_dir,omitempty"`   // work_dir from a previous task on same issue
 	// ModelOverride snapshots the agent's persistent OpenClaw model override at
 	// claim time. Later config edits affect subsequent claims, not this payload.
 	// Mirrors internal/daemon/types.go with the same JSON name; empty for other

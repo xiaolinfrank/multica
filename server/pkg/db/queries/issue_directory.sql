@@ -1,63 +1,20 @@
--- name: AllocateIssueDirectoryName :one
--- One atomic first allocation. The `directory_name IS NULL` guard is the whole
--- point: two deliveries of the same task (an agent claim racing a human
--- opening the folder) must land on one name, and the loser reads the winner's
--- value back rather than overwriting it. No row comes back when the name was
--- already set.
-UPDATE issue SET directory_name = sqlc.arg('directory_name')::text, updated_at = now()
-WHERE id = sqlc.arg('id')::uuid
-  AND workspace_id = sqlc.arg('workspace_id')::uuid
-  AND directory_name IS NULL
-RETURNING directory_name;
-
--- name: UpdateIssueDirectoryName :one
--- A human pointing the task at a folder name they already use. This writes the
--- database only: the files stay where they are, which is the point — adopting
--- a historical folder must not move it.
-UPDATE issue SET directory_name = sqlc.arg('directory_name')::text, updated_at = now()
-WHERE id = sqlc.arg('id')::uuid
-  AND workspace_id = sqlc.arg('workspace_id')::uuid
-RETURNING *;
-
--- name: ListIssueSubtreeDirectoryRows :many
--- Every issue in the subtree (the parent included) with the bindings its
--- delivery folder is derived from. Read before a move so the old path is
--- known; the move itself rewrites the bindings.
-WITH RECURSIVE subtree AS (
-    SELECT i.id
-    FROM issue AS i
-    WHERE i.id = sqlc.arg('issue_id')::uuid
-      AND i.workspace_id = sqlc.arg('workspace_id')::uuid
-  UNION
-    SELECT i.id
-    FROM issue AS i
-    JOIN subtree AS s ON i.parent_issue_id = s.id
-    WHERE i.workspace_id = sqlc.arg('workspace_id')::uuid
-)
-SELECT i.id, i.number, i.directory_name, i.project_id, i.module_id, i.work_item_id
-FROM issue AS i
-JOIN subtree AS s ON s.id = i.id
-ORDER BY i.number;
-
--- name: ListRunningAgentTasksForIssue :many
--- Queued/dispatched/running work that would have the directory renamed under
--- it. The caller decides what to do with the list; this is a read.
-SELECT t.id AS task_id, t.issue_id, i.number AS issue_number, t.status
-FROM agent_task_queue AS t
-JOIN issue AS i ON i.id = t.issue_id
-WHERE t.issue_id = sqlc.arg('issue_id')::uuid
-  AND i.workspace_id = sqlc.arg('workspace_id')::uuid
-  AND t.status IN ('queued', 'dispatched', 'running')
-ORDER BY t.created_at, t.id;
-
--- name: ListRunningAgentTasksForIssues :many
-SELECT t.id AS task_id, t.issue_id, i.number AS issue_number, t.status
-FROM agent_task_queue AS t
-JOIN issue AS i ON i.id = t.issue_id
-WHERE t.issue_id = ANY(sqlc.arg('issue_ids')::uuid[])
-  AND i.workspace_id = sqlc.arg('workspace_id')::uuid
-  AND t.status IN ('queued', 'dispatched', 'running')
-ORDER BY t.created_at, t.id;
+-- name: ListIssueMeetingDirectories :many
+-- The distinct meeting folders of the meetings this issue works for. Only the
+-- links that carry a meeting's own work count: follow-up actions, deliveries
+-- and references stay with the issue's filing. Two rows are enough to tell one
+-- folder from an ambiguous binding. meeting_id names the meeting where a person
+-- prepares the folder: an open meeting before an archived or cancelled one,
+-- then the earliest.
+SELECT m.nas_dir,
+       (array_agg(m.id ORDER BY (m.archived_at IS NOT NULL), (m.cancelled_at IS NOT NULL), m.created_at, m.id))[1]::uuid AS meeting_id
+FROM cockpit_meeting_issue AS l
+JOIN cockpit_meeting AS m ON m.id = l.meeting_id AND m.workspace_id = l.workspace_id
+WHERE l.workspace_id = sqlc.arg('workspace_id')::uuid
+  AND l.issue_id = sqlc.arg('issue_id')::uuid
+  AND (l.role = 'task' OR l.roles && ARRAY['task', 'preparation', 'support', 'minutes', 'review']::text[])
+  AND btrim(m.nas_dir) <> ''
+GROUP BY m.nas_dir
+LIMIT 2;
 
 -- name: ListRunningAgentTasksForModules :many
 -- Any task filed under the module counts, work items included: renaming the

@@ -215,30 +215,27 @@ func TestOpenRootPinsTheFinalComponent(t *testing.T) {
 	}
 }
 
-func TestDeliveryPathComposesTheFixedSegments(t *testing.T) {
-	collab := "/Volumes/share/项目"
-	module, workItem, issue := "4.01确权线", "4.01.02接口", "FOS-12注册路径设计"
+func TestDeliveryPathIsTheFilingFolder(t *testing.T) {
+	collab := t.TempDir()
+	module, workItem := "4.01确权线", "4.01.02接口"
 	ptr := func(s string) *string { return &s }
 
-	path, err := DeliveryPath(collab, ptr(module), ptr(workItem), ptr(issue))
-	if err != nil || path != filepath.Join(collab, module, workItem, issue) {
-		t.Fatalf("four segments = %q %v", path, err)
+	path, err := DeliveryPath(collab, ptr(module), ptr(workItem))
+	if err != nil || path != filepath.Join(collab, module, workItem) {
+		t.Fatalf("work item = %q %v", path, err)
 	}
-	path, err = DeliveryPath(collab, ptr(module), nil, ptr(issue))
-	if err != nil || path != filepath.Join(collab, module, issue) {
-		t.Fatalf("three segments = %q %v", path, err)
+	path, err = DeliveryPath(collab, ptr(module), nil)
+	if err != nil || path != filepath.Join(collab, module) {
+		t.Fatalf("module = %q %v", path, err)
 	}
-	path, err = DeliveryPath(collab, nil, nil, ptr(issue))
-	if err != nil || path != filepath.Join(collab, issue) {
-		t.Fatalf("two segments = %q %v", path, err)
+	path, err = DeliveryPath(collab, nil, nil)
+	if err != nil || path != collab {
+		t.Fatalf("project = %q %v", path, err)
 	}
-	if path, err := DeliveryPath("", ptr(module), nil, ptr(issue)); err != nil || path != "" {
+	if path, err := DeliveryPath("", ptr(module), nil); err != nil || path != "" {
 		t.Fatalf("no collab path = %q %v", path, err)
 	}
-	if path, err := DeliveryPath(collab, ptr(module), nil, nil); err != nil || path != "" {
-		t.Fatalf("no issue folder = %q %v", path, err)
-	}
-	if _, err := DeliveryPath(collab, ptr("../escape"), nil, ptr(issue)); err == nil {
+	if _, err := DeliveryPath(collab, ptr("../escape"), nil); err == nil {
 		t.Fatal("accepted an unsafe segment")
 	}
 }

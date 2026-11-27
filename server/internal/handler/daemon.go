@@ -3666,20 +3666,20 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		}
 		moduleCtx.applyTo(&resp)
 
-		// S7: the delivery folder is named here, once, at the moment a task
-		// first needs one. The claim does not touch the disk — the agent
-		// creates the folder from the brief.
 		workItemCtx, workItemErr := h.resolveClaimWorkItemContext(r.Context(), issue.WorkItemID, issue.ModuleID, issue.WorkspaceID)
 		if workItemErr != nil {
 			slog.Warn("issue claim: load work item context failed", "issue_id", uuidToString(issue.ID), "error", workItemErr)
 		} else {
 			workItemCtx.applyTo(&resp)
 		}
-		if resp.ProjectCollabPath != "" {
-			if name, err := h.allocateIssueDirectoryName(r.Context(), h.Queries, issue, h.getIssuePrefix(r.Context(), issue.WorkspaceID)); err != nil {
-				slog.Warn("issue claim: allocate delivery folder failed", "issue_id", uuidToString(issue.ID), "error", err)
-			} else if name != "" {
-				resp.IssueDirectory = &name
+		// The claim does not touch the disk: the agent creates a missing
+		// filing folder from the brief, and reports a missing meeting folder.
+		if folder, err := h.loadIssueFolder(r.Context(), h.Queries, issue); err != nil {
+			slog.Warn("issue claim: resolve delivery folder failed", "issue_id", uuidToString(issue.ID), "error", err)
+		} else {
+			resp.DeliveryDirectory = folder.fullPath()
+			if resp.DeliveryDirectory != "" {
+				resp.DeliveryDirectorySource = folder.source()
 			}
 		}
 

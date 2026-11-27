@@ -549,23 +549,23 @@ func RenameOrMove(srcRoot string, srcRel []string, dstRoot string, dstRel []stri
 	return nil
 }
 
-// DeliveryPath composes the fixed delivery folder for an issue:
+// DeliveryPath composes the folder an issue delivers into, which is the folder
+// it is filed under:
 //
-//	<collab>/<module>/<work item>/<issue>   with a work item
-//	<collab>/<module>/<issue>               without one
-//	<collab>/<issue>                        without a module
+//	<collab>/<module>/<work item>   with a work item
+//	<collab>/<module>               without one
+//	<collab>                        without a module
 //
-// Empty when the project has no collaboration space, or the issue has no folder
-// name yet — the caller decides whether that is "not allocated" or "nothing to
-// show". Every segment is validated, so a hand-edited name cannot smuggle a
-// path separator into the result.
-func DeliveryPath(collabPath string, moduleDir, workItemDir, issueDir *string) (string, error) {
+// Empty when the project has no collaboration space. Every segment is
+// validated, so a hand-edited name cannot smuggle a path separator into the
+// result.
+func DeliveryPath(collabPath string, moduleDir, workItemDir *string) (string, error) {
 	collab := strings.TrimSpace(collabPath)
-	if collab == "" || issueDir == nil || *issueDir == "" {
+	if collab == "" {
 		return "", nil
 	}
 	segments := []string{collab}
-	for _, segment := range []*string{moduleDir, workItemDir, issueDir} {
+	for _, segment := range []*string{moduleDir, workItemDir} {
 		if segment == nil || *segment == "" {
 			continue
 		}

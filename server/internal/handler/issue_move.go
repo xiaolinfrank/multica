@@ -28,8 +28,8 @@ var issueMoveFields = map[string]struct{}{
 	// A drag onto a workflow handoff step can stop the previous agent's run,
 	// exactly as the same status change through UpdateIssue can. (MUL-7420)
 	"stop_previous_assignee_runs": {},
-	// A cross-project/module drag on an issue with running agent tasks retries
-	// with the user's sync-now / defer choice from RunningTasksDialog.
+	// Ignored. Accepted so released desktop clients that still send it are not
+	// refused: an issue move no longer moves any folder.
 	"directory_sync": {},
 }
 

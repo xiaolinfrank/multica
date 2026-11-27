@@ -112,17 +112,10 @@ type IssueResponse struct {
 	// (empty object when unset) so frontend code can `issue.metadata[key]`
 	// without nil-guarding the parent field.
 	Metadata map[string]any `json:"metadata"`
-	// DirectoryName is the delivery folder's name, one segment under the
-	// work item (or module). Null until the folder is first needed; a project
-	// without a collaboration space never gets one.
-	DirectoryName *string `json:"directory_name"`
-	// DeliveryPath is the full path composed from the issue's filing and
-	// directory_name. Detail responses only: it is pure database arithmetic,
+	// DeliveryPath is the folder the issue delivers into: its meeting's folder,
+	// or the one it is filed under. Detail responses only: it is a database read,
 	// but a list does not need 200 copies of the same prefix.
 	DeliveryPath *string `json:"delivery_path,omitempty"`
-	// DirectorySync reports what a filing change did with the folders that
-	// follow the issue (the issue's own, and its sub-issues').
-	DirectorySync []NodeDirectorySync `json:"directory_sync,omitempty"`
 	// Properties is the custom-property value bag keyed by property definition
 	// UUID (see property.go). Always emitted, mirroring Metadata.
 	Properties  map[string]any          `json:"properties"`
@@ -577,7 +570,6 @@ func issueToResponse(i db.Issue, issuePrefix string) IssueResponse {
 		ProjectID:           uuidToPtr(i.ProjectID),
 		ModuleID:            uuidToPtr(i.ModuleID),
 		WorkItemID:          uuidToPtr(i.WorkItemID),
-		DirectoryName:       textToPtr(i.DirectoryName),
 		Position:            i.Position,
 		Stage:               int4ToPtr(i.Stage),
 		StartDate:           dateToPtr(i.StartDate),
@@ -621,7 +613,6 @@ func issueListRowToResponse(i db.ListIssuesRow, issuePrefix string) IssueRespons
 		ProjectID:          uuidToPtr(i.ProjectID),
 		ModuleID:           uuidToPtr(i.ModuleID),
 		WorkItemID:         uuidToPtr(i.WorkItemID),
-		DirectoryName:      textToPtr(i.DirectoryName),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -696,7 +687,6 @@ func openIssueRowToResponse(i db.ListOpenIssuesRow, issuePrefix string) IssueRes
 		ProjectID:          uuidToPtr(i.ProjectID),
 		ModuleID:           uuidToPtr(i.ModuleID),
 		WorkItemID:         uuidToPtr(i.WorkItemID),
-		DirectoryName:      textToPtr(i.DirectoryName),
 		Position:           i.Position,
 		Stage:              int4ToPtr(i.Stage),
 		StartDate:          dateToPtr(i.StartDate),
@@ -4143,15 +4133,17 @@ type UpdateIssueRequest struct {
 	// no explicit null. Write-only: read the relation back from
 	// GET /api/issues/{id}/duplicates. Not accepted by batch updates.
 	DuplicateOfIssueID *string `json:"duplicate_of_issue_id,omitempty"`
-	// DirectoryName points the issue at a folder name people already use.
-	// Human only, one safe path segment, and it does not move any files: the
-	// folder is adopted where it is. The directory row reports a missing
-	// folder and offers to create it.
-	DirectoryName *string `json:"directory_name,omitempty"`
-	// DirectorySync says what a filing change does with the existing folder:
-	// sync (default) moves it, defer leaves it for later, force moves it even
-	// while an agent is working in it.
-	DirectorySync *string `json:"directory_sync,omitempty"`
+}
+
+// filingFieldsTouched reports whether a write names any of the fields that
+// decide where the issue is filed.
+func filingFieldsTouched(raw map[string]json.RawMessage) bool {
+	for _, key := range []string{"project_id", "module_id", "work_item_id", "parent_issue_id"} {
+		if _, touched := raw[key]; touched {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeIssueChannelMediaDescription(current, incoming string, base *string, attachments []db.Attachment) string {
@@ -4484,113 +4476,6 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	dirMode, validMode := parseDirectorySyncMode(rawFields)
-	if !validMode {
-		writeError(w, http.StatusBadRequest, "directory_sync must be sync, defer or force")
-		return
-	}
-	if req.DirectoryName != nil {
-		if !h.applyIssueDirectoryName(w, r, prevIssue, *req.DirectoryName) {
-			return
-		}
-	}
-	// Folder moves only matter when the filing itself changes.
-	filingTouched := false
-	for _, key := range []string{"project_id", "module_id", "work_item_id", "parent_issue_id"} {
-		if _, touched := rawFields[key]; touched {
-			filingTouched = true
-			break
-		}
-	}
-	requestedProject := prevIssue.ProjectID
-	if rawValue, touched := rawFields["project_id"]; touched {
-		var rawID *string
-		_ = json.Unmarshal(rawValue, &rawID)
-		if rawID == nil || strings.TrimSpace(*rawID) == "" {
-			// An explicit null/empty clears the project; it must count as a
-			// filing change or the folder never follows (or is never refused).
-			requestedProject = pgtype.UUID{}
-		} else if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*rawID), "project_id"); ok {
-			requestedProject = parsed
-		} else {
-			return
-		}
-	}
-	requestedWorkItem := prevIssue.WorkItemID
-	if rawValue, touched := rawFields["work_item_id"]; touched {
-		var rawID *string
-		_ = json.Unmarshal(rawValue, &rawID)
-		if rawID == nil || strings.TrimSpace(*rawID) == "" {
-			requestedWorkItem = pgtype.UUID{}
-		} else if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*rawID), "work_item_id"); ok {
-			requestedWorkItem = parsed
-		} else {
-			return
-		}
-	}
-	requestedModule := prevIssue.ModuleID
-	if rawValue, touched := rawFields["module_id"]; touched {
-		var rawID *string
-		_ = json.Unmarshal(rawValue, &rawID)
-		if rawID == nil || strings.TrimSpace(*rawID) == "" {
-			requestedModule = pgtype.UUID{}
-		} else if parsed, ok := parseUUIDOrBadRequest(w, strings.TrimSpace(*rawID), "module_id"); ok {
-			requestedModule = parsed
-		} else {
-			return
-		}
-	}
-	// A new parent re-files the subtree with the parent's filing, so it is a
-	// potential move even when the three filing fields themselves echo back.
-	parentWillChange := false
-	if rawValue, touched := rawFields["parent_issue_id"]; touched {
-		var rawID *string
-		_ = json.Unmarshal(rawValue, &rawID)
-		if rawID == nil || strings.TrimSpace(*rawID) == "" {
-			parentWillChange = prevIssue.ParentIssueID.Valid
-		} else if parsed, err := util.ParseUUID(strings.TrimSpace(*rawID)); err == nil {
-			parentWillChange = parsed != prevIssue.ParentIssueID
-		}
-	}
-	filingWillChange := filingTouched &&
-		(requestedProject != prevIssue.ProjectID || requestedModule != prevIssue.ModuleID ||
-			requestedWorkItem != prevIssue.WorkItemID || parentWillChange)
-	var beforeSubtree []db.ListIssueSubtreeDirectoryRowsRow
-	if filingWillChange {
-		beforeSubtree = h.subtreeDirectoryRows(r.Context(), h.Queries, prevIssue.WorkspaceID, prevIssue.ID)
-	}
-	if filingWillChange && dirMode == DirectorySyncSync && req.DirectoryName == nil {
-		// Every folder the move carries — the issue's own and its sub-issues' —
-		// must be free of running work, not just the row named in the URL.
-		issueIDs := make([]pgtype.UUID, 0, len(beforeSubtree))
-		for _, row := range beforeSubtree {
-			if row.DirectoryName.String != "" {
-				issueIDs = append(issueIDs, row.ID)
-			}
-		}
-		if len(issueIDs) > 0 {
-			tasks, err := h.Queries.ListRunningAgentTasksForIssues(r.Context(), db.ListRunningAgentTasksForIssuesParams{
-				WorkspaceID: prevIssue.WorkspaceID, IssueIds: issueIDs,
-			})
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to check running tasks")
-				return
-			}
-			if len(tasks) > 0 {
-				rows := make([]runningTask, 0, len(tasks))
-				for _, task := range tasks {
-					rows = append(rows, runningTask{task.TaskID, task.IssueID, task.IssueNumber, task.Status})
-				}
-				writeJSON(w, http.StatusConflict, map[string]any{
-					"code":          "running_agent_tasks",
-					"error":         "agent tasks are running in this issue's folder; sync now or defer",
-					"running_tasks": h.runningTaskRefs(r.Context(), prevIssue.WorkspaceID, rows),
-				})
-				return
-			}
-		}
-	}
-
 	duplicateOfID, ok := parseDuplicateMark(w, &req, rawFields, prevIssue.ID)
 	if !ok {
 		return
@@ -5012,28 +4897,6 @@ func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 
 	prefix := h.getIssuePrefix(r.Context(), issue.WorkspaceID)
 	resp := issueToResponse(issue, prefix)
-	// A hand-picked folder name is a database write only: the files stay put.
-	if req.DirectoryName != nil {
-		renamed, err := h.Queries.UpdateIssueDirectoryName(r.Context(), db.UpdateIssueDirectoryNameParams{
-			ID: issue.ID, WorkspaceID: issue.WorkspaceID, DirectoryName: *req.DirectoryName,
-		})
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to set the delivery folder name")
-			return
-		}
-		issue.DirectoryName = renamed.DirectoryName
-		resp.DirectoryName = textToPtr(renamed.DirectoryName)
-	}
-	// The folders that follow a filing change, the issue's own and its
-	// sub-issues'. A missing source folder is not a failure: most historical
-	// issues never had one.
-	if filingWillChange && dirMode != DirectorySyncDefer && req.DirectoryName == nil && len(beforeSubtree) > 0 {
-		afterSubtree := h.subtreeDirectoryRows(r.Context(), h.Queries, issue.WorkspaceID, issue.ID)
-		moves := h.planIssueDirectoryMoves(r.Context(), h.Queries, issue.WorkspaceID, beforeSubtree, afterSubtree)
-		if results := h.moveIssueDirectories(r.Context(), h.Queries, moves); len(results) > 0 {
-			resp.DirectorySync = results
-		}
-	}
 	slog.Info("issue updated", append(logger.RequestAttrs(r), "issue_id", id, "workspace_id", workspaceID)...)
 
 	h.fillStatusCategory(r.Context(), issue.WorkspaceID, projectaccess.Hidden{}, &resp)
@@ -6212,11 +6075,6 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 		// even without text or attachments: it owns the subtree refile the batch
 		// reports back.
 		batchFiling := filingFieldsTouched(rawUpdates)
-		var batchBefore []db.ListIssueSubtreeDirectoryRowsRow
-		if batchFiling {
-			batchBefore = h.subtreeDirectoryRows(r.Context(), h.Queries, prevIssue.WorkspaceID, prevIssue.ID)
-		}
-
 		var refiled []db.RefileIssueSubtreeRow
 		switch {
 		case batchFiling || req.Updates.Description != nil || (issueBlockerGraphTouched(rawUpdates) && !hasLabelOps && !hasPropertyOps):
@@ -6294,39 +6152,13 @@ func (h *Handler) BatchUpdateIssues(w http.ResponseWriter, r *http.Request) {
 
 		// A parent written earlier in this batch refiled its subtree; later
 		// children of it are targets of that refile and must not also report a
-		// stale revision. The batch has no per-issue confirmation UI, so a
-		// running agent defers the folder move rather than failing the write;
-		// the directory row reports the mismatch and offers to sync.
+		// stale revision.
 		for _, child := range refiled {
 			refiledInBatch[child.ID] = true
 			if exp, ok := expectedRevisions[child.ID]; ok && exp == child.Revision-1 {
 				expectedRevisions[child.ID] = child.Revision
 			}
 		}
-		if batchFiling && len(batchBefore) > 0 {
-			after := h.subtreeDirectoryRows(r.Context(), h.Queries, issue.WorkspaceID, issue.ID)
-			moves := h.planIssueDirectoryMoves(r.Context(), h.Queries, issue.WorkspaceID, batchBefore, after)
-			if len(moves) > 0 {
-				issueIDs := make([]pgtype.UUID, 0, len(batchBefore))
-				for _, row := range batchBefore {
-					if row.DirectoryName.String != "" {
-						issueIDs = append(issueIDs, row.ID)
-					}
-				}
-				busy := false
-				if len(issueIDs) > 0 {
-					if tasks, taskErr := h.Queries.ListRunningAgentTasksForIssues(r.Context(), db.ListRunningAgentTasksForIssuesParams{
-						WorkspaceID: issue.WorkspaceID, IssueIds: issueIDs,
-					}); taskErr == nil && len(tasks) > 0 {
-						busy = true
-					}
-				}
-				if !busy {
-					h.moveIssueDirectories(r.Context(), h.Queries, moves)
-				}
-			}
-		}
-
 		actorType, actorID := h.resolveActor(r, userID, workspaceID)
 		var runOutcome *IssueRunOutcome
 		if hasFieldUpdate {

@@ -81,15 +81,6 @@ func round2ModuleL2(t *testing.T, ws, moduleID string) (string, string) {
 	return id, dir
 }
 
-func round2IssueDir(t *testing.T, issueID string) string {
-	t.Helper()
-	var dir string
-	if err := testPool.QueryRow(context.Background(), `SELECT COALESCE(directory_name,'') FROM issue WHERE id=$1`, issueID).Scan(&dir); err != nil {
-		t.Fatal(err)
-	}
-	return dir
-}
-
 // P0-1: renumbering the project root renames the module folder and then the
 // work items inside it. The second rename must read the module's new name; a
 // stale source path used to look like "nothing to move" and leave the database
@@ -104,7 +95,6 @@ func TestRenumberProjectRenamesNestedWorkItemFolders(t *testing.T) {
 	})
 	testutil.Call(t, cockpitHandler(testHandler.EnsureIssueDirectory), testutil.WithURLParams(
 		cockpitRequest(http.MethodPost, "/api/issues/x/directory/ensure", ws, nil), "id", issueID)).Want(http.StatusOK)
-	issueDir := round2IssueDir(t, issueID)
 
 	moduleB := round2Module(t, ws, project, "质量体系")
 	// Put the second module in front so the first module's code changes.
@@ -125,8 +115,8 @@ func TestRenumberProjectRenamesNestedWorkItemFolders(t *testing.T) {
 	if newModuleDir == oldModuleDir || newItemDir == oldItemDir {
 		t.Fatalf("renumber did not change both names: module %q→%q item %q→%q", oldModuleDir, newModuleDir, oldItemDir, newItemDir)
 	}
-	if _, err := os.Stat(filepath.Join(collab, newModuleDir, newItemDir, issueDir)); err != nil {
-		t.Fatalf("the issue folder is not under the renumbered work item: %v", err)
+	if _, err := os.Stat(filepath.Join(collab, newModuleDir, newItemDir)); err != nil {
+		t.Fatalf("the work item folder is not under the renumbered module: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(collab, newModuleDir, oldItemDir)); !os.IsNotExist(err) {
 		t.Fatalf("the work item folder stayed at its old name inside the new module: %v", err)
@@ -489,7 +479,6 @@ func TestMachineCredentialCannotTouchDirectories(t *testing.T) {
 	ws, project := round2Plan(t, "S7 round2 machine gate", collab)
 	module := round2Module(t, ws, project, "确权线")
 	item := round2WorkItem(t, ws, module.ID, "接口设计")
-	l2, _ := round2ModuleL2(t, ws, module.ID)
 
 	for _, tc := range []struct {
 		name string
@@ -499,16 +488,12 @@ func TestMachineCredentialCannotTouchDirectories(t *testing.T) {
 		{"sync", humanOnly(testHandler.SyncCockpitNodeDirectory), testutil.WithURLParams(
 			cockpitRequest(http.MethodPost, "/api/cockpit/nodes/x/directory/sync", ws, map[string]any{}), "id", item.ID)},
 		{"fill", humanOnly(testHandler.FillCockpitPlanDirectories), cockpitRequest(http.MethodPost, "/api/cockpit/plan/directories/fill", ws, map[string]any{})},
-		{"issue-directory", testHandler.UpdateIssue, testutil.WithURLParams(
-			cockpitRequest(http.MethodPut, "/api/issues/x", ws, map[string]any{"directory_name": "人工目录"}), "id",
-			dbfx.Issue(t, "机凭改名", testutil.Cols{"workspace_id": ws, "project_id": project, "module_id": module.ID}))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.req.Header.Set("X-Actor-Source", "task_token")
 			testutil.Call(t, tc.h, tc.req).Want(http.StatusForbidden)
 		})
 	}
-	_ = l2
 }
 
 // P2-4: the status read stays bounded and a preview refuses an unreconciled
@@ -531,93 +516,6 @@ func TestPlanDirectoryReadLimitsAndUnreconciledFill(t *testing.T) {
 	testutil.Call(t, cockpitHandler(testHandler.FillCockpitPlanDirectories),
 		cockpitRequest(http.MethodPost, "/api/cockpit/plan/directories/fill", plainWS, map[string]any{})).
 		Want(http.StatusConflict)
-}
-
-// P2-4: a hand-picked folder name is validated, writes the database only, and
-// moves nothing.
-func TestIssueDirectoryNameValidationAndDatabaseOnlyWrite(t *testing.T) {
-	collab := t.TempDir()
-	ws, project := round2Plan(t, "S7 round2 issue name", collab)
-	module := round2Module(t, ws, project, "确权线")
-	issueID := dbfx.Issue(t, "人工目录任务", testutil.Cols{
-		"workspace_id": ws, "project_id": project, "module_id": module.ID,
-	})
-	testutil.Call(t, cockpitHandler(testHandler.EnsureIssueDirectory), testutil.WithURLParams(
-		cockpitRequest(http.MethodPost, "/api/issues/x/directory/ensure", ws, nil), "id", issueID)).Want(http.StatusOK)
-	oldDir := round2IssueDir(t, issueID)
-
-	for _, bad := range []string{"../x", "a/b", ""} {
-		testutil.Call(t, cockpitHandler(testHandler.UpdateIssue), testutil.WithURLParams(
-			cockpitRequest(http.MethodPut, "/api/issues/x", ws, map[string]any{"directory_name": bad}), "id", issueID)).
-			Want(http.StatusBadRequest)
-	}
-	testutil.Call(t, cockpitHandler(testHandler.UpdateIssue), testutil.WithURLParams(
-		cockpitRequest(http.MethodPut, "/api/issues/x", ws, map[string]any{"directory_name": "历史目录"}), "id", issueID)).
-		Want(http.StatusOK)
-	if got := round2IssueDir(t, issueID); got != "历史目录" {
-		t.Fatalf("issue folder = %q, want 历史目录", got)
-	}
-	if code, _ := collabfs.StatDir(collab, *module.DirectoryName, oldDir); code != collabfs.StatOK {
-		t.Fatalf("renaming the pointer moved the old folder: %s", code)
-	}
-	if code, _ := collabfs.StatDir(collab, *module.DirectoryName, "历史目录"); code != collabfs.StatMissing {
-		t.Fatalf("a database-only rename created the new folder: %s", code)
-	}
-}
-
-// P2-4: a claim allocates the delivery name exactly once and never touches the
-// disk; a project without a collaboration space allocates nothing.
-func TestClaimAllocatesIssueDirectoryWithoutWritingDisks(t *testing.T) {
-	collab := t.TempDir()
-	project := dbfx.Project(t, "交付项目", testutil.Cols{"workspace_id": testWorkspaceID, "collab_path": collab})
-	issueID := dbfx.Issue(t, "领取即命名", testutil.Cols{"workspace_id": testWorkspaceID, "project_id": project})
-	var agentID string
-	if err := testPool.QueryRow(context.Background(), `SELECT id::text FROM agent WHERE workspace_id=$1 LIMIT 1`, testWorkspaceID).Scan(&agentID); err != nil {
-		t.Fatal(err)
-	}
-	taskID := dbfx.Task(t, agentID, testutil.Cols{"issue_id": issueID, "runtime_id": testRuntimeID, "status": "dispatched"})
-	task, err := testHandler.Queries.GetAgentTask(context.Background(), parseUUID(taskID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtime, err := testHandler.Queries.GetAgentRuntime(context.Background(), parseUUID(testRuntimeID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, _, _, _, _, failure := testHandler.buildClaimedTaskResponse(
-		newOwnerDaemonRequest("POST", "/api/daemon/tasks/"+taskID+"/claim", nil), &task, runtime, testRuntimeID, testWorkspaceID)
-	if failure != nil {
-		t.Fatalf("claim: %+v", failure)
-	}
-	if resp.IssueDirectory == nil || *resp.IssueDirectory == "" {
-		t.Fatalf("claim did not name the delivery folder: %+v", resp)
-	}
-	if got := round2IssueDir(t, issueID); got != *resp.IssueDirectory {
-		t.Fatalf("issue folder = %q, claim named %q", got, *resp.IssueDirectory)
-	}
-	entries, err := os.ReadDir(collab)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("claim wrote to the share: %v %v", entries, err)
-	}
-
-	plainProject := dbfx.Project(t, "无盘项目", testutil.Cols{"workspace_id": testWorkspaceID})
-	plainIssue := dbfx.Issue(t, "无盘任务", testutil.Cols{"workspace_id": testWorkspaceID, "project_id": plainProject})
-	plainTaskID := dbfx.Task(t, agentID, testutil.Cols{"issue_id": plainIssue, "runtime_id": testRuntimeID, "status": "dispatched"})
-	plainTask, err := testHandler.Queries.GetAgentTask(context.Background(), parseUUID(plainTaskID))
-	if err != nil {
-		t.Fatal(err)
-	}
-	plainResp, _, _, _, _, failure := testHandler.buildClaimedTaskResponse(
-		newOwnerDaemonRequest("POST", "/api/daemon/tasks/"+plainTaskID+"/claim", nil), &plainTask, runtime, testRuntimeID, testWorkspaceID)
-	if failure != nil {
-		t.Fatalf("claim without a share: %+v", failure)
-	}
-	if plainResp.IssueDirectory != nil {
-		t.Fatalf("a project without collab_path allocated a folder: %q", *plainResp.IssueDirectory)
-	}
-	if got := round2IssueDir(t, plainIssue); got != "" {
-		t.Fatalf("a project without collab_path stored a folder: %q", got)
-	}
 }
 
 // humanOnly is the router's RequireHumanActor gate in the test's handler shape.

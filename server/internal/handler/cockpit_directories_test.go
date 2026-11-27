@@ -11,8 +11,6 @@ import (
 
 	"github.com/multica-ai/multica/server/internal/collabfs"
 	"github.com/multica-ai/multica/server/internal/testutil"
-	"github.com/multica-ai/multica/server/internal/util"
-	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
 // S7's folder plumbing, exercised end to end against a real filesystem. The
@@ -104,44 +102,20 @@ func runCockpitDirectoryLifecycle(t *testing.T, collab string) {
 		t.Fatalf("work item folder not created: %s", code)
 	}
 
-	// 4. An issue's delivery folder is allocated on demand and created with its
-	// parents. A sub-issue lands beside its parent, not inside it.
+	// 4. An issue delivers into the work item's folder. A file stands in for
+	// the team's material that has to follow every rename and move.
 	issueID := dbfx.Issue(t, "注册路径设计", testutil.Cols{
 		"workspace_id": ws, "project_id": project, "module_id": moduleA.ID, "work_item_id": item.ID,
 	})
-	var status IssueDirectoryStatus
-	testutil.Call(t, cockpitHandler(testHandler.GetIssueDirectory), testutil.WithURLParams(
-		cockpitRequest(http.MethodGet, "/api/issues/x/directory", ws, nil), "id", issueID)).Want(http.StatusOK).JSON(&status)
-	if status.Status != "unallocated" {
-		t.Fatalf("before opening: status = %q, want unallocated", status.Status)
+	if got, want := ensureIssueFolder(t, ws, issueID).FullPath, filepath.Join(collab, *moduleA.DirectoryName, *item.DirectoryName); got == nil || *got != want {
+		t.Fatalf("issue folder = %v, want %q", got, want)
 	}
-	testutil.Call(t, cockpitHandler(testHandler.EnsureIssueDirectory), testutil.WithURLParams(
-		cockpitRequest(http.MethodPost, "/api/issues/x/directory/ensure", ws, nil), "id", issueID)).Want(http.StatusOK)
-	var issueDir string
-	if err := testPool.QueryRow(context.Background(), `SELECT COALESCE(directory_name,'') FROM issue WHERE id=$1`, issueID).Scan(&issueDir); err != nil {
+	const material = "material.md"
+	if err := os.WriteFile(filepath.Join(collab, *moduleA.DirectoryName, *item.DirectoryName, material), []byte("team"), 0o600); err != nil {
 		t.Fatal(err)
-	}
-	if !strings.HasPrefix(issueDir, "TES-") || !strings.Contains(issueDir, "注册路径设计") {
-		t.Fatalf("issue folder = %q, want identifier plus title", issueDir)
-	}
-	if code, _ := collabfs.StatDir(collab, *moduleA.DirectoryName, *item.DirectoryName, issueDir); code != collabfs.StatOK {
-		t.Fatalf("issue folder not created: %s", code)
-	}
-	childID := dbfx.Issue(t, "子任务", testutil.Cols{
-		"workspace_id": ws, "project_id": project, "module_id": moduleA.ID, "work_item_id": item.ID, "parent_issue_id": issueID,
-	})
-	testutil.Call(t, cockpitHandler(testHandler.EnsureIssueDirectory), testutil.WithURLParams(
-		cockpitRequest(http.MethodPost, "/api/issues/x/directory/ensure", ws, nil), "id", childID)).Want(http.StatusOK)
-	var childDir string
-	if err := testPool.QueryRow(context.Background(), `SELECT COALESCE(directory_name,'') FROM issue WHERE id=$1`, childID).Scan(&childDir); err != nil {
-		t.Fatal(err)
-	}
-	if code, _ := collabfs.StatDir(collab, *moduleA.DirectoryName, *item.DirectoryName, childDir); code != collabfs.StatOK {
-		t.Fatalf("sub-issue folder is not beside its parent: %s", code)
 	}
 
-	// 5. Renaming a work item renames its folder — and the issue folders move
-	// with it, because they live inside it.
+	// 5. Renaming a work item renames its folder with everything inside it.
 	renamed := "接口设计（二版）"
 	patchNode(t, ws, item.ID, map[string]any{"name": renamed}, http.StatusOK)
 	var newItemDir string
@@ -151,8 +125,8 @@ func runCockpitDirectoryLifecycle(t *testing.T, collab string) {
 	if newItemDir == *item.DirectoryName || !strings.Contains(newItemDir, "接口设计（二版）") {
 		t.Fatalf("work item folder after rename = %q", newItemDir)
 	}
-	if code, _ := collabfs.StatDir(collab, *moduleA.DirectoryName, newItemDir, issueDir); code != collabfs.StatOK {
-		t.Fatalf("issue folder did not follow the renamed work item: %s", code)
+	if _, err := os.Stat(filepath.Join(collab, *moduleA.DirectoryName, newItemDir, material)); err != nil {
+		t.Fatalf("material did not follow the renamed work item: %v", err)
 	}
 
 	// 6. Deferring leaves the folder alone and reports the mismatch; the sync
@@ -184,8 +158,8 @@ func runCockpitDirectoryLifecycle(t *testing.T, collab string) {
 		t.Fatalf("synced folder = %q", syncedDir)
 	}
 
-	// 7. Moving a work item to another module moves its folder, and the issue
-	// folders inside it, to the destination module.
+	// 7. Moving a work item to another module moves its folder, and its
+	// files, to the destination module.
 	var l2B string
 	if err := testPool.QueryRow(context.Background(), `SELECT id::text FROM cockpit_node WHERE module_id=$1 AND workspace_id=$2`, moduleB.ID, ws).Scan(&l2B); err != nil {
 		t.Fatal(err)
@@ -195,8 +169,8 @@ func runCockpitDirectoryLifecycle(t *testing.T, collab string) {
 	if err := testPool.QueryRow(context.Background(), `SELECT COALESCE(directory_name,'') FROM cockpit_node WHERE id=$1`, item.ID).Scan(&movedDir); err != nil {
 		t.Fatal(err)
 	}
-	if code, _ := collabfs.StatDir(collab, *moduleB.DirectoryName, movedDir, issueDir); code != collabfs.StatOK {
-		t.Fatalf("issue folder did not move with its work item: %s", code)
+	if _, err := os.Stat(filepath.Join(collab, *moduleB.DirectoryName, movedDir, material)); err != nil {
+		t.Fatalf("material did not move with its work item: %v", err)
 	}
 	if code, _ := collabfs.StatDir(collab, *moduleA.DirectoryName, syncedDir); code != collabfs.StatMissing {
 		t.Fatalf("the old work-item folder is still there: %s", code)
@@ -259,24 +233,6 @@ func runCockpitDirectoryLifecycle(t *testing.T, collab string) {
 		t.Fatalf("apply did not recreate the module folder: %s", code)
 	}
 
-	// 10. Refile: moving the issue to another module moves its folder, and the
-	// sub-issue's folder with it.
-	beforeChild := filepath.Join(collab, *moduleB.DirectoryName, mustNodeDir(t, ws, item.ID), childDir)
-	if _, err := os.Stat(beforeChild); err != nil {
-		t.Fatalf("sub-issue folder missing before the refile: %v", err)
-	}
-	testutil.Call(t, cockpitHandler(testHandler.UpdateIssue), testutil.WithURLParams(
-		cockpitRequest(http.MethodPut, "/api/issues/x", ws, map[string]any{"module_id": moduleA.ID, "work_item_id": nil}), "id", issueID)).
-		Want(http.StatusOK)
-	if code, _ := collabfs.StatDir(collab, *moduleA.DirectoryName); code != collabfs.StatOK {
-		t.Fatalf("module folder missing after the refile: %s", code)
-	}
-	if _, err := os.Stat(filepath.Join(collab, *moduleA.DirectoryName, issueDir)); err != nil {
-		t.Fatalf("issue folder did not move to the new module: %v", err)
-	}
-	if _, err := os.Stat(beforeChild); !os.IsNotExist(err) {
-		t.Fatalf("the sub-issue folder stayed behind at %s", beforeChild)
-	}
 }
 
 func mustNodeDir(t *testing.T, ws, nodeID string) string {
@@ -424,55 +380,6 @@ func TestCockpitDeleteKeepsFolders(t *testing.T) {
 		cockpitRequest(http.MethodDelete, "/api/modules/x", ws, nil), "id", mod.Module.ID)).Want(http.StatusNoContent)
 	if content, err := os.ReadFile(filepath.Join(collab, *mod.Module.DirectoryName, "notes.md")); err != nil || string(content) != "keep me" {
 		t.Fatalf("deleting a module touched its folder: %q %v", content, err)
-	}
-}
-
-// The issue detail composes the delivery path from rows it already has.
-func TestIssueDetailCarriesTheDeliveryPath(t *testing.T) {
-	ws := cockpitFixture(t, "S7 issue delivery path")
-	collab := t.TempDir()
-	project := dbfx.Project(t, "交付项目", testutil.Cols{"workspace_id": ws, "collab_path": collab})
-	module := dbfx.Module(t, project, "确权线", testutil.Cols{"workspace_id": ws, "directory_name": "01.01确权线"})
-	issueID := dbfx.Issue(t, "注册路径设计", testutil.Cols{
-		"workspace_id": ws, "project_id": project, "module_id": module, "directory_name": "TES-7注册路径设计",
-	})
-	var detail struct {
-		DirectoryName *string `json:"directory_name"`
-		DeliveryPath  *string `json:"delivery_path"`
-	}
-	testutil.Call(t, cockpitHandler(testHandler.GetIssue), testutil.WithURLParams(
-		cockpitRequest(http.MethodGet, "/api/issues/x", ws, nil), "id", issueID)).Want(http.StatusOK).JSON(&detail)
-	want := filepath.Join(collab, "01.01确权线", "TES-7注册路径设计")
-	if detail.DirectoryName == nil || *detail.DirectoryName != "TES-7注册路径设计" || detail.DeliveryPath == nil || *detail.DeliveryPath != want {
-		t.Fatalf("detail = %+v, want delivery path %q", detail, want)
-	}
-}
-
-// Allocation is one conditional write: a claim and a person opening the folder
-// at the same moment must land on the same name.
-func TestAllocateIssueDirectoryNameIsOnceOnly(t *testing.T) {
-	ws := cockpitFixture(t, "S7 allocate once")
-	project := dbfx.Project(t, "交付项目", testutil.Cols{"workspace_id": ws, "collab_path": t.TempDir()})
-	issueID := dbfx.Issue(t, "注册路径设计", testutil.Cols{"workspace_id": ws, "project_id": project})
-	issue, err := testHandler.Queries.GetIssueInWorkspace(context.Background(), db.GetIssueInWorkspaceParams{
-		ID: util.MustParseUUID(issueID), WorkspaceID: util.MustParseUUID(ws),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	first, err := testHandler.allocateIssueDirectoryName(context.Background(), testHandler.Queries, issue, "TES")
-	if err != nil || !strings.Contains(first, "TES-") || !strings.Contains(first, "注册路径设计") {
-		t.Fatalf("first allocation = %q %v", first, err)
-	}
-	second, err := testHandler.allocateIssueDirectoryName(context.Background(), testHandler.Queries, issue, "TES")
-	if err != nil || second != first {
-		t.Fatalf("second allocation = %q, want the first %q (%v)", second, first, err)
-	}
-	// A stale row (read before the first allocation) still reads the winner back.
-	stale := issue
-	again, err := testHandler.allocateIssueDirectoryName(context.Background(), testHandler.Queries, stale, "TES")
-	if err != nil || again != first {
-		t.Fatalf("stale allocation = %q, want %q (%v)", again, first, err)
 	}
 }
 

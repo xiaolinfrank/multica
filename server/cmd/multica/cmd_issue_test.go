@@ -6540,8 +6540,7 @@ func TestIssueGetTableShowsTheDeliveryDirectory(t *testing.T) {
 		case "/api/issues/issue-uuid":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id": "issue-uuid", "identifier": "MUL-46", "title": "注册路径设计", "status": "todo", "priority": "none",
-				"directory_name": "MUL-46注册路径设计",
-				"delivery_path":  "/Volumes/Space/交付项目/01.01确权线/MUL-46注册路径设计",
+				"delivery_path": "/Volumes/Space/交付项目/01.01确权线/01.01.02接口",
 			})
 		default:
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": []any{}, "issues": []any{}, "total": 0})
@@ -6560,7 +6559,7 @@ func TestIssueGetTableShowsTheDeliveryDirectory(t *testing.T) {
 	if !strings.Contains(out, "DIRECTORY") {
 		t.Fatalf("table has no DIRECTORY column:\n%s", out)
 	}
-	if !strings.Contains(out, "/Volumes/Space/交付项目/01.01确权线/MUL-46注册路径设计") {
+	if !strings.Contains(out, "/Volumes/Space/交付项目/01.01确权线/01.01.02接口") {
 		t.Fatalf("table does not show the delivery path:\n%s", out)
 	}
 }

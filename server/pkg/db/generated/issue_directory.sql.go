@@ -11,84 +11,45 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const allocateIssueDirectoryName = `-- name: AllocateIssueDirectoryName :one
-UPDATE issue SET directory_name = $1::text, updated_at = now()
-WHERE id = $2::uuid
-  AND workspace_id = $3::uuid
-  AND directory_name IS NULL
-RETURNING directory_name
+const listIssueMeetingDirectories = `-- name: ListIssueMeetingDirectories :many
+SELECT m.nas_dir,
+       (array_agg(m.id ORDER BY (m.archived_at IS NOT NULL), (m.cancelled_at IS NOT NULL), m.created_at, m.id))[1]::uuid AS meeting_id
+FROM cockpit_meeting_issue AS l
+JOIN cockpit_meeting AS m ON m.id = l.meeting_id AND m.workspace_id = l.workspace_id
+WHERE l.workspace_id = $1::uuid
+  AND l.issue_id = $2::uuid
+  AND (l.role = 'task' OR l.roles && ARRAY['task', 'preparation', 'support', 'minutes', 'review']::text[])
+  AND btrim(m.nas_dir) <> ''
+GROUP BY m.nas_dir
+LIMIT 2
 `
 
-type AllocateIssueDirectoryNameParams struct {
-	DirectoryName string      `json:"directory_name"`
-	ID            pgtype.UUID `json:"id"`
-	WorkspaceID   pgtype.UUID `json:"workspace_id"`
-}
-
-// One atomic first allocation. The `directory_name IS NULL` guard is the whole
-// point: two deliveries of the same task (an agent claim racing a human
-// opening the folder) must land on one name, and the loser reads the winner's
-// value back rather than overwriting it. No row comes back when the name was
-// already set.
-func (q *Queries) AllocateIssueDirectoryName(ctx context.Context, arg AllocateIssueDirectoryNameParams) (pgtype.Text, error) {
-	row := q.db.QueryRow(ctx, allocateIssueDirectoryName, arg.DirectoryName, arg.ID, arg.WorkspaceID)
-	var directory_name pgtype.Text
-	err := row.Scan(&directory_name)
-	return directory_name, err
-}
-
-const listIssueSubtreeDirectoryRows = `-- name: ListIssueSubtreeDirectoryRows :many
-WITH RECURSIVE subtree AS (
-    SELECT i.id
-    FROM issue AS i
-    WHERE i.id = $1::uuid
-      AND i.workspace_id = $2::uuid
-  UNION
-    SELECT i.id
-    FROM issue AS i
-    JOIN subtree AS s ON i.parent_issue_id = s.id
-    WHERE i.workspace_id = $2::uuid
-)
-SELECT i.id, i.number, i.directory_name, i.project_id, i.module_id, i.work_item_id
-FROM issue AS i
-JOIN subtree AS s ON s.id = i.id
-ORDER BY i.number
-`
-
-type ListIssueSubtreeDirectoryRowsParams struct {
-	IssueID     pgtype.UUID `json:"issue_id"`
+type ListIssueMeetingDirectoriesParams struct {
 	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	IssueID     pgtype.UUID `json:"issue_id"`
 }
 
-type ListIssueSubtreeDirectoryRowsRow struct {
-	ID            pgtype.UUID `json:"id"`
-	Number        int32       `json:"number"`
-	DirectoryName pgtype.Text `json:"directory_name"`
-	ProjectID     pgtype.UUID `json:"project_id"`
-	ModuleID      pgtype.UUID `json:"module_id"`
-	WorkItemID    pgtype.UUID `json:"work_item_id"`
+type ListIssueMeetingDirectoriesRow struct {
+	NasDir    string      `json:"nas_dir"`
+	MeetingID pgtype.UUID `json:"meeting_id"`
 }
 
-// Every issue in the subtree (the parent included) with the bindings its
-// delivery folder is derived from. Read before a move so the old path is
-// known; the move itself rewrites the bindings.
-func (q *Queries) ListIssueSubtreeDirectoryRows(ctx context.Context, arg ListIssueSubtreeDirectoryRowsParams) ([]ListIssueSubtreeDirectoryRowsRow, error) {
-	rows, err := q.db.Query(ctx, listIssueSubtreeDirectoryRows, arg.IssueID, arg.WorkspaceID)
+// The distinct meeting folders of the meetings this issue works for. Only the
+// links that carry a meeting's own work count: follow-up actions, deliveries
+// and references stay with the issue's filing. Two rows are enough to tell one
+// folder from an ambiguous binding. meeting_id names the meeting where a person
+// prepares the folder: an open meeting before an archived or cancelled one,
+// then the earliest.
+func (q *Queries) ListIssueMeetingDirectories(ctx context.Context, arg ListIssueMeetingDirectoriesParams) ([]ListIssueMeetingDirectoriesRow, error) {
+	rows, err := q.db.Query(ctx, listIssueMeetingDirectories, arg.WorkspaceID, arg.IssueID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListIssueSubtreeDirectoryRowsRow{}
+	items := []ListIssueMeetingDirectoriesRow{}
 	for rows.Next() {
-		var i ListIssueSubtreeDirectoryRowsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Number,
-			&i.DirectoryName,
-			&i.ProjectID,
-			&i.ModuleID,
-			&i.WorkItemID,
-		); err != nil {
+		var i ListIssueMeetingDirectoriesRow
+		if err := rows.Scan(&i.NasDir, &i.MeetingID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -138,102 +99,6 @@ func (q *Queries) ListProjectsWithCollabPath(ctx context.Context) ([]ListProject
 			&i.WorkspaceName,
 			&i.ProjectTitle,
 			&i.CollabPath,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listRunningAgentTasksForIssue = `-- name: ListRunningAgentTasksForIssue :many
-SELECT t.id AS task_id, t.issue_id, i.number AS issue_number, t.status
-FROM agent_task_queue AS t
-JOIN issue AS i ON i.id = t.issue_id
-WHERE t.issue_id = $1::uuid
-  AND i.workspace_id = $2::uuid
-  AND t.status IN ('queued', 'dispatched', 'running')
-ORDER BY t.created_at, t.id
-`
-
-type ListRunningAgentTasksForIssueParams struct {
-	IssueID     pgtype.UUID `json:"issue_id"`
-	WorkspaceID pgtype.UUID `json:"workspace_id"`
-}
-
-type ListRunningAgentTasksForIssueRow struct {
-	TaskID      pgtype.UUID `json:"task_id"`
-	IssueID     pgtype.UUID `json:"issue_id"`
-	IssueNumber int32       `json:"issue_number"`
-	Status      string      `json:"status"`
-}
-
-// Queued/dispatched/running work that would have the directory renamed under
-// it. The caller decides what to do with the list; this is a read.
-func (q *Queries) ListRunningAgentTasksForIssue(ctx context.Context, arg ListRunningAgentTasksForIssueParams) ([]ListRunningAgentTasksForIssueRow, error) {
-	rows, err := q.db.Query(ctx, listRunningAgentTasksForIssue, arg.IssueID, arg.WorkspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListRunningAgentTasksForIssueRow{}
-	for rows.Next() {
-		var i ListRunningAgentTasksForIssueRow
-		if err := rows.Scan(
-			&i.TaskID,
-			&i.IssueID,
-			&i.IssueNumber,
-			&i.Status,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listRunningAgentTasksForIssues = `-- name: ListRunningAgentTasksForIssues :many
-SELECT t.id AS task_id, t.issue_id, i.number AS issue_number, t.status
-FROM agent_task_queue AS t
-JOIN issue AS i ON i.id = t.issue_id
-WHERE t.issue_id = ANY($1::uuid[])
-  AND i.workspace_id = $2::uuid
-  AND t.status IN ('queued', 'dispatched', 'running')
-ORDER BY t.created_at, t.id
-`
-
-type ListRunningAgentTasksForIssuesParams struct {
-	IssueIds    []pgtype.UUID `json:"issue_ids"`
-	WorkspaceID pgtype.UUID   `json:"workspace_id"`
-}
-
-type ListRunningAgentTasksForIssuesRow struct {
-	TaskID      pgtype.UUID `json:"task_id"`
-	IssueID     pgtype.UUID `json:"issue_id"`
-	IssueNumber int32       `json:"issue_number"`
-	Status      string      `json:"status"`
-}
-
-func (q *Queries) ListRunningAgentTasksForIssues(ctx context.Context, arg ListRunningAgentTasksForIssuesParams) ([]ListRunningAgentTasksForIssuesRow, error) {
-	rows, err := q.db.Query(ctx, listRunningAgentTasksForIssues, arg.IssueIds, arg.WorkspaceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListRunningAgentTasksForIssuesRow{}
-	for rows.Next() {
-		var i ListRunningAgentTasksForIssuesRow
-		if err := rows.Scan(
-			&i.TaskID,
-			&i.IssueID,
-			&i.IssueNumber,
-			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -339,63 +204,4 @@ func (q *Queries) ListRunningAgentTasksForWorkItems(ctx context.Context, arg Lis
 		return nil, err
 	}
 	return items, nil
-}
-
-const updateIssueDirectoryName = `-- name: UpdateIssueDirectoryName :one
-UPDATE issue SET directory_name = $1::text, updated_at = now()
-WHERE id = $2::uuid
-  AND workspace_id = $3::uuid
-RETURNING id, workspace_id, title, description, status, priority, assignee_type, assignee_id, creator_type, creator_id, parent_issue_id, acceptance_criteria, context_refs, position, due_date, created_at, updated_at, number, project_id, origin_type, origin_id, first_executed_at, start_date, metadata, stage, properties, revision, last_activity_at, triage_state, duplicate_of_issue_id, requester_user_id, description_revision, module_id, work_item_id, directory_name
-`
-
-type UpdateIssueDirectoryNameParams struct {
-	DirectoryName string      `json:"directory_name"`
-	ID            pgtype.UUID `json:"id"`
-	WorkspaceID   pgtype.UUID `json:"workspace_id"`
-}
-
-// A human pointing the task at a folder name they already use. This writes the
-// database only: the files stay where they are, which is the point — adopting
-// a historical folder must not move it.
-func (q *Queries) UpdateIssueDirectoryName(ctx context.Context, arg UpdateIssueDirectoryNameParams) (Issue, error) {
-	row := q.db.QueryRow(ctx, updateIssueDirectoryName, arg.DirectoryName, arg.ID, arg.WorkspaceID)
-	var i Issue
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.Title,
-		&i.Description,
-		&i.Status,
-		&i.Priority,
-		&i.AssigneeType,
-		&i.AssigneeID,
-		&i.CreatorType,
-		&i.CreatorID,
-		&i.ParentIssueID,
-		&i.AcceptanceCriteria,
-		&i.ContextRefs,
-		&i.Position,
-		&i.DueDate,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Number,
-		&i.ProjectID,
-		&i.OriginType,
-		&i.OriginID,
-		&i.FirstExecutedAt,
-		&i.StartDate,
-		&i.Metadata,
-		&i.Stage,
-		&i.Properties,
-		&i.Revision,
-		&i.LastActivityAt,
-		&i.TriageState,
-		&i.DuplicateOfIssueID,
-		&i.RequesterUserID,
-		&i.DescriptionRevision,
-		&i.ModuleID,
-		&i.WorkItemID,
-		&i.DirectoryName,
-	)
-	return i, err
 }
