@@ -408,3 +408,6 @@ clean: ## Remove build caches, generated binaries, and temp files
 	rm -rf .turbo apps/*/.turbo packages/*/.turbo
 	rm -rf apps/*/*.tsbuildinfo packages/*/*.tsbuildinfo
 	@echo "✓ Clean complete."
+
+prune-web-builds: ## Keep only the newest web .next.prev* backup (ARGS="--dry-run" to preview)
+	@bash scripts/prune-next-prev.sh $(ARGS)

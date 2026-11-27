@@ -1214,6 +1214,9 @@ jobs:
       - name: Test build output naming
         run: bash scripts/makefile-build.test.sh
 
+      - name: Test web build backup pruning
+        run: bash scripts/prune-next-prev.test.sh
+
   frontend-quality:
     needs: changes
     if: ${{ needs.changes.outputs.quality_only == 'true' }}
