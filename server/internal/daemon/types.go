@@ -133,7 +133,8 @@ type Task struct {
 	WorkItemID                    string                 `json:"work_item_id,omitempty"` // third plan level the issue is filed under
 	WorkItemTitle                 string                 `json:"work_item_title,omitempty"`
 	WorkItemDirectory             *string                `json:"work_item_directory,omitempty"`
-	IssueDirectory                *string                `json:"issue_directory,omitempty"`                  // fixed delivery folder name, allocated at claim
+	DeliveryDirectory             string                 `json:"delivery_directory,omitempty"`               // absolute folder an issue task writes into
+	DeliveryDirectorySource       string                 `json:"delivery_directory_source,omitempty"`        // "meeting" or "filing"; absent on servers predating it
 	ModuleDescription             string                 `json:"module_description,omitempty"`               // durable module-level context injected into the brief
 	ProjectResources              []ProjectResourceData  `json:"project_resources,omitempty"`                // project-scoped resources to expose to the agent
 	IsLeaderTask                  bool                   `json:"is_leader_task,omitempty"`                   // true when executing in the squad-leader coordinator role

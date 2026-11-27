@@ -361,8 +361,7 @@ func TestCollaborationSpaceReportingSentencePerTaskKind(t *testing.T) {
 		"issue": {
 			ctx: withKind(func(c *TaskContextForEnv) {
 				c.IssueID = "issue-1"
-				folder := "FOS-1注册路径设计"
-				c.IssueDirectory = &folder
+				c.DeliveryDirectory = collabProjectPath
 			}),
 			want: "Name the path you wrote in your issue comment, as plain text, so a person can open it.",
 		},
@@ -551,46 +550,67 @@ func TestProjectResourcesFileSkippedWithoutContext(t *testing.T) {
 	}
 }
 
-// S7: an issue task's delivery folder is one fixed path the platform assigns.
 func stringPtr(s string) *string { return &s }
 
+// An issue task's delivery folder is the one absolute path the server resolved.
+// A filing folder may be created when missing; a claim without a source (an
+// older server) is a filing folder.
 func TestCollaborationSpaceStatesTheFixedIssueDeliveryFolder(t *testing.T) {
-	issue, module, workItem := "TES-7注册路径设计", "01.01确权线", "01.01.01接口设计"
+	module, workItem := "01.01确权线", "01.01.01接口设计"
+	want := "/Volumes/Space/Project/01.01确权线/01.01.01接口设计"
 	ctx := TaskContextForEnv{
 		IssueID: "i1", ProjectID: "p1", ProjectCollabPath: "/Volumes/Space/Project",
 		ModuleID: "m1", ModuleDirectory: &module,
 		WorkItemID: "w1", WorkItemTitle: "接口设计", WorkItemDirectory: &workItem,
-		IssueDirectory: &issue,
+		DeliveryDirectory: want,
 	}
 	out := buildMetaSkillContent("claude", ctx)
-	want := "/Volumes/Space/Project/01.01确权线/01.01.01接口设计/TES-7注册路径设计"
-	if !strings.Contains(out, "`"+want+"`") {
-		t.Fatalf("brief does not state the fixed delivery folder %q:\n%s", want, out)
+	for _, expected := range []string{"delivery folder is fixed: `" + want + "`", "Do not create a folder for this task", "work item **接口设计**", "Before creating a missing folder"} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("brief is missing %q:\n%s", expected, out)
+		}
 	}
-	for _, forbidden := range []string{"Use the bound module folder", "Use a task or deliverable subdirectory"} {
+	for _, forbidden := range []string{"Use the bound module folder", "Use a task or deliverable subdirectory", "Do not create this folder if it is missing"} {
 		if strings.Contains(out, forbidden) {
 			t.Fatalf("brief still offers the agent a folder choice (%q):\n%s", forbidden, out)
 		}
 	}
-	if !strings.Contains(out, "work item **接口设计**") {
-		t.Fatalf("Project Context does not name the work item:\n%s", out)
-	}
 }
 
-func TestCollaborationSpaceNamesTheBlockedBinding(t *testing.T) {
-	issue, badWorkItem := "TES-8交付", "../escape"
-	ctx := TaskContextForEnv{
-		IssueID: "i1", ProjectID: "p1", ProjectCollabPath: "/Volumes/Space/Project",
-		ModuleID: "m1", ModuleDirectory: stringPtr("01.01确权线"),
-		WorkItemID: "w1", WorkItemDirectory: &badWorkItem,
-		IssueDirectory: &issue,
+// A meeting folder is delivered into even when the issue has no collaboration
+// space of its own, or no project at all, and the Output exception follows it.
+// The agent never creates a missing meeting folder: it reports it.
+func TestCollaborationSpaceStatesAMeetingFolderWithoutAProjectPath(t *testing.T) {
+	want := "/Volumes/Space/会议/20261127-01 周会"
+	for name, ctx := range map[string]TaskContextForEnv{
+		"project with collab_path":    {IssueID: "i1", ProjectID: "p1", ProjectCollabPath: "/Volumes/Space", DeliveryDirectory: want, DeliveryDirectorySource: "meeting"},
+		"project without collab_path": {IssueID: "i1", ProjectID: "p1", DeliveryDirectory: want, DeliveryDirectorySource: "meeting"},
+		"no project":                  {IssueID: "i1", DeliveryDirectory: want, DeliveryDirectorySource: "meeting"},
+	} {
+		out := buildMetaSkillContent("claude", ctx)
+		for _, expected := range []string{"delivery folder is fixed: `" + want + "`", collabExceptionStart, "bound to the meeting", "Do not create this folder if it is missing"} {
+			if !strings.Contains(out, expected) {
+				t.Errorf("%s: brief is missing %q:\n%s", name, expected, out)
+			}
+		}
+		if strings.Contains(out, "Before creating a missing folder") {
+			t.Errorf("%s: brief lets the agent create a meeting folder:\n%s", name, out)
+		}
+		if ctx.ProjectCollabPath == "" && strings.Contains(out, collabProjectLine) {
+			t.Errorf("%s: brief names a project directory that does not exist:\n%s", name, out)
+		}
+		if ctx.ProjectID == "" && strings.Contains(out, "This project") {
+			t.Errorf("%s: brief describes a project the task does not have:\n%s", name, out)
+		}
 	}
-	out := buildMetaSkillContent("claude", ctx)
-	if !strings.Contains(out, "cannot be resolved: the work item's folder binding is unresolved or unsafe") {
-		t.Fatalf("brief does not name the blocked binding:\n%s", out)
+
+	dir := t.TempDir()
+	if err := writeProjectResources(dir, TaskContextForEnv{IssueID: "i1", DeliveryDirectory: want, DeliveryDirectorySource: "meeting"}, &sidecarManifest{}); err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(out, "delivery folder is fixed") {
-		t.Fatalf("brief offers a path despite the unsafe binding:\n%s", out)
+	raw, err := os.ReadFile(filepath.Join(dir, ".multica", "project", "resources.json"))
+	if err != nil || !strings.Contains(string(raw), want) || !strings.Contains(string(raw), `"delivery_directory_source": "meeting"`) {
+		t.Fatalf("resources.json without a project lacks the meeting delivery folder: %s %v", raw, err)
 	}
 }
 
@@ -623,7 +643,7 @@ func TestIssueTaskWithoutDeliveryFolderRefusesToGuess(t *testing.T) {
 		IssueID:           "issue-1",
 	}
 	out := buildMetaSkillContent("claude", ctx)
-	if !strings.Contains(out, "has not been resolved by the platform") {
+	if !strings.Contains(out, "delivery folder cannot be resolved") {
 		t.Fatalf("brief did not say the delivery folder is unresolved: %s", collabSection(t, out))
 	}
 	for _, forbidden := range []string{

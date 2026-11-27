@@ -181,11 +181,14 @@ type TaskContextForEnv struct {
 	WorkItemID        string
 	WorkItemTitle     string
 	WorkItemDirectory *string
-	IssueDirectory    *string
-	ModuleDescription string
-	ProjectResources  []ProjectResourceForEnv // resources attached to the project
-	ChatSessionID     string                  // non-empty for chat tasks
-	DocID             string                  // non-empty for doc discussion tasks (MUL-9933)
+	DeliveryDirectory string
+	// DeliveryDirectorySource is "meeting" when DeliveryDirectory is the
+	// meeting's bound folder, which the agent must not create.
+	DeliveryDirectorySource string
+	ModuleDescription       string
+	ProjectResources        []ProjectResourceForEnv // resources attached to the project
+	ChatSessionID           string                  // non-empty for chat tasks
+	DocID                   string                  // non-empty for doc discussion tasks (MUL-9933)
 	// ChatChannelType is the IM platform behind a chat session ("slack",
 	// "feishu", "wecom"); empty for a web/mobile chat. It names the surface in
 	// the brief's copy; what that surface can DELIVER is the separate field

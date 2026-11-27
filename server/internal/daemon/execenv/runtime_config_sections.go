@@ -540,7 +540,8 @@ func writeRepositories(b *strings.Builder, ctx TaskContextForEnv) {
 // issue inherits it from its project, while a chat receives it from the
 // project selected on the chat session.
 func writeProjectContext(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
-	if ctx.ProjectID == "" && ctx.ModuleID == "" && len(ctx.ProjectResources) == 0 {
+	// A meeting's issue can carry a delivery folder without a project.
+	if ctx.ProjectID == "" && ctx.ModuleID == "" && len(ctx.ProjectResources) == 0 && issueDeliveryDirectory(kind, ctx) == "" {
 		return
 	}
 	b.WriteString("## Project Context\n\n")
@@ -564,7 +565,7 @@ func writeProjectContext(b *strings.Builder, kind taskKind, ctx TaskContextForEn
 		b.WriteString("\nResources are pointers — open them only when relevant to the task. ")
 		b.WriteString("For `github_repo` resources, use `multica repo checkout <url>` to fetch the code. ")
 		b.WriteString("A resource listing a starting point is checked out there automatically — pass `--ref <branch-or-sha>` only to override it, when a task or handoff names a different revision.\n\n")
-	} else {
+	} else if ctx.ProjectID != "" {
 		b.WriteString("This project has no resources attached yet.\n\n")
 	}
 	// Last in the section on purpose: it answers "where does the finished work
@@ -610,64 +611,48 @@ func writeModuleContext(b *strings.Builder, ctx TaskContextForEnv) {
 // local internal-disk deployments do not imply a shared-storage mount.
 func writeCollaborationSpace(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
 	project := strings.TrimSpace(ctx.ProjectCollabPath)
-	if project == "" {
+	delivery := issueDeliveryDirectory(kind, ctx)
+	// A meeting folder is a delivery folder even when the project has no
+	// collaboration space of its own.
+	if project == "" && delivery == "" {
 		return
 	}
 	b.WriteString("### Collaboration Space\n\n")
-	b.WriteString("Persistent project files accessible on this execution host. Keep task scratch in the task working directory.\n\n")
-	fmt.Fprintf(b, "- Project directory: `%s`\n\n", project)
+	if project != "" {
+		b.WriteString("Persistent project files accessible on this execution host. Keep task scratch in the task working directory.\n\n")
+	} else {
+		b.WriteString("Persistent files shared with people, accessible on this execution host. Keep task scratch in the task working directory.\n\n")
+	}
+	if project != "" {
+		fmt.Fprintf(b, "- Project directory: `%s`\n\n", project)
+	}
 	module := ""
 	if ctx.ModuleDirectory != nil {
 		module = *ctx.ModuleDirectory
 	}
-	workItem := ""
-	if ctx.WorkItemDirectory != nil {
-		workItem = *ctx.WorkItemDirectory
-	}
-	// An issue task without a delivery folder has no fixed place to write: the
-	// platform allocates one at claim time, so an empty value means the
-	// allocation did not happen or is unreadable. Falling back to the legacy
-	// "make up a task folder" prose would invite exactly the guessed path the
-	// four-segment contract exists to prevent.
-	if kind == kindIssue && (ctx.IssueDirectory == nil || strings.TrimSpace(*ctx.IssueDirectory) == "") {
-		b.WriteString("This task's delivery folder has not been resolved by the platform. Do not create or name a substitute folder under the project or module; keep finished files in the working directory, report where they are, and ask the owner to check the task's folder binding.\n\n")
-		return
-	}
-	// An issue's delivery folder is fixed by the platform: identifier plus
-	// title, inside its work item (or module, or project). When every binding
-	// the path needs is valid the brief states that one path and forbids
-	// inventing another; when one is not, it says which and stops — a guessed
-	// folder is a deliverable nobody finds again.
-	if kind == kindIssue && ctx.IssueDirectory != nil && strings.TrimSpace(*ctx.IssueDirectory) != "" {
-		blocked := ""
-		switch {
-		case ctx.ModuleID != "" && !localpaths.ValidFolder(module):
-			blocked = "the module's folder binding is unresolved or unsafe"
-		case ctx.WorkItemID != "" && !localpaths.ValidFolder(workItem):
-			blocked = "the work item's folder binding is unresolved or unsafe"
-		case !localpaths.ValidFolder(*ctx.IssueDirectory):
-			blocked = "this task's folder name is not a safe relative folder"
-		}
-		if blocked != "" {
-			fmt.Fprintf(b, "This task's delivery folder cannot be resolved: %s. Ask the owner to fix the binding; do not guess a folder or write a substitute path. Until then keep finished files in the working directory and say where they are.\n\n", blocked)
+	// An issue task writes into the folder the team already uses for this work.
+	// The server resolves it; when it cannot, the brief says so and stops,
+	// because a guessed folder is a deliverable nobody finds again.
+	if kind == kindIssue {
+		if delivery == "" {
+			b.WriteString("This task's delivery folder cannot be resolved: the platform did not provide one (for example, a module or work item folder binding is missing or unsafe). Ask the owner to check the task's filing and folder bindings; do not guess a folder or write a substitute path. Until then keep finished files in the working directory and say where they are.\n\n")
 			return
 		}
-		segments := []string{project}
-		if ctx.ModuleID != "" {
-			segments = append(segments, module)
+		meeting := issueDeliveryDirectorySource(ctx) == deliverySourceMeeting
+		fmt.Fprintf(b, "This task's delivery folder is fixed: `%s`.\n\n", delivery)
+		if meeting {
+			b.WriteString("It is the folder bound to the meeting this task works for, shared with people and with other tasks.")
+		} else {
+			b.WriteString("It is the folder this task is filed under, which the team already uses for this work and shares with other tasks.")
 		}
-		if ctx.WorkItemID != "" {
-			segments = append(segments, workItem)
-		}
-		segments = append(segments, *ctx.IssueDirectory)
-		fmt.Fprintf(b, "This task's delivery folder is fixed: `%s`.\n\n", filepath.Join(segments...))
-		b.WriteString("The platform assigns that folder name from the task's identifier and title, so write deliverables directly into it and never invent a folder name of your own. Create the folder if it is missing, after checking containment and ownership.\n\n")
+		b.WriteString(" Write deliverables into it, following the file naming already there. Do not create a folder for this task, and do not overwrite, rename or delete files you did not create in this task.\n\n")
 		b.WriteString("The collaboration copy is additional archival storage. Deliver through the mechanism permitted by `## Output`; issue files still need `--attachment <path>`. Preparing or archiving a file does not authorize an upload.\n\n")
-		switch kind {
-		case kindIssue:
-			b.WriteString("Name the path you wrote in your issue comment, as plain text, so a person can open it.\n\n")
+		b.WriteString("Name the path you wrote in your issue comment, as plain text, so a person can open it.\n\n")
+		if meeting {
+			b.WriteString("Do not create this folder if it is missing: a meeting's folder is prepared from the meeting itself. Report the missing folder in your issue comment so the owner can prepare it from the meeting, keep the result in the task workdir, and do not claim durable delivery. Do the same if the folder is inaccessible or permission is denied. Never guess another path, change a binding, or substitute a nearby directory.\n\n")
+		} else {
+			b.WriteString("Before creating a missing folder, verify it is the exact path above on this host's writable storage, with safe containment and ownership. A missing path does not identify the storage failure or authorize a replacement root. If the folder is inaccessible or permission is denied, report the observed problem where this surface permits it, keep the result in the task workdir, and do not claim durable delivery. Never guess another path, change a binding, or substitute a nearby directory.\n\n")
 		}
-		b.WriteString("Before creating a missing folder, verify the configured project directory is on this host's writable internal disk, with safe containment and ownership. A missing path does not identify the storage failure or authorize a replacement root. If the binding is unconfigured, inaccessible, or permission is denied, report the observed problem where this surface permits it, keep the result in the task workdir, and do not claim durable delivery. Never guess another path, change a binding, or substitute a nearby directory.\n\n")
 		return
 	}
 	if ctx.ModuleID != "" && localpaths.ValidFolder(module) {
@@ -1120,13 +1105,13 @@ func writeAlwaysUseCLI(b *strings.Builder) {
 // every surface, and the per-kind line inside the switch only answers "how do I
 // deliver a file HERE". Keeping them apart stops a new task kind from silently
 // inheriting no invariant at all.
-func writeDeliveryInvariant(b *strings.Builder, ctx TaskContextForEnv) {
+func writeDeliveryInvariant(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
 	b.WriteString("**Runtime-local paths are never deliverables.** Your working directory exists only on the machine running you — NEVER write an absolute path or a `file://` URL as a clickable link or an embedded image. Reference code locations as inline code, never a link: `path/to/file.ts:42`. Deliver files through this surface's mechanism (above); if it has none, say so in words — never link the path and imply the file was delivered.\n\n")
 	// The collaboration space is the single exception, and it is stated here
 	// because this is the rule an agent recalls when it is about to hand a file
 	// over. Emitted only when the task actually has one, so a brief without a
 	// collaboration space stays byte-identical to before this existed.
-	if strings.TrimSpace(ctx.ProjectCollabPath) != "" {
+	if strings.TrimSpace(ctx.ProjectCollabPath) != "" || issueDeliveryDirectory(kind, ctx) != "" {
 		b.WriteString("The one exception is this task's **collaboration space** (see `## Project Context`): shared storage the team reads, not runtime-local. Write the finished file there as well. Whether you may name that path, and where, is stated in that section — and when you may, it is plain text, never a clickable link.\n\n")
 	}
 }
@@ -1201,7 +1186,34 @@ func writeOutput(b *strings.Builder, kind taskKind, ctx TaskContextForEnv) {
 		writeInlineBlocksPolicy(b)
 	}
 	b.WriteString("\n")
-	writeDeliveryInvariant(b, ctx)
+	writeDeliveryInvariant(b, kind, ctx)
+}
+
+// issueDeliveryDirectory is the delivery folder an issue task was given. Only
+// issue claims carry one.
+// Where an issue's delivery folder comes from, as the claim states it.
+const (
+	deliverySourceFiling  = "filing"
+	deliverySourceMeeting = "meeting"
+)
+
+// issueDeliveryDirectorySource reads the claim's source of the delivery
+// folder. Anything but a meeting folder is a filing folder.
+func issueDeliveryDirectorySource(ctx TaskContextForEnv) string {
+	if strings.TrimSpace(ctx.DeliveryDirectory) == "" {
+		return ""
+	}
+	if strings.TrimSpace(ctx.DeliveryDirectorySource) == deliverySourceMeeting {
+		return deliverySourceMeeting
+	}
+	return deliverySourceFiling
+}
+
+func issueDeliveryDirectory(kind taskKind, ctx TaskContextForEnv) string {
+	if kind != kindIssue {
+		return ""
+	}
+	return strings.TrimSpace(ctx.DeliveryDirectory)
 }
 
 // buildMetaSkillContentSlim is the post-MUL-3560 brief assembler.

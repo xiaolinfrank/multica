@@ -257,16 +257,17 @@ type projectResourceFile struct {
 	// a skill can read the collaboration space without parsing prose. The
 	// module carries no absolute path of its own: its stable directory_name
 	// binding sits under the project's root.
-	ProjectCollabPath string                  `json:"project_collab_path,omitempty"`
-	ModuleID          string                  `json:"module_id,omitempty"`
-	ModuleDirectory   *string                 `json:"module_directory,omitempty"`
-	ModuleTitle       string                  `json:"module_title,omitempty"`
-	WorkItemID        string                  `json:"work_item_id,omitempty"`
-	WorkItemTitle     string                  `json:"work_item_title,omitempty"`
-	WorkItemDirectory *string                 `json:"work_item_directory,omitempty"`
-	IssueDirectory    *string                 `json:"issue_directory,omitempty"`
-	ModuleDescription string                  `json:"module_description,omitempty"`
-	Resources         []ProjectResourceForEnv `json:"resources"`
+	ProjectCollabPath       string                  `json:"project_collab_path,omitempty"`
+	ModuleID                string                  `json:"module_id,omitempty"`
+	ModuleDirectory         *string                 `json:"module_directory,omitempty"`
+	ModuleTitle             string                  `json:"module_title,omitempty"`
+	WorkItemID              string                  `json:"work_item_id,omitempty"`
+	WorkItemTitle           string                  `json:"work_item_title,omitempty"`
+	WorkItemDirectory       *string                 `json:"work_item_directory,omitempty"`
+	DeliveryDirectory       string                  `json:"delivery_directory,omitempty"`
+	DeliveryDirectorySource string                  `json:"delivery_directory_source,omitempty"`
+	ModuleDescription       string                  `json:"module_description,omitempty"`
+	Resources               []ProjectResourceForEnv `json:"resources"`
 }
 
 // MarshalJSON renders the resource_ref field as raw JSON instead of a base64
@@ -291,15 +292,15 @@ func (p ProjectResourceForEnv) MarshalJSON() ([]byte, error) {
 }
 
 // writeProjectResources writes .multica/project/resources.json into the
-// working directory when the task carries project context. The file is
-// always written when a project is attached (even with zero resources) so
-// agents can rely on its presence as a signal that a project exists.
+// working directory when the task carries project context or a delivery
+// folder. The file is always written when a project is attached (even with
+// zero resources); project_id tells whether one is.
 //
 // manifest, when non-nil, is populated with the .multica/project chain
 // of created directories and the resources.json file so CleanupSidecars
 // can undo them on local_directory teardown.
 func writeProjectResources(workDir string, ctx TaskContextForEnv, manifest *sidecarManifest) error {
-	if ctx.ProjectID == "" && ctx.ModuleID == "" && len(ctx.ProjectResources) == 0 {
+	if ctx.ProjectID == "" && ctx.ModuleID == "" && len(ctx.ProjectResources) == 0 && strings.TrimSpace(ctx.DeliveryDirectory) == "" {
 		return nil
 	}
 	dir := filepath.Join(workDir, ".multica", "project")
@@ -311,19 +312,20 @@ func writeProjectResources(workDir string, ctx TaskContextForEnv, manifest *side
 		resources = []ProjectResourceForEnv{}
 	}
 	payload := projectResourceFile{
-		ProjectID:          ctx.ProjectID,
-		ProjectTitle:       ctx.ProjectTitle,
-		ProjectDescription: ctx.ProjectDescription,
-		ProjectCollabPath:  ctx.ProjectCollabPath,
-		ModuleID:           ctx.ModuleID,
-		ModuleTitle:        ctx.ModuleTitle,
-		ModuleDirectory:    ctx.ModuleDirectory,
-		WorkItemID:         ctx.WorkItemID,
-		WorkItemTitle:      ctx.WorkItemTitle,
-		WorkItemDirectory:  ctx.WorkItemDirectory,
-		IssueDirectory:     ctx.IssueDirectory,
-		ModuleDescription:  ctx.ModuleDescription,
-		Resources:          resources,
+		ProjectID:               ctx.ProjectID,
+		ProjectTitle:            ctx.ProjectTitle,
+		ProjectDescription:      ctx.ProjectDescription,
+		ProjectCollabPath:       ctx.ProjectCollabPath,
+		ModuleID:                ctx.ModuleID,
+		ModuleTitle:             ctx.ModuleTitle,
+		ModuleDirectory:         ctx.ModuleDirectory,
+		WorkItemID:              ctx.WorkItemID,
+		WorkItemTitle:           ctx.WorkItemTitle,
+		WorkItemDirectory:       ctx.WorkItemDirectory,
+		DeliveryDirectory:       ctx.DeliveryDirectory,
+		DeliveryDirectorySource: issueDeliveryDirectorySource(ctx),
+		ModuleDescription:       ctx.ModuleDescription,
+		Resources:               resources,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
