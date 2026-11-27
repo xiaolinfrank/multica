@@ -129,6 +129,11 @@ export function CockpitMeetingPanel({
   const destination = cockpitDestination(navigation.searchParams);
   const preparationId = destination.meetingId === meeting.id ? destination.preparationId : null;
   const directoryOperationId = destination.meetingId === meeting.id ? destination.directoryOperationId : null;
+  // A directory deep link opens the maintenance corner even without an
+  // operation (an issue whose meeting folder is missing links here), and the
+  // corner reads the directory summary while it is expanded.
+  const directoryLinked = Boolean(directoryOperationId) || (destination.meetingId === meeting.id && destination.meetingView === "resources");
+  const [directoryExpanded, setDirectoryExpanded] = useState(directoryLinked);
   const nasPoll = useRef({ meetingId: meeting.id, active: false, deadline: 0 });
   const lifecycleQuery = useQuery({ ...cockpitMeetingLifecycleOptions(wsId, meeting.id), enabled: lifecycleAvailable });
   const workflowQuery = useQuery({ ...cockpitMeetingWorkflowOptions(wsId, meeting.id),
@@ -586,9 +591,9 @@ export function CockpitMeetingPanel({
                 : <CockpitPreparationHistory wsId={wsId} meetingId={meeting.id} />}
             </details>
 
-            <details open={Boolean(directoryOperationId)} className="space-y-3 border-t pt-4">
+            <details open={directoryLinked} onToggle={(event) => setDirectoryExpanded(event.currentTarget.open)} className="space-y-3 border-t pt-4">
               <summary className="cursor-pointer text-caption text-muted-foreground">{t(($) => $.meeting_directory.maintenance)}</summary>
-              <CockpitMeetingDirectory key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} available={directoryPreparationAvailable} active={Boolean(directoryOperationId)} operationId={directoryOperationId} readOnly={readOnly} onManageMeeting={() => onManageMeeting?.()} />
+              <CockpitMeetingDirectory key={`${wsId}:${meeting.id}`} wsId={wsId} meetingId={meeting.id} available={directoryPreparationAvailable} active={directoryLinked || directoryExpanded} operationId={directoryOperationId} readOnly={readOnly} onManageMeeting={() => onManageMeeting?.()} />
             </details>
           </section>
         </div>

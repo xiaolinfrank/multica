@@ -45,4 +45,11 @@ describe("meeting directory entry", () => {
     expect(href.searchParams.get("agenda")).toBe(directoryId(90)); expect(href.searchParams.get("preparation")).toBe(directoryId(91)); expect(href.searchParams.get("meeting_q")).toBe("release");
     expect(api.getCockpitMeetingDirectorySummary).not.toHaveBeenCalled(); expect(api.getCockpitDirectoryOperations).not.toHaveBeenCalled();
   });
+
+  it("says directory maintenance is unavailable instead of rendering an empty corner", () => {
+    setup(false, null);
+    expect(screen.getByText(enCockpit.feature_availability.unavailable)).toBeVisible();
+    expect(screen.queryByRole("link", { name: enCockpit.meeting_directory.return_materials })).toBeNull();
+    expect(api.getCockpitMeetingDirectorySummary).not.toHaveBeenCalled();
+  });
 });

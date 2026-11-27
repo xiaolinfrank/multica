@@ -32,10 +32,12 @@ export function CockpitMeetingDirectory({ wsId, meetingId, available, active, op
     await client.invalidateQueries({ queryKey: cockpitDirectoryOperationsOptions(wsId, meetingId, { page_size: 25 }).queryKey });
     useCockpitScopeViewStore.getState().setRelationPage(key, [""]);
   };
-  if (!available) return operationId ? <section className="space-y-3" aria-label={t(($) => $.meeting_directory.title)}>
+  // Say so instead of rendering nothing: an issue whose meeting folder is
+  // missing links here to prepare it.
+  if (!available) return <section className="space-y-3" aria-label={t(($) => $.meeting_directory.title)}>
     <p role="status" className="text-caption">{t(($) => $.feature_availability.unavailable)}</p>
-    <AppLink href={path(null)} className={buttonVariants({ variant: "outline", size: "sm" })}>{t(($) => $.meeting_directory.return_materials)}</AppLink>
-  </section> : null;
+    {operationId && <AppLink href={path(null)} className={buttonVariants({ variant: "outline", size: "sm" })}>{t(($) => $.meeting_directory.return_materials)}</AppLink>}
+  </section>;
   return <section className="min-w-0 space-y-3" aria-label={t(($) => $.meeting_directory.title)}>
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-title-sm font-medium">{t(($) => $.meeting_directory.title)}</h3>
       {operationId && <AppLink href={path(null)} className={buttonVariants({ variant: "outline", size: "sm" })}>{t(($) => $.meeting_directory.return_materials)}</AppLink>}
