@@ -23,7 +23,7 @@ import {
   cockpitMeetingFolderName,
   cockpitMeetingPeopleOptions,
   cockpitMeetingVocabulary,
-  cockpitMeetingNextCodeOptions, cockpitContextOptions, cockpitSelectedMemberOptions, useCockpitAssigneeAvailability, cockpitNodeDetailOptions, cockpitSurfacePath, cockpitMeetingContextPath, type CockpitScope,
+  cockpitMeetingNextCodeOptions, cockpitContextOptions, cockpitSelectedMemberOptions, useCockpitAssigneeAvailability, cockpitNodeDetailOptions, cockpitSurfacePath, cockpitMeetingContextPath, cockpitDirectoryRootsOptions, type CockpitScope,
   splitCockpitMeetingParties,
 } from "@multica/core/cockpit";
 import { Button } from "@multica/ui/components/ui/button";
@@ -45,6 +45,7 @@ import { CockpitAttendeeField } from "./cockpit-attendees";
 import { EditableSuggest, EditableTokens } from "./cockpit-fields";
 import { CockpitPersonLabel, useCockpitPeople, type CockpitMember } from "./cockpit-people";
 import { IssueScopePicker } from "../../issues/components/pickers/issue-scope-picker";
+import { CockpitDirectoryReasons } from "./cockpit-directory-parts";
 import { CockpitFlowError } from "./cockpit-task-flow";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { AppLink, useNavigation } from "../../navigation";
@@ -210,6 +211,15 @@ export function CockpitMeetingCreate({
     }),
     enabled: open && Boolean(wsId) && Boolean(projectId),
   });
+  // Filing a folder goes through the deployment's directory-preparation
+  // runtime, not the mount probe behind the destination preview. Reading the
+  // configured roots here keeps the form from promising a folder that the
+  // server has no authorized scope to create.
+  const directoryRoots = useQuery({ ...cockpitDirectoryRootsOptions(wsId), enabled: open && withDir && Boolean(projectId), staleTime: 0 });
+  // An unread configuration is not proof of an unconfigured one: keep the
+  // previous preview until the server actually answers, and report its error.
+  const directoryUnavailable = directoryRoots.isSuccess && directoryRoots.data.items.length === 0;
+  const directoryConfigured = directoryRoots.isSuccess ? !directoryUnavailable : true;
 
   const vocabulary = useMemo(() => cockpitMeetingVocabulary([]), []);
   const people = useCockpitPeople(members);
@@ -247,8 +257,9 @@ export function CockpitMeetingCreate({
   const canFile = Boolean(projectId && moduleId && selectedScope.data) && !selectedScope.isError && !selectedScope.isFetching;
   // What decides this is whether the server could CREATE the path, not
   // whether every folder on it exists: an archive folder nobody has made yet
-  // is an ordinary state of a share that is mounted.
-  const canCreateDir = Boolean(baseDir) && (destination.data?.creatable ?? false);
+  // is an ordinary state of a share that is mounted. It must also have an
+  // authorized preparation scope, which the destination probe does not read.
+  const canCreateDir = Boolean(baseDir) && (destination.data?.creatable ?? false) && directoryConfigured;
   const willCreateBase = canCreateDir && !(destination.data?.base_dir_exists ?? false);
 
   const sameSetupSelections = Boolean(pending && withTask === Boolean(pending.workflow) && withDir === Boolean(pending.provision.create_dir)
@@ -500,7 +511,8 @@ export function CockpitMeetingCreate({
             {selectedScope.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void selectedScope.refetch()} /></div>}
             {requestedSetup && selectedScope.isPending && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
             {withDir && projectId && destination.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void destination.refetch()} /></div>}
-            {withDir && projectId && (destination.isPending || selectedScope.isPending) && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
+            {withDir && projectId && directoryRoots.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void directoryRoots.refetch()} /></div>}
+            {withDir && projectId && (destination.isPending || selectedScope.isPending || directoryRoots.isPending) && <p role="status" className="col-span-2 flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.meeting_center.checking_destination)}</p>}
             {nodeId && selectedNode.isError && <div className="col-span-2"><CockpitFlowError onRetry={() => void selectedNode.refetch()} /></div>}
             {requireNode && !nodeId && <p className="col-span-2 text-caption text-muted-foreground">{t(($) => $.meeting_center.anchor_required)}</p>}
             {nodeId && selectedNode.data && !selectedNode.data.scope_match && <p role="alert" className="col-span-2 text-caption text-destructive">{t(($) => $.shell.scope_outside)}</p>}
@@ -511,7 +523,7 @@ export function CockpitMeetingCreate({
               <span className="flex min-w-0 flex-col">
                 <span className="text-body">{t(($) => $.meetings.with_dir)}</span>
                 <span className="text-caption break-all text-muted-foreground">
-                  {destinationUnknown ? "" : destinationError
+                  {destinationUnknown ? "" : directoryUnavailable ? "" : destinationError
                     ? t(($) => $.meetings.with_dir_unavailable, { reason: destinationError })
                     : !baseDir
                       ? t(($) => $.meetings.with_dir_unavailable, {
@@ -523,6 +535,7 @@ export function CockpitMeetingCreate({
                             path: `${baseDir}/${folderName}`,
                           })}
                 </span>
+                {directoryUnavailable && <CockpitDirectoryReasons codes={["prepare_not_configured"]} />}
                 {canCreateDir && willCreateBase && (
                   <span className="text-caption text-muted-foreground">
                     {t(($) => $.meetings.with_dir_creates_base)}

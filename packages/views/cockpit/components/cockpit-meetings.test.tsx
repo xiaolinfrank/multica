@@ -64,6 +64,7 @@ vi.mock("@multica/core/api", async (original) => ({
     deleteCockpitMeeting: vi.fn(),
     provisionCockpitMeeting: vi.fn(),
     getCockpitMeetingDestination: vi.fn(),
+    getCockpitDirectoryRoots: vi.fn(),
     scanCockpitMeetingFolders: vi.fn(),
     importCockpitMeetingFolders: vi.fn(),
     setCockpitMeetingIssues: vi.fn(),
@@ -316,6 +317,13 @@ beforeEach(() => {
     creatable: true,
     error: "",
   });
+  vi.mocked(api.getCockpitDirectoryRoots).mockResolvedValue({
+    workspace_id: "ws-1",
+    page_size: 25,
+    total: 1,
+    next_cursor: null,
+    items: [{ root_id: "root-1", root_path: "/Volumes/share", prepare_subpath_count: 1 }],
+  });
   vi.mocked(api.scanCockpitMeetingFolders).mockResolvedValue({
     base_dir: "/Volumes/share/06.06/06.06.03",
     base_dir_exists: true,
@@ -531,6 +539,22 @@ describe("the meeting register", () => {
     );
     // And where the task lands: under the sub-item, not merely numbered by it.
     expect(within(dialog).queryByText(/› 06\.06\.03\./)).toBeNull();
+  });
+
+  it("does not promise a folder when the deployment has no preparation scope", async () => {
+    vi.mocked(api.getCockpitDirectoryRoots).mockResolvedValue({
+      workspace_id: "ws-1", page_size: 25, total: 0, next_cursor: null, items: [],
+    });
+    await openRegister();
+    fireEvent.click(await within(await screen.findByRole("region", { name: "Meetings" })).findByRole("button", { name: "New meeting" }));
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(api.getCockpitDirectoryRoots).toHaveBeenCalled());
+    // The mount probe still answers with a path; the missing preparation
+    // scope is what stops the form from promising to create it.
+    expect(await within(dialog).findByText("No directory preparation range is configured for this workspace.")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/\/Volumes\/share\/06\.06\/06\.06\.03\//)).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Create meeting" })).toBeDisabled();
+    expect(api.createCockpitMeeting).not.toHaveBeenCalled();
   });
 
   it("creates the meeting and directory without creating a minutes task", async () => {
