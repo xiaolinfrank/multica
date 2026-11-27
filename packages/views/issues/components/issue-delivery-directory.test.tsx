@@ -22,7 +22,7 @@ vi.mock("@multica/core/directory", async (original) => ({
 vi.mock("@multica/core/hooks", () => ({ useWorkspaceId: () => "ws-1" }));
 vi.mock("@multica/core/paths", async (original) => ({
   ...(await original<typeof import("@multica/core/paths")>()),
-  useWorkspacePaths: () => ({ projectDetail: (id: string) => `/ws/projects/${id}` }),
+  useWorkspacePaths: () => ({ projectDetail: (id: string) => `/ws/projects/${id}`, cockpit: () => "/ws/cockpit" }),
 }));
 vi.mock("../../common/local-path-link", async (original) => ({
   ...(await original<typeof import("../../common/local-path-link")>()),
@@ -40,64 +40,61 @@ const issue = {
 function setup(overrides: Partial<IssueDirectoryStatus> = {}, patch: Partial<Issue> = {}) {
   directory.status = {
     issue_id: "i1", project_id: "p1", project_collab_path: "/Volumes/Space",
-    directory_name: "TES-7注册路径设计", full_path: "/Volumes/Space/01.01/TES-7注册路径设计",
-    status: "ok", running_tasks: [], shared_collab_projects: [],
+    full_path: "/Volumes/Space/01.01/01.01.02接口", source: "filing", meeting_id: null,
+    status: "ok", shared_collab_projects: [],
     ...overrides,
   };
   directory.ensure.mockReset();
   pathActions.open.mockReset();
-  const onUpdate = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
       <I18nProvider locale="en" resources={{ en: { cockpit: enCockpit, common: enCommon } }}>
-        <IssueDeliveryDirectory issue={{ ...issue, ...patch }} onUpdate={onUpdate} />
+        <IssueDeliveryDirectory issue={{ ...issue, ...patch }} />
       </I18nProvider>
     </QueryClientProvider>,
   );
-  return { onUpdate };
 }
 
 describe("IssueDeliveryDirectory", () => {
-  it("shows the composed path and opens it", async () => {
+  it("shows the resolved path and opens it", async () => {
     setup();
-    expect(await screen.findByText("/Volumes/Space/01.01/TES-7注册路径设计")).toBeInTheDocument();
+    expect(await screen.findByText("/Volumes/Space/01.01/01.01.02接口")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Open folder/ }));
-    expect(pathActions.open).toHaveBeenCalledWith("/Volumes/Space/01.01/TES-7注册路径设计");
+    expect(pathActions.open).toHaveBeenCalledWith("/Volumes/Space/01.01/01.01.02接口");
   });
 
-  it("opens an unallocated folder instead of offering a retry", async () => {
-    setup({ status: "unallocated", directory_name: null, full_path: null });
+  it("creates a missing folder on retry and then opens it", async () => {
+    setup({ status: "missing" });
     directory.ensure.mockImplementation((_id: string, options?: { onSuccess?: (value: unknown) => void }) => {
-      options?.onSuccess?.({ status: "ok", full_path: "/Volumes/Space/TES-7注册路径设计" });
+      options?.onSuccess?.({ status: "ok", full_path: "/Volumes/Space/01.01/01.01.02接口" });
     });
-    const open = await screen.findByRole("button", { name: /Open folder/ });
-    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
-    fireEvent.click(open);
+    fireEvent.click(await screen.findByRole("button", { name: /Retry/ }));
     expect(directory.ensure).toHaveBeenCalledWith("i1", expect.anything());
-    await waitFor(() => expect(pathActions.open).toHaveBeenCalledWith("/Volumes/Space/TES-7注册路径设计"));
+    await waitFor(() => expect(pathActions.open).toHaveBeenCalledWith("/Volumes/Space/01.01/01.01.02接口"));
   });
 
-  it("points the issue at a hand-picked folder name without moving files", async () => {
-    const { onUpdate } = setup();
-    fireEvent.click(await screen.findByRole("button", { name: "Change folder name" }));
-    const input = screen.getByRole("textbox", { name: "Change folder name" });
-    expect(screen.getByText(/existing files are not moved/)).toBeInTheDocument();
-    fireEvent.change(input, { target: { value: "旧文件夹" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ directory_name: "旧文件夹" }));
+  it("shows a meeting folder for an issue without a project", async () => {
+    setup({ project_id: null, project_collab_path: null, full_path: "/Volumes/Space/20261127-01 周会", source: "meeting", meeting_id: "m1" }, { project_id: null });
+    expect(await screen.findByText("/Volumes/Space/20261127-01 周会")).toBeInTheDocument();
   });
 
-  it("keeps the editor open and says why an unsafe name is refused", async () => {
-    const { onUpdate } = setup();
-    fireEvent.click(await screen.findByRole("button", { name: "Change folder name" }));
-    const input = screen.getByRole("textbox", { name: "Change folder name" });
-    fireEvent.change(input, { target: { value: "../a" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  it("sends a missing meeting folder to its meeting instead of creating it", async () => {
+    setup({ status: "missing", full_path: "/Volumes/Space/20261127-01 周会", source: "meeting", meeting_id: "m1" });
+    const link = await screen.findByRole("link", { name: "Open the meeting" });
+    const href = new URL(link.getAttribute("href") ?? "", "http://localhost");
+    expect(href.pathname).toBe("/ws/cockpit");
+    expect(href.searchParams.get("meeting")).toBe("m1");
+    expect(href.searchParams.get("meeting_view")).toBe("resources");
+    expect(screen.getByText("The meeting's folder is prepared from the meeting.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Retry|Open folder/ })).toBeNull();
+    expect(directory.ensure).not.toHaveBeenCalled();
+  });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("One safe folder name");
-    expect(onUpdate).not.toHaveBeenCalled();
-    expect(screen.getByRole("textbox", { name: "Change folder name" })).toBeInTheDocument();
+  it("keeps the retry for an unavailable meeting folder and links its meeting", async () => {
+    setup({ status: "root_unavailable", full_path: "/Volumes/Space/20261127-01 周会", source: "meeting", meeting_id: "m1" });
+    expect(await screen.findByRole("link", { name: "Open the meeting" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open folder/ })).toBeInTheDocument();
   });
 
   it("says what is missing without a project or a collaboration root", async () => {
@@ -107,7 +104,7 @@ describe("IssueDeliveryDirectory", () => {
   });
 
   it("asks for a project when the issue has none", async () => {
-    setup({ status: "no_collab_path", project_id: null }, { project_id: null });
+    setup({ status: "no_collab_path", project_id: null, full_path: null }, { project_id: null });
     expect(await screen.findByText(/File the issue into a project/)).toBeInTheDocument();
   });
 });

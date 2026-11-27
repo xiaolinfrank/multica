@@ -9,9 +9,6 @@ export type IssueSurfaceMutationOptions = {
   onSuccess?: (issue: Issue) => void;
   onError?: (err: unknown) => void;
   onSettled?: () => void;
-  /** Caller mounts its own RunningTasksDialog for directory-sync conflicts,
-   *  so the surface does not open a second dialog for the same write. */
-  handlesDirectoryConflict?: boolean;
 };
 
 export interface IssueSurfaceActions {

@@ -2774,20 +2774,20 @@ export class ApiClient {
   async getIssueDirectory(issueId: string, signal?: AbortSignal): Promise<IssueDirectoryStatus> {
     const raw = await this.fetch<unknown>(`/api/issues/${encodeURIComponent(issueId)}/directory`, { signal });
     return parseWithFallback(raw, IssueDirectoryStatusSchema, {
-      issue_id: issueId, project_id: null, project_collab_path: null, directory_name: null,
-      full_path: null, status: "invalid", running_tasks: [], shared_collab_projects: [],
+      issue_id: issueId, project_id: null, project_collab_path: null,
+      full_path: null, source: "filing", meeting_id: null, status: "invalid", shared_collab_projects: [],
     }, { endpoint: "GET /api/issues/:id/directory" });
   }
 
-  /** Allocate the issue's folder name if needed and create the folder (and
-   *  parents) on the server. This is the "open folder" path. */
+  /** Create the issue's filing folder (and parents) on the server; a meeting
+   *  folder is only reported. This is the "open folder" path. */
   async ensureIssueDirectory(issueId: string): Promise<IssueDirectoryEnsureResult> {
     const raw = await this.fetch<unknown>(`/api/issues/${encodeURIComponent(issueId)}/directory/ensure`, {
       method: "POST",
       body: JSON.stringify({}),
     });
     return parseWithFallback(raw, IssueDirectoryEnsureResultSchema, {
-      directory_name: null, full_path: null, status: "invalid", exists: false, shared_collab_projects: [],
+      full_path: null, source: "filing", meeting_id: null, status: "invalid", exists: false, shared_collab_projects: [],
     }, { endpoint: "POST /api/issues/:id/directory/ensure" });
   }
 

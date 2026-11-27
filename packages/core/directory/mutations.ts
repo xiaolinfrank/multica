@@ -38,8 +38,8 @@ export function useFillPlanDirectories(wsId: string) {
   });
 }
 
-/** Allocate the issue's folder name if needed and create the folder on the
- *  server. The detail row calls this from "open folder" / "retry". */
+/** Create the issue's delivery folder on the server if it is a filing folder.
+ *  The detail row calls this from "open folder" / "retry". */
 export function useEnsureIssueDirectory(wsId: string) {
   const queryClient = useQueryClient();
   return useMutation({

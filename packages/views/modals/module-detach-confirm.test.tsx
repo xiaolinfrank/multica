@@ -5,7 +5,6 @@ import { api } from "@multica/core/api";
 import type { Issue } from "@multica/core/types";
 import { issueOperationPageFixture, operationIssueFixture } from "../issues/operation-basis-test-fixture";
 import enIssues from "../locales/en/issues.json";
-import enCockpit from "../locales/en/cockpit.json";
 import { ModuleDetachConfirmModal } from "./module-detach-confirm";
 
 vi.mock("../navigation", () => ({ useNavigation: () => ({ pathname: "/ws/issues", searchParams: new URLSearchParams() }) }));
@@ -22,7 +21,6 @@ vi.mock("../i18n", () => ({
     t: (sel: (x: Record<string, Record<string, string>>) => string) =>
       sel({
         operation_basis: enIssues.operation_basis,
-        directories: enCockpit.directories,
         module_detach: {
           title: "Move out of the parent's module?",
           description: "Moving it removes it from that parent.",
@@ -98,47 +96,4 @@ describe("ModuleDetachConfirmModal", () => {
     expect(screen.getByText("Move and unlink")).toBeTruthy();
   });
 
-  it("opens RunningTasksDialog on 409 running_agent_tasks and retries with directory_sync", async () => {
-    mockUpdate.mockRejectedValueOnce({
-      status: 409,
-      body: {
-        code: "running_agent_tasks",
-        error: "agent tasks are running in this issue's folder; sync now or defer",
-        running_tasks: [
-          {
-            task_id: "task-1",
-            issue_id: "issue-1",
-            issue_identifier: "BIO-9",
-            status: "running",
-          },
-        ],
-      },
-    });
-    const onClose = vi.fn();
-    render(
-      <ModuleDetachConfirmModal
-        onClose={onClose}
-        data={{
-          issueId: "issue-1",
-          issueTitle: "Collect samples",
-          updates: { module_id: "module-2" },
-        }}
-      />,
-    );
-    await waitFor(() => expect(screen.getByText("Move and unlink")).toBeEnabled());
-    fireEvent.click(screen.getByText("Move and unlink"));
-
-    expect(await screen.findByText("BIO-9")).toBeTruthy();
-    expect(toastError).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByText(enCockpit.directories.sync_later));
-    await waitFor(() =>
-      expect(mockUpdate).toHaveBeenLastCalledWith("issue-1", {
-        module_id: "module-2",
-        parent_issue_id: null,
-        directory_sync: "defer",
-      }),
-    );
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-  });
 });

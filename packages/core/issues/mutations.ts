@@ -8,7 +8,6 @@ import {
 } from "@tanstack/react-query";
 import { api } from "../api";
 import { invalidateCockpitArtifactSourceAttachments } from "../cockpit/artifact-queries";
-import { cockpitWriteError, isCockpitRunningTasksError } from "../cockpit/write-errors";
 import { issueKeys } from "./queries";
 import { directoryKeys } from "../directory/queries";
 import { invalidateIssueOperationBasis } from "./operation-basis";
@@ -201,18 +200,9 @@ export function useUpdateIssue() {
   return useMutation({
     mutationKey: issueWriteMutationKey(wsId),
     mutationFn: async ({ id, move_intent: moveIntent, ...data }: UpdateIssueMutationInput) => {
-      try {
-        if (!moveIntent) return await api.updateIssue(id, data);
-        const { position: _optimisticPosition, ...target } = data;
-        return await api.moveIssue(id, { ...target, ...moveIntent });
-      } catch (error) {
-        // Translate a running-folder 409 so issue refiling reaches the shared
-        // conflict dialog; other ApiErrors (such as revision_conflict) keep
-        // their original shape for errorCode(err).
-        const translated = cockpitWriteError(error);
-        if (isCockpitRunningTasksError(translated)) throw translated;
-        throw error;
-      }
+      if (!moveIntent) return api.updateIssue(id, data);
+      const { position: _optimisticPosition, ...target } = data;
+      return api.moveIssue(id, { ...target, ...moveIntent });
     },
     onMutate: ({ id, move_intent: _moveIntent, ...data }) => {
       // suppress_run is a write-time control field, not an Issue column.
@@ -226,7 +216,6 @@ export function useUpdateIssue() {
         stop_previous_assignee_runs: _stopPreviousAssigneeRuns,
         enter_workflow_step: _enterWorkflowStep,
         duplicate_of_issue_id: _duplicateOfIssueId,
-        directory_sync: _directorySync,
         description: _description,
         description_base: _descriptionBase,
         blocked_by: _blockedBy,
@@ -465,10 +454,9 @@ export function useUpdateIssue() {
       if (ctx?.parentId || newParentId) {
         qc.invalidateQueries({ queryKey: issueKeys.childrenByParentsAll(wsId) });
       }
-      // The delivery folder follows a filing change and a hand-picked name; the
-      // detail's folder row reads its own key, so refresh it after either.
+      // The delivery folder follows a filing change; the detail's folder row
+      // reads its own key, so refresh it.
       if (
-        Object.prototype.hasOwnProperty.call(vars, "directory_name") ||
         ["project_id", "module_id", "work_item_id", "parent_issue_id"].some((key) =>
           Object.prototype.hasOwnProperty.call(vars, key),
         )

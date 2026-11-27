@@ -11,7 +11,6 @@ import { configStore } from "../config";
 import type { ApiClient } from "../api/client";
 import { createQueryClient } from "../query-client";
 import { cockpitArtifactKeys } from "../cockpit/artifact-queries";
-import { isCockpitRunningTasksError } from "../cockpit/write-errors";
 import {
   useBatchDeleteIssues,
   useBatchUpdateIssues,
@@ -1680,7 +1679,7 @@ describe("useCreateComment — sibling caches under a shared key prefix", () => 
   });
 });
 
-describe("useUpdateIssue — running-task folder refusal translation", () => {
+describe("useUpdateIssue — write errors", () => {
   let qc: QueryClient;
 
   beforeEach(() => {
@@ -1690,40 +1689,6 @@ describe("useUpdateIssue — running-task folder refusal translation", () => {
   afterEach(() => {
     qc.clear();
     vi.restoreAllMocks();
-  });
-
-  it("translates a 409 running_agent_tasks ApiError into CockpitRunningTasksError", async () => {
-    const runningTask = {
-      task_id: "task-1",
-      issue_id: "issue-1",
-      issue_identifier: "MUL-1",
-      status: "running",
-    };
-    setApiInstance({
-      updateIssue: vi.fn().mockRejectedValue(
-        new ApiError("agent tasks are running in this issue's folder; sync now or defer", 409, "Conflict", {
-          code: "running_agent_tasks",
-          error: "agent tasks are running in this issue's folder; sync now or defer",
-          running_tasks: [runningTask],
-        }),
-      ),
-    } as unknown as ApiClient);
-
-    const { result } = renderHook(() => useUpdateIssue(), { wrapper: createWrapper(qc) });
-
-    let caught: unknown;
-    await act(async () => {
-      try {
-        await result.current.mutateAsync({ id: "issue-1", work_item_id: null });
-      } catch (err) {
-        caught = err;
-      }
-    });
-
-    expect(isCockpitRunningTasksError(caught)).toBe(true);
-    if (isCockpitRunningTasksError(caught)) {
-      expect(caught.runningTasks).toEqual([runningTask]);
-    }
   });
 
   it("preserves raw ApiError on revision_conflict so errorCode(err) keeps working", async () => {
@@ -1747,7 +1712,6 @@ describe("useUpdateIssue — running-task folder refusal translation", () => {
       }
     });
 
-    expect(isCockpitRunningTasksError(caught)).toBe(false);
     expect(caught).toBeInstanceOf(ApiError);
     expect(errorCode(caught)).toBe("revision_conflict");
   });

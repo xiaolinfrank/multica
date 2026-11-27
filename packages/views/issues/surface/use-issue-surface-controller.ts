@@ -77,7 +77,6 @@ import {
   useCreateIssueSurfaceSelection,
 } from "./selection-context";
 import type { IssueCreateDefaults } from "./types";
-import type { RunningTasksConflict } from "../../plan-tree/running-tasks-dialog";
 import {
   useIssueSurfaceActions,
   type MoveIssueUpdates,
@@ -176,8 +175,6 @@ export interface IssueSurfaceController {
     updates: MoveIssueUpdates,
     onSettled?: () => void,
   ) => void;
-  directoryConflict: RunningTasksConflict | null;
-  dismissDirectoryConflict: () => void;
 }
 
 function issueDateFilterToApiParams(filter: IssueDateFilter | null) {
@@ -1120,8 +1117,6 @@ export function useIssueSurfaceController({
     actions,
     openCreateIssue,
     moveIssue,
-    directoryConflict,
-    dismissDirectoryConflict,
   } = useIssueSurfaceActions({
     createDefaults: resolvedCreateDefaults,
   });
@@ -1185,8 +1180,6 @@ export function useIssueSurfaceController({
     setTableSearch,
     openCreateIssue,
     moveIssue,
-    directoryConflict,
-    dismissDirectoryConflict,
     exportTableIssues,
   };
 }

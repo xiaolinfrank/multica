@@ -108,7 +108,6 @@ import { LabelPicker } from "./pickers/label-picker";
 import { CustomPropertyValueEditor, CustomPropertyValueDisplay } from "./pickers/custom-property-picker";
 import { Switch } from "@multica/ui/components/ui/switch";
 import { IssueActionsDropdown, useIssuePageMenu, useIssueActions, useArchivedInboxItemId, IssueActionsContextMenu, IssueContextMenuProvider } from "../actions";
-import { RunningTasksDialog } from "../../plan-tree/running-tasks-dialog";
 import { LabelChip } from "../../labels/label-chip";
 import { IssueAgentActivityIndicator } from "./issue-agent-activity-indicator";
 import { SubIssuesAgentWorkingChip } from "./sub-issues-agent-working-chip";
@@ -3474,7 +3473,7 @@ export function IssueDetail({ issueId, onDelete, onDone, inbox, defaultSidebarOp
             />
           </PropRow>
           <PropRow label={t(($) => $.detail.prop_directory)}>
-            <IssueDeliveryDirectory issue={issue} onUpdate={handleUpdateField} readOnly={scopeReadOnly} />
+            <IssueDeliveryDirectory issue={issue} />
           </PropRow>
           <IssueWorkflowPropRow projectId={issue.project_id} status={issue.status} label={t(($) => $.workflows.project.label)} />
 
@@ -4808,10 +4807,6 @@ export function IssueDetail({ issueId, onDelete, onDone, inbox, defaultSidebarOp
         commentById={commentById}
         onLocate={locateOrigin}
         onCopyLink={copyDeliverableLink}
-      />
-      <RunningTasksDialog
-        conflict={actions.directoryConflict}
-        onDismiss={actions.dismissDirectoryConflict}
       />
     </PreviewSequenceProvider>
   );

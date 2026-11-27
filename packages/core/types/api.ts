@@ -109,13 +109,6 @@ export interface UpdateIssueRequest {
    *  cancelled removes the mark. Write-only — read it back through
    *  `listIssueDuplicates`. Control field: strip from optimistic patches. */
   duplicate_of_issue_id?: string;
-  /** Point the issue at an existing delivery folder name (one safe segment).
-   *  Human only; the server moves no files for it. */
-  directory_name?: string;
-  /** What a filing change (project/module/work item/parent) does with the
-   *  existing folder: sync (default), defer or force. Control field — strip
-   *  from optimistic patches. */
-  directory_sync?: "sync" | "defer" | "force";
 }
 
 /** Label changes for a batch update; add and remove leave other labels alone, clear removes every label not being added. */
@@ -181,7 +174,6 @@ export interface MoveIssueRequest
     | "project_id"
     | "module_id"
     | "work_item_id"
-    | "directory_sync"
     | "stop_previous_assignee_runs"
   > {
   before_id: string | null;

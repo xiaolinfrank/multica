@@ -242,15 +242,9 @@ export interface Issue {
    */
   work_item_id?: string | null;
   /**
-   * The delivery folder's name, one segment under the work item (or module).
-   * Null until the folder is first needed; a project without a collaboration
-   * space never gets one. Optional for the same compatibility reason as
-   * module_id.
-   */
-  directory_name?: string | null;
-  /**
-   * The full delivery path, composed by the server for a detail response.
-   * List responses omit it; absence is not "no folder".
+   * The folder the issue delivers into (its meeting's folder, or the one it is
+   * filed under), composed by the server for a detail response. List responses
+   * omit it; absence is not "no folder".
    */
   delivery_path?: string | null;
   position: number;

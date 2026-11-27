@@ -74,19 +74,19 @@ export const IssueDirectoryStatusSchema = z.object({
   issue_id: z.string().default(""),
   project_id: z.string().nullable().catch(null).default(null),
   project_collab_path: z.string().nullable().catch(null).default(null),
-  directory_name: z.string().nullable().catch(null).default(null),
   full_path: z.string().nullable().catch(null).default(null),
+  // Servers predating the field only resolved filing folders.
+  source: z.enum(["meeting", "filing"]).catch("filing").default("filing"),
+  meeting_id: z.string().nullable().catch(null).default(null),
   status: z.string().default("invalid"),
-  // Go writes a nil slice as `null`; an empty list must read as empty, not
-  // take the whole status through the fallback.
-  running_tasks: z.array(RunningAgentTaskSchema).catch([]).default([]),
   shared_collab_projects: z.array(SharedCollabProjectSchema).catch([]).default([]),
   error: z.string().optional().catch(undefined),
 }).loose();
 
 export const IssueDirectoryEnsureResultSchema = z.object({
-  directory_name: z.string().nullable().catch(null).default(null),
   full_path: z.string().nullable().catch(null).default(null),
+  source: z.enum(["meeting", "filing"]).catch("filing").default("filing"),
+  meeting_id: z.string().nullable().catch(null).default(null),
   status: z.string().default("invalid"),
   exists: z.boolean().default(false),
   shared_collab_projects: z.array(SharedCollabProjectSchema).default([]),

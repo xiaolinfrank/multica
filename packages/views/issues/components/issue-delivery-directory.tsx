@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { cockpitMeetingDirectoryPath } from "@multica/core/cockpit";
 import { issueDirectoryOptions, useEnsureIssueDirectory } from "@multica/core/directory";
-import type { Issue, UpdateIssueRequest } from "@multica/core/types";
+import type { Issue } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths } from "@multica/core/paths";
 import { Button } from "@multica/ui/components/ui/button";
-import { Input } from "@multica/ui/components/ui/input";
 import { Spinner } from "@multica/ui/components/ui/spinner";
 import { FolderOpen, RefreshCw } from "@multica/ui/icons";
 import { toast } from "sonner";
@@ -16,40 +15,34 @@ import { useT } from "../../i18n";
 import { AppLink } from "../../navigation";
 
 /**
- * The issue's delivery folder: the fixed path, its state, and the two things a
- * person can do about it — create it (or retry), and point the issue at a
- * folder name they already use.
+ * The folder the issue delivers into (its meeting's folder, or the one it is
+ * filed under): the path, its state, and opening or copying it. A missing
+ * filing folder is created on retry; a meeting folder is prepared from its
+ * meeting, so a meeting folder that is not ready links there.
  *
  * Read on demand, when the detail opens. The issue list never asks: most issues
  * never produce a file, and a share that is away must not make the list hang.
  */
-export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
-  issue: Issue;
-  onUpdate: (updates: Partial<UpdateIssueRequest>) => void;
-  readOnly?: boolean;
-}) {
+export function IssueDeliveryDirectory({ issue }: { issue: Issue }) {
   const { t } = useT("cockpit");
   const wsId = useWorkspaceId();
   const paths = useWorkspacePaths();
   const pathActions = useLocalPathActions();
   const query = useQuery(issueDirectoryOptions(wsId, issue.id));
   const ensure = useEnsureIssueDirectory(wsId);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [nameError, setNameError] = useState<string | null>(null);
 
   const status = query.data;
   const busy = ensure.isPending;
-  const unallocated = status?.status === "unallocated";
 
   if (query.isPending) {
     return <span role="status" className="flex items-center gap-2 text-caption text-muted-foreground"><Spinner />{t(($) => $.workflow.loading)}</span>;
   }
   if (!status) return <span className="text-caption text-muted-foreground">—</span>;
 
-  const canFile = Boolean(issue.project_id);
   const noCollab = status.status === "no_collab_path";
-  const needsCreate = status.status === "unallocated" || status.status === "missing";
+  const meetingFolder = status.source === "meeting";
+  const meetingMissing = meetingFolder && status.status === "missing";
+  const needsCreate = status.status === "missing" && !meetingFolder;
 
   const openOrCreate = () => {
     if (status.full_path && status.status === "ok") {
@@ -65,32 +58,18 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
     });
   };
 
-  const saveName = () => {
-    const next = draft.trim();
-    if (!next) return;
-    // The server refuses anything but one safe segment; say so here instead of
-    // closing the editor on a write that is already going to fail.
-    if (!isValidFolderName(next)) {
-      setNameError(t(($) => $.directories.issue_invalid_name));
-      return;
-    }
-    setNameError(null);
-    onUpdate({ directory_name: next });
-    setEditing(false);
-  };
-
   const statusLabel = (() => {
     switch (status.status) {
       case "ok": return t(($) => $.directories.status_ok);
       case "missing": return t(($) => $.directories.status_missing);
-      case "unallocated": return t(($) => $.directories.issue_unallocated);
       case "root_unavailable": return t(($) => $.directories.status_root_unavailable);
       case "invalid": return t(($) => $.directories.status_invalid);
       default: return t(($) => $.directories.status_no_collab_path);
     }
   })();
 
-  if (!canFile) {
+  // A meeting folder exists without a filing, so only a missing path asks for one.
+  if (!issue.project_id && !status.full_path) {
     return <p className="text-caption text-muted-foreground">{t(($) => $.directories.issue_no_project)}</p>;
   }
 
@@ -103,19 +82,20 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
       )}
       <div className="flex flex-wrap items-center gap-2 text-caption">
         {status.full_path && <span className="text-muted-foreground">{statusLabel}</span>}
-        <Button type="button" size="sm" variant="ghost" disabled={noCollab || busy} aria-busy={busy} onClick={openOrCreate}>
-          {busy ? <Spinner /> : needsCreate && !unallocated ? <RefreshCw className="size-3" aria-hidden /> : <FolderOpen className="size-3" aria-hidden />}
-          {needsCreate && !unallocated ? t(($) => $.directories.retry) : t(($) => $.directories.open)}
-        </Button>
+        {!meetingMissing && (
+          <Button type="button" size="sm" variant="ghost" disabled={noCollab || busy} aria-busy={busy} onClick={openOrCreate}>
+            {busy ? <Spinner /> : needsCreate ? <RefreshCw className="size-3" aria-hidden /> : <FolderOpen className="size-3" aria-hidden />}
+            {needsCreate ? t(($) => $.directories.retry) : t(($) => $.directories.open)}
+          </Button>
+        )}
+        {meetingFolder && status.status !== "ok" && status.meeting_id && (
+          <AppLink href={cockpitMeetingDirectoryPath(paths.cockpit(), status.meeting_id, null, new URLSearchParams())} className="text-primary hover:underline">
+            {t(($) => $.meeting_lifecycle.open_meeting)}
+          </AppLink>
+        )}
         {status.full_path && (
           <Button type="button" size="sm" variant="ghost" onClick={() => { if (status.full_path) void pathActions.copy(status.full_path); }}>
             {t(($) => $.directories.copy)}
-          </Button>
-        )}
-        {!readOnly && !noCollab && !editing && (
-          <Button type="button" size="sm" variant="ghost"
-            onClick={() => { setDraft(status.directory_name ?? ""); setNameError(null); setEditing(true); }}>
-            {t(($) => $.directories.issue_edit)}
           </Button>
         )}
         {noCollab && issue.project_id && (
@@ -124,20 +104,7 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
           </AppLink>
         )}
       </div>
-      {editing && (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)}
-              aria-label={t(($) => $.directories.issue_edit)}
-              className="h-7 text-caption"
-              onKeyDown={(event) => { if (event.key === "Enter") saveName(); if (event.key === "Escape") setEditing(false); }} />
-            <Button type="button" size="sm" disabled={!draft.trim()} onClick={saveName}>{t(($) => $.directories.issue_save)}</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>{t(($) => $.directories.cancel)}</Button>
-          </div>
-          <p className="text-micro text-muted-foreground">{t(($) => $.directories.issue_edit_hint)}</p>
-          {nameError && <p role="alert" className="text-micro text-destructive">{nameError}</p>}
-        </div>
-      )}
+      {meetingMissing && <p className="text-micro text-muted-foreground">{t(($) => $.directories.issue_meeting_missing)}</p>}
       {status.error && <p className="text-micro text-destructive">{status.error}</p>}
       {status.shared_collab_projects.length > 0 && (
         <p className="text-micro text-muted-foreground">
@@ -148,18 +115,4 @@ export function IssueDeliveryDirectory({ issue, onUpdate, readOnly }: {
       )}
     </div>
   );
-}
-
-/** One safe folder-name segment, matching the server's `localpaths.ValidFolder`:
- *  no separators, no colon, no control characters, no "." / "..", and within
- *  the byte cap the filesystem accepts. */
-export function isValidFolderName(name: string): boolean {
-  if (name === "" || name === "." || name === "..") return false;
-  if (name.trim() !== name) return false;
-  if (new TextEncoder().encode(name).length > 240) return false;
-  for (const char of name) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code < 0x20 || code === 0x7f || char === "/" || char === "\\" || char === ":") return false;
-  }
-  return true;
 }

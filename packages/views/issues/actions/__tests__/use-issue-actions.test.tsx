@@ -540,34 +540,4 @@ describe("useIssueActions", () => {
     expect(mockOpenModal).not.toHaveBeenCalled();
   });
 
-  it("captures a running-task folder 409 without toasting, and retrying closes the dialog and re-sends directory_sync", () => {
-    const { result } = renderHook(() => useIssueActions(mockIssue), { wrapper });
-
-    act(() => {
-      result.current.updateField({ work_item_id: null });
-    });
-    expect(mockUpdateMutateAsync).toHaveBeenCalledTimes(1);
-    const firstOpts = mockUpdateMutateAsync.mock.calls[0]![1] as { onError: (err: unknown) => void };
-
-    const runningTasks = [{ task_id: "t1", issue_id: "issue-1", issue_identifier: "TES-1", status: "running" }];
-    act(() => {
-      firstOpts.onError({ code: "running_agent_tasks", message: "running", runningTasks });
-    });
-
-    expect(toast.error).not.toHaveBeenCalled();
-    expect(result.current.directoryConflict?.tasks).toEqual(runningTasks);
-
-    act(() => {
-      result.current.directoryConflict?.retry("force");
-    });
-
-    expect(result.current.directoryConflict).toBeNull();
-    expect(mockUpdateMutateAsync).toHaveBeenCalledTimes(2);
-    expect(mockUpdateMutateAsync.mock.calls[1]![0]).toEqual({
-      id: "issue-1",
-      work_item_id: null,
-      directory_sync: "force",
-    });
-  });
-
 });

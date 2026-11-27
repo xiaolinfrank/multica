@@ -53,7 +53,6 @@ import { CollectionPageState } from "../../layout/collection-page";
 import { useWarmRoute } from "../../navigation";
 import { IssueContextMenuProvider } from "../actions";
 import { PendingCreationsStrip } from "../components/pending-creations-strip";
-import { RunningTasksDialog } from "../../plan-tree/running-tasks-dialog";
 import { IssueSurfaceActionsProvider } from "./actions-context";
 import { IssuePeekHost } from "../components/issue-peek";
 import { IssueCursorProvider } from "./issue-cursor";
@@ -513,10 +512,6 @@ function IssueSurfaceContent({
             }
           />
         )}
-        <RunningTasksDialog
-          conflict={controller.directoryConflict}
-          onDismiss={controller.dismissDirectoryConflict}
-        />
       </ColumnStatusesProvider>
       </IssueSurfaceSelectionProvider>
       </IssueContextMenuProvider>

@@ -19,9 +19,7 @@ import { useT } from "../i18n";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { issueOperationAllowed, issueUpdateOperationAllowed, useIssueOperationBasis } from "@multica/core/issues";
 import { IssueOperationRestriction } from "../issues/components/issue-operation-restriction";
-import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 import { useCockpitCommandContext } from "../cockpit/components/use-cockpit-command-context";
-import { RunningTasksDialog, type RunningTasksConflict } from "../plan-tree/running-tasks-dialog";
 
 /**
  * Confirms the one write that can take a sub-issue out of its parent's module.
@@ -56,10 +54,9 @@ export function ModuleDetachConfirmModal({
   const identity = JSON.stringify([wsId, issueId, updates, invocation.current.generation]);
   const captureContext = useCockpitCommandContext(identity);
   const [error, setError] = useState("");
-  const [directoryConflict, setDirectoryConflict] = useState<RunningTasksConflict | null>(null);
-  useEffect(() => { setSubmitting(false); setError(""); setDirectoryConflict(null); }, [identity]);
+  useEffect(() => { setSubmitting(false); setError(""); }, [identity]);
 
-  const submit = async (directorySync?: "force" | "defer") => {
+  const submit = async () => {
     if (!issueId || submitting || !allowed) return;
     const stillCurrent = captureContext();
     setSubmitting(true);
@@ -69,22 +66,10 @@ export function ModuleDetachConfirmModal({
         id: issueId,
         ...updates,
         parent_issue_id: null,
-        ...(directorySync ? { directory_sync: directorySync } : {}),
       });
       if (stillCurrent()) onClose();
     } catch (err) {
       if (!stillCurrent()) return;
-      if (isCockpitRunningTasksError(err)) {
-        setSubmitting(false);
-        setDirectoryConflict({
-          tasks: err.runningTasks,
-          retry: (mode) => {
-            setDirectoryConflict(null);
-            void submit(mode);
-          },
-        });
-        return;
-      }
       const message =
         errorCode(err) === "revision_conflict"
           ? tIssues(($) => $.revision.conflict)
@@ -98,7 +83,7 @@ export function ModuleDetachConfirmModal({
 
   return (
     <>
-      <AlertDialog open onOpenChange={(v) => { if (!v && !submitting && !directoryConflict) onClose(); }}>
+      <AlertDialog open onOpenChange={(v) => { if (!v && !submitting) onClose(); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t(($) => $.module_detach.title)}</AlertDialogTitle>
@@ -120,11 +105,6 @@ export function ModuleDetachConfirmModal({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <RunningTasksDialog
-        conflict={directoryConflict}
-        onDismiss={() => setDirectoryConflict(null)}
-        pending={submitting}
-      />
     </>
   );
 }

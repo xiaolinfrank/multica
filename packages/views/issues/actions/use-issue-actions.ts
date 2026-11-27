@@ -1,12 +1,11 @@
 "use client";
 
 import { subIssueCreateDefaults } from "@multica/core/issues";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Issue, IssueOperationBasis, UpdateIssueRequest } from "@multica/core/types";
 import { issueOperationAllowed, issueStatusOperationAllowed, issueUpdateOperationAllowed } from "@multica/core/issues";
-import { isCockpitRunningTasksError } from "@multica/core/cockpit";
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { useWorkspacePaths, issueRouteRef } from "@multica/core/paths";
@@ -24,7 +23,6 @@ import { moduleDetachIntent } from "./module-detach-gate";
 import { useExportIssue } from "../hooks/use-export-issue";
 import { useIssueSurfaceActionsOptional } from "../surface/actions-context";
 import type { IssueSurfaceMutationOptions } from "../surface/actions-context";
-import type { RunningTasksConflict } from "../../plan-tree/running-tasks-dialog";
 
 export interface UseIssueActionsResult {
   isPinned: boolean;
@@ -51,10 +49,6 @@ export interface UseIssueActionsResult {
   openAddBlocker: () => void;
   openAddBlocking: () => void;
   openDeleteConfirm: (opts?: { onDeletedFallbackPath?: string }) => void;
-  /** A filing write refused while an agent works in the folder; the detail
-   *  renders one dialog so the reader can sync now or defer. */
-  directoryConflict: RunningTasksConflict | null;
-  dismissDirectoryConflict: () => void;
 }
 
 /**
@@ -82,7 +76,6 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
     );
 
   const updateIssue = useUpdateIssue();
-  const [directoryConflict, setDirectoryConflict] = useState<RunningTasksConflict | null>(null);
   const { exportIssue, exporting } = useExportIssue(issue);
   const surfaceActions = useIssueSurfaceActionsOptional();
   const createPin = useCreatePin();
@@ -135,35 +128,11 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
         openModal("issue-run-confirm", intent);
         return;
       }
-      // A filing write refused because an agent works in the folder is a
-      // choice, not a failure: hold the write and offer sync-now / later,
-      // exactly like the plan tree.
-      const retryWithMode = (mode: "force" | "defer") => {
-        setDirectoryConflict(null);
-        updateField({ ...updates, directory_sync: mode }, options);
-      };
-      let handledConflict = false;
-      const handleDirectoryConflict = (err: unknown): boolean => {
-        if (!isCockpitRunningTasksError(err)) return false;
-        if (!handledConflict) {
-          handledConflict = true;
-          setDirectoryConflict({ tasks: err.runningTasks, retry: retryWithMode });
-        }
-        return true;
-      };
-      const withConflict = (opts?: IssueSurfaceMutationOptions): IssueSurfaceMutationOptions => ({
-        ...opts,
-        onError: (err) => {
-          if (handleDirectoryConflict(err)) return;
-          opts?.onError?.(err);
-        },
-      });
       if (surfaceActions) {
-        surfaceActions.updateIssue(issueId, updates, withConflict({
-          handlesDirectoryConflict: true,
+        surfaceActions.updateIssue(issueId, updates, {
           errorMessage: t(($) => $.detail.update_failed),
           ...options,
-        }));
+        });
       } else {
         // Keep UI callbacks observer-scoped; error feedback belongs to the request.
         void updateIssue
@@ -171,15 +140,11 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
             { id: issueId, ...updates },
             {
               onSuccess: (updated) => options?.onSuccess?.(updated),
-              onError: (err) => {
-                if (handleDirectoryConflict(err)) return;
-                options?.onError?.(err);
-              },
+              onError: (err) => options?.onError?.(err),
               onSettled: () => options?.onSettled?.(),
             },
           )
           .catch((err: unknown) => {
-            if (handleDirectoryConflict(err)) return;
             toast.error(
               errorCode(err) === "revision_conflict"
                 ? t(($) => $.revision.conflict)
@@ -435,7 +400,5 @@ export function useIssueActions(issue: Issue | null, operation?: { basis?: Issue
     openAddBlocker,
     openAddBlocking,
     openDeleteConfirm,
-    directoryConflict,
-    dismissDirectoryConflict: () => setDirectoryConflict(null),
   };
 }

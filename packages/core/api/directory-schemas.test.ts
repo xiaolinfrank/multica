@@ -56,16 +56,27 @@ describe("directory response schemas", () => {
     expect(NodeDirectorySyncResponseSchema.parse({}).directory_sync.status).toBe("failed");
   });
 
-  it("reads an issue folder that was never allocated", () => {
-    const parsed = IssueDirectoryStatusSchema.parse({ issue_id: "i1", status: "unallocated" });
-    expect(parsed.status).toBe("unallocated");
-    expect(parsed.directory_name).toBeNull();
+  it("reads an issue folder status that carries no path", () => {
+    const parsed = IssueDirectoryStatusSchema.parse({ issue_id: "i1", status: "no_collab_path" });
+    expect(parsed.status).toBe("no_collab_path");
     expect(parsed.full_path).toBeNull();
+    expect(parsed.source).toBe("filing");
+    expect(parsed.meeting_id).toBeNull();
+  });
+
+  it("reads a meeting folder and falls back to a filing folder for unknown sources", () => {
+    const meeting = IssueDirectoryStatusSchema.parse({ issue_id: "i1", status: "missing", source: "meeting", meeting_id: "m1" });
+    expect(meeting.source).toBe("meeting");
+    expect(meeting.meeting_id).toBe("m1");
+    const malformed = IssueDirectoryStatusSchema.parse({ issue_id: "i1", status: "ok", source: "elsewhere", meeting_id: 7 });
+    expect(malformed.source).toBe("filing");
+    expect(malformed.meeting_id).toBeNull();
   });
 
   it("requires the running-tasks refusal to name itself", () => {
     expect(RunningAgentTasksRefusalSchema.safeParse({ code: "running_agent_tasks", running_tasks: [] }).success).toBe(true);
     expect(RunningAgentTasksRefusalSchema.safeParse({ code: "something_else" }).success).toBe(false);
     expect(IssueDirectoryEnsureResultSchema.parse({ status: "missing", exists: false }).exists).toBe(false);
+    expect(IssueDirectoryEnsureResultSchema.parse({ status: "missing", source: 3 }).source).toBe("filing");
   });
 });

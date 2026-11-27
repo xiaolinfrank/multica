@@ -80,19 +80,24 @@ export interface IssueDirectoryStatus {
   issue_id: string;
   project_id: string | null;
   project_collab_path: string | null;
-  directory_name: string | null;
   full_path: string | null;
-  /** ok | missing | unallocated | no_collab_path | root_unavailable | invalid */
+  /** "meeting": the folder of the meeting the issue works for, prepared from
+   *  that meeting and never created from the issue. "filing": the folder it is
+   *  filed under. */
+  source: "meeting" | "filing";
+  /** The meeting a meeting folder is bound to. */
+  meeting_id: string | null;
+  /** ok | missing | no_collab_path | root_unavailable | invalid */
   status: string;
-  running_tasks: RunningAgentTask[];
   shared_collab_projects: SharedCollabProject[];
   error?: string;
 }
 
-/** The answer to "create this issue's folder, now". */
+/** The answer to "open this issue's folder, now". */
 export interface IssueDirectoryEnsureResult {
-  directory_name: string | null;
   full_path: string | null;
+  source: "meeting" | "filing";
+  meeting_id: string | null;
   status: string;
   exists: boolean;
   shared_collab_projects: SharedCollabProject[];

@@ -1816,9 +1816,7 @@ export const IssueSchema = z.object({
   // Same compatibility reasoning as module_id: a server that predates the
   // work-item filing omits the field entirely (S1/S4).
   work_item_id: z.string().nullable().default(null),
-  // The delivery folder's name and (detail only) its composed path. Absent on
-  // an older server; null means "not allocated yet".
-  directory_name: z.string().nullable().catch(null).default(null),
+  // Detail only: the folder the issue delivers into. Absent on an older server.
   delivery_path: z.string().nullable().catch(null).optional(),
   position: z.number(),
   // Older backends predate `stage`; default to null so a missing field parses
