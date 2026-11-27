@@ -16,8 +16,8 @@ func TestCreateWorkspaceCollaborationContext(t *testing.T) {
 		input any
 		want  string
 	}{
-		{"omitted", nil, workspacecontext.V1},
-		{"blank", " \t\n", workspacecontext.V1},
+		{"omitted", nil, workspacecontext.V2},
+		{"blank", " \t\n", workspacecontext.V2},
 		{"custom", custom, custom},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

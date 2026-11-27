@@ -110,7 +110,7 @@ func TestLocalDashboardFirstSetupNeedsNoCLIPATAndRevokesRecoveredSession(t *test
 	}
 	var workspaceContext string
 	fixture.QueryRow(t, "SELECT context FROM workspace WHERE slug='personal'").Scan(&workspaceContext)
-	if workspaceContext != workspacecontext.V1 {
+	if workspaceContext != workspacecontext.V2 {
 		t.Fatal("new local owner workspace is missing the default collaboration context")
 	}
 	protected := middleware.Auth(h.Queries, nil, nil, nil, h.ValidateLocalSession)(RequireHumanActor(http.HandlerFunc(h.OpenLocalDashboard)))
