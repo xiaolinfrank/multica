@@ -96,8 +96,8 @@ filing authority: it is nullable, and when set it always agrees with
 - A work item owns a folder named after its address and title
   (`work_item_directory`). Creating one creates the folder when the project has
   a collaboration space; renaming or renumbering it renames the folder, and
-  moving it to another module moves the folder (and every issue folder inside
-  it). A rename or move is refused with 409 `running_agent_tasks` while an
+  moving it to another module moves the folder (and everything inside it).
+  Re-filing an issue moves no files. A rename or move is refused with 409 `running_agent_tasks` while an
   agent is working in the folder unless the caller passes
   `directory_sync:"force"`; `directory_sync:"defer"` writes the row and leaves
   the folder for the plan's directory panel to sync.

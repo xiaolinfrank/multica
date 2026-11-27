@@ -111,11 +111,10 @@ Inside it, the layout uses the stable directory bindings:
 <project collab_path>/                       ← the unique project root
 └── <module directory_name>/                  ← stable relative module binding
     └── <work_item_directory>/                ← work item binding (optional)
-        └── <issue_directory>/                ← the issue's fixed delivery folder
 ```
 
-A project without modules drops the module level; an issue without a work item
-drops that level too. Sub-issues sit beside their parent, never inside it.
+Issues own no folder. An issue delivers into the folder it is filed under, which
+the team shares: the work item's, else the module's, else the project root.
 
 Only the project carries the absolute `collab_path`. A module's nullable
 `directory_name` is one safe relative folder within that project, not another
@@ -126,13 +125,12 @@ row (unless the caller defers it), and a renumber renames it too; a folder that
 collides with an existing name keeps its old name and reports the reason.
 A module delete never deletes the folder or its files.
 
-A work item's folder follows the same rule (`02.02.06MVP产品开发与场景验证`), and
-an issue's delivery folder is `<identifier><title up to 40 characters>`
-(`FOS-123注册路径设计`), allocated the first time the issue needs one — at agent
-claim or when a person opens it — never on a list read. A project without
-`collab_path` never allocates one. A person may point an issue at an existing
-folder name (`PATCH`/`PUT /api/issues/{id}` with `directory_name`); that changes
-the pointer only and moves no files.
+A work item's folder follows the same rule (`02.02.06MVP产品开发与场景验证`).
+Meeting work is the exception to filing: an issue linked to a meeting as `task`,
+`preparation`, `support`, `minutes` or `review` delivers into that meeting's
+bound directory (`nas_dir`), unless its meetings are bound to different ones.
+Re-filing an issue moves no files. Opening an issue's folder creates a missing
+filing folder but never a meeting directory.
 
 Use `multica module update <id> --directory-name "<relative-folder>"` to bind
 or explicitly rename a folder reference. This changes metadata only; review and
@@ -159,26 +157,31 @@ Presence semantics on update: a key absent from the request body keeps the
 stored value, and the key present with `null` or `""` clears it to NULL.
 `POST /api/projects` accepts the same field.
 
-A task whose project has one is told about it. The brief's `## Project Context`
+A task whose project has one is told about it, and so is an issue task that
+delivers into a meeting's folder, even without a project. The brief's `## Project Context`
 gains a `### Collaboration Space` subsection naming the project directory and,
 when the task has a module, naming the stable bound module folder inside it.
-An issue task also gets the platform-assigned delivery folder as one fixed
-path, and is told not to invent one.
+An issue task also gets its delivery folder as one absolute path and its source
+(the meeting's folder or the folder it is filed under), and is told not to
+create a per-task folder.
 `.multica/project/resources.json` carries
 `project_collab_path` plus module identity (`module_id`, `module_title`,
 `module_description`), `module_directory`, `work_item_id`, `work_item_title`,
-`work_item_directory` and `issue_directory` for tooling that would rather read JSON than prose — the
+`work_item_directory`, `delivery_directory` and `delivery_directory_source`
+(`meeting` or `filing`) for tooling that would rather read JSON than prose — the
 module's directory is `project_collab_path` joined with its stable `module_directory`.
 
 ### Delivering into it
 
 - An issue task writes into the fixed delivery folder named in
-  `### Collaboration Space`; create it if missing and never invent a different
-  one. A non-issue task (chat, automation, quick create) uses a task or
-  deliverable subdirectory below the bound module folder, or directly below the
-  project root when it has no module; never put files flat in the project or
-  module root. An unresolved or unsafe binding needs owner action, not a
-  title-based guess.
+  `### Collaboration Space`, alongside files from people and other tasks:
+  follow the naming already there and do not overwrite, rename or delete files
+  the task did not create. A missing meeting folder is reported, never
+  created: it is prepared from the meeting. A non-issue task (chat, automation, quick create)
+  uses a task or deliverable subdirectory below the bound module folder, or
+  directly below the project root when it has no module; never put its files
+  flat in the project or module root. An unresolved or unsafe binding needs
+  owner action, not a title-based guess.
 - The collaboration copy is additional archival storage. Follow `## Output`
   for delivery; issue files still require `--attachment <path>`. Respect user
   authorization, including waiting for confirmation before large uploads when
@@ -189,15 +192,16 @@ module's directory is `project_collab_path` joined with its stable `module_direc
 - Keep process files, notes and checkouts in the private task workdir.
 - Before creating a missing project root, verify that the exact configured
   binding is on this host's writable internal disk and check ownership and
-  containment. Only then create that bound root and its module/task children.
+  containment. Only then create that bound root and the folders below it,
+  except a meeting's folder, which is reported and prepared from the meeting.
   If the root is unconfigured, inaccessible or lacks permission, report the
   actual problem, keep the result in workdir and do not claim persistent
   delivery. Do not guess the storage failure, silently remount storage, change the
   binding or substitute a nearby directory.
 
 New workspaces receive the versioned collaboration context automatically.
-Upgrades fill only empty workspace context; non-empty user
-context remains unchanged. The context is editable workspace data thereafter.
+Upgrades fill empty workspace context and replace an unedited platform seed;
+edited context remains unchanged. The context is editable workspace data thereafter.
 
 ## CLI
 

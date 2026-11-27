@@ -67,14 +67,17 @@ A text payload is `{"kind":"text","content":"# Report\n...\n"}`. Text must be
 nonempty UTF-8, at most 128 KiB; its whitespace is part of the fixed version.
 A file payload is `{"kind":"attachment","attachment_id":"<uuid>"}`; choose a
 platform attachment belonging to the **current producer Issue**. A collaboration-space path or web URL is not an attachment ID.
-Archive the extra copy under the issue's delivery folder:
-`<collab_path>/<module_directory>/<work_item_directory>/<issue_directory>` — drop
+Archive the extra copy in the task's delivery folder, which the task brief
+states in full. Issues own no folder: an issue linked to a meeting as `task`,
+`preparation`, `support`, `minutes` or `review` uses that meeting's `nas_dir`; every other issue uses
+`<collab_path>/<module_directory>/<work_item_directory>` — drop
 `work_item_directory` when the issue has no work item and `module_directory`
-when it has no module. The platform assigns `<issue_directory>` (`identifier`
-plus the title) and the task brief states the full path; do not invent a folder
-name, and never flatten output into the project or module root. Module and
-work-item folders are renamed by the platform when their row is renamed or
-renumbered, so follow the current bindings rather than a remembered path. Keep
+when it has no module. The folder is shared with people and other tasks: do not
+create a per-issue subfolder, and do not overwrite, rename or delete files this
+task did not create. A missing meeting folder is reported, never created: it is
+prepared from the meeting (`meeting directory`). Module and work-item folders are renamed by the platform
+when their row is renamed or renumbered, so follow the current bindings rather
+than a remembered path. Keep
 scratch/checkouts in workdir. The issue attachment remains the delivery
 channel: follow `## Output` and user authorization; if a large upload awaits
 confirmation, prepare the files and wait instead of uploading. Report paths only
@@ -85,7 +88,7 @@ server-derived from trusted task credentials, never supplied by the caller.
 The standard single-owner deployment uses the Mac's internal disk. A missing
 path does not identify the storage failure: verify the exact configured binding,
 containment, ownership and writable local storage before creating a missing
-project root and its module/task children. If unconfigured, inaccessible or
+project root and the folders below it. If unconfigured, inaccessible or
 permission is denied, report the observed problem and keep files in workdir;
 do not claim persistent delivery or substitute a nearby path. An unresolved
 module binding requires owner action; never guess from its display title.

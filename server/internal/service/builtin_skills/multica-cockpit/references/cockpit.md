@@ -309,7 +309,7 @@ rows`) by the whole-set link write, the single-link write, and meeting creation
 with `node_id`. The folder chain below the project's collaboration space is
 created if it is missing, one level at a time. This endpoint requires an existing root; a missing path does not identify the storage failure or authorize a replacement root.
 For local internal-disk storage, verify exact binding, ownership, permissions and containment before preparing the root, then retry; never substitute another root.
-The meeting directory is the task/result layer; its persistent copy does not replace Issue attachments or `## Output` rules.
+The meeting directory is the delivery folder of the issues linked to the meeting as `task`, `preparation`, `support`, `minutes` or `review`; `action`, `delivery`, `reference` and unclassified links keep their own filing folder, and so does an issue whose meetings are bound to different directories. Its persistent copy does not replace Issue attachments or `## Output` rules.
 
 `GET .../meetings/scan` reads the archive folder and reports each sub-folder
 with the meeting already recording it (`meeting_id`, empty when none) and what
