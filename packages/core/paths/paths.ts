@@ -122,7 +122,6 @@ function workspaceScoped(slug: string, startPage: WorkspaceStartPage = "cockpit"
     skills: () => `${ws}/skills`,
     skillDetail: (id: string) => `${ws}/skills/${encode(id)}`,
     env: () => `${ws}/env`,
-    workspaces: () => `${ws}/workspaces`,
     apps: () => `${ws}/apps`,
     appDetail: (toolkitSlug: string) => `${ws}/apps/${encode(toolkitSlug)}`,
     settings: () => `${ws}/settings`,

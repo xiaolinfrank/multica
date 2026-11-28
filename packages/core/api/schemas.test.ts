@@ -88,8 +88,6 @@ import {
   EMPTY_SQUAD_BRIEFS,
   TimelineEntriesSchema,
   UserSchema,
-  WorkspaceDownloadResultSchema,
-  EMPTY_WORKSPACE_DOWNLOAD,
   PluginInstallationSchema,
   PluginInstallationListResponseSchema,
   PluginMCPToolListSchema,
@@ -1600,57 +1598,6 @@ describe("InboxUnreadSummarySchema", () => {
         ENDPOINT,
       ),
     ).toBe(EMPTY_INBOX_UNREAD_SUMMARY);
-  });
-});
-
-describe("WorkspaceDownloadResultSchema (drift defense)", () => {
-  it("coerces a partially-malformed payload to typed defaults without throwing", () => {
-    // Wrong types on every field — the lenient schema must fall back per-field
-    // rather than crash the download/preview UI.
-    const parsed = parseWithFallback(
-      { content: 123, too_large: null, size: "x", is_image: "yes" },
-      WorkspaceDownloadResultSchema,
-      EMPTY_WORKSPACE_DOWNLOAD,
-      { endpoint: "workspace download result" },
-    );
-    expect(parsed.content).toBe("");
-    expect(parsed.too_large).toBe(false);
-    expect(parsed.size).toBe(0);
-    expect(parsed.is_image).toBe(false);
-  });
-
-  it("returns the empty fallback for a non-object body", () => {
-    expect(
-      parseWithFallback(null, WorkspaceDownloadResultSchema, EMPTY_WORKSPACE_DOWNLOAD, {
-        endpoint: "workspace download result",
-      }),
-    ).toEqual(EMPTY_WORKSPACE_DOWNLOAD);
-    expect(
-      parseWithFallback("oops", WorkspaceDownloadResultSchema, EMPTY_WORKSPACE_DOWNLOAD, {
-        endpoint: "workspace download result",
-      }),
-    ).toEqual(EMPTY_WORKSPACE_DOWNLOAD);
-  });
-
-  it("keeps a well-formed payload intact, including forward-compatible extras", () => {
-    const parsed = parseWithFallback(
-      {
-        path: "output/chart.png",
-        size: 4096,
-        mime: "image/png",
-        encoding: "base64",
-        content: "iVBORw0KGgo=",
-        is_image: true,
-        too_large: false,
-        future_field: "ignored",
-      },
-      WorkspaceDownloadResultSchema,
-      EMPTY_WORKSPACE_DOWNLOAD,
-      { endpoint: "workspace download result" },
-    );
-    expect(parsed.is_image).toBe(true);
-    expect(parsed.mime).toBe("image/png");
-    expect(parsed.content).toBe("iVBORw0KGgo=");
   });
 });
 

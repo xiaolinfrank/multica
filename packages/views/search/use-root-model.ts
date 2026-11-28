@@ -58,7 +58,6 @@ const PAGE_KEYWORDS: Record<WorkspacePageKey, string[]> = {
   // BayClaw-only pages, mirroring WORKSPACE_PAGES in @multica/core/paths.
   fleet: ["fleet", "machines", "devices", "nodes", "机队", "设备", "节点"],
   env: ["env", "environment", "secrets", "keys", "环境", "密钥", "配置"],
-  workspaces: ["workspaces", "tenants", "spaces", "工作区", "空间"],
   skills: ["skills", "library", "技能"],
   apps: ["apps", "integrations", "connected", "accounts", "composio", "应用", "集成"],
   settings: ["settings", "config", "preferences", "设置", "配置"],

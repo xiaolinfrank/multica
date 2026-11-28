@@ -25,7 +25,6 @@ import { SkillsPage } from "@multica/views/skills";
 import { AppsPage } from "@multica/views/apps";
 import { EnvPage } from "@multica/views/env";
 import { FleetPage } from "@multica/views/fleet";
-import { WorkspacesPage } from "@multica/views/workspaces";
 import { OfficePage } from "@multica/views/office";
 import { GalleryPage } from "@multica/views/gallery";
 import { CockpitPage } from "@multica/views/cockpit";
@@ -174,12 +173,10 @@ export const appRoutes: RouteObject[] = [
           { path: "docs/folders/:id", element: <DocFolderRoute /> },
           { path: "docs/:id", element: <DocRoute /> },
           { path: "docs/:id/history", element: <DocHistoryRoute /> },
-          // BayClaw-only pages: fleet, the shared environment, the workspace
-          // directory, the agent office, the relation graph, the gallery and
-          // the cockpit.
+          // BayClaw-only pages: fleet, the shared environment, the agent
+          // office, the relation graph, the gallery and the cockpit.
           { path: "fleet", element: <FleetPage /> },
           { path: "env", element: <EnvPage /> },
-          { path: "workspaces", element: <WorkspacesPage /> },
           { path: "office", element: <OfficePage /> },
           { path: "graph", element: <GraphPage /> },
           { path: "gallery", element: <GalleryPage /> },

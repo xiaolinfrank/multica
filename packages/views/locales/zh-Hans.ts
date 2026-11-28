@@ -31,7 +31,6 @@ import zhHansSquads from "./zh-Hans/squads.json";
 import zhHansUi from "./zh-Hans/ui.json";
 import zhHansUsage from "./zh-Hans/usage.json";
 import zhHansWorkspace from "./zh-Hans/workspace.json";
-import zhHansWorkspaces from "./zh-Hans/workspaces.json";
 
 const resources: LocaleResources = {
   agents: zhHansAgents,
@@ -66,7 +65,6 @@ const resources: LocaleResources = {
   ui: zhHansUi,
   usage: zhHansUsage,
   workspace: zhHansWorkspace,
-  workspaces: zhHansWorkspaces,
 };
 
 export default resources;

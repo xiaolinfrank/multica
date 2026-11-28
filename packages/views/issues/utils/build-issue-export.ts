@@ -45,37 +45,6 @@ export interface ExportedAttachment {
   absoluteUrl: string;
 }
 
-/**
- * One file pulled from an issue's persistent agent workspace — the daemon-held
- * working directory of an (agent, issue) pair. Only plain files come over:
- * repo checkouts and regenerable artifacts are collapsed tree nodes the file
- * API cannot download individually.
- */
-export interface ExportedWorkspaceFile {
-  /** Path relative to the workspace root, as the daemon reported it. */
-  path: string;
-  sizeBytes?: number;
-  /** Zip-relative path (`workspace/<taskShort>/<path>`) when packed. */
-  packedName?: string;
-  /** Why the bytes are absent: "too_large" | "size_cap" | "unavailable". */
-  skippedReason?: string;
-}
-
-export interface ExportedWorkspace {
-  /** First 8 chars of the owning task UUID — the on-disk directory name. */
-  taskShort: string;
-  agentName?: string;
-  /** Fleet node that physically holds the workspace. */
-  deviceName?: string;
-  files: ExportedWorkspaceFile[];
-  /** The daemon's tree listing itself was truncated. */
-  treeTruncated?: boolean;
-  /** Plain files beyond the export-side per-workspace cap; not listed. */
-  fileCapDropped?: number;
-  /** Set when the workspace could not be reached at all (daemon offline). */
-  error?: string;
-}
-
 /** One agent run's execution transcript (message stream), exported under executions/. */
 export interface ExportedExecution {
   run: AgentTask;
@@ -98,8 +67,6 @@ export interface IssueExportInput {
    * legacy flat Attachments section is emitted.
    */
   deliverables?: DeliverableFile[];
-  /** Persistent agent workspaces for this issue, with their plain files. */
-  workspaces: ExportedWorkspace[];
   /** Per-run execution transcripts for this issue's agent runs. */
   executions: ExportedExecution[];
   childTree: ExportChildIssue[];
@@ -132,11 +99,9 @@ export const EXPORT_CHILD_DEPTH_LIMIT = 5;
 export const EXPORT_CHILD_NODE_LIMIT = 200;
 
 /**
- * Workspace export caps so a pathological workspace can neither hang the
- * export nor blow up the in-memory zip: plain files per workspace, and packed
- * bytes across the whole bundle (attachments + workspace files).
+ * Packed-bytes cap across the whole bundle (attachments + execution
+ * transcripts) so a pathological export cannot blow up the in-memory zip.
  */
-export const EXPORT_WORKSPACE_FILE_LIMIT = 200;
 export const EXPORT_PACKED_BYTES_LIMIT = 128 * 1024 * 1024;
 
 /**
@@ -147,14 +112,6 @@ export const EXPORT_PACKED_BYTES_LIMIT = 128 * 1024 * 1024;
 export const EXPORT_EXECUTION_MESSAGE_LIMIT = 2000;
 export const EXPORT_EXECUTION_ENTRY_CHAR_LIMIT = 64 * 1024;
 export const EXPORT_EXECUTION_FILE_CHAR_LIMIT = 1_000_000;
-
-/** Zip entries must stay inside the bundle: no absolute paths, no "..". */
-export function isSafeRelativePath(path: string): boolean {
-  if (!path || path.startsWith("/") || path.includes("\\")) return false;
-  return path
-    .split("/")
-    .every((segment) => segment && segment !== "." && segment !== "..");
-}
 
 /** `MUL-123` → `MUL-123.md`; falls back when an identifier is missing. */
 export function issueExportFilename(identifier: string | undefined): string {
@@ -309,40 +266,6 @@ function attachmentLine(
       " · **unreferenced**: bound to the task but not linked from the description or any comment";
   }
   return `- [${attachment.filename}](${href}) (${formatBytes(attachment.size_bytes)}) — ${note}`;
-}
-
-function workspaceFileLine(file: ExportedWorkspaceFile): string {
-  const size =
-    file.sizeBytes !== undefined ? ` (${formatBytes(file.sizeBytes)})` : "";
-  if (file.packedName) {
-    return `  - \`${file.path}\`${size} — included in this export (${file.packedName})`;
-  }
-  const reason =
-    file.skippedReason === "too_large"
-      ? "too large for the workspace download cap"
-      : file.skippedReason === "size_cap"
-        ? "dropped to keep the bundle within its size budget"
-        : "could not be downloaded (node offline or file missing)";
-  return `  - \`${file.path}\`${size} — not included: ${reason}`;
-}
-
-function renderWorkspace(workspace: ExportedWorkspace): string {
-  const who = workspace.agentName || workspace.taskShort;
-  const where = workspace.deviceName ? ` on ${workspace.deviceName}` : "";
-  const lines = [`- **${who}** (\`${workspace.taskShort}\`)${where}`];
-  if (workspace.error) {
-    lines.push(`  - workspace unreachable: ${workspace.error}`);
-  }
-  for (const file of workspace.files) lines.push(workspaceFileLine(file));
-  if (workspace.fileCapDropped) {
-    lines.push(
-      `  - ${workspace.fileCapDropped} more file(s) not listed (per-workspace export cap)`,
-    );
-  }
-  if (workspace.treeTruncated) {
-    lines.push("  - tree listing was truncated by the server; more files may exist");
-  }
-  return lines.join("\n");
 }
 
 // A short English phrase per known activity action. Anything unmapped keeps
@@ -549,9 +472,7 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
       "timeline in original order, agent-run history, the parent/sub-issue",
       "tree, pull requests, and attachments. Attachment files, when included,",
       "sit in the `attachments/` folder next to this document and are",
-      "referenced from it by relative path. Files from the issue's agent",
-      "workspaces, when included, sit under the `workspace/` folder with",
-      "their original paths. Per-run execution transcripts sit under",
+      "referenced from it by relative path. Per-run execution transcripts sit under",
       "the `executions/` folder, linked from the Agent runs section.",
       "Continue the work from the latest",
       "state in the timeline; treat the timeline as the authoritative history.",
@@ -707,17 +628,6 @@ export function buildIssueExportMarkdown(input: IssueExportInput): string {
       input.attachments
         .map((a) => attachmentLine(a, unreferencedIds.has(a.attachment.id)))
         .join("\n"),
-      "",
-    );
-  }
-
-  if (input.workspaces.length > 0) {
-    out.push(
-      "## Agent workspace files",
-      "",
-      "Persistent agent working directories for this issue. Packed files sit under `workspace/` in this bundle, preserving their in-directory paths.",
-      "",
-      input.workspaces.map(renderWorkspace).join("\n"),
       "",
     );
   }

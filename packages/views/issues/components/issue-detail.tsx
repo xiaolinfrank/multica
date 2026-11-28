@@ -132,7 +132,6 @@ import { IssueAgentHeaderChip } from "./issue-agent-header-chip";
 import { IssuePresenceHeaderChip } from "./issue-presence-header-chip";
 import { ExecutionLogSection } from "./execution-log-section";
 import { IssueLiveAgentProcess } from "./issue-agent-process";
-import { WorkspaceFilesSection } from "./workspace-files-section";
 import { WakeupsSection } from "./wakeups-section";
 import { QuickActionsSection } from "./quick-actions-section";
 import { PluginPanelSection } from "../../plugins";
@@ -3652,12 +3651,7 @@ export function IssueDetail({ issueId, onDelete, onDone, inbox, defaultSidebarOp
     apps: <IssueAppsSection issueId={id} />,
     // Execution summary owns its query, realtime updates and disclosure.
     execution_log: (
-      <>
-        <ExecutionLogSection key={id} issueId={id} identifier={issue.identifier} issueTitle={issue.title} hasChildren={childIssues.length > 0} />
-        {/* Workspace files — the persistent agent workspace(s) for this issue.
-            Stays glued to the execution log above it. */}
-        <WorkspaceFilesSection issueId={id} />
-      </>
+      <ExecutionLogSection key={id} issueId={id} identifier={issue.identifier} issueTitle={issue.title} hasChildren={childIssues.length > 0} />
     ),
     metadata: <MetadataSection metadata={issue.metadata ?? {}} />,
   };

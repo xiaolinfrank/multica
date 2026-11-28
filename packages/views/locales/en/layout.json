@@ -20,8 +20,7 @@
     "gallery": "Gallery",
     "cockpit": "Cockpit",
     "fleet": "Fleet",
-    "environment": "Environment",
-    "workspaces": "Workspaces"
+    "environment": "Environment"
   },
   "tab": {
     "issue": "Issue",

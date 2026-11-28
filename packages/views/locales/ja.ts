@@ -31,7 +31,6 @@ import jaSquads from "./ja/squads.json";
 import jaUi from "./ja/ui.json";
 import jaUsage from "./ja/usage.json";
 import jaWorkspace from "./ja/workspace.json";
-import jaWorkspaces from "./ja/workspaces.json";
 
 const resources: LocaleResources = {
   agents: jaAgents,
@@ -66,7 +65,6 @@ const resources: LocaleResources = {
   ui: jaUi,
   usage: jaUsage,
   workspace: jaWorkspace,
-  workspaces: jaWorkspaces,
 };
 
 export default resources;

@@ -16,34 +16,54 @@ import (
 )
 
 // TestDaemonHeartbeatHTTPResponse_MirrorsPendingActions pins the HTTP heartbeat
-// response shape: every pending-action field on the ack — especially the plural
-// pending_workspace_ops — must be copied into the hand-built response map.
-// Dropping the plural field is what made nudged forced heartbeats deliver only
-// one workspace op per burst (the rest stranded until the next 15s WS beat).
+// response shape: every pending-action field on the ack must be copied into the
+// hand-built response map and omitted when absent.
 func TestDaemonHeartbeatHTTPResponse_MirrorsPendingActions(t *testing.T) {
 	t.Parallel()
 	ack := &protocol.DaemonHeartbeatAckPayload{
 		Status:             "ok",
-		PendingWorkspaceOp: &protocol.DaemonHeartbeatPendingWorkspaceOp{ID: "a", Op: "read"},
-		PendingWorkspaceOps: []protocol.DaemonHeartbeatPendingWorkspaceOp{
-			{ID: "a", Op: "read"}, {ID: "b", Op: "download"}, {ID: "c", Op: "tree"},
+		PendingUpdate:      &protocol.DaemonHeartbeatPendingUpdate{ID: "upd-1", TargetVersion: "1.0.0"},
+		PendingModelList:   &protocol.DaemonHeartbeatPendingModelList{ID: "ml-1"},
+		PendingLocalSkills: &protocol.DaemonHeartbeatPendingLocalSkills{ID: "ls-1"},
+		PendingLocalSkillImport: &protocol.DaemonHeartbeatPendingLocalSkillImport{
+			ID:       "imp-1",
+			SkillKey: "alpha",
+		},
+		PendingLocalSkillImports: []protocol.DaemonHeartbeatPendingLocalSkillImport{
+			{ID: "imp-1", SkillKey: "alpha"},
+			{ID: "imp-2", SkillKey: "beta"},
 		},
 	}
 	resp := daemonHeartbeatHTTPResponse(ack)
 
-	ops, ok := resp["pending_workspace_ops"].([]protocol.DaemonHeartbeatPendingWorkspaceOp)
-	if !ok {
-		t.Fatalf("pending_workspace_ops missing/wrong type in HTTP response: %#v", resp["pending_workspace_ops"])
+	for _, key := range []string{
+		"pending_update",
+		"pending_model_list",
+		"pending_local_skills",
+		"pending_local_skill_import",
+		"pending_local_skill_imports",
+	} {
+		if _, present := resp[key]; !present {
+			t.Fatalf("%s missing in HTTP heartbeat response: %#v", key, resp)
+		}
 	}
-	if len(ops) != 3 {
-		t.Fatalf("expected 3 ops in HTTP response, got %d", len(ops))
+	imports, ok := resp["pending_local_skill_imports"].([]protocol.DaemonHeartbeatPendingLocalSkillImport)
+	if !ok || len(imports) != 2 {
+		t.Fatalf("pending_local_skill_imports = %#v, want 2 items", resp["pending_local_skill_imports"])
 	}
-	if resp["pending_workspace_op"] == nil {
-		t.Fatal("singular pending_workspace_op must still be present for old daemons")
-	}
+
 	// Absent fields must not appear (omitempty parity with the struct).
-	if _, present := resp["pending_update"]; present {
-		t.Fatal("pending_update must be omitted when nil")
+	emptyResp := daemonHeartbeatHTTPResponse(&protocol.DaemonHeartbeatAckPayload{Status: "ok"})
+	for _, key := range []string{
+		"pending_update",
+		"pending_model_list",
+		"pending_local_skills",
+		"pending_local_skill_import",
+		"pending_local_skill_imports",
+	} {
+		if _, present := emptyResp[key]; present {
+			t.Fatalf("%s must be omitted when nil/empty", key)
+		}
 	}
 }
 

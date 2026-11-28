@@ -142,16 +142,6 @@ export type {
 export { RUNTIME_PROFILE_PROTOCOL_FAMILIES, RUNTIME_PROFILE_RUNTIME_TYPES } from "./agent";
 export type { Workspace, WorkspaceRepo, WorkspaceMcpServer, Member, MemberRole, User, MemberWithUser, Invitation, ShareLink, ShareLinkInfo } from "./workspace";
 export type { FleetDevice, FleetStatus, FleetDockerState } from "./fleet";
-export type { AgentWorkspace, AgentWorkspacesResponse } from "./agent-workspace";
-export type {
-  WorkspaceOpStatus,
-  WorkspaceFileEntry,
-  WorkspaceTreeResult,
-  WorkspaceReadResult,
-  WorkspaceReclaimResult,
-  WorkspaceDownloadResult,
-  WorkspaceOpRequest,
-} from "./workspace-op";
 export type {
   PluginInstallation,
   PluginConfigField,

@@ -33,7 +33,6 @@ import type gallery from "../locales/en/gallery.json";
 import type cockpit from "../locales/en/cockpit.json";
 import type graph from "../locales/en/graph.json";
 import type billing from "../locales/en/billing.json";
-import type workspaces from "../locales/en/workspaces.json";
 
 // Module augmentation enables i18next v26 selector API across the monorepo:
 // `t($ => $.signin.title)` resolves to the value in en/auth.json.
@@ -87,7 +86,6 @@ declare global {
     cockpit: typeof cockpit;
     graph: typeof graph;
     billing: typeof billing;
-    workspaces: typeof workspaces;
   }
 }
 

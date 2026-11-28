@@ -31,7 +31,6 @@ import enSquads from "./en/squads.json";
 import enUi from "./en/ui.json";
 import enUsage from "./en/usage.json";
 import enWorkspace from "./en/workspace.json";
-import enWorkspaces from "./en/workspaces.json";
 
 const resources: LocaleResources = {
   agents: enAgents,
@@ -66,7 +65,6 @@ const resources: LocaleResources = {
   ui: enUi,
   usage: enUsage,
   workspace: enWorkspace,
-  workspaces: enWorkspaces,
 };
 
 export default resources;

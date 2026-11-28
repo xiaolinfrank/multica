@@ -544,32 +544,6 @@ func (h *Hub) notifyRuntimeProfilesChanged(workspaceID, profileID, eventID strin
 	h.notifyWorkspaceFrame(workspaceID, data, eventID)
 }
 
-// NotifyWorkspaceOpAvailable sends a best-effort wakeup to the daemon holding
-// runtimeID the moment a workspace file op is enqueued, so it pulls the op on
-// an immediate forced heartbeat instead of waiting up to one heartbeat
-// interval. Local delivery only: the workspace-op feature is single-node (the
-// in-memory WorkspaceOpStore), so the daemon's WS connection terminates on this
-// same node. The heartbeat pull remains the reliable backstop if this hint is
-// dropped (slow-client eviction, transient disconnect).
-func (h *Hub) NotifyWorkspaceOpAvailable(runtimeID string) {
-	if h == nil || runtimeID == "" {
-		return
-	}
-	data, err := workspaceOpAvailableFrame(runtimeID)
-	if err != nil {
-		return
-	}
-	// Empty eventID on purpose: workspace-op hints must not be de-duplicated.
-	// Two clicks on two different files enqueue two ops, and collapsing the
-	// second hint would leave it waiting for the next scheduled heartbeat.
-	delivered, deduped := h.notifyFrame(runtimeID, data, "")
-	if delivered {
-		M.WakeupDeliveredHit.Add(1)
-	} else if !deduped {
-		M.WakeupDeliveredMiss.Add(1)
-	}
-}
-
 func (h *Hub) notifyWorkspacesChanged(userID, eventID string) {
 	if h == nil || userID == "" {
 		return
@@ -841,15 +815,6 @@ func runtimeProfilesChangedFrame(workspaceID, profileID string) ([]byte, error) 
 		Payload: mustMarshalRaw(protocol.RuntimeProfilesChangedPayload{
 			WorkspaceID:      workspaceID,
 			RuntimeProfileID: profileID,
-		}),
-	})
-}
-
-func workspaceOpAvailableFrame(runtimeID string) ([]byte, error) {
-	return json.Marshal(protocol.Message{
-		Type: protocol.EventDaemonWorkspaceOpAvailable,
-		Payload: mustMarshalRaw(protocol.WorkspaceOpAvailablePayload{
-			RuntimeID: runtimeID,
 		}),
 	})
 }

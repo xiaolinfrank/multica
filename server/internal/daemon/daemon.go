@@ -2228,7 +2228,6 @@ func (d *Daemon) run(ctx context.Context, healthLn net.Listener) error {
 	go d.taskWakeupLoop(ctx, taskWakeups)
 	go d.heartbeatLoop(ctx)
 	go d.gcLoop(ctx)
-	go d.workspaceInventoryLoop(ctx)
 	go d.autoUpdateLoop(ctx)
 	go d.tokenRenewalLoop(ctx)
 	go d.environments.run(ctx)
@@ -4762,14 +4761,13 @@ func (d *Daemon) handleHeartbeatActions(ctx context.Context, runtimeID string, r
 	if resp == nil {
 		return
 	}
-	if resp.PendingUpdate != nil || resp.PendingModelList != nil || resp.PendingLocalSkills != nil || resp.PendingLocalSkillImport != nil || resp.PendingWorkspaceOp != nil {
+	if resp.PendingUpdate != nil || resp.PendingModelList != nil || resp.PendingLocalSkills != nil || resp.PendingLocalSkillImport != nil {
 		d.logger.Debug("heartbeat: pending actions",
 			"runtime_id", runtimeID,
 			"update", resp.PendingUpdate != nil,
 			"model_list", resp.PendingModelList != nil,
 			"local_skills", resp.PendingLocalSkills != nil,
 			"local_skill_import", resp.PendingLocalSkillImport != nil,
-			"workspace_op", resp.PendingWorkspaceOp != nil,
 		)
 	}
 	if resp.PendingUpdate != nil {
@@ -4796,18 +4794,6 @@ func (d *Daemon) handleHeartbeatActions(ctx context.Context, runtimeID string, r
 		if rt := d.findRuntime(runtimeID); rt != nil {
 			go d.handleLocalSkillImport(ctx, *rt, *resp.PendingLocalSkillImport)
 		}
-	}
-	// Workspace file ops run against an envRoot path, not a Runtime, so they
-	// don't go through findRuntime — the op still works while the runtime
-	// index is momentarily out of sync. Prefer the batch field (new backend)
-	// so a click burst dispatches concurrently; fall back to singular (old
-	// backend) which delivers one op per beat.
-	if len(resp.PendingWorkspaceOps) > 0 {
-		for i := range resp.PendingWorkspaceOps {
-			go d.handleWorkspaceOp(ctx, runtimeID, &resp.PendingWorkspaceOps[i])
-		}
-	} else if resp.PendingWorkspaceOp != nil {
-		go d.handleWorkspaceOp(ctx, runtimeID, resp.PendingWorkspaceOp)
 	}
 }
 

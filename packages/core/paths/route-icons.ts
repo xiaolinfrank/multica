@@ -35,7 +35,6 @@ export type RouteIconName =
   | "Monitor"
   | "Server"
   | "KeyRound"
-  | "FolderGit2"
   | "BookOpenText"
   | "Plug"
   | "Settings"
@@ -69,7 +68,6 @@ export type NavLabelKey =
   | "runtimes"
   | "fleet"
   | "environment"
-  | "workspaces"
   | "docs"
   | "skills"
   | "apps"
@@ -94,7 +92,6 @@ export type WorkspacePageKey =
   | "runtimes"
   | "fleet"
   | "env"
-  | "workspaces"
   | "docs"
   | "skills"
   | "apps"
@@ -135,7 +132,6 @@ export const WORKSPACE_PAGES: Record<WorkspacePageKey, WorkspacePage> = {
   // "unknown" tab label without failing any type check.
   fleet: { segment: "fleet", icon: "Server", navKey: "fleet" },
   env: { segment: "env", icon: "KeyRound", navKey: "environment" },
-  workspaces: { segment: "workspaces", icon: "FolderGit2", navKey: "workspaces" },
   docs: { segment: "docs", icon: "FileText", navKey: "docs" },
   skills: { segment: "skills", icon: "BookOpenText", navKey: "skills" },
   apps: { segment: "apps", icon: "Plug", navKey: "apps" },

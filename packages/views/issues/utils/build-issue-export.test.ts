@@ -15,7 +15,6 @@ import {
   buildAttachmentUrlMap,
   buildIssueExportMarkdown,
   decodePropertyValue,
-  isSafeRelativePath,
   issueExportFilename,
   renderTaskTranscript,
   rewriteAttachmentUrls,
@@ -91,7 +90,6 @@ function makeInput(overrides: Partial<IssueExportInput> = {}): IssueExportInput 
     issue: makeIssue(),
     timeline: [],
     attachments: [],
-    workspaces: [],
     executions: [],
     childTree: [],
     statusLabel: "To do",
@@ -698,80 +696,6 @@ describe("buildIssueExportMarkdown", () => {
         `- [stray.pdf](attachments/stray.pdf) (1.5 KB) — included in this export · ${MARK}`,
       );
     });
-  });
-});
-
-describe("agent workspace files section", () => {
-  it("omits the section when there are no workspaces", () => {
-    const md = buildIssueExportMarkdown(makeInput());
-    expect(md).not.toContain("## Agent workspace files");
-  });
-
-  it("renders packed files with their in-bundle path and skipped files with reasons", () => {
-    const md = buildIssueExportMarkdown(
-      makeInput({
-        workspaces: [
-          {
-            taskShort: "abc12345",
-            agentName: "Research Bot",
-            deviceName: "mac-mini-3",
-            files: [
-              { path: "notes.md", sizeBytes: 2048, packedName: "workspace/abc12345/notes.md" },
-              { path: "big-model.bin", sizeBytes: 11 << 20, skippedReason: "too_large" },
-              { path: "late.log", sizeBytes: 10, skippedReason: "size_cap" },
-              { path: "gone.txt", sizeBytes: 3, skippedReason: "unavailable" },
-            ],
-            fileCapDropped: 12,
-            treeTruncated: true,
-          },
-        ],
-      }),
-    );
-    expect(md).toContain("## Agent workspace files");
-    expect(md).toContain("**Research Bot** (`abc12345`) on mac-mini-3");
-    expect(md).toContain(
-      "`notes.md` (2 KB) — included in this export (workspace/abc12345/notes.md)",
-    );
-    expect(md).toContain(
-      "`big-model.bin` (11 MB) — not included: too large for the workspace download cap",
-    );
-    expect(md).toContain(
-      "`late.log` (10 B) — not included: dropped to keep the bundle within its size budget",
-    );
-    expect(md).toContain(
-      "`gone.txt` (3 B) — not included: could not be downloaded (node offline or file missing)",
-    );
-    expect(md).toContain("12 more file(s) not listed (per-workspace export cap)");
-    expect(md).toContain("tree listing was truncated by the server; more files may exist");
-  });
-
-  it("notes an unreachable workspace instead of failing", () => {
-    const md = buildIssueExportMarkdown(
-      makeInput({
-        workspaces: [{ taskShort: "deadbeef", files: [], error: "workspace unreachable" }],
-      }),
-    );
-    expect(md).toContain("workspace unreachable: workspace unreachable");
-  });
-
-  it("falls back to the task dir when the agent name is missing", () => {
-    const md = buildIssueExportMarkdown(
-      makeInput({ workspaces: [{ taskShort: "ff00ff00", files: [] }] }),
-    );
-    expect(md).toContain("**ff00ff00** (`ff00ff00`)");
-  });
-});
-
-describe("isSafeRelativePath", () => {
-  it("accepts plain relative paths and rejects traversal", () => {
-    expect(isSafeRelativePath("a/b.txt")).toBe(true);
-    expect(isSafeRelativePath("a/b/c.md")).toBe(true);
-    expect(isSafeRelativePath("")).toBe(false);
-    expect(isSafeRelativePath("/etc/passwd")).toBe(false);
-    expect(isSafeRelativePath("../x")).toBe(false);
-    expect(isSafeRelativePath("a/../../x")).toBe(false);
-    expect(isSafeRelativePath("a//b")).toBe(false);
-    expect(isSafeRelativePath("C:\\x")).toBe(false);
   });
 });
 

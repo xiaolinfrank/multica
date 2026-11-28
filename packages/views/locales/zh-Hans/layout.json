@@ -20,8 +20,7 @@
     "gallery": "成果画廊",
     "cockpit": "项目驾驶舱",
     "fleet": "算力池",
-    "environment": "环境变量",
-    "workspaces": "任务文件管理"
+    "environment": "环境变量"
   },
   "tab": {
     "issue": "任务",

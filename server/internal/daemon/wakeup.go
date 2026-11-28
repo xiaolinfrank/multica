@@ -429,17 +429,6 @@ func (d *Daemon) readTaskWakeupMessagesForConnection(conn *websocket.Conn, taskW
 				continue
 			}
 			go d.handleRuntimeProfilesChanged(payload)
-		case protocol.EventDaemonWorkspaceOpAvailable:
-			var payload protocol.WorkspaceOpAvailablePayload
-			if err := json.Unmarshal(msg.Payload, &payload); err != nil || payload.RuntimeID == "" {
-				d.logger.Debug("workspace op wakeup websocket invalid payload", "error", err)
-				continue
-			}
-			d.logger.Debug("workspace op wakeup received", "runtime_id", payload.RuntimeID)
-			// Force a heartbeat now so the just-enqueued op is pulled within a
-			// network round-trip instead of on the next 15s beat. The daemon
-			// root context keeps it alive across this WS read loop's teardown.
-			go d.runHeartbeatTick(d.recoveryContext(), payload.RuntimeID, true)
 		case protocol.EventDaemonWorkspacesChanged:
 			if d.workspaceChanges != nil {
 				d.workspaceChanges.broadcast()

@@ -20,8 +20,7 @@
     "gallery": "성과 갤러리",
     "cockpit": "프로젝트 콕핏",
     "fleet": "플릿",
-    "environment": "환경 변수",
-    "workspaces": "워크스페이스"
+    "environment": "환경 변수"
   },
   "tab": {
     "issue": "태스크",

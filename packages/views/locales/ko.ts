@@ -31,7 +31,6 @@ import koSquads from "./ko/squads.json";
 import koUi from "./ko/ui.json";
 import koUsage from "./ko/usage.json";
 import koWorkspace from "./ko/workspace.json";
-import koWorkspaces from "./ko/workspaces.json";
 
 const resources: LocaleResources = {
   agents: koAgents,
@@ -66,7 +65,6 @@ const resources: LocaleResources = {
   ui: koUi,
   usage: koUsage,
   workspace: koWorkspace,
-  workspaces: koWorkspaces,
 };
 
 export default resources;

@@ -27,19 +27,6 @@ export const workspaceKeys = {
   skills: (wsId: string) => ["workspaces", wsId, "skills"] as const,
   env: (wsId: string) => ["workspaces", wsId, "env"] as const,
   assigneeFrequency: (wsId: string) => ["workspaces", wsId, "assignee-frequency"] as const,
-  agentWorkspaces: (wsId: string, issueId?: string) =>
-    issueId
-      ? (["workspaces", wsId, "agent-workspaces", { issueId }] as const)
-      : (["workspaces", wsId, "agent-workspaces"] as const),
-  // On-demand file ops keyed by the workspace's on-disk task dir. Not WS-driven
-  // (file ops are user-initiated RPCs), so these rely on staleTime + manual
-  // invalidation after a reclaim.
-  workspaceTree: (wsId: string, taskShort: string) =>
-    ["workspaces", wsId, "workspace-tree", taskShort] as const,
-  workspaceFile: (wsId: string, taskShort: string, path: string) =>
-    ["workspaces", wsId, "workspace-file", taskShort, path] as const,
-  workspaceDownload: (wsId: string, taskShort: string, path: string) =>
-    ["workspaces", wsId, "workspace-download", taskShort, path] as const,
   mcpServers: (wsId: string) => ["workspaces", wsId, "mcp-servers"] as const,
 };
 
@@ -47,80 +34,6 @@ export function workspaceListOptions() {
   return queryOptions({
     queryKey: workspaceKeys.list(),
     queryFn: () => api.listWorkspaces(),
-  });
-}
-
-/**
- * Persistent agent workspaces (per agent×issue). Pass issueId to narrow
- * server-side — issue-detail's sidebar only ever renders one issue's rows —
- * and to keep the filtered list out of the management page's cache entry.
- */
-export function agentWorkspacesOptions(wsId: string, issueId?: string) {
-  return queryOptions({
-    queryKey: workspaceKeys.agentWorkspaces(wsId, issueId),
-    queryFn: () => api.listAgentWorkspaces(wsId, issueId ? { issueId } : undefined),
-    // Footprint shifts slowly and is daemon-reported on a ~3m cadence; a short
-    // stale window keeps the page fresh without hammering on every focus.
-    staleTime: 30_000,
-    refetchOnWindowFocus: true,
-  });
-}
-
-/**
- * One workspace's file tree, fetched on demand via the daemon RPC. Disabled
- * until the caller opts in (e.g. the issue-detail section is expanded) so we
- * don't pay the round trip for collapsed sections. retry:false — a failed RPC
- * is shown as-is rather than hammered.
- */
-export function workspaceTreeOptions(
-  wsId: string,
-  taskShort: string,
-  enabled: boolean,
-) {
-  return queryOptions({
-    queryKey: workspaceKeys.workspaceTree(wsId, taskShort),
-    queryFn: ({ signal }) => api.fetchWorkspaceTree(wsId, taskShort, { signal }),
-    enabled: enabled && !!wsId && !!taskShort,
-    staleTime: 60_000,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-}
-
-/** One file's contents, fetched on demand when a file is selected. */
-export function workspaceFileOptions(
-  wsId: string,
-  taskShort: string,
-  path: string,
-) {
-  return queryOptions({
-    queryKey: workspaceKeys.workspaceFile(wsId, taskShort, path),
-    queryFn: ({ signal }) => api.readWorkspaceFile(wsId, taskShort, path, { signal }),
-    enabled: !!wsId && !!taskShort && !!path,
-    staleTime: 60_000,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-}
-
-/**
- * One file's raw bytes (base64) for inline image preview, fetched on demand
- * when an image file is selected. Only enable for images — text files use
- * workspaceFileOptions, which is cheaper and renders highlighted source.
- */
-export function workspaceDownloadOptions(
-  wsId: string,
-  taskShort: string,
-  path: string,
-  enabled: boolean,
-) {
-  return queryOptions({
-    queryKey: workspaceKeys.workspaceDownload(wsId, taskShort, path),
-    queryFn: ({ signal }) => api.downloadWorkspaceFile(wsId, taskShort, path, { signal }),
-    enabled: enabled && !!wsId && !!taskShort && !!path,
-    staleTime: 60_000,
-    retry: false,
-    refetchOnWindowFocus: false,
   });
 }
 

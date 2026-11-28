@@ -292,12 +292,6 @@ type Handler struct {
 	ModelListStore        ModelListStore
 	LocalSkillListStore   LocalSkillListStore
 	LocalSkillImportStore LocalSkillImportStore
-	// WorkspaceInventoryStore and WorkspaceOpStore back the BayClaw persistent
-	// agent-workspace management page: the inventory is reported by daemons on
-	// heartbeat, the op store carries on-demand file RPCs (tree/read/download/
-	// reclaim) back down the same channel.
-	WorkspaceInventoryStore WorkspaceInventoryStore
-	WorkspaceOpStore        WorkspaceOpStore
 	FeatureFlags            *featureflag.Service
 	// Collab is the live co-editing service for docs. Nil turns live editing
 	// off: docs save through the REST autosave path.
@@ -603,8 +597,6 @@ func New(queries *db.Queries, txStarter txStarter, hub *realtime.Hub, bus *event
 		ModelCatalogCache:            NewInMemoryModelCatalogCache(),
 		LocalSkillListStore:          NewInMemoryLocalSkillListStore(),
 		LocalSkillImportStore:        NewInMemoryLocalSkillImportStore(),
-		WorkspaceInventoryStore:      NewInMemoryWorkspaceInventoryStore(),
-		WorkspaceOpStore:             NewInMemoryWorkspaceOpStore(),
 		LivenessStore:                NewNoopLivenessStore(),
 		HeartbeatScheduler:           NewPassthroughHeartbeatScheduler(queries),
 		Storage:                      store,

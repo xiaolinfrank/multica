@@ -18,7 +18,6 @@ import {
 import { issueKeys } from "@multica/core/issues/queries";
 import { collectDeliverableFiles } from "@multica/core/attachments/deliverables";
 import { projectDetailOptions } from "@multica/core/projects/queries";
-import { agentWorkspacesOptions } from "@multica/core/workspace";
 import { propertyListOptions } from "@multica/core/properties";
 import { issuePullRequestsOptions } from "@multica/core/github";
 import { useNavigation } from "../../navigation";
@@ -30,20 +29,16 @@ import {
   EXPORT_CHILD_DEPTH_LIMIT,
   EXPORT_CHILD_NODE_LIMIT,
   EXPORT_PACKED_BYTES_LIMIT,
-  EXPORT_WORKSPACE_FILE_LIMIT,
-  isSafeRelativePath,
   renderTaskTranscript,
   type ExportChildIssue,
   type ExportedAttachment,
   type ExportedExecution,
-  type ExportedWorkspace,
-  type ExportedWorkspaceFile,
 } from "../utils/build-issue-export";
 
 /** Concurrency for pulling attachment bytes — keeps the export burst polite. */
 const ATTACHMENT_FETCH_CONCURRENCY = 4;
-/** Workspace file ops are heartbeat-relayed RPCs — keep the fan-out lower. */
-const WORKSPACE_FETCH_CONCURRENCY = 3;
+/** Execution transcripts are per-run requests — keep the fan-out modest. */
+const EXECUTION_FETCH_CONCURRENCY = 3;
 
 function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -56,14 +51,6 @@ function triggerDownload(blob: Blob, filename: string): void {
   anchor.remove();
   // Next tick, so the click has started the download first.
   setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-/** base64 → bytes, matching the workspace download hook's decoder. */
-function base64ToBytes(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 /** `report.pdf` → `report.pdf`; `report (2).pdf` on collision; path-safe. */
@@ -227,79 +214,14 @@ export function useExportIssue(issue: Issue | null): {
         (x, y) => attachmentRows.indexOf(x.attachment) - attachmentRows.indexOf(y.attachment),
       );
 
-      // Agent workspace deliverables: the daemon-held working directories
-      // this issue's agents left behind. Best effort — an unreachable
-      // workspace (daemon offline) degrades to a note in the document,
-      // never a failed export.
-      const workspaceRows =
-        (await qc.ensureQueryData(agentWorkspacesOptions(wsId, issueId)))?.workspaces ?? [];
       let packedBytes = packed.reduce((n, item) => n + item.bytes.byteLength, 0);
-      const exportedWorkspaces: ExportedWorkspace[] = [];
-      for (const workspace of workspaceRows) {
-        const taskShort = workspace.task_short;
-        const wsOut: ExportedWorkspace = {
-          taskShort,
-          agentName: workspace.agent_name || workspace.agent_id,
-          deviceName: workspace.device_name || undefined,
-          files: [],
-        };
-        try {
-          const tree = await api.fetchWorkspaceTree(wsId, taskShort);
-          if (tree.status !== "completed") {
-            wsOut.error = tree.error || "tree unavailable";
-            exportedWorkspaces.push(wsOut);
-            continue;
-          }
-          wsOut.treeTruncated = tree.data.truncated || undefined;
-          // Repo checkouts and regenerable artifacts come back as single
-          // collapsed nodes ("repo"/"artifact") the file API cannot download
-          // individually — only plain files carry into the handoff bundle.
-          const plainFiles = tree.data.entries.filter((e) => !e.is_dir && !e.kind);
-          wsOut.fileCapDropped =
-            plainFiles.length > EXPORT_WORKSPACE_FILE_LIMIT
-              ? plainFiles.length - EXPORT_WORKSPACE_FILE_LIMIT
-              : undefined;
-          wsOut.files = await mapWithConcurrency(
-            plainFiles.slice(0, EXPORT_WORKSPACE_FILE_LIMIT),
-            WORKSPACE_FETCH_CONCURRENCY,
-            async (entry): Promise<ExportedWorkspaceFile> => {
-              if (!isSafeRelativePath(entry.path)) {
-                return { path: entry.path, sizeBytes: entry.size, skippedReason: "unavailable" };
-              }
-              if (packedBytes >= EXPORT_PACKED_BYTES_LIMIT) {
-                return { path: entry.path, sizeBytes: entry.size, skippedReason: "size_cap" };
-              }
-              try {
-                const dl = await api.downloadWorkspaceFile(wsId, taskShort, entry.path);
-                if (dl.status !== "completed") {
-                  return { path: entry.path, sizeBytes: entry.size, skippedReason: "unavailable" };
-                }
-                if (dl.data.too_large || !dl.data.content) {
-                  return { path: entry.path, sizeBytes: entry.size, skippedReason: "too_large" };
-                }
-                const bytes = base64ToBytes(dl.data.content);
-                const packedName = `workspace/${taskShort}/${entry.path}`;
-                packed.push({ name: packedName, bytes });
-                packedBytes += bytes.byteLength;
-                return { path: entry.path, sizeBytes: entry.size, packedName };
-              } catch {
-                return { path: entry.path, sizeBytes: entry.size, skippedReason: "unavailable" };
-              }
-            },
-          );
-        } catch {
-          wsOut.error = "workspace unreachable";
-        }
-        exportedWorkspaces.push(wsOut);
-      }
-
 
       // Execution transcripts: the per-run message streams (text, thinking,
       // tool calls and results) behind the platform's "view run process"
       // dialog, rendered as one Markdown file per run under executions/.
       const exportedExecutions: ExportedExecution[] = await mapWithConcurrency(
         runs ?? [],
-        WORKSPACE_FETCH_CONCURRENCY,
+        EXECUTION_FETCH_CONCURRENCY,
         async (run, index): Promise<ExportedExecution> => {
           const packedName = `executions/run-${index + 1}-${run.id.slice(0, 8)}.md`;
           if (packedBytes >= EXPORT_PACKED_BYTES_LIMIT) {
@@ -332,7 +254,6 @@ export function useExportIssue(issue: Issue | null): {
         // zip still packs every attachment's bytes — the split only changes
         // how the document lists them.
         deliverables: collectDeliverableFiles(timeline ?? []),
-        workspaces: exportedWorkspaces,
         executions: exportedExecutions,
         childTree,
         childTreeTruncated: truncated,
@@ -388,11 +309,7 @@ export function useExportIssue(issue: Issue | null): {
       // reads as "the platform lost my deliverables".
       const failedFiles =
         exportedAttachments.filter((a) => !a.packedName).length +
-        exportedExecutions.filter((e) => !e.packedName).length +
-        exportedWorkspaces.reduce(
-          (n, w) => n + w.files.filter((f) => !f.packedName).length,
-          0,
-        );
+        exportedExecutions.filter((e) => !e.packedName).length;
       if (failedFiles > 0) {
         toast.warning(
           t(($) => $.actions.export_partial, {

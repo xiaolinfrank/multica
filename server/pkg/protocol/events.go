@@ -210,14 +210,6 @@ const (
 	EventDaemonTaskSupplementAvailable = "daemon:task_supplement_available"
 	EventDaemonRuntimeProfilesChanged  = "daemon:runtime_profiles_changed"
 	EventDaemonWorkspacesChanged       = "daemon:workspaces_changed"
-	// EventDaemonWorkspaceOpAvailable wakes a daemon that has a pending
-	// workspace file op (tree/read/download/reclaim) so the management UI does
-	// not wait a full HeartbeatInterval per click. It predates
-	// EventDaemonPendingWork below and overlaps with it; folding the two is
-	// tracked separately, because PendingWork drops the hint when the runtime
-	// is not in the index and rate-limits to 1/s, and workspace ops depend on
-	// neither.
-	EventDaemonWorkspaceOpAvailable = "daemon:workspace_op_available"
 	// EventDaemonPendingWork is a runtime-scoped hint that a heartbeat-carried
 	// request (model discovery, capability discovery, or local-skill import) is
 	// queued for that runtime. Without it the daemon only learns about the

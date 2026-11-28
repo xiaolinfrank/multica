@@ -51,9 +51,8 @@ const SPACE_BY_SEGMENT: Record<string, AppSpaceId> = {
   chat: "chat",
   autopilots: "autopilots",
   settings: "settings",
-  // BayClaw environment and workspace admin live under settings.
+  // BayClaw environment admin lives under settings.
   env: "settings",
-  workspaces: "settings",
 };
 
 /**

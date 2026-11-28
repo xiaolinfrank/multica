@@ -45,7 +45,6 @@ const WORKSPACE_ROUTE_SEGMENTS = new Set([
   "settings",
   "fleet",
   "env",
-  "workspaces",
 ]);
 
 /**
