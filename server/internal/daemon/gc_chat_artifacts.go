@@ -1,12 +1,10 @@
 package daemon
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"time"
@@ -56,28 +54,9 @@ func chatArtifactSweepMarker(meta *execenv.GCMeta, matcher artifactMatcher) [sha
 }
 
 func chatArtifactSweepRecorded(taskDir string, marker [sha256.Size]byte) bool {
-	path := filepath.Join(taskDir, chatArtifactSweepFile)
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() != int64(len(marker)) {
-		return false
-	}
-	saved, err := os.ReadFile(path)
-	return err == nil && bytes.Equal(saved, marker[:])
+	return artifactSweepRecorded(taskDir, chatArtifactSweepFile, marker)
 }
 
 func writeChatArtifactSweep(path string, marker []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), chatArtifactSweepFile+"-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	_, writeErr := tmp.Write(marker)
-	closeErr := tmp.Close()
-	if writeErr != nil {
-		return writeErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	return os.Rename(tmp.Name(), path)
+	return writeArtifactSweepMarker(path, chatArtifactSweepFile, marker)
 }

@@ -166,10 +166,11 @@ func TestLoadConfig_WSClaimPollIntervalPrecedence(t *testing.T) {
 	}
 }
 
-// The completed-task retention bound is on by default for every server, not
-// just Multica Cloud: a self-hosted or team-hosted daemon whose issues sit open
-// fills its disk just as fast. The env var still overrides in both directions.
-func TestLoadConfig_CompletedTaskTTLDefaultsBoundedOnEveryServer(t *testing.T) {
+// The completed-task retention bound is disabled by default so persistent
+// NAS-backed task directories are preserved until the issue is deleted. An
+// operator opts in with a positive MULTICA_GC_COMPLETED_TASK_TTL; the env var
+// still overrides in both directions.
+func TestLoadConfig_CompletedTaskTTLDefaultsDisabledAndOptIn(t *testing.T) {
 	stageFakeAgent(t)
 	redirectTestHome(t, t.TempDir())
 	t.Setenv("SHELL", filepath.Join(t.TempDir(), "missing-shell"))
@@ -191,18 +192,18 @@ func TestLoadConfig_CompletedTaskTTLDefaultsBoundedOnEveryServer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadConfig with default completed-task TTL: %v", err)
 			}
-			if cfg.GCCompletedTaskTTL != 14*24*time.Hour {
-				t.Fatalf("GCCompletedTaskTTL = %s, want 14d", cfg.GCCompletedTaskTTL)
+			if cfg.GCCompletedTaskTTL != 0 {
+				t.Fatalf("GCCompletedTaskTTL = %s, want the disabled default 0", cfg.GCCompletedTaskTTL)
 			}
 
-			// An explicit 0 restores keep-until-terminal retention.
+			// An explicit 0 keeps the disabled default.
 			t.Setenv("MULTICA_GC_COMPLETED_TASK_TTL", "0")
 			cfg, err = LoadConfig(overrides)
 			if err != nil {
 				t.Fatalf("LoadConfig with completed-task TTL opt-out: %v", err)
 			}
 			if cfg.GCCompletedTaskTTL != 0 {
-				t.Fatalf("GCCompletedTaskTTL = %s, want an explicit 0 to disable the default", cfg.GCCompletedTaskTTL)
+				t.Fatalf("GCCompletedTaskTTL = %s, want an explicit 0 to keep the default disabled", cfg.GCCompletedTaskTTL)
 			}
 
 			t.Setenv("MULTICA_GC_COMPLETED_TASK_TTL", "36h")

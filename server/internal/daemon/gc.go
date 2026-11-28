@@ -397,8 +397,7 @@ func (d *Daemon) applyGCActionWithChatMeta(ctx context.Context, taskDir string, 
 		d.logger.Info("gc: removed", attrs...)
 		return 1
 	case gcActionCleanArtifacts:
-		removed, bytes, perPattern := d.cleanTaskArtifacts(ctx, taskDir, d.cfg.GCArtifactPatterns)
-		recordArtifactCleanup(stats, removed, bytes, perPattern)
+		d.cleanIssueTaskArtifacts(ctx, taskDir, checkedMeta, stats)
 		stats.skipped++ // task dir itself preserved
 	case gcActionCleanChatArtifacts:
 		d.cleanIdleChatArtifacts(ctx, taskDir, checkedMeta, stats)
@@ -655,13 +654,14 @@ func (d *Daemon) gcDecisionIssueResult(taskDir string, meta *execenv.GCMeta, res
 
 	// Persistent workspace policy: an issue's workspace lives as long as the
 	// issue exists. We intentionally do NOT reclaim on done/cancelled — the
-	// workspace is a durable artifact keyed to (agent, issue), browsable and
-	// manually managed by the user via the workspace management UI. The NAS
+	// workspace is a durable artifact keyed to (agent, issue), preserved until
+	// the issue is deleted or an operator opts into time-based retention. The NAS
 	// migration removed the local-disk-scarcity pressure the old 24h GCTTL was
 	// built for. A deleted issue surfaces as Found=false on the gc-check above
 	// and is reclaimed via the orphan path; explicit teardown is a user action.
-	// Regenerable artifacts (node_modules, etc.) are still pruned below so a
-	// long-lived workspace can't accumulate unbounded reinstallable bloat.
+	// Regenerable artifacts (node_modules, etc.) are still pruned once per
+	// completed run below so a long-lived workspace can't accumulate unbounded
+	// reinstallable bloat without re-walking every cycle.
 	//
 	// Do not reintroduce a GCTTL-based clean branch here when syncing upstream:
 	// it would silently delete live agent workspaces, and the batch scanner
@@ -687,8 +687,12 @@ func (d *Daemon) gcDecisionIssueResult(taskDir string, meta *execenv.GCMeta, res
 		return gcActionClean, gcRemovalDetails{reason: "completed task retention expired", status: result.Status, retention: d.cfg.GCCompletedTaskTTL}
 	}
 
-	if d.cfg.GCArtifactTTL > 0 && !meta.CompletedAt.IsZero() && time.Since(meta.CompletedAt) > d.cfg.GCArtifactTTL {
-		return gcActionCleanArtifacts, gcRemovalDetails{}
+	if d.issueArtifactEligible(meta) {
+		matcher := newArtifactMatcher(d.cfg.GCArtifactPatterns, execenv.ManagedReclaimableArtifactSubpaths())
+		if !issueArtifactSweepRecorded(taskDir, issueArtifactSweepMarker(meta, matcher)) {
+			return gcActionCleanArtifacts, gcRemovalDetails{}
+		}
+		return gcActionSkip, gcRemovalDetails{}
 	}
 
 	// Old metadata may not have completed_at. Keep that case conservative:

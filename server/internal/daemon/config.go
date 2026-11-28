@@ -72,7 +72,7 @@ const (
 	DefaultMaxConcurrentTasks             = 20
 	DefaultGCInterval                     = 2 * time.Hour
 	DefaultGCTTL                          = 24 * time.Hour      // 1 day — AI-coding issues rarely stay open long
-	DefaultGCCompletedTaskTTL             = 14 * 24 * time.Hour // 14 days — bound completed issue-task env retention on every server; see the MULTICA_GC_COMPLETED_TASK_TTL comment in LoadConfig
+	DefaultGCCompletedTaskTTL             = 0                   // disabled — completed issue-task envs are preserved until the issue is deleted or an operator sets MULTICA_GC_COMPLETED_TASK_TTL to opt in; see the comment in LoadConfig
 	DefaultGCOrphanTTL                    = 72 * time.Hour      // 3 days — orphans with no meta (crashes, pre-GC leftovers)
 	DefaultGCArtifactTTL                  = 12 * time.Hour      // 12h — drop regenerable artifacts once a task has been completed this long
 	DefaultGCCodexSessionTTL              = 14 * 24 * time.Hour // 14 days — reclaim per-issue Codex session stores untouched this long
@@ -117,7 +117,7 @@ type Config struct {
 	GCEnabled                      bool                  // enable periodic workspace garbage collection (default: true)
 	GCInterval                     time.Duration         // how often the GC loop runs (default: 2h)
 	GCTTL                          time.Duration         // clean dirs whose issue is done/cancelled and updated_at < now()-TTL (default: 24h)
-	GCCompletedTaskTTL             time.Duration         // fully clean inactive issue-task envs; local_directory envs expire only codex-home, preserving daemon logs/output and externally stored sessions (default: 14d; 0 disables)
+	GCCompletedTaskTTL             time.Duration         // fully clean inactive issue-task envs; local_directory envs expire only codex-home, preserving daemon logs/output and externally stored sessions (default: 0, disabled; set MULTICA_GC_COMPLETED_TASK_TTL > 0 to opt in)
 	GCOrphanTTL                    time.Duration         // clean orphan dirs with no meta, or dirs whose issue gc-check returns 404, once they exceed this age (default: 72h). The 404 path uses the same TTL — a scoped-down token can't instantly wipe live workspaces.
 	GCArtifactTTL                  time.Duration         // once a task has been completed for at least this long, drop regenerable artifacts: pattern-matched build outputs when the parent record keeps the directory (an open issue), and the exact daemon-managed Codex cache for every task kind (default: 12h, set 0 to disable both)
 	GCArtifactPatterns             []string              // basename patterns whose subtrees are removed during artifact cleanup (default: node_modules, .next, .turbo)
@@ -568,13 +568,11 @@ func LoadConfig(overrides Overrides) (Config, error) {
 	}
 	// Full removal of a completed task environment is irreversible: it takes
 	// the checkout, .git (including work an agent left uncommitted), output/
-	// and logs/ with it. The default is bounded on every server, self-host
-	// included, because unbounded retention fills the disk of any long-lived
-	// daemon whose issues sit open (in review, awaiting response, backlog) and
-	// nobody is watching it. 14d is deliberately generous: past that much idle
-	// time main has usually moved far enough that a fresh checkout beats a
-	// stale worktree. Operators who want the old keep-until-terminal behavior
-	// set MULTICA_GC_COMPLETED_TASK_TTL=0.
+	// and logs/ with it. BayClaw backs tasks with persistent NAS workspaces, so
+	// historical task directories must survive until their issue is deleted or
+	// an operator explicitly opts in. The default is therefore disabled;
+	// operators who want a time bound set MULTICA_GC_COMPLETED_TASK_TTL to a
+	// positive duration.
 	// Local-directory tasks keep their daemon logs and output; this TTL removes
 	// only their Codex home, and only when session history is stored elsewhere.
 	gcCompletedTaskTTL, err := durationFromEnv("MULTICA_GC_COMPLETED_TASK_TTL", DefaultGCCompletedTaskTTL)
